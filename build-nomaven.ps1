@@ -41,6 +41,8 @@ $need = @(
   'com._1c.g5.v8.dt.core',
   'com._1c.g5.v8.dt.metadata',
   'com._1c.g5.v8.dt.mcore',
+  'com._1c.g5.v8.dt.bsl.model',
+  'com._1c.g5.v8.dt.bsl',
   'com._1c.g5.v8.bm.core',
   'com._1c.g5.v8.bm.integration'
 )

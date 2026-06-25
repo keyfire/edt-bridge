@@ -29,6 +29,8 @@ import io.github.keyfire.edtbridge.tools.FindReferencesTool;
 import io.github.keyfire.edtbridge.tools.MetadataDetailsTool;
 import io.github.keyfire.edtbridge.tools.MetadataObjectsTool;
 import io.github.keyfire.edtbridge.tools.ProjectErrorsTool;
+import io.github.keyfire.edtbridge.tools.GoToDefinitionTool;
+import io.github.keyfire.edtbridge.tools.SymbolInfoTool;
 import io.github.keyfire.edtbridge.tools.ValidateQueryTool;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -177,6 +179,8 @@ applyI18n();loadStatus();loadTools();
     private final FindReferencesTool findReferences = new FindReferencesTool();
     private final MetadataObjectsTool metadataObjects = new MetadataObjectsTool();
     private final ValidateQueryTool validateQuery = new ValidateQueryTool();
+    private final GoToDefinitionTool goToDefinition = new GoToDefinitionTool();
+    private final SymbolInfoTool symbolInfo = new SymbolInfoTool();
     private final EdtModelGateway gateway = new EdtModelGateway();
     private HttpServer http;
     private int port;
@@ -347,6 +351,8 @@ applyI18n();loadStatus();loadTools();
         tools.add(findReferences.descriptor());
         tools.add(metadataObjects.descriptor());
         tools.add(validateQuery.descriptor());
+        tools.add(goToDefinition.descriptor());
+        tools.add(symbolInfo.descriptor());
         JsonObject r = new JsonObject();
         r.add("tools", tools);
         return r;
@@ -371,6 +377,12 @@ applyI18n();loadStatus();loadTools();
         }
         if (validateQuery.name().equals(name)) {
             return validateQuery.call(args);
+        }
+        if (goToDefinition.name().equals(name)) {
+            return goToDefinition.call(args);
+        }
+        if (symbolInfo.name().equals(name)) {
+            return symbolInfo.call(args);
         }
         return toolError("unknown tool: " + name);
     }
