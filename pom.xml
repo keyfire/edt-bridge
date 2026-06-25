@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  edt-bridge - Maven/Tycho reactor.
+  Build:    mvn -f pom.xml clean verify
+  Requires: JDK 17+ (run Maven on JDK 17/21) and a local 1C:EDT p2 bundle pool referenced
+            by edt-bridge.target. Bundle bytecode targets Java 17 (the EDT runtime).
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>io.github.keyfire.edtbridge</groupId>
+  <artifactId>edt-bridge-parent</artifactId>
+  <version>0.0.1-SNAPSHOT</version>
+  <packaging>pom</packaging>
+
+  <properties>
+    <tycho.version>4.0.8</tycho.version>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
+
+  <modules>
+    <module>io.github.keyfire.edtbridge</module>
+  </modules>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.eclipse.tycho</groupId>
+        <artifactId>tycho-maven-plugin</artifactId>
+        <version>${tycho.version}</version>
+        <extensions>true</extensions>
+      </plugin>
+      <plugin>
+        <groupId>org.eclipse.tycho</groupId>
+        <artifactId>target-platform-configuration</artifactId>
+        <version>${tycho.version}</version>
+        <configuration>
+          <!-- Tycho 3.0+ supports referencing a .target file directly. If your Tycho
+               rejects <file>, convert edt-bridge.target into an eclipse-target-definition
+               module and reference it via <target><artifact>. -->
+          <target>
+            <file>${project.basedir}/edt-bridge.target</file>
+          </target>
+          <executionEnvironment>JavaSE-17</executionEnvironment>
+          <environments>
+            <environment>
+              <os>win32</os>
+              <ws>win32</ws>
+              <arch>x86_64</arch>
+            </environment>
+          </environments>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

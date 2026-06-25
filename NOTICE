@@ -1,0 +1,10 @@
+edt-bridge
+Copyright 2026 edt-bridge contributors
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This software is an Eclipse/OSGi plugin for 1C:EDT. It is built against, and runs
+inside, 1C:EDT, using the Eclipse Platform and 1C:EDT plugin APIs (their respective
+licenses apply). At runtime it uses Google Gson (Apache License 2.0). Those
+dependencies are provided by the host EDT environment and are not redistributed by
+this project.

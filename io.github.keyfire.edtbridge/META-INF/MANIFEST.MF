@@ -1,0 +1,27 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: edt-bridge
+Bundle-SymbolicName: io.github.keyfire.edtbridge;singleton:=true
+Bundle-Version: 0.0.1.qualifier
+Bundle-Vendor: edt-bridge contributors
+Automatic-Module-Name: io.github.keyfire.edtbridge
+Bundle-RequiredExecutionEnvironment: JavaSE-17
+Bundle-Activator: io.github.keyfire.edtbridge.Activator
+Bundle-ActivationPolicy: lazy
+Require-Bundle: org.eclipse.core.runtime,
+ org.eclipse.core.resources,
+ org.eclipse.ui,
+ com.google.gson,
+ org.eclipse.emf.ecore,
+ org.eclipse.emf.common,
+ com._1c.g5.wiring,
+ com._1c.g5.v8.dt.core,
+ com._1c.g5.v8.dt.metadata,
+ com._1c.g5.v8.dt.mcore,
+ com._1c.g5.v8.bm.core,
+ com._1c.g5.v8.bm.integration,
+ org.eclipse.xtext,
+ org.eclipse.xtext.util,
+ com.google.inject
+Import-Package: com.sun.net.httpserver,
+ org.osgi.framework
