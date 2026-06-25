@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<?pde version="3.8"?>
+<!--
+  Target platform = your local 1C:EDT p2 bundle pool (offline, no network / no p2 URL).
+  Adjust the path below to your own EDT install's pool, typically:
+      <your-home>/.p2/pool/plugins
+-->
+<target name="edt-bridge-target" sequenceNumber="1">
+  <locations>
+    <location path="${user.home}/.p2/pool/plugins" type="Directory"/>
+  </locations>
+</target>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- edt-bridge OSGi bundle - built with Maven/Tycho against the local EDT p2 pool. -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>com.e1c.fresh.edtbridge</groupId>
+    <artifactId>edt-bridge-parent</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+  </parent>
+
+  <!-- Version is derived from META-INF/MANIFEST.MF (Bundle-Version 0.0.1.qualifier). -->
+  <artifactId>com.e1c.fresh.edtbridge</artifactId>
+  <packaging>eclipse-plugin</packaging>
+</project>
