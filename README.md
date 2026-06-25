@@ -20,8 +20,10 @@ semantic cross-references, and **query validation against the project's actual m
 | `edt_metadata_objects` | Top-level metadata objects, optionally filtered by type (`Catalog`, `Document`, …) and a name substring. |
 | `edt_find_references` | Inbound references to a metadata object (metadata + BSL), from EDT's cross-reference index. |
 | `edt_validate_query` | Validates a 1C query against the project's live metadata: syntax **and** semantics (unknown tables/fields, type errors), with positions. |
+| `edt_go_to_definition` | Resolve a BSL symbol's definition at a position (line+column or offset): the target's kind, name, owning object and location. |
+| `edt_symbol_info` | Type/symbol info at a position in a BSL module: the element under the cursor and the computed value type(s) of the expression (dynamic typing). |
 
-Planned: `edt_go_to_definition`, `edt_symbol_info` (semantic BSL navigation / typing).
+All Phase 1 (read-only) tools are implemented.
 
 Naming convention: tools are `edt_*` (snake_case); parameters are camelCase (`projectName`,
 `fqn`, `queryText`); Cyrillic FQNs are supported (`Справочник.Контрагенты`).
@@ -101,7 +103,7 @@ toggle (defaults to the browser locale).
 
 ## Status & roadmap
 
-- **Phase 1 (current): read-only.** The five tools above (two more navigation tools planned).
+- **Phase 1 (current): read-only.** The seven tools above.
 - **Later phases:** write/refactor, debugging, form rendering, test runs — out of scope here.
 
 ## License
@@ -132,8 +134,10 @@ AI-агентам и другим инструментам по протокол
 | `edt_metadata_objects` | Объекты метаданных верхнего уровня; опц. фильтр по типу (`Catalog`, `Document`, …) и подстроке имени. |
 | `edt_find_references` | Входящие ссылки на объект метаданных (метаданные + BSL) из индекса перекрёстных ссылок EDT. |
 | `edt_validate_query` | Валидирует запрос 1С против живых метаданных проекта: синтаксис **и** семантику (несуществующие таблицы/поля, ошибки типов) с позициями. |
+| `edt_go_to_definition` | Переход к определению символа BSL в позиции (строка+столбец или offset): вид цели, имя, объект-владелец, расположение. |
+| `edt_symbol_info` | Тип/инфо символа в позиции модуля BSL: элемент под курсором и вычисленные типы значения выражения (динамическая типизация). |
 
-В планах: `edt_go_to_definition`, `edt_symbol_info` (семантическая навигация/типизация BSL).
+Все инструменты Phase 1 (только чтение) реализованы.
 
 Соглашение об именах: инструменты `edt_*` (snake_case); параметры camelCase (`projectName`,
 `fqn`, `queryText`); поддерживаются кириллические FQN (`Справочник.Контрагенты`).
@@ -207,7 +211,7 @@ curl -s -X POST http://127.0.0.1:8770/mcp -H "Content-Type: application/json" \
 
 ## Статус и план
 
-- **Фаза 1 (сейчас): только чтение.** Пять инструментов выше (ещё два навигационных — в планах).
+- **Фаза 1 (сейчас): только чтение.** Семь инструментов выше.
 - **Дальше:** запись/рефакторинг, отладка, рендеринг форм, прогон тестов — вне этой фазы.
 
 ## Лицензия

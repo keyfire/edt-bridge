@@ -17,12 +17,14 @@
 package com.e1c.fresh.edtbridge.edt;
 
 import java.io.ByteArrayInputStream;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 
+import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IMarker;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
@@ -37,8 +39,12 @@ import org.eclipse.emf.ecore.EClass;
 import org.eclipse.emf.ecore.EClassifier;
 import org.eclipse.emf.ecore.EObject;
 import org.eclipse.emf.ecore.EReference;
+import org.eclipse.emf.ecore.resource.Resource;
 import org.eclipse.emf.ecore.util.EcoreUtil;
 import org.eclipse.xtext.diagnostics.Severity;
+import org.eclipse.xtext.nodemodel.ICompositeNode;
+import org.eclipse.xtext.nodemodel.util.NodeModelUtils;
+import org.eclipse.xtext.resource.EObjectAtOffsetHelper;
 import org.eclipse.xtext.resource.IResourceFactory;
 import org.eclipse.xtext.resource.XtextResource;
 import org.eclipse.xtext.resource.XtextResourceSet;
@@ -53,8 +59,12 @@ import com._1c.g5.v8.bm.core.IBmObject;
 import com._1c.g5.v8.bm.core.IBmTransaction;
 import com._1c.g5.v8.bm.integration.AbstractBmTask;
 import com._1c.g5.v8.bm.integration.IBmModel;
+import com._1c.g5.v8.dt.bsl.model.Module;
+import com._1c.g5.v8.dt.bsl.resource.TypesComputer;
 import com._1c.g5.v8.dt.core.platform.IBmModelManager;
+import com._1c.g5.v8.dt.mcore.NamedElement;
 import com._1c.g5.v8.dt.mcore.NumberQualifiers;
+import com._1c.g5.v8.dt.mcore.util.Environments;
 import com._1c.g5.v8.dt.mcore.StringQualifiers;
 import com._1c.g5.v8.dt.mcore.TypeDescription;
 import com._1c.g5.v8.dt.mcore.TypeItem;
@@ -69,7 +79,7 @@ import com.google.inject.Injector;
  * Thin adapter over the 1C:EDT / Eclipse model. This single class is the only place that
  * touches the IDE model, so an EDT/Eclipse API change stays contained here. It backs the MCP
  * tools with read-only operations: validation markers, metadata details and listing,
- * cross-references, and query validation.
+ * cross-references, query validation, and BSL navigation (definition / type).
  */
 public final class EdtModelGateway {
 
@@ -556,22 +566,254 @@ public final class EdtModelGateway {
     }
 
     /**
-     * EDT's fully-wired QL Guice injector, taken from the QL UI activator via the bundle's own class
-     * loader. The activator sits in an internal package, so we never compile against it (no
-     * Require-Bundle on the UI plugin); reflection stays contained in this adapter.
+     * EDT's fully-wired Xtext language injector, taken from the language's UI activator via the
+     * bundle's own class loader. The activator sits in an internal package, so we never compile
+     * against it (no Require-Bundle on the UI plugin); reflection stays contained in this adapter.
      */
-    private Injector qlInjector() throws Exception {
-        Bundle bundle = Platform.getBundle("com._1c.g5.v8.dt.ql.ui");
+    private Injector languageInjector(String bundleId, String activatorClass, String language) throws Exception {
+        Bundle bundle = Platform.getBundle(bundleId);
         if (bundle == null) {
             return null;
         }
-        Class<?> activatorClass = bundle.loadClass("com._1c.g5.v8.dt.ql.ui.internal.QlActivator");
-        Object activator = activatorClass.getMethod("getInstance").invoke(null);
-        if (activator == null) {
+        Class<?> ac = bundle.loadClass(activatorClass);
+        Object instance = ac.getMethod("getInstance").invoke(null);
+        if (instance == null) {
             return null;
         }
-        Object injector = activatorClass.getMethod("getInjector", String.class)
-                .invoke(activator, "com._1c.g5.v8.dt.ql.Ql");
-        return (Injector) injector;
+        return (Injector) ac.getMethod("getInjector", String.class).invoke(instance, language);
+    }
+
+    private Injector qlInjector() throws Exception {
+        return languageInjector("com._1c.g5.v8.dt.ql.ui",
+                "com._1c.g5.v8.dt.ql.ui.internal.QlActivator", "com._1c.g5.v8.dt.ql.Ql");
+    }
+
+    private Injector bslInjector() throws Exception {
+        return languageInjector("com._1c.g5.v8.dt.bsl.ui",
+                "com._1c.g5.v8.dt.bsl.ui.internal.BslActivator", "com._1c.g5.v8.dt.bsl.Bsl");
+    }
+
+    /** A resolved go-to-definition target. */
+    public static final class DefinitionResult {
+        public boolean found;
+        public String message;       // set when nothing was resolved
+        public String targetType;    // EClass of the target (Method, ExplicitVariable, FormalParam, ...)
+        public String targetName;    // symbol name, when the target is a named element
+        public String ownerFqn;      // owning module's owner FQN (e.g. CommonModule.X), when resolvable
+        public String uri;           // target resource URI
+        public int line = -1;        // 1-based line of the target in its resource, -1 if unknown
+        public boolean sameModule;   // target is in the same module as the position
+    }
+
+    /**
+     * Resolve the definition of the symbol at a position in a BSL module: parse the module into a
+     * transient Xtext resource under its real platform URI (so BSL scoping resolves the project's
+     * symbols), then resolve the cross-referenced element at the offset and report the target.
+     * {@code offsetArg} < 0 means derive the offset from 1-based {@code line}/{@code column}.
+     */
+    public DefinitionResult goToDefinition(String projectName, String modulePath, int line, int column, int offsetArg) {
+        DefinitionResult r = new DefinitionResult();
+        try {
+            BslContext ctx = loadBsl(projectName, modulePath, line, column, offsetArg);
+            if (ctx.error != null) {
+                r.message = ctx.error;
+                return r;
+            }
+            EObjectAtOffsetHelper helper = ctx.injector.getInstance(EObjectAtOffsetHelper.class);
+            EObject target = helper.resolveCrossReferencedElementAt(ctx.resource, ctx.offset);
+            if (target == null) {
+                r.message = "no reference at this position";
+                return r;
+            }
+            if (target.eIsProxy()) {
+                r.message = "reference is unresolved at this position";
+                return r;
+            }
+            r.found = true;
+            r.targetType = target.eClass().getName();
+            if (target instanceof NamedElement) {
+                r.targetName = ((NamedElement) target).getName();
+            }
+            EObject c = target;
+            while (c != null && !(c instanceof Module)) {
+                c = c.eContainer();
+            }
+            if (c instanceof Module) {
+                EObject owner = ((Module) c).getOwner();
+                if (owner instanceof MdObject) {
+                    r.ownerFqn = fqnOf((MdObject) owner);
+                }
+            }
+            Resource targetResource = target.eResource();
+            r.uri = (targetResource != null) ? String.valueOf(targetResource.getURI()) : null;
+            r.sameModule = (targetResource == ctx.resource);
+            ICompositeNode node = NodeModelUtils.getNode(target);
+            if (node != null) {
+                r.line = node.getStartLine();
+            }
+        } catch (Throwable t) {
+            r.message = t.getClass().getSimpleName() + (t.getMessage() != null ? ": " + t.getMessage() : "");
+        }
+        return r;
+    }
+
+    /** A BSL module parsed into a transient Xtext resource, positioned at an offset. */
+    private static final class BslContext {
+        Injector injector;
+        XtextResource resource;
+        int offset;
+        String error;
+    }
+
+    /**
+     * Parse {@code modulePath} of {@code projectName} into a transient Xtext resource under its real
+     * platform URI (so BSL scoping resolves project symbols) and locate the offset. Shared by the
+     * BSL navigation tools. {@code offsetArg} < 0 derives the offset from 1-based line/column.
+     */
+    private BslContext loadBsl(String projectName, String modulePath, int line, int column, int offsetArg) {
+        BslContext ctx = new BslContext();
+        IProject p = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+        if (!p.exists() || !p.isOpen()) {
+            ctx.error = "project not found or closed: " + projectName;
+            return ctx;
+        }
+        IFile file = p.getFile(modulePath);
+        if (!file.exists()) {
+            ctx.error = "module not found: " + modulePath;
+            return ctx;
+        }
+        try {
+            String text = readText(file);
+            int offset = (offsetArg >= 0) ? offsetArg : computeOffset(text, line, column);
+            if (offset < 0 || offset > text.length()) {
+                ctx.error = "position out of range";
+                return ctx;
+            }
+            Injector injector = bslInjector();
+            if (injector == null) {
+                ctx.error = "BSL services unavailable (EDT BSL bundle not active)";
+                return ctx;
+            }
+            IResourceFactory factory = injector.getInstance(IResourceFactory.class);
+            XtextResourceSet resourceSet = injector.getInstance(XtextResourceSet.class);
+            URI uri = URI.createURI("platform:/resource/" + projectName + "/" + modulePath);
+            XtextResource resource = (XtextResource) factory.createResource(uri);
+            resourceSet.getResources().add(resource);
+            resource.load(new ByteArrayInputStream(text.getBytes(StandardCharsets.UTF_8)), resourceSet.getLoadOptions());
+            EcoreUtil.resolveAll(resource);
+            ctx.injector = injector;
+            ctx.resource = resource;
+            ctx.offset = offset;
+        } catch (Exception e) {
+            ctx.error = e.getClass().getSimpleName() + (e.getMessage() != null ? ": " + e.getMessage() : "");
+        }
+        return ctx;
+    }
+
+    /** Result of {@link #symbolInfo}. */
+    public static final class SymbolInfoResult {
+        public boolean found;
+        public String message;
+        public String elementType;                       // EClass of the element under the position
+        public String name;                              // symbol name, when the element is named
+        public List<String> types = new ArrayList<>();   // computed value type(s) of the expression
+    }
+
+    /**
+     * Type/symbol info at a position in a BSL module: the element under the cursor (kind, name) plus
+     * the computed value type(s) of the expression via EDT's dynamic BSL type system.
+     */
+    public SymbolInfoResult symbolInfo(String projectName, String modulePath, int line, int column, int offsetArg) {
+        SymbolInfoResult r = new SymbolInfoResult();
+        try {
+            BslContext ctx = loadBsl(projectName, modulePath, line, column, offsetArg);
+            if (ctx.error != null) {
+                r.message = ctx.error;
+                return r;
+            }
+            EObjectAtOffsetHelper helper = ctx.injector.getInstance(EObjectAtOffsetHelper.class);
+            // Use the contained expression under the cursor (not the resolved declaration) so a
+            // variable/feature reference yields the expression's computed value type. The symbol
+            // name comes from the cross-referenced target when there is one.
+            EObject element = helper.resolveContainedElementAt(ctx.resource, ctx.offset);
+            if (element == null) {
+                element = helper.resolveElementAt(ctx.resource, ctx.offset);
+            }
+            if (element == null) {
+                r.message = "no element at this position";
+                return r;
+            }
+            r.found = true;
+            r.elementType = element.eClass().getName();
+            EObject resolved = helper.resolveCrossReferencedElementAt(ctx.resource, ctx.offset);
+            if (resolved instanceof NamedElement) {
+                r.name = ((NamedElement) resolved).getName();
+            } else if (element instanceof NamedElement) {
+                r.name = ((NamedElement) element).getName();
+            }
+            try {
+                TypesComputer typesComputer = ctx.injector.getInstance(TypesComputer.class);
+                List<TypeItem> types = typesComputer.computeTypes(element, Environments.ALL);
+                if (types != null) {
+                    for (TypeItem ti : types) {
+                        String n = typeItemName(ti);
+                        if (n != null && !n.isBlank()) {
+                            r.types.add(n);
+                        }
+                    }
+                }
+            } catch (RuntimeException ignored) {
+                // type computation is best-effort
+            }
+        } catch (Throwable t) {
+            r.message = t.getClass().getSimpleName() + (t.getMessage() != null ? ": " + t.getMessage() : "");
+        }
+        return r;
+    }
+
+    /** Readable (Russian) name of a type item; best-effort, never throws. */
+    private String typeItemName(TypeItem ti) {
+        try {
+            String n = McoreUtil.getTypeNameRu(ti);
+            if (n == null || n.isBlank()) {
+                n = McoreUtil.getTypeName(ti);
+            }
+            return n;
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    private String readText(IFile file) throws Exception {
+        try (InputStream in = file.getContents()) {
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
+    }
+
+    private int computeOffset(String text, int line, int column) {
+        if (line < 1 || column < 1) {
+            return -1;
+        }
+        int off = 0;
+        int cur = 1;
+        while (cur < line) {
+            int nl = text.indexOf('\n', off);
+            if (nl < 0) {
+                return -1;
+            }
+            off = nl + 1;
+            cur++;
+        }
+        return off + (column - 1);
+    }
+
+    private String fqnOf(MdObject md) {
+        if (md instanceof IBmObject) {
+            String f = ((IBmObject) md).bmGetFqn();
+            if (f != null && !f.isBlank()) {
+                return f;
+            }
+        }
+        return md.eClass().getName() + "." + md.getName();
     }
 }
