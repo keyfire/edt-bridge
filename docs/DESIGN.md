@@ -1,5 +1,8 @@
 # edt-bridge — design (Phase 1, read-only)
 
+> Historical Phase 1 design note. Phase 2 (write: attribute CRUD, rename-with-cascade,
+> create-object) is now implemented — see the [README](../README.md) for the current tool set.
+
 ## Goal
 
 Give tools and AI agents 1C:EDT's **live** semantic model for things a static parser cannot do:
@@ -63,9 +66,11 @@ plugin that embeds an MCP server.
 
 ## Phases
 
-- **Phase 1 (this repo): read-only** — the tools above.
-- **Later phases (separate scope):** write/refactor; debug/forms/test runs. Each adds a non-inert
-  surface and should be designed and reviewed on its own.
+- **Phase 1: read-only** — the tools above.
+- **Phase 2 (now implemented):** write/refactor — attribute CRUD, rename-with-cascade, create-object
+  (token-gated, dry-run by default). See the [README](../README.md).
+- **Later phases (separate scope):** debug/forms/test runs. Each adds a non-inert surface and should
+  be designed and reviewed on its own.
 
 ## Risks & mitigations
 

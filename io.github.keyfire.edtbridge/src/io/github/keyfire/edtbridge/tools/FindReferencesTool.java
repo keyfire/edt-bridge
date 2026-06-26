@@ -45,7 +45,7 @@ public final class FindReferencesTool {
 
         JsonObject fqn = new JsonObject();
         fqn.addProperty("type", "string");
-        fqn.addProperty("description", "Target top object FQN (English type prefix), e.g. Catalog.Контрагенты");
+        fqn.addProperty("description", "Target top object FQN (English type prefix), e.g. Catalog.ВнешниеПользователи");
 
         JsonObject limit = new JsonObject();
         limit.addProperty("type", "integer");
