@@ -30,6 +30,7 @@ import io.github.keyfire.edtbridge.tools.RemoveAttributeTool;
 import io.github.keyfire.edtbridge.tools.ModifyAttributeTool;
 import io.github.keyfire.edtbridge.tools.RenameTool;
 import io.github.keyfire.edtbridge.tools.CreateObjectTool;
+import io.github.keyfire.edtbridge.tools.DeleteObjectTool;
 import io.github.keyfire.edtbridge.tools.FindReferencesTool;
 import io.github.keyfire.edtbridge.tools.FormRenderTool;
 import io.github.keyfire.edtbridge.tools.FormStructureTool;
@@ -198,6 +199,7 @@ applyI18n();loadStatus();loadTools();
     private final ModifyAttributeTool modifyAttribute = new ModifyAttributeTool();
     private final RenameTool rename = new RenameTool();
     private final CreateObjectTool createObject = new CreateObjectTool();
+    private final DeleteObjectTool deleteObject = new DeleteObjectTool();
     private final EdtModelGateway gateway = new EdtModelGateway();
     private HttpServer http;
     private int port;
@@ -402,6 +404,7 @@ applyI18n();loadStatus();loadTools();
         tools.add(modifyAttribute.descriptor());
         tools.add(rename.descriptor());
         tools.add(createObject.descriptor());
+        tools.add(deleteObject.descriptor());
         JsonObject r = new JsonObject();
         r.add("tools", tools);
         return r;
@@ -458,6 +461,10 @@ applyI18n();loadStatus();loadTools();
         if (createObject.name().equals(name)) {
             JsonObject denied = writeTokenGate(createObject.isWrite(), name);
             return denied != null ? denied : createObject.call(args);
+        }
+        if (deleteObject.name().equals(name)) {
+            JsonObject denied = writeTokenGate(deleteObject.isWrite(), name);
+            return denied != null ? denied : deleteObject.call(args);
         }
         return toolError("unknown tool: " + name);
     }

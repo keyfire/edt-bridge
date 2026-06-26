@@ -37,6 +37,7 @@ the change and serializes the `.mdo`.
 | `edt_remove_attribute` | Remove an attribute (reference-checked; refuses if referenced unless forced). |
 | `edt_rename` | Rename an object or member and **cascade every reference in metadata AND BSL** via EDT's native refactoring engine (`force` required — a rename is a breaking change). |
 | `edt_create_object` | Create a new top object (Catalog/Document/Enum/InformationRegister/…) via EDT's factory + per-type initializer, registered in the Configuration. |
+| `edt_delete_object` | Delete an object or member and **cascade the removal of every reference in metadata AND BSL** via EDT's native refactoring engine; removes the object's `.mdo` and updates the Configuration (`force` required — a delete is irreversible and breaking). |
 
 Naming convention: tools are `edt_*` (snake_case); parameters are camelCase (`projectName`,
 `fqn`, `queryText`); Cyrillic FQNs are supported (`Справочник.Контрагенты`).
@@ -124,8 +125,8 @@ toggle (defaults to the browser locale).
 
 - Binds **`127.0.0.1` only** — never a public interface.
 - **Writes are gated**: every write tool requires a configured token, defaults to a dry-run, and
-  operates only on your own local EDT model; `edt_rename` additionally needs an explicit `force`.
-  No code execution: `edt_validate_query` only parses and validates.
+  operates only on your own local EDT model; `edt_rename` and `edt_delete_object` additionally need an
+  explicit `force`. No code execution: `edt_validate_query` only parses and validates.
 - Optional **shared-secret token** — set `EDT_BRIDGE_TOKEN` (or `-Dedt.bridge.token=`) and send
   `Authorization: Bearer <token>` (or `X-Edt-Bridge-Token: <token>`). Any local process can reach
   the port, so set a token for shared machines.
@@ -133,7 +134,7 @@ toggle (defaults to the browser locale).
 
 ## Status & roadmap
 
-- **Phase 1 (read) + Phase 2 (write) — done.** 14 tools: 9 read + 5 write (above).
+- **Phase 1 (read) + Phase 2 (write) — done.** 15 tools: 9 read + 6 write (above).
 - **Later phases:** debugging (drive EDT's BSL debugger), test runs — out of scope here.
 
 ## License
@@ -180,6 +181,7 @@ AI-агентам и другим инструментам по протокол
 | `edt_remove_attribute` | Удаляет реквизит (проверка ссылок; отказ при наличии ссылок без force). |
 | `edt_rename` | Переименовывает объект или член с **каскадом всех ссылок в метаданных И в BSL** через штатный движок рефакторинга EDT (нужен `force` – переименование ломает совместимость). |
 | `edt_create_object` | Создаёт новый топ-объект (Справочник/Документ/Перечисление/РегистрСведений/…) через фабрику EDT + инициализатор типа, с регистрацией в Configuration. |
+| `edt_delete_object` | Удаляет объект или член с **каскадным удалением всех ссылок в метаданных И в BSL** через штатный движок рефакторинга EDT; удаляет `.mdo` объекта и правит Configuration (нужен `force` – удаление необратимо и ломает совместимость). |
 
 Соглашение об именах: инструменты `edt_*` (snake_case); параметры camelCase (`projectName`,
 `fqn`, `queryText`); поддерживаются кириллические FQN (`Справочник.Контрагенты`).
@@ -262,7 +264,8 @@ curl -s -X POST http://127.0.0.1:8770/mcp -H "Content-Type: application/json" \
 
 - Слушает **только `127.0.0.1`** — никогда не публичный интерфейс.
 - **Запись под защитой**: каждый инструмент записи требует токен, по умолчанию dry-run и работает
-  только с вашей локальной моделью EDT; `edt_rename` дополнительно требует явный `force`. Выполнения
+  только с вашей локальной моделью EDT; `edt_rename` и `edt_delete_object` дополнительно требуют явный
+  `force`. Выполнения
   кода нет: `edt_validate_query` только разбирает и валидирует.
 - Опциональный **общий секрет-токен** — задайте `EDT_BRIDGE_TOKEN` (или `-Dedt.bridge.token=`) и
   присылайте `Authorization: Bearer <token>` (или `X-Edt-Bridge-Token: <token>`).
@@ -270,7 +273,7 @@ curl -s -X POST http://127.0.0.1:8770/mcp -H "Content-Type: application/json" \
 
 ## Статус и план
 
-- **Фаза 1 (чтение) + Фаза 2 (запись) — готовы.** 14 инструментов: 9 read + 5 write (выше).
+- **Фаза 1 (чтение) + Фаза 2 (запись) — готовы.** 15 инструментов: 9 read + 6 write (выше).
 - **Дальше:** отладка (драйв BSL-отладчика EDT), прогон тестов — вне этой фазы.
 
 ## Лицензия
