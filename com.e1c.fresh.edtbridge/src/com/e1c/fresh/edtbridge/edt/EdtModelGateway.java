@@ -2337,6 +2337,193 @@ public final class EdtModelGateway {
         return o.eClass().getName();
     }
 
+    // ---- Metadata write, Phase 2: delete a metadata object (inverse of create) ----------
+
+    /**
+     * Result of {@link #deleteObject}. Reuses {@link RenameItem}/{@link RenameProblem} for the engine's
+     * change list + validation problems (same refactoring family as rename).
+     */
+    public static final class DeleteObjectResult {
+        public boolean ok;            // dry-run valid (refactoring built, no problems) → an apply would run
+        public boolean applied;       // the delete cascade was performed
+        public String targetFqn;
+        public boolean targetFound;
+        public String targetType;     // EClass of the resolved target
+        public boolean topObject;     // target is a top metadata object (the widest blast radius)
+        public String name;           // resolved object/member name
+        public boolean forced;
+        public int refactoringCount;  // 1 when the engine built a delete refactoring
+        public boolean truncated;     // the item list was capped
+        public List<RenameItem> items = new ArrayList<>();
+        public List<RenameProblem> problems = new ArrayList<>();
+        public String plan;
+        public String warning;
+        public String message;
+    }
+
+    /**
+     * Delete a metadata object (the inverse of {@link #createObject}) — a top object (e.g.
+     * {@code Catalog.X}) or a child member — and cascade the removal of every reference in metadata AND
+     * BSL using EDT's OWN refactoring engine
+     * ({@link IMdRefactoringService#createMdObjectDeleteRefactoring}), the same native machinery as
+     * {@link #renameObject}. The engine deletes the object's {@code .mdo} (and its directory) and updates
+     * the {@code Configuration}, so no manual detach/forceExport is needed. Two stages by {@code apply}:
+     * <ul>
+     *   <li>{@code apply=false} (default) — DRY-RUN: resolve the target, build the delete refactoring and
+     *       return its change items ({@code getItems}) + validation problems ({@code getStatus}), deleting
+     *       nothing.
+     *   <li>{@code apply=true} — perform the cascade via {@code IRefactoring.perform()} inside
+     *       {@link IProjectOperationApi#performExclusiveOperation} (build pipeline suspended, project
+     *       locked), exactly as the rename apply does.
+     * </ul>
+     * Deleting an object is irreversible and breaking for peer configurations, so an apply requires
+     * {@code force=true} (the owner's explicit override) on top of the configured token. The
+     * {@code bsl_support_status = EDITABLE} gate before an apply is the caller's responsibility.
+     */
+    public DeleteObjectResult deleteObject(String projectName, String targetFqn, boolean apply, boolean force) {
+        DeleteObjectResult r = new DeleteObjectResult();
+        r.targetFqn = targetFqn;
+        r.forced = force;
+        IProject p = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+        if (!p.exists() || !p.isOpen()) {
+            r.message = "project not found or closed: " + projectName;
+            return r;
+        }
+        if (targetFqn == null || targetFqn.isBlank()) {
+            r.message = "targetFqn is required";
+            return r;
+        }
+        IBmModelManager mm = ServiceAccess.get(IBmModelManager.class);
+        IBmModel model = (mm == null) ? null : mm.getModel(p);
+        if (model == null) {
+            r.message = "no BM model for project: " + projectName;
+            return r;
+        }
+        IMdRefactoringService service = ServiceAccess.get(IMdRefactoringService.class);
+        if (service == null) {
+            r.message = "md refactoring service unavailable (EDT refactoring bundles not active)";
+            return r;
+        }
+
+        // Stage 1 — resolve the target and BUILD the delete refactoring (read-only analysis), mirroring
+        // rename: building is pure analysis (change list + problems), safe in a read-only BM transaction,
+        // and guarantees the MdObject handed to the engine is live. perform() happens later, outside any tx.
+        final List<IRefactoring> built = new ArrayList<>();
+        model.executeReadonlyTask(new AbstractBmTask<Object>("edt-bridge.delete.build") {
+            @Override
+            public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
+                EObject target = tx.getTopObjectByFqn(targetFqn);
+                boolean top = target instanceof MdObject;
+                if (!top) {
+                    // Resolve a child member by its full FQN (e.g. Catalog.X.Attribute.Y), as rename does.
+                    String[] segs = targetFqn.split("\\.");
+                    if (segs.length >= 4 && segs.length % 2 == 0) {
+                        EObject topObj = tx.getTopObjectByFqn(segs[0] + "." + segs[1]);
+                        if (topObj instanceof MdObject) {
+                            target = resolveChild(topObj, segs, 2);
+                        }
+                    }
+                }
+                if (!(target instanceof MdObject)) {
+                    r.message = "target not found: " + targetFqn;
+                    return null;
+                }
+                MdObject md = (MdObject) target;
+                r.targetFound = true;
+                r.targetType = md.eClass().getName();
+                r.topObject = top;
+                r.name = md.getName();
+                IRefactoring del = service.createMdObjectDeleteRefactoring(List.of(md));
+                if (del != null) {
+                    built.add(del);
+                }
+                r.refactoringCount = built.size();
+                for (IRefactoring rf : built) {
+                    try {
+                        if (rf.getStatus() != null) {
+                            for (IRefactoringProblem pr : rf.getStatus().getProblems()) {
+                                RenameProblem rp = new RenameProblem();
+                                rp.kind = pr.getClass().getSimpleName();
+                                rp.object = describeProblemObject(pr.getObject());
+                                r.problems.add(rp);
+                            }
+                        }
+                        for (IRefactoringItem it : rf.getItems()) {
+                            if (r.items.size() >= RENAME_ITEM_CAP) {
+                                r.truncated = true;
+                                break;
+                            }
+                            RenameItem ri = new RenameItem();
+                            ri.name = it.getName();
+                            ri.optional = it.isOptional();
+                            ri.checked = it.isChecked();
+                            r.items.add(ri);
+                        }
+                    } catch (RuntimeException ignored) {
+                        // item/problem extraction is best-effort
+                    }
+                }
+                return null;
+            }
+        });
+
+        if (!r.targetFound) {
+            return r; // target-not-found message already set
+        }
+        r.ok = r.refactoringCount > 0 && r.problems.isEmpty();
+        r.plan = "Удалить " + (r.topObject ? "объект" : "член") + " \"" + r.name + "\" (" + targetFqn
+                + "), затрагиваемых изменений: " + r.items.size() + (r.truncated ? "+" : "")
+                + ", refactorings: " + r.refactoringCount;
+        r.warning = "удаление объекта НЕОБРАТИМО и НАРУШАЕТ обратную совместимость для конфигураций-партнёров; "
+                + "каскад удаляет .mdo объекта и чистит ссылки в метаданных И BSL во всех проектах. Требуется "
+                + "одобрение владельца. Перед apply сделайте резервную копию.";
+        if (!r.problems.isEmpty()) {
+            r.message = "refactoring engine reported " + r.problems.size() + " problem(s) — apply blocked "
+                    + "(e.g. object not editable / support-locked).";
+        }
+
+        // Stage 2 — apply: perform the delete cascade. Requires force=true (the breaking-change override)
+        // AND a clean dry-run. Runs outside the read transaction, inside an exclusive project operation.
+        if (apply) {
+            if (!force) {
+                r.message = "delete is an irreversible breaking change for peer configurations — apply "
+                        + "refused; pass force=true (owner's explicit override) to perform it.";
+                return r;
+            }
+            if (!r.ok) {
+                r.message = (r.message == null ? "cannot delete" : r.message) + " — apply refused (nothing deleted).";
+                return r;
+            }
+            try {
+                IProjectOperationApi ops = ServiceAccess.get(IProjectOperationApi.class);
+                IDtProject dtProject = mm.getDtProject(model);
+                final List<IRefactoring> toPerform = built;
+                Runnable run = () -> {
+                    for (IRefactoring rf : toPerform) {
+                        rf.perform();
+                    }
+                };
+                if (ops != null && dtProject != null) {
+                    ops.performExclusiveOperation(run, ProjectPipelineJob.BUILD, new NullProgressMonitor(), dtProject);
+                } else {
+                    // Fallback: the engine still manages its own BM transactions; we lose only the
+                    // build-pipeline suspension. Surface that we took the fallback path.
+                    run.run();
+                    r.warning = (r.warning == null ? "" : r.warning + " ")
+                            + "(applied WITHOUT exclusive project lock: IProjectOperationApi/IDtProject unavailable.)";
+                }
+                r.applied = true;
+                r.message = "deleted \"" + r.name + "\" (" + targetFqn
+                        + ") — cascade performed across metadata + BSL.";
+            } catch (Exception ex) {
+                r.applied = false;
+                r.message = "apply failed (cascade may be partial — verify the working tree): "
+                        + ex.getClass().getSimpleName() + (ex.getMessage() != null ? ": " + ex.getMessage() : "");
+            }
+        }
+        return r;
+    }
+
     // ---- Metadata write, Phase 2: create a top metadata object --------------------------
 
     /** Russian object kind (lower-cased) → MdClass EClass name, for {@link #createObject}. */

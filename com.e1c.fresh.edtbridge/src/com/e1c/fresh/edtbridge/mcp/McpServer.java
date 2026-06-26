@@ -30,6 +30,7 @@ import com.e1c.fresh.edtbridge.tools.RemoveAttributeTool;
 import com.e1c.fresh.edtbridge.tools.ModifyAttributeTool;
 import com.e1c.fresh.edtbridge.tools.RenameTool;
 import com.e1c.fresh.edtbridge.tools.CreateObjectTool;
+import com.e1c.fresh.edtbridge.tools.DeleteObjectTool;
 import com.e1c.fresh.edtbridge.tools.FindReferencesTool;
 import com.e1c.fresh.edtbridge.tools.FormRenderTool;
 import com.e1c.fresh.edtbridge.tools.FormStructureTool;
@@ -198,6 +199,7 @@ applyI18n();loadStatus();loadTools();
     private final ModifyAttributeTool modifyAttribute = new ModifyAttributeTool();
     private final RenameTool rename = new RenameTool();
     private final CreateObjectTool createObject = new CreateObjectTool();
+    private final DeleteObjectTool deleteObject = new DeleteObjectTool();
     private final EdtModelGateway gateway = new EdtModelGateway();
     private HttpServer http;
     private int port;
@@ -402,6 +404,7 @@ applyI18n();loadStatus();loadTools();
         tools.add(modifyAttribute.descriptor());
         tools.add(rename.descriptor());
         tools.add(createObject.descriptor());
+        tools.add(deleteObject.descriptor());
         JsonObject r = new JsonObject();
         r.add("tools", tools);
         return r;
@@ -458,6 +461,10 @@ applyI18n();loadStatus();loadTools();
         if (createObject.name().equals(name)) {
             JsonObject denied = writeTokenGate(createObject.isWrite(), name);
             return denied != null ? denied : createObject.call(args);
+        }
+        if (deleteObject.name().equals(name)) {
+            JsonObject denied = writeTokenGate(deleteObject.isWrite(), name);
+            return denied != null ? denied : deleteObject.call(args);
         }
         return toolError("unknown tool: " + name);
     }
