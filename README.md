@@ -45,17 +45,28 @@ Naming convention: tools are `edt_*` (snake_case); parameters are camelCase (`pr
 
 - **1C:EDT** installed and running, with your project open in the workspace.
 - A **JDK 17+** to build (the bundle's bytecode targets Java 17, the EDT runtime).
-- The local **EDT p2 bundle pool** (used as the offline build target): `<your-home>/.p2/pool/plugins`.
+- The local **EDT bundle pool** (used as the offline build target). On **Windows** that is the
+  p2 pool `<your-home>\.p2\pool\plugins`; on **macOS** the self-contained pool lives inside the
+  installed component: `…/1C/1CE/components/1c-edt-<ver>-x86_64/1cedt (<ver>).app/Contents/Eclipse/plugins`
+  (the shell build auto-detects it).
 
 ## Build
 
 **Option A — no Maven** (quickest; pure local JDK + the EDT pool, no network):
 
 ```powershell
-# defaults: -Pool %USERPROFILE%\.p2\pool\plugins, -JdkHome %JAVA_HOME%
+# Windows — defaults: -Pool %USERPROFILE%\.p2\pool\plugins, -JdkHome %JAVA_HOME%
 powershell -ExecutionPolicy Bypass -File build-nomaven.ps1
 # or override:
 powershell -File build-nomaven.ps1 -Pool "D:\path\.p2\pool\plugins" -JdkHome "C:\path\to\jdk"
+```
+
+```bash
+# macOS / Linux — same output. Defaults: --jdk-home from JAVA_HOME (or `/usr/libexec/java_home -v 17`
+# on macOS); --pool auto-detected from the installed 1C:EDT component pool.
+./build-nomaven.sh
+# or override:
+./build-nomaven.sh --pool "/path/to/Contents/Eclipse/plugins" --jdk-home "/path/to/jdk-17"
 ```
 
 Produces `build/io.github.keyfire.edtbridge_0.0.1.<timestamp>.jar`.
@@ -68,9 +79,13 @@ mvn -f pom.xml clean verify
 
 ## Install & run
 
-1. Copy the built jar into EDT's `dropins/` folder
-   (e.g. `…/installations/<EDT>/1cedt/dropins/`).
+1. Copy the built jar into EDT's `dropins/` folder — Windows: `…/installations/<EDT>/1cedt/dropins/`;
+   **macOS**: `…/1C/1CE/components/1c-edt-<ver>-x86_64/1cedt (<ver>).app/Contents/Eclipse/dropins/`
+   (create it if it does not exist).
 2. **Restart EDT.** On launch the plugin starts the MCP server on `http://127.0.0.1:8770/mcp`.
+
+To run EDT **headless** (no GUI window) so the server serves the live model, use
+`run-headless.ps1` (Windows) or `run-headless.sh --workspace <ws>` (macOS / Linux).
 
 Smoke-test with curl:
 
@@ -173,16 +188,28 @@ AI-агентам и другим инструментам по протокол
 
 - Установленный и запущенный **1C:EDT** с открытым проектом.
 - **JDK 17+** для сборки (байт-код плагина — Java 17, рантайм EDT).
-- Локальный **p2-пул бандлов EDT** (офлайн-цель сборки): `<домашний-каталог>/.p2/pool/plugins`.
+- Локальный **пул бандлов EDT** (офлайн-цель сборки). На **Windows** это p2-пул
+  `<домашний-каталог>\.p2\pool\plugins`; на **macOS** самодостаточный пул лежит внутри установленного
+  компонента: `…/1C/1CE/components/1c-edt-<вер>-x86_64/1cedt (<вер>).app/Contents/Eclipse/plugins`
+  (shell-сборка находит его автоматически).
 
 ## Сборка
 
 **Вариант A — без Maven** (быстрее всего; локальный JDK + пул EDT, без сети):
 
 ```powershell
+# Windows
 powershell -ExecutionPolicy Bypass -File build-nomaven.ps1
 # или с переопределением путей:
 powershell -File build-nomaven.ps1 -Pool "D:\path\.p2\pool\plugins" -JdkHome "C:\path\to\jdk"
+```
+
+```bash
+# macOS / Linux — тот же результат. По умолчанию: --jdk-home из JAVA_HOME (или
+# `/usr/libexec/java_home -v 17` на macOS); --pool автоопределяется из пула установленного 1C:EDT.
+./build-nomaven.sh
+# или с переопределением путей:
+./build-nomaven.sh --pool "/path/to/Contents/Eclipse/plugins" --jdk-home "/path/to/jdk-17"
 ```
 
 Результат: `build/io.github.keyfire.edtbridge_0.0.1.<timestamp>.jar`.
@@ -195,9 +222,13 @@ mvn -f pom.xml clean verify
 
 ## Установка и запуск
 
-1. Скопируйте собранный jar в папку `dropins/` вашего EDT
-   (напр. `…/installations/<EDT>/1cedt/dropins/`).
+1. Скопируйте собранный jar в папку `dropins/` вашего EDT — Windows: `…/installations/<EDT>/1cedt/dropins/`;
+   **macOS**: `…/1C/1CE/components/1c-edt-<вер>-x86_64/1cedt (<вер>).app/Contents/Eclipse/dropins/`
+   (создайте, если её нет).
 2. **Перезапустите EDT.** При старте плагин поднимет MCP-сервер на `http://127.0.0.1:8770/mcp`.
+
+Чтобы запустить EDT **headless** (без окна GUI), используйте `run-headless.ps1` (Windows) или
+`run-headless.sh --workspace <ws>` (macOS / Linux).
 
 Проверка через curl:
 
