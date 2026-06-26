@@ -33,6 +33,7 @@ $need = @(
   'com.google.gson',
   'org.eclipse.emf.ecore',
   'org.eclipse.emf.common',
+  'org.eclipse.swt.win32.win32.x86_64',  # compile vs the SWT fragment (host org.eclipse.swt is a stub); runtime Require-Bundle uses the host
   'org.eclipse.xtext',
   'org.eclipse.xtext.util',
   'com.google.inject',
@@ -43,13 +44,25 @@ $need = @(
   'com._1c.g5.v8.dt.mcore',
   'com._1c.g5.v8.dt.bsl.model',
   'com._1c.g5.v8.dt.bsl',
+  'com._1c.g5.v8.dt.form.model',
+  'com._1c.g5.v8.dt.form',
+  'com._1c.g5.v8.dt.form.layout',
+  'com._1c.g5.v8.dt.form.layout.model',
+  'com._1c.g5.v8.dt.form.presentation',
+  'com._1c.g5.v8.dt.platform',
+  'com._1c.g5.v8.dt.refactoring.core',
+  'com._1c.g5.v8.dt.md.refactoring',
   'com._1c.g5.v8.bm.core',
   'com._1c.g5.v8.bm.integration'
 )
 "Classpath bundles:"
 $cp = @()
 foreach ($n in $need) {
+  # Require a digit right after "<bundle-id>_" so version-specific siblings (e.g.
+  # com._1c.g5.v8.dt.platform_v8.3.27, which sorts above the real platform_12.x) are excluded.
+  $rx = "^" + [regex]::Escape($n) + "_\d"
   $j = Get-ChildItem $Pool -Filter "$($n)_*.jar" -ErrorAction SilentlyContinue |
+       Where-Object { $_.BaseName -match $rx } |
        Sort-Object Name -Descending | Select-Object -First 1
   if ($j) { $cp += $j.FullName; "  + $($j.Name)" } else { "  ! MISSING: $n" }
 }

@@ -25,7 +25,14 @@ import java.util.concurrent.Executors;
 import java.util.logging.Logger;
 
 import com.e1c.fresh.edtbridge.edt.EdtModelGateway;
+import com.e1c.fresh.edtbridge.tools.AddAttributeTool;
+import com.e1c.fresh.edtbridge.tools.RemoveAttributeTool;
+import com.e1c.fresh.edtbridge.tools.ModifyAttributeTool;
+import com.e1c.fresh.edtbridge.tools.RenameTool;
+import com.e1c.fresh.edtbridge.tools.CreateObjectTool;
 import com.e1c.fresh.edtbridge.tools.FindReferencesTool;
+import com.e1c.fresh.edtbridge.tools.FormRenderTool;
+import com.e1c.fresh.edtbridge.tools.FormStructureTool;
 import com.e1c.fresh.edtbridge.tools.MetadataDetailsTool;
 import com.e1c.fresh.edtbridge.tools.MetadataObjectsTool;
 import com.e1c.fresh.edtbridge.tools.ProjectErrorsTool;
@@ -53,7 +60,10 @@ public final class McpServer {
 
     static final String SERVER_NAME = "edt-bridge";
     static final String SERVER_VERSION = "0.0.1";
-    static final String PROTOCOL_VERSION = "2024-11-05";
+    // Default MCP protocol revision when the client doesn't send one. The server actually echoes the
+    // client's requested protocolVersion (see initializeResult) — we implement the stable base
+    // JSON-RPC tools subset, which is compatible across revisions. Latest revision as of 2025-11-25.
+    static final String PROTOCOL_VERSION = "2025-06-18";
 
     private static final String LANDING_PAGE = """
 <!doctype html>
@@ -146,8 +156,8 @@ code{background:var(--surface-2);padding:1px 6px;border-radius:5px;font-family:v
 <script>
 var MCP='/mcp', TOKEN='', LANG='en', STATUS=null, TOOLS=null;
 var I18N={
- en:{sub:'Live 1C:EDT semantic model over MCP - read-only, localhost.',server:'server',protocol:'protocol',endpoint:'endpoint',token:'auth token',projects:'open EDT projects',loading:'loading...',none:'none (localhost)',required:'required',noproj:'(none open)',caps:'Capabilities - run a tool',conn:'Connect an MCP client',connintro:'Add to your client config (e.g. .mcp.json):',run:'Run',running:'running...',badjson:'Invalid JSON in arguments: ',needtok:'Auth token required for tool calls: '},
- ru:{sub:'Живая семантическая модель 1C:EDT по MCP - только чтение, localhost.',server:'сервер',protocol:'протокол',endpoint:'адрес',token:'токен',projects:'открытые проекты EDT',loading:'загрузка...',none:'нет (localhost)',required:'требуется',noproj:'(нет открытых)',caps:'Возможности - запуск инструмента',conn:'Подключение MCP-клиента',connintro:'Добавьте в конфигурацию клиента (напр. .mcp.json):',run:'Запуск',running:'выполняется...',badjson:'Некорректный JSON в аргументах: ',needtok:'Для вызова инструментов нужен токен: '}
+ en:{sub:'Live 1C:EDT semantic model over MCP - read + write/refactor, localhost.',server:'server',protocol:'protocol',endpoint:'endpoint',token:'auth token',projects:'open EDT projects',loading:'loading...',none:'none (localhost)',required:'required',noproj:'(none open)',caps:'Capabilities - run a tool',conn:'Connect an MCP client',connintro:'Add to your client config (e.g. .mcp.json):',run:'Run',running:'running...',badjson:'Invalid JSON in arguments: ',needtok:'Auth token required for tool calls: '},
+ ru:{sub:'Живая семантическая модель 1C:EDT по MCP - чтение и запись/рефакторинг, localhost.',server:'сервер',protocol:'протокол',endpoint:'адрес',token:'токен',projects:'открытые проекты EDT',loading:'загрузка...',none:'нет (localhost)',required:'требуется',noproj:'(нет открытых)',caps:'Возможности - запуск инструмента',conn:'Подключение MCP-клиента',connintro:'Добавьте в конфигурацию клиента (напр. .mcp.json):',run:'Запуск',running:'выполняется...',badjson:'Некорректный JSON в аргументах: ',needtok:'Для вызова инструментов нужен токен: '}
 };
 function t(k){return (I18N[LANG]&&I18N[LANG][k])||I18N.en[k]||k;}
 function initLang(){var l=null;try{l=localStorage.getItem('edtbridge-lang');}catch(e){}if(!l){l=((navigator.language||'en').toLowerCase().indexOf('ru')===0)?'ru':'en';}return l;}
@@ -181,6 +191,13 @@ applyI18n();loadStatus();loadTools();
     private final ValidateQueryTool validateQuery = new ValidateQueryTool();
     private final GoToDefinitionTool goToDefinition = new GoToDefinitionTool();
     private final SymbolInfoTool symbolInfo = new SymbolInfoTool();
+    private final FormStructureTool formStructure = new FormStructureTool();
+    private final FormRenderTool formRender = new FormRenderTool();
+    private final AddAttributeTool addAttribute = new AddAttributeTool();
+    private final RemoveAttributeTool removeAttribute = new RemoveAttributeTool();
+    private final ModifyAttributeTool modifyAttribute = new ModifyAttributeTool();
+    private final RenameTool rename = new RenameTool();
+    private final CreateObjectTool createObject = new CreateObjectTool();
     private final EdtModelGateway gateway = new EdtModelGateway();
     private HttpServer http;
     private int port;
@@ -203,6 +220,7 @@ applyI18n();loadStatus();loadTools();
         if (http != null) {
             return;
         }
+        enableNativeFormRender();
         port = resolvePort();
         http = HttpServer.create(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), port), 0);
         http.createContext("/mcp", this::handle);
@@ -218,6 +236,21 @@ applyI18n();loadStatus();loadTools();
         if (http != null) {
             http.stop(0);
             http = null;
+        }
+    }
+
+    /**
+     * Enable EDT's native form-layout renderer. {@code NativeRenderService} reads these flags into
+     * {@code static final} fields in its class initializer, so they must be set BEFORE that class
+     * loads (it loads lazily on the first form render — well after this). Without them
+     * {@code HippoLayoutService} returns a layout with a null image. Don't override an explicit value.
+     */
+    private void enableNativeFormRender() {
+        if (System.getProperty("nativeFormLayoutRender") == null) {
+            System.setProperty("nativeFormLayoutRender", "true");
+        }
+        if (System.getProperty("nativeFormBufferedLayoutRender") == null) {
+            System.setProperty("nativeFormBufferedLayoutRender", "true");
         }
     }
 
@@ -317,7 +350,7 @@ applyI18n();loadStatus();loadTools();
         JsonElement id = req.get("id"); // null for notifications
         switch (method) {
             case "initialize":
-                return result(id, initializeResult());
+                return result(id, initializeResult(req.has("params") ? req.getAsJsonObject("params") : null));
             case "tools/list":
                 return result(id, toolsList());
             case "tools/call":
@@ -331,14 +364,23 @@ applyI18n();loadStatus();loadTools();
         }
     }
 
-    private JsonObject initializeResult() {
+    private JsonObject initializeResult(JsonObject params) {
         JsonObject caps = new JsonObject();
         caps.add("tools", new JsonObject());
         JsonObject info = new JsonObject();
         info.addProperty("name", SERVER_NAME);
         info.addProperty("version", SERVER_VERSION);
         JsonObject r = new JsonObject();
-        r.addProperty("protocolVersion", PROTOCOL_VERSION);
+        // Per the MCP spec, echo the client's requested protocolVersion when it sends one (we support
+        // the stable base tools subset across revisions); fall back to our default otherwise.
+        String version = PROTOCOL_VERSION;
+        if (params != null && params.has("protocolVersion") && params.get("protocolVersion").isJsonPrimitive()) {
+            String requested = params.get("protocolVersion").getAsString();
+            if (requested != null && !requested.isBlank()) {
+                version = requested;
+            }
+        }
+        r.addProperty("protocolVersion", version);
         r.add("capabilities", caps);
         r.add("serverInfo", info);
         return r;
@@ -353,6 +395,13 @@ applyI18n();loadStatus();loadTools();
         tools.add(validateQuery.descriptor());
         tools.add(goToDefinition.descriptor());
         tools.add(symbolInfo.descriptor());
+        tools.add(formStructure.descriptor());
+        tools.add(formRender.descriptor());
+        tools.add(addAttribute.descriptor());
+        tools.add(removeAttribute.descriptor());
+        tools.add(modifyAttribute.descriptor());
+        tools.add(rename.descriptor());
+        tools.add(createObject.descriptor());
         JsonObject r = new JsonObject();
         r.add("tools", tools);
         return r;
@@ -384,7 +433,47 @@ applyI18n();loadStatus();loadTools();
         if (symbolInfo.name().equals(name)) {
             return symbolInfo.call(args);
         }
+        if (formStructure.name().equals(name)) {
+            return formStructure.call(args);
+        }
+        if (formRender.name().equals(name)) {
+            return formRender.call(args);
+        }
+        if (addAttribute.name().equals(name)) {
+            JsonObject denied = writeTokenGate(addAttribute.isWrite(), name);
+            return denied != null ? denied : addAttribute.call(args);
+        }
+        if (removeAttribute.name().equals(name)) {
+            JsonObject denied = writeTokenGate(removeAttribute.isWrite(), name);
+            return denied != null ? denied : removeAttribute.call(args);
+        }
+        if (modifyAttribute.name().equals(name)) {
+            JsonObject denied = writeTokenGate(modifyAttribute.isWrite(), name);
+            return denied != null ? denied : modifyAttribute.call(args);
+        }
+        if (rename.name().equals(name)) {
+            JsonObject denied = writeTokenGate(rename.isWrite(), name);
+            return denied != null ? denied : rename.call(args);
+        }
+        if (createObject.name().equals(name)) {
+            JsonObject denied = writeTokenGate(createObject.isWrite(), name);
+            return denied != null ? denied : createObject.call(args);
+        }
         return toolError("unknown tool: " + name);
+    }
+
+    /**
+     * Token gate for write tools: a write tool is refused on an unauthenticated server
+     * (no {@code EDT_BRIDGE_TOKEN} configured). Returns the error result to short-circuit with, or
+     * {@code null} when the call may proceed. When a token IS set, {@link #handle} has already
+     * verified it on the request, so only the not-configured case is checked here.
+     */
+    private JsonObject writeTokenGate(boolean isWrite, String name) {
+        if (isWrite && token() == null) {
+            return toolError("write tool '" + name + "' requires a configured token "
+                    + "(set EDT_BRIDGE_TOKEN); refusing on an unauthenticated server");
+        }
+        return null;
     }
 
     // ---- JSON-RPC envelope helpers ----

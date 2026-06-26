@@ -9,7 +9,7 @@ It is built only from:
   (`org.eclipse.*`, `com._1c.g5.v8.dt.*`).
 
 No other tool's source code was read or copied. The tool names (`edt_project_errors`,
-`edt_metadata_details`, …) are plain functional descriptions of read-only capabilities, not
+`edt_metadata_details`, …) are plain functional descriptions of their capabilities, not
 derived from any other project.
 
 At runtime the plugin uses Google Gson (Apache-2.0); all other building blocks (Eclipse
