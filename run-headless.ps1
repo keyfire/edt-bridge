@@ -63,7 +63,12 @@ $tokenLine = ""
 if ($env:EDT_BRIDGE_TOKEN -and $env:EDT_BRIDGE_TOKEN.Trim()) {
   $tokenLine = 'set "EDT_BRIDGE_TOKEN=' + $env:EDT_BRIDGE_TOKEN.Trim() + '"' + "`r`n"
 }
-Set-Content -Path $bat -Value ("@echo off`r`n" + $tokenLine + $line) -Encoding ASCII
+# Server-side switch that enables edt_evaluate (arbitrary BSL code execution). Off unless set.
+$evalLine = ""
+if ($env:EDT_BRIDGE_ALLOW_EVALUATE -and $env:EDT_BRIDGE_ALLOW_EVALUATE.Trim()) {
+  $evalLine = 'set "EDT_BRIDGE_ALLOW_EVALUATE=' + $env:EDT_BRIDGE_ALLOW_EVALUATE.Trim() + '"' + "`r`n"
+}
+Set-Content -Path $bat -Value ("@echo off`r`n" + $tokenLine + $evalLine + $line) -Encoding ASCII
 Start-Process -FilePath $bat -WorkingDirectory $EdtDir -WindowStyle Hidden
 "Launched headless EDT (1cedtcli). Waiting up to $WaitSec s for the server + model..."
 
