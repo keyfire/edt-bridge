@@ -1566,9 +1566,10 @@ public final class EdtModelGateway {
      * The {@code bsl_support_status = EDITABLE} gate before an apply is the caller's
      * responsibility — the EDT support API is not on the surface, so it stays a process gate for now.
      */
-    public AddAttrResult addAttribute(String projectName, String ownerFqn, String name, String typeSpec,
+    public AddAttrResult addAttribute(String projectName, String ownerFqnRaw, String name, String typeSpec,
             String synonymRu, String comment, boolean apply) {
         AddAttrResult r = new AddAttrResult();
+        final String ownerFqn = normalizeOwnerFqn(ownerFqnRaw);
         r.ownerFqn = ownerFqn;
         r.name = name;
         r.typeInput = typeSpec;
@@ -1747,9 +1748,10 @@ public final class EdtModelGateway {
      * Dry-run by default ({@code apply=false}) reports references + the plan. The caller must verify
      * {@code bsl_support_status = EDITABLE} before any apply.
      */
-    public RemoveAttrResult removeAttribute(String projectName, String ownerFqn, String name,
+    public RemoveAttrResult removeAttribute(String projectName, String ownerFqnRaw, String name,
             boolean apply, boolean force) {
         RemoveAttrResult r = new RemoveAttrResult();
+        final String ownerFqn = normalizeOwnerFqn(ownerFqnRaw);
         r.ownerFqn = ownerFqn;
         r.name = name;
         r.forced = force;
@@ -1919,9 +1921,10 @@ public final class EdtModelGateway {
      * a warning is returned. Dry-run by default ({@code apply=false}). Caller verifies
      * {@code bsl_support_status = EDITABLE} before apply.
      */
-    public ModifyAttrResult modifyAttribute(String projectName, String ownerFqn, String name,
+    public ModifyAttrResult modifyAttribute(String projectName, String ownerFqnRaw, String name,
             String newType, String newSynonymRu, String newComment, boolean apply) {
         ModifyAttrResult r = new ModifyAttrResult();
+        final String ownerFqn = normalizeOwnerFqn(ownerFqnRaw);
         r.ownerFqn = ownerFqn;
         r.name = name;
         IProject p = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
@@ -2580,6 +2583,25 @@ public final class EdtModelGateway {
             Map.entry("планобмена", "ExchangePlan"),
             Map.entry("константа", "Constant"),
             Map.entry("общиймодуль", "CommonModule"));
+
+    /**
+     * Normalize the class prefix of a top-object FQN from a Russian metadata kind
+     * (Справочник, Документ, …) to the English MdClass name (Catalog, Document, …)
+     * expected by {@code getTopObjectByFqn}. The object NAME (which may be Cyrillic)
+     * is left untouched. FQNs that already use an English prefix, or whose head is
+     * unknown, are returned unchanged.
+     */
+    private static String normalizeOwnerFqn(String fqn) {
+        if (fqn == null) {
+            return null;
+        }
+        int dot = fqn.indexOf('.');
+        if (dot <= 0) {
+            return fqn;
+        }
+        String en = CREATE_KIND_TO_MDCLASS.get(fqn.substring(0, dot).toLowerCase());
+        return en == null ? fqn : en + fqn.substring(dot);
+    }
 
     /** Result of {@link #createObject}. */
     public static final class CreateObjectResult {
