@@ -40,6 +40,11 @@ import com.e1c.fresh.edtbridge.tools.ProjectErrorsTool;
 import com.e1c.fresh.edtbridge.tools.GoToDefinitionTool;
 import com.e1c.fresh.edtbridge.tools.SymbolInfoTool;
 import com.e1c.fresh.edtbridge.tools.ValidateQueryTool;
+import com.e1c.fresh.edtbridge.tools.DebugAttachTool;
+import com.e1c.fresh.edtbridge.tools.DebugDetachTool;
+import com.e1c.fresh.edtbridge.tools.DebugInspectTool;
+import com.e1c.fresh.edtbridge.tools.DebugControlTool;
+import com.e1c.fresh.edtbridge.tools.DebugEvaluateTool;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -127,6 +132,19 @@ code{background:var(--surface-2);padding:1px 6px;border-radius:5px;font-family:v
 .ico-moon{display:none;}
 :root[data-theme="light"] .ico-sun{display:none;}
 :root[data-theme="light"] .ico-moon{display:block;}
+.toolbar{display:flex;gap:8px;margin:0 0 12px;flex-wrap:wrap;}
+.toolbar button{background:var(--surface);border:1px solid var(--border-strong);border-radius:8px;color:var(--text-2);cursor:pointer;font:600 12px/1 var(--font-ui);padding:8px 13px;transition:color .15s,border-color .15s,transform .15s;}
+.toolbar button:hover{color:var(--text-1);border-color:var(--text-3);transform:translateY(-1px);}
+.group{margin:12px 0;border:1px solid var(--border);border-radius:14px;overflow:hidden;background:var(--surface-2);box-shadow:var(--shadow-card);}
+.ghead{display:flex;align-items:center;gap:11px;padding:14px 16px;cursor:pointer;user-select:none;background:var(--surface);transition:background-color .15s;}
+.ghead:hover{background:var(--surface-hover);}
+.ghead .chev{transition:transform .18s;color:var(--text-3);font-size:11px;width:12px;text-align:center;}
+.group:not(.collapsed) .ghead .chev{transform:rotate(90deg);}
+.ghead .gtitle{font-weight:700;color:var(--text-1);font-size:14px;letter-spacing:-.01em;}
+.ghead .gcount{margin-left:auto;color:var(--text-2);font-size:12px;font-family:var(--font-mono);background:var(--surface-2);border:1px solid var(--border);border-radius:20px;padding:2px 11px;}
+.gbody{padding:4px 12px 10px;}
+.gbody .tool{margin:12px 0;}
+.group.collapsed .gbody{display:none;}
 </style>
 <script>try{var t=localStorage.getItem('edtbridge-theme');if(!t){t=(window.matchMedia&&matchMedia('(prefers-color-scheme: light)').matches)?'light':'dark';}if(t==='light'){document.documentElement.setAttribute('data-theme','light');}}catch(e){}</script>
 </head>
@@ -157,8 +175,8 @@ code{background:var(--surface-2);padding:1px 6px;border-radius:5px;font-family:v
 <script>
 var MCP='/mcp', TOKEN='', LANG='en', STATUS=null, TOOLS=null;
 var I18N={
- en:{sub:'Live 1C:EDT semantic model over MCP - read + write/refactor, localhost.',server:'server',protocol:'protocol',endpoint:'endpoint',token:'auth token',projects:'open EDT projects',loading:'loading...',none:'none (localhost)',required:'required',noproj:'(none open)',caps:'Capabilities - run a tool',conn:'Connect an MCP client',connintro:'Add to your client config (e.g. .mcp.json):',run:'Run',running:'running...',badjson:'Invalid JSON in arguments: ',needtok:'Auth token required for tool calls: '},
- ru:{sub:'Живая семантическая модель 1C:EDT по MCP - чтение и запись/рефакторинг, localhost.',server:'сервер',protocol:'протокол',endpoint:'адрес',token:'токен',projects:'открытые проекты EDT',loading:'загрузка...',none:'нет (localhost)',required:'требуется',noproj:'(нет открытых)',caps:'Возможности - запуск инструмента',conn:'Подключение MCP-клиента',connintro:'Добавьте в конфигурацию клиента (напр. .mcp.json):',run:'Запуск',running:'выполняется...',badjson:'Некорректный JSON в аргументах: ',needtok:'Для вызова инструментов нужен токен: '}
+ en:{sub:'Live 1C:EDT semantic model over MCP - read + write/refactor + debug, localhost.',server:'server',protocol:'protocol',endpoint:'endpoint',token:'auth token',projects:'open EDT projects',loading:'loading...',none:'none (localhost)',required:'required',noproj:'(none open)',caps:'Capabilities - run a tool',conn:'Connect an MCP client',connintro:'Add to your client config (e.g. .mcp.json):',run:'Run',running:'running...',badjson:'Invalid JSON in arguments: ',needtok:'Auth token required for tool calls: ',g_read:'Read / navigation',g_write:'Write / refactor',g_debug:'Debug',expandAll:'Expand all',collapseAll:'Collapse all'},
+ ru:{sub:'Живая семантическая модель 1C:EDT по MCP - чтение, запись/рефакторинг, отладка, localhost.',server:'сервер',protocol:'протокол',endpoint:'адрес',token:'токен',projects:'открытые проекты EDT',loading:'загрузка...',none:'нет (localhost)',required:'требуется',noproj:'(нет открытых)',caps:'Возможности - запуск инструмента',conn:'Подключение MCP-клиента',connintro:'Добавьте в конфигурацию клиента (напр. .mcp.json):',run:'Запуск',running:'выполняется...',badjson:'Некорректный JSON в аргументах: ',needtok:'Для вызова инструментов нужен токен: ',g_read:'Чтение / навигация',g_write:'Запись / рефакторинг',g_debug:'Отладка',expandAll:'Развернуть все',collapseAll:'Свернуть все'}
 };
 function t(k){return (I18N[LANG]&&I18N[LANG][k])||I18N.en[k]||k;}
 function initLang(){var l=null;try{l=localStorage.getItem('edtbridge-lang');}catch(e){}if(!l){l=((navigator.language||'en').toLowerCase().indexOf('ru')===0)?'ru':'en';}return l;}
@@ -172,7 +190,13 @@ function el(tag,cls,txt){var e=document.createElement(tag);if(cls){e.className=c
 function renderStatus(){var g=document.getElementById('status');g.textContent='';if(!STATUS){g.appendChild(el('div','kv',t('loading')));return;}var s=STATUS;function kv(k,v,wide){var d=el('div','kv'+(wide?' wide':''));d.appendChild(el('div','k',k));d.appendChild(el('div','v',v));g.appendChild(d);}kv(t('server'),s.name+' '+s.version);kv(t('protocol'),s.protocolVersion);kv(t('endpoint'),'127.0.0.1:'+s.port+'/mcp');kv(t('token'),s.tokenRequired?t('required'):t('none'));kv(t('projects'),(s.openProjects&&s.openProjects.length)?s.openProjects.join(', '):t('noproj'),true);}
 function loadStatus(){fetch('/status').then(function(r){return r.json();}).then(function(s){STATUS=s;renderStatus();if(s.tokenRequired){var bar=document.getElementById('tokbar');bar.className='panel';bar.textContent='';bar.appendChild(el('span',null,t('needtok')));var inp=el('input','tok');inp.oninput=function(){TOKEN=inp.value.trim();};bar.appendChild(inp);}}).catch(function(e){STATUS=null;document.getElementById('status').textContent='status error: '+e;});}
 function template(td){var req=(td.inputSchema&&td.inputSchema.required)||[];var o={};req.forEach(function(k){o[k]='';});return JSON.stringify(o,null,2);}
-function renderTools(){var box=document.getElementById('tools');box.textContent='';if(!TOOLS){return;}TOOLS.forEach(function(tl){var card=el('div','panel tool');card.appendChild(el('h3',null,tl.name));card.appendChild(el('p',null,(LANG==='ru'&&tl.descriptionRu)?tl.descriptionRu:(tl.description||'')));var tmpl=template(tl);var ta=el('textarea');ta.rows=Math.max(2,tmpl.split(String.fromCharCode(10)).length);ta.value=tmpl;card.appendChild(ta);var out=el('pre','out');var btn=el('button','run',t('run'));btn.onclick=function(){runTool(tl.name,ta,out);};card.appendChild(btn);card.appendChild(out);box.appendChild(card);});}
+var WRITE_TOOLS=['edt_add_attribute','edt_modify_attribute','edt_remove_attribute','edt_rename','edt_create_object','edt_delete_object'];
+function groupOf(n){if(n.indexOf('edt_debug_')===0||n==='edt_evaluate'){return 'debug';}if(WRITE_TOOLS.indexOf(n)>=0){return 'write';}return 'read';}
+function grpCollapsed(id){try{var v=localStorage.getItem('edtbridge-grp-'+id);return v===null?true:v==='1';}catch(e){return true;}}
+function setGrpCollapsed(id,c){try{localStorage.setItem('edtbridge-grp-'+id,c?'1':'0');}catch(e){}}
+function makeCard(tl){var card=el('div','panel tool');card.appendChild(el('h3',null,tl.name));card.appendChild(el('p',null,(LANG==='ru'&&tl.descriptionRu)?tl.descriptionRu:(tl.description||'')));var tmpl=template(tl);var ta=el('textarea');ta.rows=Math.max(2,tmpl.split(String.fromCharCode(10)).length);ta.value=tmpl;card.appendChild(ta);var out=el('pre','out');var btn=el('button','run',t('run'));btn.onclick=function(){runTool(tl.name,ta,out);};card.appendChild(btn);card.appendChild(out);return card;}
+function setAllGroups(collapsed){var gs=document.querySelectorAll('#tools .group');for(var i=0;i<gs.length;i++){var gid=gs[i].getAttribute('data-grp');if(collapsed){gs[i].classList.add('collapsed');}else{gs[i].classList.remove('collapsed');}setGrpCollapsed(gid,collapsed);}}
+function renderTools(){var box=document.getElementById('tools');box.textContent='';if(!TOOLS){return;}var order=['read','write','debug'];var byGroup={read:[],write:[],debug:[]};TOOLS.forEach(function(tl){(byGroup[groupOf(tl.name)]||byGroup.read).push(tl);});var tb=el('div','toolbar');var be=el('button',null,t('expandAll'));be.onclick=function(){setAllGroups(false);};var bc=el('button',null,t('collapseAll'));bc.onclick=function(){setAllGroups(true);};tb.appendChild(be);tb.appendChild(bc);box.appendChild(tb);order.forEach(function(gid){var list=byGroup[gid];if(!list.length){return;}var grp=el('div','group'+(grpCollapsed(gid)?' collapsed':''));grp.setAttribute('data-grp',gid);var head=el('div','ghead');head.appendChild(el('span','chev','▸'));head.appendChild(el('span','gtitle',t('g_'+gid)));head.appendChild(el('span','gcount',String(list.length)));head.onclick=function(){var c=!grp.classList.contains('collapsed');grp.classList.toggle('collapsed');setGrpCollapsed(gid,c);};var body=el('div','gbody');list.forEach(function(tl){body.appendChild(makeCard(tl));});grp.appendChild(head);grp.appendChild(body);box.appendChild(grp);});}
 function loadTools(){rpc('tools/list',{}).then(function(res){TOOLS=(res.result&&res.result.tools)||[];renderTools();}).catch(function(e){document.getElementById('tools').textContent='tools error: '+e;});}
 function runTool(name,ta,out){var args;try{args=JSON.parse(ta.value||'{}');}catch(e){out.textContent=t('badjson')+e;return;}out.textContent=t('running');rpc('tools/call',{name:name,arguments:args}).then(function(res){var r=res.result||res.error;if(r&&r.content&&r.content[0]&&r.content[0].text!=null){out.textContent=r.content[0].text;}else{out.textContent=JSON.stringify(r,null,2);}}).catch(function(e){out.textContent='error: '+e;});}
 document.getElementById('themeBtn').onclick=toggleTheme;
@@ -200,6 +224,11 @@ applyI18n();loadStatus();loadTools();
     private final RenameTool rename = new RenameTool();
     private final CreateObjectTool createObject = new CreateObjectTool();
     private final DeleteObjectTool deleteObject = new DeleteObjectTool();
+    private final DebugAttachTool debugAttach = new DebugAttachTool();
+    private final DebugDetachTool debugDetach = new DebugDetachTool();
+    private final DebugInspectTool debugInspect = new DebugInspectTool();
+    private final DebugControlTool debugControl = new DebugControlTool();
+    private final DebugEvaluateTool debugEvaluate = new DebugEvaluateTool();
     private final EdtModelGateway gateway = new EdtModelGateway();
     private HttpServer http;
     private int port;
@@ -405,6 +434,11 @@ applyI18n();loadStatus();loadTools();
         tools.add(rename.descriptor());
         tools.add(createObject.descriptor());
         tools.add(deleteObject.descriptor());
+        tools.add(debugAttach.descriptor());
+        tools.add(debugDetach.descriptor());
+        tools.add(debugInspect.descriptor());
+        tools.add(debugControl.descriptor());
+        tools.add(debugEvaluate.descriptor());
         JsonObject r = new JsonObject();
         r.add("tools", tools);
         return r;
@@ -465,6 +499,25 @@ applyI18n();loadStatus();loadTools();
         if (deleteObject.name().equals(name)) {
             JsonObject denied = writeTokenGate(deleteObject.isWrite(), name);
             return denied != null ? denied : deleteObject.call(args);
+        }
+        if (debugAttach.name().equals(name)) {
+            JsonObject denied = writeTokenGate(debugAttach.isWrite(), name);
+            return denied != null ? denied : debugAttach.call(args);
+        }
+        if (debugDetach.name().equals(name)) {
+            JsonObject denied = writeTokenGate(debugDetach.isWrite(), name);
+            return denied != null ? denied : debugDetach.call(args);
+        }
+        if (debugInspect.name().equals(name)) {
+            return debugInspect.call(args);
+        }
+        if (debugControl.name().equals(name)) {
+            JsonObject denied = writeTokenGate(debugControl.isWrite(), name);
+            return denied != null ? denied : debugControl.call(args);
+        }
+        if (debugEvaluate.name().equals(name)) {
+            JsonObject denied = writeTokenGate(debugEvaluate.isWrite(), name);
+            return denied != null ? denied : debugEvaluate.call(args);
         }
         return toolError("unknown tool: " + name);
     }

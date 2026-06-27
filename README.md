@@ -38,6 +38,11 @@ the change and serializes the `.mdo`.
 | `edt_rename` | Rename an object or member and **cascade every reference in metadata AND BSL** via EDT's native refactoring engine (`force` required — a rename is a breaking change). |
 | `edt_create_object` | Create a new top object (Catalog/Document/Enum/InformationRegister/…) via EDT's factory + per-type initializer, registered in the Configuration. |
 | `edt_delete_object` | Delete an object or member and **cascade the removal of every reference in metadata AND BSL** via EDT's native refactoring engine; removes the object's `.mdo` and updates the Configuration (`force` required — a delete is irreversible and breaking). |
+| `edt_debug_attach` | Attach a debug session to a **running** infobase's debug server (dbgs); returns a `sessionId` for the other debug tools (token-gated; use a test stand, not production). |
+| `edt_debug_detach` | Detach (terminate) a debug session and free the infobase. |
+| `edt_debug_inspect` | List a session's threads and, for **suspended** ones, their BSL stack frames (signature/line/source) + the top frame's variables. Read-only. |
+| `edt_debug_control` | Control execution: `suspend`/`resume` the target, or `stepOver`/`stepInto`/`stepReturn` a suspended thread (token-gated). |
+| `edt_evaluate` | Evaluate an **arbitrary BSL expression** in a suspended frame — code execution against the live infobase. Heaviest gate: token **and** per-call `allowCodeExecution=true` **and** the server switch `EDT_BRIDGE_ALLOW_EVALUATE=1` (off by default). |
 
 Naming convention: tools are `edt_*` (snake_case); parameters are camelCase (`projectName`,
 `fqn`, `queryText`); Cyrillic FQNs are supported (`Справочник.Контрагенты`).
@@ -134,8 +139,12 @@ toggle (defaults to the browser locale).
 
 ## Status & roadmap
 
-- **Phase 1 (read) + Phase 2 (write) — done.** 15 tools: 9 read + 6 write (above).
-- **Later phases:** debugging (drive EDT's BSL debugger), test runs — out of scope here.
+- **Phase 1 (read) + Phase 2 (write) + Phase 3 (debug) — done.** 20 tools: 9 read + 6 write +
+  5 debug (above).
+- **Known limitation:** the server is currently single-threaded, so a long operation (e.g. a rename,
+  whose native refactoring can run for minutes) blocks other requests until it finishes — the server
+  appears unresponsive meanwhile. Making it multi-threaded / async is planned.
+- **Later:** test runs (YAXUnit / Vanessa) — out of scope here.
 
 ## License
 
@@ -182,6 +191,11 @@ AI-агентам и другим инструментам по протокол
 | `edt_rename` | Переименовывает объект или член с **каскадом всех ссылок в метаданных И в BSL** через штатный движок рефакторинга EDT (нужен `force` – переименование ломает совместимость). |
 | `edt_create_object` | Создаёт новый топ-объект (Справочник/Документ/Перечисление/РегистрСведений/…) через фабрику EDT + инициализатор типа, с регистрацией в Configuration. |
 | `edt_delete_object` | Удаляет объект или член с **каскадным удалением всех ссылок в метаданных И в BSL** через штатный движок рефакторинга EDT; удаляет `.mdo` объекта и правит Configuration (нужен `force` – удаление необратимо и ломает совместимость). |
+| `edt_debug_attach` | Подключает сессию отладки к debug-серверу (dbgs) **запущенной** ИБ; возвращает `sessionId` для остальных debug-инструментов (под токеном; использовать тестовый стенд, не продакшен). |
+| `edt_debug_detach` | Отключает (завершает) сессию отладки и освобождает ИБ. |
+| `edt_debug_inspect` | Список потоков сессии и, для **приостановленных**, кадры стека BSL (сигнатура/строка/источник) + переменные верхнего кадра. Только чтение. |
+| `edt_debug_control` | Управление выполнением: `suspend`/`resume` цели или `stepOver`/`stepInto`/`stepReturn` приостановленного потока (под токеном). |
+| `edt_evaluate` | Вычисляет **произвольное BSL-выражение** в приостановленном кадре — исполнение кода против живой ИБ. Самый жёсткий гейт: токен **и** per-call `allowCodeExecution=true` **и** серверный переключатель `EDT_BRIDGE_ALLOW_EVALUATE=1` (по умолчанию выключено). |
 
 Соглашение об именах: инструменты `edt_*` (snake_case); параметры camelCase (`projectName`,
 `fqn`, `queryText`); поддерживаются кириллические FQN (`Справочник.Контрагенты`).
@@ -273,8 +287,12 @@ curl -s -X POST http://127.0.0.1:8770/mcp -H "Content-Type: application/json" \
 
 ## Статус и план
 
-- **Фаза 1 (чтение) + Фаза 2 (запись) — готовы.** 15 инструментов: 9 read + 6 write (выше).
-- **Дальше:** отладка (драйв BSL-отладчика EDT), прогон тестов — вне этой фазы.
+- **Фаза 1 (чтение) + Фаза 2 (запись) + Фаза 3 (отладка) — готовы.** 20 инструментов: 9 read +
+  6 write + 5 debug (выше).
+- **Известное ограничение:** сервер пока однопоточный, поэтому долгая операция (напр. переименование,
+  чей нативный рефакторинг может идти минутами) блокирует другие запросы до завершения — всё это время
+  сервер не отвечает. Многопоточность / async запланированы.
+- **Дальше:** прогон тестов (YAXUnit / Vanessa) — вне этой фазы.
 
 ## Лицензия
 

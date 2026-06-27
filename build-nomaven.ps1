@@ -53,7 +53,10 @@ $need = @(
   'com._1c.g5.v8.dt.refactoring.core',
   'com._1c.g5.v8.dt.md.refactoring',
   'com._1c.g5.v8.bm.core',
-  'com._1c.g5.v8.bm.integration'
+  'com._1c.g5.v8.bm.integration',
+  'org.eclipse.debug.core',
+  'com._1c.g5.v8.dt.debug.core',
+  'com._1c.g5.v8.dt.debug.model'
 )
 "Classpath bundles:"
 $cp = @()
