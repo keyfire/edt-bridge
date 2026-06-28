@@ -16,14 +16,17 @@ semantic cross-references, and **query validation against the project's actual m
 
 | Tool | What it returns |
 |------|-----------------|
+| `edt_projects` | Open workspace projects — name, disk location, natures, and whether each is a 1C:EDT project (discover what is addressable). |
 | `edt_project_errors` | EDT validation problems (errors/warnings) for a project: message, severity, resource, line. |
 | `edt_metadata_details` | A metadata object's core properties **and structure** — attributes, tabular sections, forms, commands, templates, dimensions, resources, enum values — with each attribute's value type. |
 | `edt_metadata_objects` | Top-level metadata objects, optionally filtered by type (`Catalog`, `Document`, …) and a name substring. |
 | `edt_find_references` | Inbound references to a metadata object (metadata + BSL), from EDT's cross-reference index. |
+| `edt_outgoing_calls` | The reverse: methods CALLED BY a module / method / form (one level out), aggregated `qualifier.method` with call-site counts and an ExtAPI-layer flag. |
+| `edt_module_text` | BSL source of a module (or one method) + the module's procedure/function list with signatures, by FQN (CommonModule.X, a form FQN, object+moduleType) or modulePath. |
 | `edt_validate_query` | Validates a 1C query against the project's live metadata: syntax **and** semantics (unknown tables/fields, type errors), with positions. |
 | `edt_go_to_definition` | Resolve a BSL symbol's definition at a position (line+column or offset): the target's kind, name, owning object and location. |
 | `edt_symbol_info` | Type/symbol info at a position in a BSL module: the element under the cursor and the computed value type(s) of the expression (dynamic typing). |
-| `edt_form_structure` | A managed form's items tree (fields/groups/tables/buttons/decorations) with data bindings, plus its attributes, commands, parameters and event handlers. |
+| `edt_form_structure` | A managed form's items tree (fields/groups/tables/buttons/decorations) with data bindings + static visible/enabled/readOnly, plus its attributes, commands, parameters and event handlers. |
 | `edt_form_render` | Renders a managed form to a PNG via EDT's native offscreen renderer (the engine behind the form-editor preview); chooses the interface variant (Taxi / 8.5) and theme. |
 
 **Write tools** mutate the model through EDT's own engine (not text edits). All are **token-gated**
@@ -139,7 +142,7 @@ toggle (defaults to the browser locale).
 
 ## Status & roadmap
 
-- **Phase 1 (read) + Phase 2 (write) + Phase 3 (debug) — done.** 20 tools: 9 read + 6 write +
+- **Phase 1 (read) + Phase 2 (write) + Phase 3 (debug) — done.** 23 tools: 12 read + 6 write +
   5 debug (above).
 - **Known limitation:** the server is currently single-threaded, so a long operation (e.g. a rename,
   whose native refactoring can run for minutes) blocks other requests until it finishes — the server
@@ -169,14 +172,17 @@ AI-агентам и другим инструментам по протокол
 
 | Инструмент | Что возвращает |
 |------------|----------------|
+| `edt_projects` | Открытые проекты рабочей области — имя, путь на диске, natures, является ли проектом 1C:EDT (понять, что адресовать). |
 | `edt_project_errors` | Проблемы валидации EDT (ошибки/предупреждения): сообщение, severity, ресурс, строка. |
 | `edt_metadata_details` | Свойства объекта метаданных **и его структуру** — реквизиты, табличные части, формы, команды, макеты, измерения, ресурсы, значения перечислений — с типом каждого реквизита. |
 | `edt_metadata_objects` | Объекты метаданных верхнего уровня; опц. фильтр по типу (`Catalog`, `Document`, …) и подстроке имени. |
 | `edt_find_references` | Входящие ссылки на объект метаданных (метаданные + BSL) из индекса перекрёстных ссылок EDT. |
+| `edt_outgoing_calls` | Обратное: какие методы ВЫЗЫВАЕТ модуль / метод / форма (на уровень наружу), агрегировано `квалификатор.метод` с числом мест вызова и флагом слоя ExtAPI. |
+| `edt_module_text` | Исходный BSL модуля (или одного метода) + список процедур/функций с сигнатурами; адресация по FQN (CommonModule.X, FQN формы, объект+moduleType) или modulePath. |
 | `edt_validate_query` | Валидирует запрос 1С против живых метаданных проекта: синтаксис **и** семантику (несуществующие таблицы/поля, ошибки типов) с позициями. |
 | `edt_go_to_definition` | Переход к определению символа BSL в позиции (строка+столбец или offset): вид цели, имя, объект-владелец, расположение. |
 | `edt_symbol_info` | Тип/инфо символа в позиции модуля BSL: элемент под курсором и вычисленные типы значения выражения (динамическая типизация). |
-| `edt_form_structure` | Дерево элементов управляемой формы (поля/группы/таблицы/кнопки/декорации) с привязками данных, плюс реквизиты, команды, параметры и обработчики событий формы. |
+| `edt_form_structure` | Дерево элементов управляемой формы (поля/группы/таблицы/кнопки/декорации) с привязками данных + статические visible/enabled/readOnly, плюс реквизиты, команды, параметры и обработчики событий формы. |
 | `edt_form_render` | Рендерит управляемую форму в PNG штатным offscreen-рендером EDT (движок предпросмотра редактора форм); выбор варианта интерфейса (Такси / 8.5) и темы. |
 
 **Инструменты записи** меняют модель через штатный движок EDT (не текстовой заменой). Все –
@@ -287,7 +293,7 @@ curl -s -X POST http://127.0.0.1:8770/mcp -H "Content-Type: application/json" \
 
 ## Статус и план
 
-- **Фаза 1 (чтение) + Фаза 2 (запись) + Фаза 3 (отладка) — готовы.** 20 инструментов: 9 read +
+- **Фаза 1 (чтение) + Фаза 2 (запись) + Фаза 3 (отладка) — готовы.** 23 инструмента: 12 read +
   6 write + 5 debug (выше).
 - **Известное ограничение:** сервер пока однопоточный, поэтому долгая операция (напр. переименование,
   чей нативный рефакторинг может идти минутами) блокирует другие запросы до завершения — всё это время

@@ -88,6 +88,13 @@ public final class MetadataDetailsTool {
                 o.addProperty("comment", d.comment);
                 o.addProperty("synonymRu", d.synonymRu);
                 o.add("structure", groupsToJson(d.structure));
+                if (d.emptyStructuralFeatures != null && !d.emptyStructuralFeatures.isEmpty()) {
+                    JsonArray ef = new JsonArray();
+                    for (String f : d.emptyStructuralFeatures) {
+                        ef.add(f);
+                    }
+                    o.add("emptyStructuralFeatures", ef);
+                }
             }
             return McpServer.textResult(new GsonBuilder().setPrettyPrinting().create().toJson(o));
         } catch (Exception e) {

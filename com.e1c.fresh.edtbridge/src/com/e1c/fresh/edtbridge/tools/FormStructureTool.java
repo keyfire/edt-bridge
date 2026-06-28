@@ -60,7 +60,9 @@ public final class FormStructureTool {
                 "Structure of a managed form from the live EDT model: the visual items tree "
                 + "(fields, groups, tables, buttons, decorations) with their data bindings, plus the "
                 + "form's attributes (with value types), commands, parameters and event handlers "
-                + "(form event -> BSL handler). Cleaner than parsing the serialized .form file.");
+                + "(form event -> BSL handler). Items also carry their static visible/enabled/readOnly "
+                + "(DESIGN values from .form — runtime BSL e.g. ПриСозданииНаСервере may override them). "
+                + "Cleaner than parsing the serialized .form file.");
         t.addProperty("descriptionRu",
                 "Структура управляемой формы из живой модели EDT: дерево элементов "
                 + "(поля, группы, таблицы, кнопки, декорации) с их привязками к данным, а также "
@@ -178,6 +180,15 @@ public final class FormStructureTool {
             }
             if (n.title != null) {
                 o.addProperty("title", n.title);
+            }
+            if (n.visible != null) {
+                o.addProperty("visible", n.visible.booleanValue());
+            }
+            if (n.enabled != null) {
+                o.addProperty("enabled", n.enabled.booleanValue());
+            }
+            if (n.readOnly != null) {
+                o.addProperty("readOnly", n.readOnly.booleanValue());
             }
             if (n.children != null && !n.children.isEmpty()) {
                 o.add("items", nodesJson(n.children));

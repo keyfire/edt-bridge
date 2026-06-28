@@ -41,7 +41,8 @@ public final class MetadataObjectsTool {
     public JsonObject descriptor() {
         JsonObject pn = new JsonObject();
         pn.addProperty("type", "string");
-        pn.addProperty("description", "EDT project name");
+        pn.addProperty("description", "EDT project name. OPTIONAL — omit to search across ALL open projects "
+                + "(each result is tagged with its project).");
 
         JsonObject type = new JsonObject();
         type.addProperty("type", "string");
@@ -61,19 +62,20 @@ public final class MetadataObjectsTool {
         props.add("nameFilter", nameFilter);
         props.add("limit", limit);
 
-        JsonArray req = new JsonArray();
-        req.add("projectName");
-
         JsonObject schema = new JsonObject();
         schema.addProperty("type", "object");
         schema.add("properties", props);
-        schema.add("required", req);
+        schema.add("required", new JsonArray());   // projectName optional → search all open projects
 
         JsonObject t = new JsonObject();
         t.addProperty("name", name());
         t.addProperty("description",
-                "List top-level metadata objects (optionally by type and name substring) from the live EDT model.");
-        t.addProperty("descriptionRu", "Список объектов метаданных верхнего уровня (опционально по типу и подстроке имени) из живой модели EDT.");
+                "List top-level metadata objects (optionally by type and name substring) from the live EDT "
+                + "model. projectName is OPTIONAL: omit it to search across ALL open projects (each result is "
+                + "tagged with its project).");
+        t.addProperty("descriptionRu", "Список объектов метаданных верхнего уровня (опционально по типу и "
+                + "подстроке имени) из живой модели EDT. projectName НЕОБЯЗАТЕЛЕН: без него поиск по ВСЕМ "
+                + "открытым проектам (у каждого результата указан его проект).");
         t.add("inputSchema", schema);
         return t;
     }
@@ -81,8 +83,8 @@ public final class MetadataObjectsTool {
     public JsonObject call(JsonObject args) {
         String project = (args.has("projectName") && !args.get("projectName").isJsonNull())
                 ? args.get("projectName").getAsString() : null;
-        if (project == null) {
-            return McpServer.toolError("projectName is required");
+        if (project != null && project.isBlank()) {
+            project = null;
         }
         String type = (args.has("type") && !args.get("type").isJsonNull())
                 ? args.get("type").getAsString() : null;
@@ -97,7 +99,9 @@ public final class MetadataObjectsTool {
             }
         }
         try {
-            EdtModelGateway.MdListResult res = gateway.listMetadata(project, type, nameFilter, limit);
+            EdtModelGateway.MdListResult res = (project == null)
+                    ? gateway.listMetadataAll(type, nameFilter, limit)
+                    : gateway.listMetadata(project, type, nameFilter, limit);
             JsonArray arr = new JsonArray();
             if (res.items != null) {
                 for (EdtModelGateway.MdItem it : res.items) {
@@ -106,11 +110,15 @@ public final class MetadataObjectsTool {
                     o.addProperty("type", it.type);
                     o.addProperty("name", it.name);
                     o.addProperty("synonymRu", it.synonymRu);
+                    if (it.project != null) {
+                        o.addProperty("project", it.project);
+                    }
                     arr.add(o);
                 }
             }
             JsonObject payload = new JsonObject();
             payload.addProperty("found", res.found);
+            payload.addProperty("scope", project == null ? "all open projects" : project);
             if (res.error != null) {
                 payload.addProperty("error", res.error);
             }

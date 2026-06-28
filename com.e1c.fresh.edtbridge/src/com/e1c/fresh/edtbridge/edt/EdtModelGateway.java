@@ -33,6 +33,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.eclipse.core.resources.IFile;
+import org.eclipse.core.resources.IFolder;
 import org.eclipse.core.resources.IMarker;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
@@ -107,6 +108,8 @@ import com._1c.g5.v8.dt.form.model.FormItemContainer;
 import com._1c.g5.v8.dt.form.model.FormParameter;
 import com._1c.g5.v8.dt.form.model.NativeRenderEvent;
 import com._1c.g5.v8.dt.form.model.Titled;
+import com._1c.g5.v8.dt.form.model.Table;
+import com._1c.g5.v8.dt.form.model.Visible;
 import com._1c.g5.v8.dt.form.layout.model.calculation.context.LFTargetPlatform;
 import com._1c.g5.v8.dt.form.layout.model.description.ClientInterfaceScale;
 import com._1c.g5.v8.dt.form.layout.model.description.ClientInterfaceTheme;
@@ -276,6 +279,53 @@ public final class EdtModelGateway {
         return out;
     }
 
+    /** An open workspace project: name, disk location, nature ids, and whether it is a 1C:EDT project. */
+    public static final class ProjInfo {
+        public String name;
+        public String location;            // absolute path on disk (null if unavailable)
+        public boolean open;
+        public boolean dtProject;          // has a 1C:EDT (DT) nature / a BM model
+        public List<String> natures = new ArrayList<>();
+    }
+
+    /**
+     * List workspace projects with names, disk paths and natures. Lets a caller discover what is
+     * addressable (e.g. which project name maps to which folder on disk) without guessing.
+     */
+    public List<ProjInfo> listProjectsDetailed() {
+        List<ProjInfo> out = new ArrayList<>();
+        IBmModelManager mm = ServiceAccess.get(IBmModelManager.class);
+        for (IProject p : ResourcesPlugin.getWorkspace().getRoot().getProjects()) {
+            ProjInfo pi = new ProjInfo();
+            pi.name = p.getName();
+            pi.open = p.isOpen();
+            if (p.getLocation() != null) {
+                pi.location = p.getLocation().toOSString();
+            }
+            if (p.isOpen()) {
+                try {
+                    for (String nat : p.getDescription().getNatureIds()) {
+                        pi.natures.add(nat);
+                        if (nat.contains("com._1c.g5.v8.dt") || nat.toLowerCase().contains("dtproject")) {
+                            pi.dtProject = true;
+                        }
+                    }
+                } catch (CoreException ignored) {
+                    // description unavailable
+                }
+                if (!pi.dtProject && mm != null) {
+                    try {
+                        pi.dtProject = mm.getModel(p) != null;
+                    } catch (RuntimeException ignored) {
+                        // no BM model
+                    }
+                }
+            }
+            out.add(pi);
+        }
+        return out;
+    }
+
     /** Core properties of a top-level metadata object. */
     public static final class MdDetails {
         public boolean found;
@@ -287,6 +337,9 @@ public final class EdtModelGateway {
         public String synonymRu;
         /** Child members grouped by feature (attributes, tabularSections, forms, ...). */
         public List<MdGroup> structure = new ArrayList<>();
+        /** Structural (MdObject-typed) containment features that EXIST for this type but are empty —
+         *  so a caller can tell "this object has no attributes" from "attributes not reported". */
+        public List<String> emptyStructuralFeatures = new ArrayList<>();
     }
 
     /** A group of child members sharing one containment feature (e.g. "attributes"). */
@@ -346,6 +399,7 @@ public final class EdtModelGateway {
                         r.synonymRu = syn.get("ru");
                     }
                     r.structure = childrenOf(md, 2);
+                    r.emptyStructuralFeatures = emptyStructuralFeatures(md, r.structure);
                 }
                 return r;
             }
@@ -359,6 +413,32 @@ public final class EdtModelGateway {
      * attributes nest one level deeper. Derived/transient containments (producedTypes,
      * dbViewDefs) are skipped — they are computed, not structural, and never {@link MdObject}.
      */
+    /**
+     * Names of MdObject-typed containment features that EXIST on {@code obj}'s type but contributed no
+     * group in {@code present} (i.e. are empty) — lets the caller distinguish "none" from "not reported".
+     */
+    private List<String> emptyStructuralFeatures(EObject obj, List<MdGroup> present) {
+        List<String> empty = new ArrayList<>();
+        java.util.Set<String> has = new java.util.HashSet<>();
+        for (MdGroup g : present) {
+            has.add(g.feature);
+        }
+        EClass mdObjectClass = MdClassPackage.Literals.MD_OBJECT;
+        for (EReference ref : obj.eClass().getEAllContainments()) {
+            if (ref.isDerived() || ref.isTransient()) {
+                continue;
+            }
+            EClass rt = ref.getEReferenceType();
+            if (rt == null || !mdObjectClass.isSuperTypeOf(rt)) {
+                continue;   // only structural (metadata-member) features
+            }
+            if (!has.contains(ref.getName())) {
+                empty.add(ref.getName());
+            }
+        }
+        return empty;
+    }
+
     private List<MdGroup> childrenOf(EObject obj, int maxDepth) {
         List<MdGroup> groups = new ArrayList<>();
         if (obj == null || maxDepth <= 0) {
@@ -531,6 +611,7 @@ public final class EdtModelGateway {
         public String name;
         public String type;
         public String synonymRu;
+        public String project;   // which project it was found in (set by the all-projects search)
     }
 
     /** Result of {@link #listMetadata}. */
@@ -612,6 +693,41 @@ public final class EdtModelGateway {
                 return r;
             }
         });
+    }
+
+    /**
+     * Like {@link #listMetadata} but across ALL open projects: when the caller does not know which
+     * project holds the object. Each item is tagged with its {@code project}.
+     */
+    public MdListResult listMetadataAll(String type, String nameFilter, int limit) {
+        MdListResult agg = new MdListResult();
+        agg.type = type;
+        agg.found = true;
+        int cap = limit > 0 ? limit : Integer.MAX_VALUE;
+        for (IProject p : ResourcesPlugin.getWorkspace().getRoot().getProjects()) {
+            if (!p.isOpen()) {
+                continue;
+            }
+            int remaining = cap - agg.items.size();
+            if (remaining <= 0) {
+                agg.truncated = true;
+                break;
+            }
+            MdListResult r = listMetadata(p.getName(), type, nameFilter, remaining);
+            if (r.error != null) {
+                agg.error = r.error;   // e.g. unknown type — same for every project
+                break;
+            }
+            for (MdItem it : r.items) {
+                it.project = p.getName();
+                agg.items.add(it);
+            }
+            if (r.truncated) {
+                agg.truncated = true;
+                break;
+            }
+        }
+        return agg;
     }
 
     /** One QL validation issue. */
@@ -784,6 +900,349 @@ public final class EdtModelGateway {
         return r;
     }
 
+    // ---- BSL module text + methods ---------------------------------------------------
+
+    /** Type (eClass name, lower-case) → EDT src folder name (English plural). */
+    private static final Map<String, String> MD_FOLDER = Map.ofEntries(
+            Map.entry("catalog", "Catalogs"), Map.entry("document", "Documents"),
+            Map.entry("documentjournal", "DocumentJournals"), Map.entry("enum", "Enums"),
+            Map.entry("report", "Reports"), Map.entry("dataprocessor", "DataProcessors"),
+            Map.entry("chartofcharacteristictypes", "ChartsOfCharacteristicTypes"),
+            Map.entry("chartofaccounts", "ChartsOfAccounts"),
+            Map.entry("chartofcalculationtypes", "ChartsOfCalculationTypes"),
+            Map.entry("informationregister", "InformationRegisters"),
+            Map.entry("accumulationregister", "AccumulationRegisters"),
+            Map.entry("accountingregister", "AccountingRegisters"),
+            Map.entry("calculationregister", "CalculationRegisters"),
+            Map.entry("businessprocess", "BusinessProcesses"), Map.entry("task", "Tasks"),
+            Map.entry("exchangeplan", "ExchangePlans"), Map.entry("constant", "Constants"),
+            Map.entry("commonmodule", "CommonModules"), Map.entry("commonform", "CommonForms"),
+            Map.entry("commoncommand", "CommonCommands"));
+
+    /** A procedure/function in a module: signature parts. */
+    public static final class BslMethod {
+        public String name;
+        public String kind;          // "Procedure" | "Function"
+        public boolean export;
+        public int line;
+        public List<String> params = new ArrayList<>();   // "Знач Имя" / "Имя = Значение"
+    }
+
+    /** Result of {@link #moduleText}. */
+    public static final class ModuleTextResult {
+        public boolean found;
+        public String fqn;
+        public String modulePath;                 // resolved workspace-relative .bsl path
+        public List<String> availableModules = new ArrayList<>(); // when ambiguous: candidate .bsl in the folder
+        public List<BslMethod> methods = new ArrayList<>();
+        public String text;                       // whole module, or one method's text when 'method' is given
+        public boolean textTruncated;
+        public String message;
+    }
+
+    private static final int MODULE_TEXT_CAP = 200_000;
+
+    /**
+     * BSL source of a module/method from the live workspace. Resolve the module either by
+     * {@code modulePath} (workspace-relative .bsl) directly, or by {@code fqn} (+ optional
+     * {@code moduleType} like ObjectModule/ManagerModule; forms and common modules resolve to Module.bsl).
+     * Returns the procedure/function list with signatures and the source text — of the whole module, or of
+     * a single {@code method} when given. When a top object has several module files and none is selected,
+     * returns the candidates in {@code availableModules}.
+     */
+    public ModuleTextResult moduleText(String projectName, String fqn, String moduleType,
+            String method, String modulePath) {
+        ModuleTextResult r = new ModuleTextResult();
+        r.fqn = fqn;
+        IProject p = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+        if (!p.exists() || !p.isOpen()) {
+            r.message = "project not found or closed: " + projectName;
+            return r;
+        }
+        String relPath = modulePath;
+        if (relPath == null || relPath.isBlank()) {
+            relPath = resolveModulePath(p, fqn, moduleType, r);
+            if (relPath == null) {
+                return r; // message / availableModules already set
+            }
+        }
+        IFile file = p.getFile(relPath);
+        if (!file.exists()) {
+            r.message = "module file not found: " + relPath;
+            return r;
+        }
+        r.modulePath = relPath;
+        try {
+            String fullText = readText(file);
+            BslContext ctx = loadBsl(projectName, relPath, -1, -1, 0);
+            if (ctx.error != null || ctx.resource == null) {
+                // Still return the raw text even if parsing failed.
+                r.found = true;
+                r.text = cap(fullText, r);
+                r.message = "parsed methods unavailable (" + ctx.error + "); returning raw text";
+                return r;
+            }
+            Module module = null;
+            for (EObject e : ctx.resource.getContents()) {
+                if (e instanceof Module) {
+                    module = (Module) e;
+                    break;
+                }
+            }
+            r.found = true;
+            EObject methodEObj = null;
+            if (module != null) {
+                for (com._1c.g5.v8.dt.bsl.model.Method m : module.allMethods()) {
+                    BslMethod bm = new BslMethod();
+                    bm.name = m.getName();
+                    bm.kind = (m instanceof com._1c.g5.v8.dt.bsl.model.Function) ? "Function" : "Procedure";
+                    bm.export = m.isExport();
+                    for (com._1c.g5.v8.dt.bsl.model.FormalParam fp : m.getFormalParams()) {
+                        String ps = (fp.isByValue() ? "Знач " : "") + fp.getName()
+                                + (fp.getDefaultValue() != null ? " = ..." : "");
+                        bm.params.add(ps);
+                    }
+                    ICompositeNode mn = NodeModelUtils.getNode(m);
+                    if (mn != null) {
+                        bm.line = mn.getStartLine();
+                    }
+                    r.methods.add(bm);
+                    if (method != null && method.equalsIgnoreCase(m.getName())) {
+                        methodEObj = m;
+                    }
+                }
+            }
+            if (method != null) {
+                if (methodEObj == null) {
+                    r.message = "method not found in module: " + method;
+                    return r;
+                }
+                ICompositeNode node = NodeModelUtils.getNode(methodEObj);
+                r.text = cap(node != null ? node.getText().strip() : fullText, r);
+            } else {
+                r.text = cap(fullText, r);
+            }
+        } catch (Exception ex) {
+            r.message = "module text failed: " + ex.getClass().getSimpleName()
+                    + (ex.getMessage() != null ? ": " + ex.getMessage() : "");
+        }
+        return r;
+    }
+
+    private String cap(String s, ModuleTextResult r) {
+        if (s == null) {
+            return null;
+        }
+        if (s.length() > MODULE_TEXT_CAP) {
+            r.textTruncated = true;
+            return s.substring(0, MODULE_TEXT_CAP);
+        }
+        return s;
+    }
+
+    /** Resolve an FQN (+ optional moduleType) to a workspace-relative .bsl path; lists candidates if ambiguous. */
+    private String resolveModulePath(IProject p, String fqn, String moduleType, ModuleTextResult r) {
+        if (fqn == null || fqn.isBlank()) {
+            r.message = "provide fqn or modulePath";
+            return null;
+        }
+        String[] s = fqn.split("\\.");
+        // src root: EDT projects keep sources under "src/"; fall back to project root.
+        String src = p.getFolder("src").exists() ? "src/" : "";
+        String folder;
+        boolean isForm = false;
+        if (s.length >= 4 && "Form".equals(s[s.length - 2])) {
+            // <Type>.<Obj>.Form.<FormName>
+            String fld = MD_FOLDER.get(s[0].toLowerCase());
+            if (fld == null) {
+                r.message = "unsupported owner type for a form: " + s[0];
+                return null;
+            }
+            folder = src + fld + "/" + s[1] + "/Forms/" + s[s.length - 1];
+            isForm = true;
+        } else if (s.length == 2 && "CommonForm".equalsIgnoreCase(s[0])) {
+            folder = src + "CommonForms/" + s[1];
+            isForm = true;
+        } else if (s.length == 2 && "CommonModule".equalsIgnoreCase(s[0])) {
+            folder = src + "CommonModules/" + s[1];
+        } else if (s.length == 2) {
+            String fld = MD_FOLDER.get(s[0].toLowerCase());
+            if (fld == null) {
+                r.message = "unsupported object type: " + s[0] + " (pass modulePath directly)";
+                return null;
+            }
+            folder = src + fld + "/" + s[1];
+        } else {
+            r.message = "cannot parse fqn: " + fqn + " (pass modulePath directly)";
+            return null;
+        }
+        if (isForm || s.length == 2 && ("CommonModule".equalsIgnoreCase(s[0]))) {
+            return folder + "/Module.bsl";
+        }
+        // A top object can have several module files. Pick by moduleType, else list candidates.
+        if (moduleType != null && !moduleType.isBlank()) {
+            return folder + "/" + moduleType + ".bsl";
+        }
+        IFolder f = p.getFolder(folder);
+        if (f.exists()) {
+            try {
+                for (org.eclipse.core.resources.IResource m : f.members()) {
+                    if (m instanceof IFile && m.getName().endsWith(".bsl")) {
+                        r.availableModules.add(m.getName().replace(".bsl", ""));
+                    }
+                }
+            } catch (CoreException ignored) {
+                // fall through
+            }
+        }
+        if (r.availableModules.size() == 1) {
+            return folder + "/" + r.availableModules.get(0) + ".bsl";
+        }
+        r.message = r.availableModules.isEmpty()
+                ? "no .bsl modules in " + folder
+                : "several modules — pass moduleType (one of: " + String.join(", ", r.availableModules) + ")";
+        return null;
+    }
+
+    // ---- Outgoing calls (call-graph one level out) -------------------------------------------------
+
+    /** Default ExtAPI-layer module prefix (the service programmatic interface). */
+    private static final String DEFAULT_EXTAPI_PREFIX = "ПрограммныйИнтерфейсСервиса";
+
+    /** A distinct outgoing call from the analysed scope: {@code qualifier.method}, with site count. */
+    public static final class OutgoingCall {
+        public String qualifier;   // the module/object before the dot (null = local call within the module)
+        public String method;
+        public int count;          // number of call sites
+        public int firstLine;
+        public boolean extApi;     // qualifier matches the ExtAPI-layer prefix
+    }
+
+    /** Result of {@link #outgoingCalls}. */
+    public static final class OutgoingCallsResult {
+        public boolean found;
+        public String fqn;
+        public String modulePath;
+        public String scope;       // "module" or the method name
+        public boolean truncated;
+        public List<OutgoingCall> calls = new ArrayList<>();
+        public String message;
+    }
+
+    private static final int OUTGOING_CAP = 1000;
+
+    /**
+     * The methods CALLED BY a module or a single method — the reverse of
+     * {@link #getReferences} (which gives inbound refs). Parses the BSL via the Xtext model and walks
+     * invocation expressions, aggregating distinct {@code qualifier.method} call targets with a site
+     * count, and flagging calls through the ExtAPI layer ({@code extApiPrefix}, default
+     * {@code ПрограммныйИнтерфейсСервиса}). Resolve the module by {@code fqn} (+ {@code moduleType}) or
+     * {@code modulePath}; optionally restrict to one {@code method}.
+     */
+    public OutgoingCallsResult outgoingCalls(String projectName, String fqn, String moduleType,
+            String method, String modulePath, String extApiPrefix) {
+        OutgoingCallsResult r = new OutgoingCallsResult();
+        r.fqn = fqn;
+        String prefix = (extApiPrefix == null || extApiPrefix.isBlank()) ? DEFAULT_EXTAPI_PREFIX : extApiPrefix;
+        IProject p = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+        if (!p.exists() || !p.isOpen()) {
+            r.message = "project not found or closed: " + projectName;
+            return r;
+        }
+        String relPath = modulePath;
+        if (relPath == null || relPath.isBlank()) {
+            ModuleTextResult mt = new ModuleTextResult();
+            relPath = resolveModulePath(p, fqn, moduleType, mt);
+            if (relPath == null) {
+                r.message = mt.message;
+                return r;
+            }
+        }
+        r.modulePath = relPath;
+        r.scope = (method == null || method.isBlank()) ? "module" : method;
+        try {
+            BslContext ctx = loadBsl(projectName, relPath, -1, -1, 0);
+            if (ctx.error != null || ctx.resource == null) {
+                r.message = "parse failed: " + ctx.error;
+                return r;
+            }
+            Module module = null;
+            for (EObject e : ctx.resource.getContents()) {
+                if (e instanceof Module) {
+                    module = (Module) e;
+                    break;
+                }
+            }
+            if (module == null) {
+                r.message = "no BSL module parsed";
+                return r;
+            }
+            EObject root = module;
+            if (method != null && !method.isBlank()) {
+                root = null;
+                for (com._1c.g5.v8.dt.bsl.model.Method m : module.allMethods()) {
+                    if (method.equalsIgnoreCase(m.getName())) {
+                        root = m;
+                        break;
+                    }
+                }
+                if (root == null) {
+                    r.message = "method not found: " + method;
+                    return r;
+                }
+            }
+            r.found = true;
+            // Aggregate distinct qualifier.method targets.
+            Map<String, OutgoingCall> agg = new java.util.LinkedHashMap<>();
+            for (java.util.Iterator<EObject> it = root.eAllContents(); it.hasNext();) {
+                EObject e = it.next();
+                if (!(e instanceof com._1c.g5.v8.dt.bsl.model.Invocation)) {
+                    continue;
+                }
+                com._1c.g5.v8.dt.bsl.model.FeatureAccess fa =
+                        ((com._1c.g5.v8.dt.bsl.model.Invocation) e).getMethodAccess();
+                if (fa == null) {
+                    continue;
+                }
+                String name = fa.getName();
+                if (name == null || name.isBlank()) {
+                    continue;
+                }
+                String qualifier = null;
+                if (fa instanceof com._1c.g5.v8.dt.bsl.model.DynamicFeatureAccess) {
+                    EObject src = ((com._1c.g5.v8.dt.bsl.model.DynamicFeatureAccess) fa).getSource();
+                    if (src instanceof com._1c.g5.v8.dt.bsl.model.FeatureAccess) {
+                        qualifier = ((com._1c.g5.v8.dt.bsl.model.FeatureAccess) src).getName();
+                    } else if (src != null) {
+                        ICompositeNode sn = NodeModelUtils.getNode(src);
+                        qualifier = (sn != null) ? sn.getText().strip() : null;
+                    }
+                }
+                String key = (qualifier == null ? "" : qualifier) + "." + name;
+                OutgoingCall oc = agg.get(key);
+                if (oc == null) {
+                    if (agg.size() >= OUTGOING_CAP) {
+                        r.truncated = true;
+                        break;
+                    }
+                    oc = new OutgoingCall();
+                    oc.qualifier = qualifier;
+                    oc.method = name;
+                    oc.extApi = qualifier != null && (qualifier.equals(prefix) || qualifier.startsWith(prefix));
+                    ICompositeNode n = NodeModelUtils.getNode(e);
+                    oc.firstLine = (n != null) ? n.getStartLine() : 0;
+                    agg.put(key, oc);
+                }
+                oc.count++;
+            }
+            r.calls.addAll(agg.values());
+        } catch (Exception ex) {
+            r.message = "outgoing calls failed: " + ex.getClass().getSimpleName()
+                    + (ex.getMessage() != null ? ": " + ex.getMessage() : "");
+        }
+        return r;
+    }
+
     /** A BSL module parsed into a transient Xtext resource, positioned at an offset. */
     private static final class BslContext {
         Injector injector;
@@ -907,6 +1366,11 @@ public final class EdtModelGateway {
         public String itemType;   // the Managed*Type literal (InputField, UsualGroup, ...) when applicable
         public String dataPath;   // bound data path for data items (e.g. "Объект.Наименование"); null otherwise
         public String title;      // ru title, when present
+        // Static (.form) properties — note these are the DESIGN values; BSL (e.g. ПриСозданииНаСервере)
+        // may change them at runtime. null = not applicable to this item kind.
+        public Boolean visible;
+        public Boolean enabled;
+        public Boolean readOnly;
         public List<FormNode> children = new ArrayList<>();
     }
 
@@ -1111,6 +1575,20 @@ public final class EdtModelGateway {
         }
         if (item instanceof Titled) {
             n.title = ruOf(((Titled) item).getTitle());
+        }
+        // Static .form properties (design-time values; runtime BSL may override).
+        try {
+            if (item instanceof Visible) {
+                n.visible = ((Visible) item).isVisible();
+                n.enabled = ((Visible) item).isEnabled();
+            }
+            if (item instanceof FormField) {
+                n.readOnly = ((FormField) item).isReadOnly();
+            } else if (item instanceof Table) {
+                n.readOnly = ((Table) item).isReadOnly();
+            }
+        } catch (RuntimeException ignored) {
+            // properties are best-effort
         }
         if (item instanceof FormItemContainer) {
             for (FormItem child : ((FormItemContainer) item).getItems()) {
