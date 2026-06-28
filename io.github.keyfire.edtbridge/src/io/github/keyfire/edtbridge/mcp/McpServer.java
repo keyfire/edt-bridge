@@ -37,6 +37,9 @@ import io.github.keyfire.edtbridge.tools.FormStructureTool;
 import io.github.keyfire.edtbridge.tools.MetadataDetailsTool;
 import io.github.keyfire.edtbridge.tools.MetadataObjectsTool;
 import io.github.keyfire.edtbridge.tools.ProjectErrorsTool;
+import io.github.keyfire.edtbridge.tools.ProjectsTool;
+import io.github.keyfire.edtbridge.tools.ModuleTextTool;
+import io.github.keyfire.edtbridge.tools.OutgoingCallsTool;
 import io.github.keyfire.edtbridge.tools.GoToDefinitionTool;
 import io.github.keyfire.edtbridge.tools.SymbolInfoTool;
 import io.github.keyfire.edtbridge.tools.ValidateQueryTool;
@@ -210,6 +213,9 @@ applyI18n();loadStatus();loadTools();
 
     private final Gson gson = new GsonBuilder().disableHtmlEscaping().create();
     private final ProjectErrorsTool projectErrors = new ProjectErrorsTool();
+    private final ProjectsTool projects = new ProjectsTool();
+    private final ModuleTextTool moduleText = new ModuleTextTool();
+    private final OutgoingCallsTool outgoingCalls = new OutgoingCallsTool();
     private final MetadataDetailsTool metadataDetails = new MetadataDetailsTool();
     private final FindReferencesTool findReferences = new FindReferencesTool();
     private final MetadataObjectsTool metadataObjects = new MetadataObjectsTool();
@@ -420,6 +426,9 @@ applyI18n();loadStatus();loadTools();
     private JsonObject toolsList() {
         JsonArray tools = new JsonArray();
         tools.add(projectErrors.descriptor());
+        tools.add(projects.descriptor());
+        tools.add(moduleText.descriptor());
+        tools.add(outgoingCalls.descriptor());
         tools.add(metadataDetails.descriptor());
         tools.add(findReferences.descriptor());
         tools.add(metadataObjects.descriptor());
@@ -451,6 +460,15 @@ applyI18n();loadStatus();loadTools();
                 : new JsonObject();
         if (projectErrors.name().equals(name)) {
             return projectErrors.call(args);
+        }
+        if (projects.name().equals(name)) {
+            return projects.call(args);
+        }
+        if (moduleText.name().equals(name)) {
+            return moduleText.call(args);
+        }
+        if (outgoingCalls.name().equals(name)) {
+            return outgoingCalls.call(args);
         }
         if (metadataDetails.name().equals(name)) {
             return metadataDetails.call(args);
