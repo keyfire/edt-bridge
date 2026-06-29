@@ -82,6 +82,10 @@ if ($LASTEXITCODE -ne 0) { throw "javac failed (exit $LASTEXITCODE)" }
 
 # Package the bundle jar (concrete version instead of .qualifier).
 Copy-Item (Join-Path $bundle "plugin.xml") $bin -Force
+# The DS component descriptor (Service-Component in the manifest) must be inside the jar, or the
+# lazy bundle never activates headless and the MCP server never starts. Tycho includes it via
+# build.properties bin.includes; mirror that here.
+Copy-Item (Join-Path $bundle "OSGI-INF") $bin -Recurse -Force
 $ts = Get-Date -Format "yyyyMMddHHmm"
 $mf = (Get-Content (Join-Path $bundle "META-INF\MANIFEST.MF") -Raw) -replace '0\.0\.1\.qualifier', "0.0.1.$ts"
 $mfTmp = Join-Path $out "MANIFEST.MF"
