@@ -1254,6 +1254,296 @@ public final class EdtModelGateway {
         return r;
     }
 
+    // ---- Structure arguments of outgoing calls — static key analysis (best-effort) ----------
+
+    /** One outgoing call site + the top-level keys of the Структура argument passed to it (best-effort). */
+    public static final class OutgoingStructureSite {
+        public String qualifier;   // call qualifier (the module/object the method is called on)
+        public String method;      // the method called
+        public int line;
+        public String arg;         // the structure variable (or inline helper) passed to the call
+        public List<String> keys = new ArrayList<>();  // collected top-level keys
+        public String viaHelper;   // a seed/template helper the structure came from, if any
+        public boolean partial;    // best-effort: keys may be incomplete (dynamic / external helper / branches)
+    }
+
+    /** Result of {@link #outgoingStructures}. */
+    public static final class OutgoingStructuresResult {
+        public boolean found;
+        public String fqn;
+        public String modulePath;
+        public String scope;
+        public String message;
+        public boolean truncated;
+        public List<OutgoingStructureSite> structures = new ArrayList<>();
+    }
+
+    /**
+     * Best-effort static analysis of the Структура arguments passed to outgoing (qualified) calls: for
+     * each call site in a method/module, the top-level keys of the structure passed as an argument,
+     * collected from {@code <var>.Вставить("key", …)} inserts on that variable, with one-level expansion
+     * of a seed/template helper ({@code <var> = Helper(…)}) resolvable in the same module. An optional
+     * {@code qualifierFilter} (prefix) scopes to one layer (e.g. ПрограммныйИнтерфейсСервиса). Heuristic —
+     * flow-insensitive, literal keys only, does not follow external helpers, dynamic keys or
+     * {@code Новый Структура("a,b")} constructors; {@code partial=true} flags an incomplete result.
+     * Read-only; never throws.
+     */
+    public OutgoingStructuresResult outgoingStructures(String projectName, String fqn, String moduleType,
+            String method, String modulePath, String qualifierFilter) {
+        OutgoingStructuresResult r = new OutgoingStructuresResult();
+        r.fqn = fqn;
+        // Optional qualifier filter (a prefix). Null = every qualified outgoing call that passes a
+        // structure (e.g. set it to "ПрограммныйИнтерфейсСервиса" to scope to an ExtAPI wrapper layer).
+        String filter = (qualifierFilter == null || qualifierFilter.isBlank()) ? null : qualifierFilter;
+        IProject p = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+        if (!p.exists() || !p.isOpen()) {
+            r.message = "project not found or closed: " + projectName;
+            return r;
+        }
+        String relPath = modulePath;
+        if (relPath == null || relPath.isBlank()) {
+            ModuleTextResult mt = new ModuleTextResult();
+            relPath = resolveModulePath(p, fqn, moduleType, mt);
+            if (relPath == null) {
+                r.message = mt.message;
+                return r;
+            }
+        }
+        r.modulePath = relPath;
+        r.scope = (method == null || method.isBlank()) ? "module" : method;
+        try {
+            BslContext ctx = loadBsl(projectName, relPath, -1, -1, 0);
+            if (ctx.error != null || ctx.resource == null) {
+                r.message = "parse failed: " + ctx.error;
+                return r;
+            }
+            Module module = null;
+            for (EObject e : ctx.resource.getContents()) {
+                if (e instanceof Module) {
+                    module = (Module) e;
+                    break;
+                }
+            }
+            if (module == null) {
+                r.message = "no BSL module parsed";
+                return r;
+            }
+            EObject root = module;
+            if (method != null && !method.isBlank()) {
+                root = null;
+                for (com._1c.g5.v8.dt.bsl.model.Method m : module.allMethods()) {
+                    if (method.equalsIgnoreCase(m.getName())) {
+                        root = m;
+                        break;
+                    }
+                }
+                if (root == null) {
+                    r.message = "method not found: " + method;
+                    return r;
+                }
+            }
+            r.found = true;
+            Map<String, java.util.LinkedHashSet<String>> inserts = collectStructInserts(root);
+            Map<String, String> assigns = collectAssigns(root);
+            for (java.util.Iterator<EObject> it = root.eAllContents(); it.hasNext();) {
+                EObject e = it.next();
+                if (!(e instanceof com._1c.g5.v8.dt.bsl.model.Invocation)) {
+                    continue;
+                }
+                com._1c.g5.v8.dt.bsl.model.Invocation inv = (com._1c.g5.v8.dt.bsl.model.Invocation) e;
+                com._1c.g5.v8.dt.bsl.model.FeatureAccess fa = inv.getMethodAccess();
+                if (!(fa instanceof com._1c.g5.v8.dt.bsl.model.DynamicFeatureAccess)) {
+                    continue;
+                }
+                EObject src = ((com._1c.g5.v8.dt.bsl.model.DynamicFeatureAccess) fa).getSource();
+                String qualifier = (src instanceof com._1c.g5.v8.dt.bsl.model.FeatureAccess)
+                        ? ((com._1c.g5.v8.dt.bsl.model.FeatureAccess) src).getName() : null;
+                if (qualifier == null) {
+                    continue;   // only qualified (outgoing) calls
+                }
+                if (filter != null && !(qualifier.equals(filter) || qualifier.startsWith(filter))) {
+                    continue;
+                }
+                ICompositeNode node = NodeModelUtils.getNode(e);
+                int line = (node != null) ? node.getStartLine() : 0;
+                for (com._1c.g5.v8.dt.bsl.model.Expression param : inv.getParams()) {
+                    OutgoingStructureSite site = describeStructureArg(param, module, inserts, assigns);
+                    if (site == null) {
+                        continue;   // arg is not a structure (string / number / ...) — skip
+                    }
+                    if (r.structures.size() >= OUTGOING_CAP) {
+                        r.truncated = true;
+                        break;
+                    }
+                    site.qualifier = qualifier;
+                    site.method = fa.getName();
+                    site.line = line;
+                    r.structures.add(site);
+                }
+                if (r.truncated) {
+                    break;
+                }
+            }
+        } catch (Exception ex) {
+            r.message = "outgoing structures failed: " + ex.getClass().getSimpleName()
+                    + (ex.getMessage() != null ? ": " + ex.getMessage() : "");
+        }
+        return r;
+    }
+
+    /** Describe one ExtAPI-call argument as a request body (keys + seed helper), or null if not a structure. */
+    private OutgoingStructureSite describeStructureArg(com._1c.g5.v8.dt.bsl.model.Expression param, Module module,
+            Map<String, java.util.LinkedHashSet<String>> inserts, Map<String, String> assigns) {
+        // inline helper call: Метод(Шаблон())
+        if (param instanceof com._1c.g5.v8.dt.bsl.model.Invocation) {
+            com._1c.g5.v8.dt.bsl.model.FeatureAccess hfa =
+                    ((com._1c.g5.v8.dt.bsl.model.Invocation) param).getMethodAccess();
+            if (hfa instanceof com._1c.g5.v8.dt.bsl.model.StaticFeatureAccess) {
+                OutgoingStructureSite s = new OutgoingStructureSite();
+                s.arg = hfa.getName() + "()";
+                s.viaHelper = hfa.getName();
+                s.partial = !expandHelper(module, hfa.getName(), s);
+                return s.keys.isEmpty() ? null : s;
+            }
+            return null;
+        }
+        // a plain local variable: Метод(Запрос)
+        if (param instanceof com._1c.g5.v8.dt.bsl.model.StaticFeatureAccess) {
+            String var = ((com._1c.g5.v8.dt.bsl.model.StaticFeatureAccess) param).getName();
+            java.util.LinkedHashSet<String> direct = inserts.get(var);
+            String helper = assigns.get(var);
+            if ((direct == null || direct.isEmpty()) && helper == null) {
+                return null;   // not a structure we can describe
+            }
+            OutgoingStructureSite s = new OutgoingStructureSite();
+            s.arg = var;
+            if (direct != null) {
+                s.keys.addAll(direct);
+            }
+            if (helper != null) {
+                s.viaHelper = helper;
+                s.partial = !expandHelper(module, helper, s);   // external/unresolved helper => incomplete
+            }
+            return s;
+        }
+        return null;
+    }
+
+    /** Expand a seed/template helper one level: add the keys of the structure it builds and returns. */
+    private boolean expandHelper(Module module, String helperName, OutgoingStructureSite s) {
+        com._1c.g5.v8.dt.bsl.model.Method helper = null;
+        for (com._1c.g5.v8.dt.bsl.model.Method m : module.allMethods()) {
+            if (helperName.equalsIgnoreCase(m.getName())) {
+                helper = m;
+                break;
+            }
+        }
+        if (helper == null) {
+            return false;   // helper not in this module — caller marks partial
+        }
+        Map<String, java.util.LinkedHashSet<String>> hi = collectStructInserts(helper);
+        String retVar = returnVarOf(helper);
+        java.util.LinkedHashSet<String> keys = (retVar != null) ? hi.get(retVar) : null;
+        if (keys == null) {
+            keys = new java.util.LinkedHashSet<>();   // no single return var: merge all (best-effort)
+            for (java.util.LinkedHashSet<String> v : hi.values()) {
+                keys.addAll(v);
+            }
+        }
+        for (String k : keys) {
+            if (!s.keys.contains(k)) {
+                s.keys.add(k);
+            }
+        }
+        return true;
+    }
+
+    /** Collect {@code <var>.Вставить("key", …)} literal keys grouped by receiver variable, within a scope. */
+    private Map<String, java.util.LinkedHashSet<String>> collectStructInserts(EObject scope) {
+        Map<String, java.util.LinkedHashSet<String>> map = new java.util.LinkedHashMap<>();
+        for (java.util.Iterator<EObject> it = scope.eAllContents(); it.hasNext();) {
+            EObject e = it.next();
+            if (!(e instanceof com._1c.g5.v8.dt.bsl.model.Invocation)) {
+                continue;
+            }
+            com._1c.g5.v8.dt.bsl.model.FeatureAccess fa =
+                    ((com._1c.g5.v8.dt.bsl.model.Invocation) e).getMethodAccess();
+            if (!(fa instanceof com._1c.g5.v8.dt.bsl.model.DynamicFeatureAccess)) {
+                continue;
+            }
+            String name = fa.getName();
+            if (!"Вставить".equalsIgnoreCase(name) && !"Insert".equalsIgnoreCase(name)) {
+                continue;
+            }
+            EObject recv = ((com._1c.g5.v8.dt.bsl.model.DynamicFeatureAccess) fa).getSource();
+            if (!(recv instanceof com._1c.g5.v8.dt.bsl.model.StaticFeatureAccess)) {
+                continue;   // only direct `Var.Вставить(...)`, not nested `Var.Sub.Вставить(...)`
+            }
+            String var = ((com._1c.g5.v8.dt.bsl.model.StaticFeatureAccess) recv).getName();
+            java.util.List<com._1c.g5.v8.dt.bsl.model.Expression> args =
+                    ((com._1c.g5.v8.dt.bsl.model.Invocation) e).getParams();
+            if (args.isEmpty()) {
+                continue;
+            }
+            String key = literalKey(args.get(0));
+            if (key != null) {
+                map.computeIfAbsent(var, k -> new java.util.LinkedHashSet<>()).add(key);
+            }
+        }
+        return map;
+    }
+
+    /** Collect {@code <var> = SomeFunc(…)} assignments (the seeding helper name) within a scope. */
+    private Map<String, String> collectAssigns(EObject scope) {
+        Map<String, String> map = new java.util.LinkedHashMap<>();
+        for (java.util.Iterator<EObject> it = scope.eAllContents(); it.hasNext();) {
+            EObject e = it.next();
+            if (!(e instanceof com._1c.g5.v8.dt.bsl.model.SimpleStatement)) {
+                continue;
+            }
+            com._1c.g5.v8.dt.bsl.model.SimpleStatement st = (com._1c.g5.v8.dt.bsl.model.SimpleStatement) e;
+            if (!(st.getLeft() instanceof com._1c.g5.v8.dt.bsl.model.StaticFeatureAccess)
+                    || !(st.getRight() instanceof com._1c.g5.v8.dt.bsl.model.Invocation)) {
+                continue;
+            }
+            String var = ((com._1c.g5.v8.dt.bsl.model.StaticFeatureAccess) st.getLeft()).getName();
+            com._1c.g5.v8.dt.bsl.model.FeatureAccess rfa =
+                    ((com._1c.g5.v8.dt.bsl.model.Invocation) st.getRight()).getMethodAccess();
+            // only a same-module function call (StaticFeatureAccess) is expandable; first assignment wins
+            if (rfa instanceof com._1c.g5.v8.dt.bsl.model.StaticFeatureAccess && !map.containsKey(var)) {
+                map.put(var, rfa.getName());
+            }
+        }
+        return map;
+    }
+
+    /** The variable name returned by a method's first {@code Возврат <var>}, or null. */
+    private String returnVarOf(com._1c.g5.v8.dt.bsl.model.Method m) {
+        for (java.util.Iterator<EObject> it = m.eAllContents(); it.hasNext();) {
+            EObject e = it.next();
+            if (e instanceof com._1c.g5.v8.dt.bsl.model.ReturnStatement) {
+                EObject expr = ((com._1c.g5.v8.dt.bsl.model.ReturnStatement) e).getExpression();
+                if (expr instanceof com._1c.g5.v8.dt.bsl.model.StaticFeatureAccess) {
+                    return ((com._1c.g5.v8.dt.bsl.model.StaticFeatureAccess) expr).getName();
+                }
+            }
+        }
+        return null;
+    }
+
+    /** The string value of a BSL string-literal expression (node text without quotes), or null. */
+    private String literalKey(EObject expr) {
+        ICompositeNode n = NodeModelUtils.getNode(expr);
+        if (n == null) {
+            return null;
+        }
+        String t = n.getText().strip();
+        if (t.length() >= 2 && t.charAt(0) == '"' && t.charAt(t.length() - 1) == '"') {
+            return t.substring(1, t.length() - 1);
+        }
+        return null;   // not a string literal (dynamic key) — skip
+    }
+
     /** A BSL module parsed into a transient Xtext resource, positioned at an offset. */
     private static final class BslContext {
         Injector injector;

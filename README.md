@@ -29,6 +29,7 @@ semantic cross-references, and **query validation against the project's actual m
 | `edt_form_structure` | A managed form's items tree (fields/groups/tables/buttons/decorations) with data bindings + static visible/enabled/readOnly, per-item event handlers + a cell-hyperlink flag, button→command + representation/placement, and the form's declarative conditional appearance; plus its attributes, commands, parameters and event handlers. |
 | `edt_form_render` | Renders a managed form to a PNG via EDT's native offscreen renderer (the engine behind the form-editor preview); chooses the interface variant (Taxi / 8.5) and theme. |
 | `edt_picture_export` | A CommonPicture's content from its Picture.zip: the variant list (DPI / interface variant 8.2 vs 8.5 / theme / isTemplate) + a recommended pick, and a chosen variant's bytes as base64. |
+| `edt_outgoing_structures` | **Best-effort companion to `edt_outgoing_calls`:** for each outgoing (qualified) call, the top-level keys of the `Структура` passed as its argument — collects `<var>.Вставить("key", …)` and expands a same-module template helper one level. Optional `qualifier` prefix scopes to one layer (e.g. `ПрограммныйИнтерфейсСервиса`). |
 
 **Write tools** mutate the model through EDT's own engine (not text edits). All are **token-gated**
 and **dry-run by default** (`apply=false` returns a plan and changes nothing); `apply=true` performs
@@ -143,8 +144,12 @@ toggle (defaults to the browser locale).
 
 ## Status & roadmap
 
-- **Phase 1 (read) + Phase 2 (write) + Phase 3 (debug) — done.** 24 tools: 13 read + 6 write +
+- **Phase 1 (read) + Phase 2 (write) + Phase 3 (debug) — done.** 25 tools: 14 read + 6 write +
   5 debug (above).
+- **`edt_outgoing_structures` is best-effort and general.** It reports the top-level keys of the
+  structure passed to any qualified outgoing call; pass the optional `qualifier` prefix to scope to one
+  layer — e.g. `ПрограммныйИнтерфейсСервиса` for a project that routes its service calls through an
+  "ExtAPI" wrapper. Heuristic: literal keys only, flow-insensitive; `partial` flags an incomplete result.
 - **Known limitation:** the server is currently single-threaded, so a long operation (e.g. a rename,
   whose native refactoring can run for minutes) blocks other requests until it finishes — the server
   appears unresponsive meanwhile. Making it multi-threaded / async is planned.
@@ -186,6 +191,7 @@ AI-агентам и другим инструментам по протокол
 | `edt_form_structure` | Дерево элементов управляемой формы (поля/группы/таблицы/кнопки/декорации) с привязками данных + статические visible/enabled/readOnly, обработчики уровня элемента + флаг cellHyperlink, команда→кнопка + представление/размещение, и декларативное условное оформление формы; плюс реквизиты, команды, параметры и обработчики событий формы. |
 | `edt_form_render` | Рендерит управляемую форму в PNG штатным offscreen-рендером EDT (движок предпросмотра редактора форм); выбор варианта интерфейса (Такси / 8.5) и темы. |
 | `edt_picture_export` | Содержимое CommonPicture из Picture.zip: перечень вариантов (DPI / вариант интерфейса 8.2 или 8.5 / тема / isTemplate) + рекомендуемый, и байты выбранного варианта в base64. |
+| `edt_outgoing_structures` | **Best-effort, пара к `edt_outgoing_calls`:** для каждого исходящего (квалифицированного) вызова — ключи верхнего уровня `Структуры`, переданной аргументом; собирает `<Перем>.Вставить("ключ", …)` и раскрывает хелпер-шаблон того же модуля на один уровень. Необязательный префикс `qualifier` ограничивает одним слоем (напр. `ПрограммныйИнтерфейсСервиса`). |
 
 **Инструменты записи** меняют модель через штатный движок EDT (не текстовой заменой). Все –
 **под токеном** и по умолчанию **dry-run** (`apply=false` возвращает план и ничего не меняет);
@@ -295,8 +301,12 @@ curl -s -X POST http://127.0.0.1:8770/mcp -H "Content-Type: application/json" \
 
 ## Статус и план
 
-- **Фаза 1 (чтение) + Фаза 2 (запись) + Фаза 3 (отладка) — готовы.** 24 инструмента: 13 read +
+- **Фаза 1 (чтение) + Фаза 2 (запись) + Фаза 3 (отладка) — готовы.** 25 инструментов: 14 read +
   6 write + 5 debug (выше).
+- **`edt_outgoing_structures` — best-effort и общий.** Возвращает ключи верхнего уровня структуры,
+  передаваемой в любой квалифицированный исходящий вызов; необязательный префикс `qualifier`
+  ограничивает одним слоем — например `ПрограммныйИнтерфейсСервиса` для проекта, направляющего
+  сервисные вызовы через обвязку «ExtAPI». Эвристика: только литеральные ключи; `partial` — неполно.
 - **Известное ограничение:** сервер пока однопоточный, поэтому долгая операция (напр. переименование,
   чей нативный рефакторинг может идти минутами) блокирует другие запросы до завершения — всё это время
   сервер не отвечает. Многопоточность / async запланированы.
