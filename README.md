@@ -26,8 +26,9 @@ semantic cross-references, and **query validation against the project's actual m
 | `edt_validate_query` | Validates a 1C query against the project's live metadata: syntax **and** semantics (unknown tables/fields, type errors), with positions. |
 | `edt_go_to_definition` | Resolve a BSL symbol's definition at a position (line+column or offset): the target's kind, name, owning object and location. |
 | `edt_symbol_info` | Type/symbol info at a position in a BSL module: the element under the cursor and the computed value type(s) of the expression (dynamic typing). |
-| `edt_form_structure` | A managed form's items tree (fields/groups/tables/buttons/decorations) with data bindings + static visible/enabled/readOnly, plus its attributes, commands, parameters and event handlers. |
+| `edt_form_structure` | A managed form's items tree (fields/groups/tables/buttons/decorations) with data bindings + static visible/enabled/readOnly, per-item event handlers + a cell-hyperlink flag, button→command + representation/placement, and the form's declarative conditional appearance; plus its attributes, commands, parameters and event handlers. |
 | `edt_form_render` | Renders a managed form to a PNG via EDT's native offscreen renderer (the engine behind the form-editor preview); chooses the interface variant (Taxi / 8.5) and theme. |
+| `edt_picture_export` | A CommonPicture's content from its Picture.zip: the variant list (DPI / interface variant 8.2 vs 8.5 / theme / isTemplate) + a recommended pick, and a chosen variant's bytes as base64. |
 
 **Write tools** mutate the model through EDT's own engine (not text edits). All are **token-gated**
 and **dry-run by default** (`apply=false` returns a plan and changes nothing); `apply=true` performs
@@ -142,7 +143,7 @@ toggle (defaults to the browser locale).
 
 ## Status & roadmap
 
-- **Phase 1 (read) + Phase 2 (write) + Phase 3 (debug) — done.** 23 tools: 12 read + 6 write +
+- **Phase 1 (read) + Phase 2 (write) + Phase 3 (debug) — done.** 24 tools: 13 read + 6 write +
   5 debug (above).
 - **Known limitation:** the server is currently single-threaded, so a long operation (e.g. a rename,
   whose native refactoring can run for minutes) blocks other requests until it finishes — the server
@@ -182,8 +183,9 @@ AI-агентам и другим инструментам по протокол
 | `edt_validate_query` | Валидирует запрос 1С против живых метаданных проекта: синтаксис **и** семантику (несуществующие таблицы/поля, ошибки типов) с позициями. |
 | `edt_go_to_definition` | Переход к определению символа BSL в позиции (строка+столбец или offset): вид цели, имя, объект-владелец, расположение. |
 | `edt_symbol_info` | Тип/инфо символа в позиции модуля BSL: элемент под курсором и вычисленные типы значения выражения (динамическая типизация). |
-| `edt_form_structure` | Дерево элементов управляемой формы (поля/группы/таблицы/кнопки/декорации) с привязками данных + статические visible/enabled/readOnly, плюс реквизиты, команды, параметры и обработчики событий формы. |
+| `edt_form_structure` | Дерево элементов управляемой формы (поля/группы/таблицы/кнопки/декорации) с привязками данных + статические visible/enabled/readOnly, обработчики уровня элемента + флаг cellHyperlink, команда→кнопка + представление/размещение, и декларативное условное оформление формы; плюс реквизиты, команды, параметры и обработчики событий формы. |
 | `edt_form_render` | Рендерит управляемую форму в PNG штатным offscreen-рендером EDT (движок предпросмотра редактора форм); выбор варианта интерфейса (Такси / 8.5) и темы. |
+| `edt_picture_export` | Содержимое CommonPicture из Picture.zip: перечень вариантов (DPI / вариант интерфейса 8.2 или 8.5 / тема / isTemplate) + рекомендуемый, и байты выбранного варианта в base64. |
 
 **Инструменты записи** меняют модель через штатный движок EDT (не текстовой заменой). Все –
 **под токеном** и по умолчанию **dry-run** (`apply=false` возвращает план и ничего не меняет);
@@ -293,7 +295,7 @@ curl -s -X POST http://127.0.0.1:8770/mcp -H "Content-Type: application/json" \
 
 ## Статус и план
 
-- **Фаза 1 (чтение) + Фаза 2 (запись) + Фаза 3 (отладка) — готовы.** 23 инструмента: 12 read +
+- **Фаза 1 (чтение) + Фаза 2 (запись) + Фаза 3 (отладка) — готовы.** 24 инструмента: 13 read +
   6 write + 5 debug (выше).
 - **Известное ограничение:** сервер пока однопоточный, поэтому долгая операция (напр. переименование,
   чей нативный рефакторинг может идти минутами) блокирует другие запросы до завершения — всё это время

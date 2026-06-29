@@ -61,13 +61,20 @@ public final class FormStructureTool {
                 + "(fields, groups, tables, buttons, decorations) with their data bindings, plus the "
                 + "form's attributes (with value types), commands, parameters and event handlers "
                 + "(form event -> BSL handler). Items also carry their static visible/enabled/readOnly "
-                + "(DESIGN values from .form — runtime BSL e.g. ПриСозданииНаСервере may override them). "
-                + "Cleaner than parsing the serialized .form file.");
+                + "(DESIGN values from .form — runtime BSL e.g. ПриСозданииНаСервере may override them), "
+                + "per-item event handlers (e.g. a table column's Selection/Выбор handler), a cellHyperlink "
+                + "flag, and for buttons the wired command + representation/placement (command -> button). The "
+                + "form's declarative conditional appearance (УсловноеОформление: fields + filter + appearance) "
+                + "is returned in conditionalAppearance when present. Cleaner than parsing the serialized .form.");
         t.addProperty("descriptionRu",
                 "Структура управляемой формы из живой модели EDT: дерево элементов "
                 + "(поля, группы, таблицы, кнопки, декорации) с их привязками к данным, а также "
                 + "реквизиты формы (с типами значений), команды, параметры и обработчики событий "
-                + "(событие формы -> процедура BSL). Чище, чем разбор сериализованного файла .form.");
+                + "(событие формы -> процедура BSL). У элементов также: обработчики уровня элемента "
+                + "(например, обработчик Выбор у колонки таблицы), флаг cellHyperlink и для кнопок – "
+                + "привязанная команда + представление/размещение (команда -> кнопка). Декларативное "
+                + "условное оформление (УсловноеОформление: поля + отбор + оформление) – в "
+                + "conditionalAppearance, если задано. Чище, чем разбор сериализованного файла .form.");
         t.add("inputSchema", schema);
         return t;
     }
@@ -98,6 +105,9 @@ public final class FormStructureTool {
             o.add("commands", commandsJson(d));
             o.add("parameters", parametersJson(d));
             o.add("handlers", handlersJson(d));
+            if (!d.conditionalAppearance.isEmpty()) {
+                o.add("conditionalAppearance", condAppearanceJson(d));
+            }
             o.add("items", nodesJson(d.items));
             return McpServer.textResult(pretty(o));
         } catch (Exception e) {
@@ -151,13 +161,49 @@ public final class FormStructureTool {
     }
 
     private JsonArray handlersJson(EdtModelGateway.FormDetails d) {
+        return evtArray(d.handlers);
+    }
+
+    private static JsonArray evtArray(java.util.List<EdtModelGateway.FormEvt> handlers) {
         JsonArray arr = new JsonArray();
-        for (EdtModelGateway.FormEvt h : d.handlers) {
+        if (handlers == null) {
+            return arr;
+        }
+        for (EdtModelGateway.FormEvt h : handlers) {
             JsonObject o = new JsonObject();
             o.addProperty("name", h.name);
             if (h.event != null) {
                 o.addProperty("event", h.event);
             }
+            arr.add(o);
+        }
+        return arr;
+    }
+
+    private JsonArray condAppearanceJson(EdtModelGateway.FormDetails d) {
+        JsonArray arr = new JsonArray();
+        for (EdtModelGateway.CondAppearance c : d.conditionalAppearance) {
+            JsonObject o = new JsonObject();
+            if (!c.use) {
+                o.addProperty("use", false);
+            }
+            JsonArray fields = new JsonArray();
+            for (String f : c.fields) {
+                fields.add(f);
+            }
+            o.add("fields", fields);
+            if (!c.filter.isEmpty()) {
+                JsonArray filter = new JsonArray();
+                for (String f : c.filter) {
+                    filter.add(f);
+                }
+                o.add("filter", filter);
+            }
+            JsonObject appearance = new JsonObject();
+            for (String[] pv : c.appearance) {
+                appearance.addProperty(pv[0], pv[1]);
+            }
+            o.add("appearance", appearance);
             arr.add(o);
         }
         return arr;
@@ -189,6 +235,21 @@ public final class FormStructureTool {
             }
             if (n.readOnly != null) {
                 o.addProperty("readOnly", n.readOnly.booleanValue());
+            }
+            if (n.cellHyperlink != null) {
+                o.addProperty("cellHyperlink", n.cellHyperlink.booleanValue());
+            }
+            if (n.command != null) {
+                o.addProperty("command", n.command);
+            }
+            if (n.representation != null) {
+                o.addProperty("representation", n.representation);
+            }
+            if (n.placement != null) {
+                o.addProperty("placement", n.placement);
+            }
+            if (n.handlers != null && !n.handlers.isEmpty()) {
+                o.add("handlers", evtArray(n.handlers));
             }
             if (n.children != null && !n.children.isEmpty()) {
                 o.add("items", nodesJson(n.children));
