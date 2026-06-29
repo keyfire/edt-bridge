@@ -41,6 +41,7 @@ import io.github.keyfire.edtbridge.tools.ProjectsTool;
 import io.github.keyfire.edtbridge.tools.ModuleTextTool;
 import io.github.keyfire.edtbridge.tools.OutgoingCallsTool;
 import io.github.keyfire.edtbridge.tools.PictureExportTool;
+import io.github.keyfire.edtbridge.tools.OutgoingStructuresTool;
 import io.github.keyfire.edtbridge.tools.GoToDefinitionTool;
 import io.github.keyfire.edtbridge.tools.SymbolInfoTool;
 import io.github.keyfire.edtbridge.tools.ValidateQueryTool;
@@ -218,6 +219,7 @@ applyI18n();loadStatus();loadTools();
     private final ModuleTextTool moduleText = new ModuleTextTool();
     private final OutgoingCallsTool outgoingCalls = new OutgoingCallsTool();
     private final PictureExportTool pictureExport = new PictureExportTool();
+    private final OutgoingStructuresTool outgoingStructures = new OutgoingStructuresTool();
     private final MetadataDetailsTool metadataDetails = new MetadataDetailsTool();
     private final FindReferencesTool findReferences = new FindReferencesTool();
     private final MetadataObjectsTool metadataObjects = new MetadataObjectsTool();
@@ -432,6 +434,7 @@ applyI18n();loadStatus();loadTools();
         tools.add(moduleText.descriptor());
         tools.add(outgoingCalls.descriptor());
         tools.add(pictureExport.descriptor());
+        tools.add(outgoingStructures.descriptor());
         tools.add(metadataDetails.descriptor());
         tools.add(findReferences.descriptor());
         tools.add(metadataObjects.descriptor());
@@ -475,6 +478,9 @@ applyI18n();loadStatus();loadTools();
         }
         if (pictureExport.name().equals(name)) {
             return pictureExport.call(args);
+        }
+        if (outgoingStructures.name().equals(name)) {
+            return outgoingStructures.call(args);
         }
         if (metadataDetails.name().equals(name)) {
             return metadataDetails.call(args);
