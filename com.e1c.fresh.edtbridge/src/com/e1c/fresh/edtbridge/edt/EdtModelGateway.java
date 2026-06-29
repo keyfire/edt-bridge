@@ -48,6 +48,7 @@ import org.eclipse.emf.common.util.Enumerator;
 import org.eclipse.emf.common.util.URI;
 import org.eclipse.emf.ecore.EClass;
 import org.eclipse.emf.ecore.EClassifier;
+import org.eclipse.emf.ecore.EAttribute;
 import org.eclipse.emf.ecore.EObject;
 import org.eclipse.emf.ecore.EReference;
 import org.eclipse.emf.ecore.EStructuralFeature;
@@ -110,6 +111,16 @@ import com._1c.g5.v8.dt.form.model.NativeRenderEvent;
 import com._1c.g5.v8.dt.form.model.Titled;
 import com._1c.g5.v8.dt.form.model.Table;
 import com._1c.g5.v8.dt.form.model.Visible;
+import com._1c.g5.v8.dt.form.model.EventHandlerContainer;
+import com._1c.g5.v8.dt.dcs.model.settings.DataCompositionConditionalAppearance;
+import com._1c.g5.v8.dt.dcs.model.settings.DataCompositionConditionalAppearanceItem;
+import com._1c.g5.v8.dt.dcs.model.settings.DataCompositionAppearanceField;
+import com._1c.g5.v8.dt.dcs.model.settings.DataCompositionFilter;
+import com._1c.g5.v8.dt.dcs.model.settings.DataCompositionFilterItem;
+import com._1c.g5.v8.dt.dcs.model.settings.FilterItem;
+import com._1c.g5.v8.dt.dcs.model.core.DataCompositionParameterValue;
+import com._1c.g5.v8.dt.dcs.model.core.DataCompositionField;
+import com._1c.g5.v8.dt.dcs.model.core.DataCompositionParameter;
 import com._1c.g5.v8.dt.form.layout.model.calculation.context.LFTargetPlatform;
 import com._1c.g5.v8.dt.form.layout.model.description.ClientInterfaceScale;
 import com._1c.g5.v8.dt.form.layout.model.description.ClientInterfaceTheme;
@@ -1371,7 +1382,23 @@ public final class EdtModelGateway {
         public Boolean visible;
         public Boolean enabled;
         public Boolean readOnly;
+        // command -> button: the command this button is wired to + how it is drawn. null otherwise.
+        public String command;        // name of the referenced command (matches a form command, best-effort)
+        public String representation; // ButtonRepresentation (Text / Picture / ...), when set
+        public String placement;      // placement area in a command bar / menu, when set
+        // per-item event handlers (columns/fields carry their own — e.g. a cell-click "Выбор"/Selection
+        // handler — separate from the form-level handlers). Empty when the item has none.
+        public List<FormEvt> handlers = new ArrayList<>();
+        public Boolean cellHyperlink; // the cell is rendered as a clickable hyperlink (FormField only)
         public List<FormNode> children = new ArrayList<>();
+    }
+
+    /** One declarative conditional-appearance rule (УсловноеОформление) from the .form (DCS settings). */
+    public static final class CondAppearance {
+        public boolean use = true;
+        public List<String> fields = new ArrayList<>();   // formatted fields (which cells get the styling)
+        public List<String> filter = new ArrayList<>();   // selection conditions (left op right), best-effort
+        public List<String[]> appearance = new ArrayList<>(); // [param, value] set styling, e.g. {ЦветТекста, ...}
     }
 
     /** A form data attribute. */
@@ -1414,6 +1441,7 @@ public final class EdtModelGateway {
         public List<FormCmd> commands = new ArrayList<>();
         public List<FormParam> parameters = new ArrayList<>();
         public List<FormEvt> handlers = new ArrayList<>();
+        public List<CondAppearance> conditionalAppearance = new ArrayList<>(); // declarative .form rules
         public List<FormNode> items = new ArrayList<>();
     }
 
@@ -1508,6 +1536,7 @@ public final class EdtModelGateway {
                 for (EventHandler h : form.getHandlers()) {
                     r.handlers.add(eventOf(h));
                 }
+                collectConditionalAppearance(form, r);
                 int[] counter = {0};
                 for (FormItem it : form.getItems()) {
                     FormNode n = nodeOf(it, cap, counter, r);
@@ -1584,8 +1613,20 @@ public final class EdtModelGateway {
             }
             if (item instanceof FormField) {
                 n.readOnly = ((FormField) item).isReadOnly();
+                n.cellHyperlink = ((FormField) item).isCellHyperlink() ? Boolean.TRUE : null;
             } else if (item instanceof Table) {
                 n.readOnly = ((Table) item).isReadOnly();
+            }
+            if (item instanceof Button) { // command -> button
+                Button b = (Button) item;
+                n.command = commandRefName(b.getCommandName());
+                n.representation = enumName(b.getRepresentation());
+                n.placement = enumName(b.getPlacementArea());
+            }
+            if (item instanceof EventHandlerContainer) { // per-item (column/field) event handlers
+                for (EventHandler h : ((EventHandlerContainer) item).getHandlers()) {
+                    n.handlers.add(eventOf(h));
+                }
             }
         } catch (RuntimeException ignored) {
             // properties are best-effort
@@ -1670,6 +1711,348 @@ public final class EdtModelGateway {
             // event may be an unresolved proxy
         }
         return e;
+    }
+
+    /** A command reference's name, best-effort (matches a form command in "commands"); never throws. */
+    private String commandRefName(EObject cmd) {
+        if (cmd == null) {
+            return null;
+        }
+        try {
+            EStructuralFeature nf = cmd.eClass().getEStructuralFeature("name");
+            if (nf != null) {
+                Object v = cmd.eGet(nf);
+                if (v != null && !v.toString().isBlank()) {
+                    return v.toString();
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // name resolution is best-effort
+        }
+        return cmd.eClass().getName(); // last resort: the command kind
+    }
+
+    /** The literal name of an EMF enum value (Enumerator), or null. */
+    private String enumName(Object e) {
+        return (e instanceof Enumerator) ? ((Enumerator) e).getName() : null;
+    }
+
+    /**
+     * Collect the form's declarative conditional appearance (УсловноеОформление) from the .form
+     * (DCS settings): for each rule the formatted fields, the selection conditions and the set
+     * appearance parameters. Rules built at runtime in BSL (УстановитьУсловноеОформление) are NOT
+     * here — only what is stored declaratively in the .form. Best-effort; never throws.
+     */
+    private void collectConditionalAppearance(Form form, FormDetails r) {
+        try {
+            DataCompositionConditionalAppearance ca = form.getConditionalAppearance();
+            if (ca == null) {
+                return;
+            }
+            for (DataCompositionConditionalAppearanceItem it : ca.getItems()) {
+                CondAppearance c = new CondAppearance();
+                c.use = it.isUse();
+                if (it.getSelection() != null) {
+                    for (DataCompositionAppearanceField f : it.getSelection().getItems()) {
+                        String fn = dcValueText(f.getField());
+                        if (fn != null) {
+                            c.fields.add(fn);
+                        }
+                    }
+                }
+                DataCompositionFilter filter = it.getFilter();
+                if (filter != null) {
+                    for (FilterItem fi : filter.getItems()) {
+                        String cond = renderFilterItem(fi);
+                        if (cond != null) {
+                            c.filter.add(cond);
+                        }
+                    }
+                }
+                if (it.getAppearance() != null) {
+                    for (DataCompositionParameterValue pv : it.getAppearance().getItems()) {
+                        if (!pv.isUse()) {
+                            continue;
+                        }
+                        String pname = (pv.getParameter() instanceof DataCompositionParameter)
+                                ? ((DataCompositionParameter) pv.getParameter()).getValue()
+                                : dcValueText(pv.getParameter());
+                        if (pname == null) {
+                            continue;
+                        }
+                        String val = (pv.getValues() != null && !pv.getValues().isEmpty())
+                                ? dcValueText(pv.getValues().get(0)) : null;
+                        c.appearance.add(new String[] { pname, val });
+                    }
+                }
+                r.conditionalAppearance.add(c);
+            }
+        } catch (RuntimeException ignored) {
+            // declarative conditional appearance is best-effort
+        }
+    }
+
+    /** Render a DCS filter item (field comparison value) as a readable condition; best-effort. */
+    private String renderFilterItem(FilterItem fi) {
+        try {
+            if (!(fi instanceof DataCompositionFilterItem)) {
+                return fi.eClass().getName(); // a filter group (AND/OR) — note the kind, no deep render
+            }
+            DataCompositionFilterItem f = (DataCompositionFilterItem) fi;
+            String left = dcValueText(f.getLeft());
+            String op = enumName(f.getComparisonType());
+            StringBuilder right = new StringBuilder();
+            if (f.getRight() != null) {
+                for (EObject rv : f.getRight()) {
+                    String s = dcValueText(rv);
+                    if (s != null) {
+                        right.append(right.length() > 0 ? ", " : "").append(s);
+                    }
+                }
+            }
+            StringBuilder out = new StringBuilder(left != null ? left : "?");
+            if (op != null) {
+                out.append(' ').append(op);
+            }
+            if (right.length() > 0) {
+                out.append(' ').append(right);
+            }
+            return out.toString();
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Render a DCS / mcore value (a field reference or a literal) as readable text; best-effort.
+     * DataCompositionField/Parameter expose getValue() (the dotted field / param name); other value
+     * kinds fall back to a "value"/"name"/"content" attribute, else the eClass kind.
+     */
+    private String dcValueText(EObject v) {
+        if (v == null) {
+            return null;
+        }
+        try {
+            if (v instanceof DataCompositionField) {
+                return ((DataCompositionField) v).getValue();
+            }
+            if (v instanceof DataCompositionParameter) {
+                return ((DataCompositionParameter) v).getValue();
+            }
+            for (String fname : new String[] { "value", "name", "content" }) {
+                EStructuralFeature f = v.eClass().getEStructuralFeature(fname);
+                if (f instanceof EAttribute) {
+                    Object x = v.eGet(f);
+                    if (x != null && !x.toString().isBlank()) {
+                        return x.toString();
+                    }
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // value rendering is best-effort
+        }
+        return v.eClass().getName();
+    }
+
+    // ---- CommonPicture / binary resource export -------------------------------------------
+
+    /** One variant of a CommonPicture (a row of the Picture.zip manifest). */
+    public static final class PictureVariant {
+        public String name;             // zip entry: "l", "400.png", "<hash>.svg", "Picture.png"
+        public String screenDensity;    // ldpi / mdpi / hdpi / ... (DPI bucket)
+        public String interfaceVariant; // version8_5 / version8_2 / version8_2_OrdinaryApp
+        public String theme;            // theme name ("" = default)
+        public boolean isTemplate;      // recolorable template picture
+        public int glyphWidth;
+        public int glyphHeight;
+        public long sizeBytes;          // size of the entry in the zip
+        public String contentType;      // image/svg+xml | image/png
+    }
+
+    /** Result of {@link #exportPicture}. */
+    public static final class PictureResult {
+        public boolean found;
+        public String fqn;
+        public String message;
+        public String zipPath;          // project-relative Picture.zip path
+        public List<PictureVariant> variants = new ArrayList<>();
+        public String recommended;      // suggested variant name (8.5 vector/template first)
+        // set only when a specific variant is requested:
+        public String selectedName;
+        public String selectedContentType;
+        public long selectedSize;
+        public String base64;
+    }
+
+    /**
+     * Export a CommonPicture's content: list the variants from the Picture.zip manifest (DPI /
+     * interface variant / theme / isTemplate) and, when {@code variant} is given, return that entry's
+     * bytes as base64. {@code variant} accepts an exact entry name, or "svg" (the vector master) /
+     * "best" (svg else the largest PNG). Resolves CommonPicture.&lt;name&gt; to
+     * &lt;project&gt;/src/CommonPictures/&lt;name&gt;/Picture.zip. Read-only; never throws.
+     */
+    public PictureResult exportPicture(String projectName, String fqn, String variant) {
+        PictureResult r = new PictureResult();
+        r.fqn = fqn;
+        try {
+            IProject p = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+            if (!p.exists() || !p.isOpen()) {
+                r.message = "project not found or closed: " + projectName;
+                return r;
+            }
+            String name = null;
+            if (fqn != null) {
+                int dot = fqn.indexOf('.');
+                if (dot > 0 && fqn.substring(0, dot).equalsIgnoreCase("CommonPicture")) {
+                    name = fqn.substring(dot + 1);
+                }
+            }
+            if (name == null || name.isBlank()) {
+                r.message = "expected CommonPicture.<name>, got: " + fqn;
+                return r;
+            }
+            String src = p.getFolder("src").exists() ? "src/" : "";
+            IFile zip = p.getFile(src + "CommonPictures/" + name + "/Picture.zip");
+            if (!zip.exists() || zip.getLocation() == null) {
+                r.message = "Picture.zip not found for CommonPicture." + name;
+                return r;
+            }
+            r.zipPath = zip.getProjectRelativePath().toString();
+            Map<String, byte[]> entries = new java.util.LinkedHashMap<>();
+            String manifestXml = null;
+            try (java.util.zip.ZipFile zf = new java.util.zip.ZipFile(zip.getLocation().toFile())) {
+                java.util.Enumeration<? extends java.util.zip.ZipEntry> en = zf.entries();
+                while (en.hasMoreElements()) {
+                    java.util.zip.ZipEntry ze = en.nextElement();
+                    if (ze.isDirectory()) {
+                        continue;
+                    }
+                    byte[] bytes = zf.getInputStream(ze).readAllBytes();
+                    entries.put(ze.getName(), bytes);
+                    if (ze.getName().equalsIgnoreCase("manifest.xml")) {
+                        manifestXml = new String(bytes, StandardCharsets.UTF_8);
+                    }
+                }
+            }
+            parsePictureManifest(manifestXml, entries, r);
+            r.recommended = recommendVariant(r.variants);
+            r.found = true;
+            if (variant != null && !variant.isBlank()) {
+                String pick = resolveVariantName(variant, r);
+                byte[] bytes = pick != null ? entries.get(pick) : null;
+                if (bytes == null) {
+                    r.message = "variant not found: " + variant;
+                } else {
+                    r.selectedName = pick;
+                    r.selectedSize = bytes.length;
+                    r.selectedContentType = contentTypeOf(pick);
+                    r.base64 = java.util.Base64.getEncoder().encodeToString(bytes);
+                }
+            }
+            return r;
+        } catch (Exception e) {
+            r.message = e.getClass().getSimpleName() + (e.getMessage() != null ? ": " + e.getMessage() : "");
+            return r;
+        }
+    }
+
+    /** Build variants from the manifest's {@code <PictureVariant/>} rows; defensive fallback to raw entries. */
+    private void parsePictureManifest(String xml, Map<String, byte[]> entries, PictureResult r) {
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        if (xml != null) {
+            java.util.regex.Matcher m =
+                    java.util.regex.Pattern.compile("<PictureVariant\\b([^>]*)/>").matcher(xml);
+            while (m.find()) {
+                String attrs = m.group(1);
+                PictureVariant v = new PictureVariant();
+                v.name = attr(attrs, "name");
+                v.screenDensity = attr(attrs, "screenDensity");
+                v.interfaceVariant = attr(attrs, "interfaceVariant");
+                v.theme = attr(attrs, "theme");
+                v.isTemplate = "true".equalsIgnoreCase(attr(attrs, "isTemplate"));
+                v.glyphWidth = intAttr(attrs, "glyphWidth");
+                v.glyphHeight = intAttr(attrs, "glyphHeight");
+                if (v.name != null) {
+                    byte[] b = entries.get(v.name);
+                    v.sizeBytes = b != null ? b.length : 0;
+                    v.contentType = contentTypeOf(v.name);
+                    seen.add(v.name);
+                }
+                r.variants.add(v);
+            }
+        }
+        for (Map.Entry<String, byte[]> e : entries.entrySet()) {
+            if (e.getKey().equalsIgnoreCase("manifest.xml") || seen.contains(e.getKey())) {
+                continue;
+            }
+            PictureVariant v = new PictureVariant();
+            v.name = e.getKey();
+            v.sizeBytes = e.getValue().length;
+            v.contentType = contentTypeOf(e.getKey());
+            r.variants.add(v);
+        }
+    }
+
+    private static String attr(String attrs, String key) {
+        java.util.regex.Matcher m =
+                java.util.regex.Pattern.compile(key + "=\"([^\"]*)\"").matcher(attrs);
+        return m.find() ? m.group(1) : null;
+    }
+
+    private static int intAttr(String attrs, String key) {
+        String s = attr(attrs, key);
+        try {
+            return s != null ? Integer.parseInt(s.trim()) : 0;
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    private static String contentTypeOf(String name) {
+        if (name == null) {
+            return null;
+        }
+        String n = name.toLowerCase();
+        if (n.endsWith(".png")) {
+            return "image/png";
+        }
+        if (n.endsWith(".svg") || n.equals("l")) {
+            return "image/svg+xml";
+        }
+        return "application/octet-stream";
+    }
+
+    /** Suggested variant: the vector/template master (8.5 SVG) if present, else the largest PNG. */
+    private String recommendVariant(List<PictureVariant> vs) {
+        PictureVariant svg = null;
+        PictureVariant largestPng = null;
+        for (PictureVariant v : vs) {
+            if ("image/svg+xml".equals(v.contentType)
+                    && (svg == null || "version8_5".equals(v.interfaceVariant))) {
+                svg = v;
+            } else if ("image/png".equals(v.contentType)
+                    && (largestPng == null || v.sizeBytes > largestPng.sizeBytes)) {
+                largestPng = v;
+            }
+        }
+        PictureVariant pick = svg != null ? svg : largestPng;
+        return pick != null ? pick.name : null;
+    }
+
+    /** Map a {@code variant} argument ("svg" / "best" / an exact entry name) to a zip entry name. */
+    private String resolveVariantName(String variant, PictureResult r) {
+        if ("svg".equalsIgnoreCase(variant)) {
+            for (PictureVariant v : r.variants) {
+                if ("image/svg+xml".equals(v.contentType)) {
+                    return v.name;
+                }
+            }
+            return null;
+        }
+        if ("best".equalsIgnoreCase(variant)) {
+            return r.recommended;
+        }
+        return variant; // exact entry name
     }
 
     /** Russian entry of a localized string map (falls back to the first value); null-safe. */

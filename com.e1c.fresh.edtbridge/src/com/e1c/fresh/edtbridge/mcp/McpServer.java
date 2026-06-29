@@ -40,6 +40,7 @@ import com.e1c.fresh.edtbridge.tools.ProjectErrorsTool;
 import com.e1c.fresh.edtbridge.tools.ProjectsTool;
 import com.e1c.fresh.edtbridge.tools.ModuleTextTool;
 import com.e1c.fresh.edtbridge.tools.OutgoingCallsTool;
+import com.e1c.fresh.edtbridge.tools.PictureExportTool;
 import com.e1c.fresh.edtbridge.tools.GoToDefinitionTool;
 import com.e1c.fresh.edtbridge.tools.SymbolInfoTool;
 import com.e1c.fresh.edtbridge.tools.ValidateQueryTool;
@@ -216,6 +217,7 @@ applyI18n();loadStatus();loadTools();
     private final ProjectsTool projects = new ProjectsTool();
     private final ModuleTextTool moduleText = new ModuleTextTool();
     private final OutgoingCallsTool outgoingCalls = new OutgoingCallsTool();
+    private final PictureExportTool pictureExport = new PictureExportTool();
     private final MetadataDetailsTool metadataDetails = new MetadataDetailsTool();
     private final FindReferencesTool findReferences = new FindReferencesTool();
     private final MetadataObjectsTool metadataObjects = new MetadataObjectsTool();
@@ -429,6 +431,7 @@ applyI18n();loadStatus();loadTools();
         tools.add(projects.descriptor());
         tools.add(moduleText.descriptor());
         tools.add(outgoingCalls.descriptor());
+        tools.add(pictureExport.descriptor());
         tools.add(metadataDetails.descriptor());
         tools.add(findReferences.descriptor());
         tools.add(metadataObjects.descriptor());
@@ -469,6 +472,9 @@ applyI18n();loadStatus();loadTools();
         }
         if (outgoingCalls.name().equals(name)) {
             return outgoingCalls.call(args);
+        }
+        if (pictureExport.name().equals(name)) {
+            return pictureExport.call(args);
         }
         if (metadataDetails.name().equals(name)) {
             return metadataDetails.call(args);
