@@ -99,6 +99,7 @@ import com._1c.g5.v8.dt.form.model.CommandHandlerContainer;
 import com._1c.g5.v8.dt.form.model.DataItem;
 import com._1c.g5.v8.dt.form.model.Decoration;
 import com._1c.g5.v8.dt.form.model.EventHandler;
+import com._1c.g5.v8.dt.form.model.FieldExtInfo;
 import com._1c.g5.v8.dt.form.model.Form;
 import com._1c.g5.v8.dt.form.model.FormAttribute;
 import com._1c.g5.v8.dt.form.model.FormCommand;
@@ -107,6 +108,7 @@ import com._1c.g5.v8.dt.form.model.FormGroup;
 import com._1c.g5.v8.dt.form.model.FormItem;
 import com._1c.g5.v8.dt.form.model.FormItemContainer;
 import com._1c.g5.v8.dt.form.model.FormParameter;
+import com._1c.g5.v8.dt.form.model.InputFieldExtInfo;
 import com._1c.g5.v8.dt.form.model.NativeRenderEvent;
 import com._1c.g5.v8.dt.form.model.Titled;
 import com._1c.g5.v8.dt.form.model.Table;
@@ -1254,6 +1256,234 @@ public final class EdtModelGateway {
         return r;
     }
 
+    // ---- Method-level find references ------------------------------------------------------------
+
+    /** Folder name -> FQN type prefix — the inverse of {@link #MD_FOLDER}, for a readable caller label. */
+    private static final Map<String, String> MD_FOLDER_INV = Map.ofEntries(
+            Map.entry("Catalogs", "Catalog"), Map.entry("Documents", "Document"),
+            Map.entry("DocumentJournals", "DocumentJournal"), Map.entry("Enums", "Enum"),
+            Map.entry("Reports", "Report"), Map.entry("DataProcessors", "DataProcessor"),
+            Map.entry("ChartsOfCharacteristicTypes", "ChartOfCharacteristicTypes"),
+            Map.entry("ChartsOfAccounts", "ChartOfAccounts"),
+            Map.entry("ChartsOfCalculationTypes", "ChartOfCalculationTypes"),
+            Map.entry("InformationRegisters", "InformationRegister"),
+            Map.entry("AccumulationRegisters", "AccumulationRegister"),
+            Map.entry("AccountingRegisters", "AccountingRegister"),
+            Map.entry("CalculationRegisters", "CalculationRegister"),
+            Map.entry("BusinessProcesses", "BusinessProcess"), Map.entry("Tasks", "Task"),
+            Map.entry("ExchangePlans", "ExchangePlan"), Map.entry("Constants", "Constant"),
+            Map.entry("CommonModules", "CommonModule"), Map.entry("CommonForms", "CommonForm"),
+            Map.entry("CommonCommands", "CommonCommand"));
+
+    /** Max modules PARSED (having passed the cheap text prefilter) before the scan gives up. */
+    private static final int METHODREF_PARSE_CAP = 800;
+
+    /** One BSL call site of a target method. */
+    public static final class MethodRef {
+        public String modulePath;   // project-relative .bsl of the caller
+        public String module;       // best-effort readable module label (e.g. CommonModule.X), from the path
+        public String method;       // the caller procedure/function containing the call (null = module-level)
+        public int line;            // 1-based line of the call
+        public String text;         // the call expression text, single-lined and capped
+    }
+
+    /** Result of {@link #findMethodReferences}. */
+    public static final class MethodRefsResult {
+        public boolean found;          // the scan ran (a usable qualifier was derived)
+        public String fqn;
+        public String method;
+        public String qualifier;       // the call qualifier matched (the called module's call-name)
+        public int total;              // total matching call sites (before the limit cap)
+        public int returned;
+        public boolean truncated;      // capped by limit or by the parse budget
+        public int scannedModules;     // modules actually parsed (passed the text prefilter)
+        public String message;
+        public List<MethodRef> refs = new ArrayList<>();
+    }
+
+    /**
+     * BSL call sites of a specific method — the method-level counterpart of {@link #getReferences}, whose
+     * BM cross-reference index tracks metadata membership (subsystem content, the Configuration lists) but
+     * NOT BSL call sites. Because no index maps "callers of CommonModule.X.Method", this walks the project's
+     * BSL: a cheap raw-text prefilter (skip modules whose text lacks the method name) narrows to candidates,
+     * then each candidate is parsed and its invocations are matched by qualifier ({@code X}) + method name —
+     * which separates a qualified {@code X.Method(...)} call from same-named LOCAL procedures. Best-effort:
+     * literal qualified calls only (not a call through a variable that holds the module, nor dynamic feature
+     * names). The target is a common-module method: {@code fqn = CommonModule.X}, {@code method = Method}.
+     */
+    public MethodRefsResult findMethodReferences(String projectName, String fqn, String moduleType,
+            String method, int limit) {
+        MethodRefsResult r = new MethodRefsResult();
+        r.fqn = fqn;
+        r.method = method;
+        if (method == null || method.isBlank()) {
+            r.message = "method is required";
+            return r;
+        }
+        IProject p = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+        if (!p.exists() || !p.isOpen()) {
+            r.message = "project not found or closed: " + projectName;
+            return r;
+        }
+        // The call qualifier = the called module's call-name. For CommonModule.X that is X; otherwise
+        // best-effort the last FQN segment (object-manager calls use a 2-part qualifier — out of scope).
+        String qualifier = null;
+        if (fqn != null && !fqn.isBlank()) {
+            String[] s = fqn.split("\\.");
+            qualifier = s[s.length - 1];
+        }
+        if (qualifier == null || qualifier.isBlank()) {
+            r.message = "provide fqn (e.g. CommonModule.X) to identify the called module";
+            return r;
+        }
+        r.qualifier = qualifier;
+        final int cap = limit > 0 ? limit : Integer.MAX_VALUE;
+        final String methodLc = method.toLowerCase(java.util.Locale.ROOT);
+        try {
+            List<IFile> bslFiles = new ArrayList<>();
+            collectBslFiles(p, bslFiles);
+            int parsed = 0;
+            for (IFile file : bslFiles) {
+                String relPath = file.getProjectRelativePath().toString();
+                String text;
+                try {
+                    text = readText(file);
+                } catch (Exception ex) {
+                    continue;
+                }
+                // Cheap prefilter: the method name must appear literally (BSL identifiers are
+                // case-insensitive) — otherwise this file cannot hold the call. Skip without parsing.
+                if (text.toLowerCase(java.util.Locale.ROOT).indexOf(methodLc) < 0) {
+                    continue;
+                }
+                if (parsed >= METHODREF_PARSE_CAP) {
+                    r.truncated = true;
+                    break;
+                }
+                parsed++;
+                BslContext ctx = loadBsl(projectName, relPath, -1, -1, 0);
+                if (ctx.error != null || ctx.resource == null) {
+                    continue;
+                }
+                Module module = null;
+                for (EObject e : ctx.resource.getContents()) {
+                    if (e instanceof Module) {
+                        module = (Module) e;
+                        break;
+                    }
+                }
+                if (module == null) {
+                    continue;
+                }
+                for (java.util.Iterator<EObject> it = module.eAllContents(); it.hasNext();) {
+                    EObject e = it.next();
+                    if (!(e instanceof com._1c.g5.v8.dt.bsl.model.Invocation)) {
+                        continue;
+                    }
+                    com._1c.g5.v8.dt.bsl.model.FeatureAccess fa =
+                            ((com._1c.g5.v8.dt.bsl.model.Invocation) e).getMethodAccess();
+                    // Only qualified calls (X.Method) — skips same-named local procedures.
+                    if (!(fa instanceof com._1c.g5.v8.dt.bsl.model.DynamicFeatureAccess)) {
+                        continue;
+                    }
+                    String name = fa.getName();
+                    if (name == null || !name.equalsIgnoreCase(method)) {
+                        continue;
+                    }
+                    EObject src = ((com._1c.g5.v8.dt.bsl.model.DynamicFeatureAccess) fa).getSource();
+                    String q = (src instanceof com._1c.g5.v8.dt.bsl.model.FeatureAccess)
+                            ? ((com._1c.g5.v8.dt.bsl.model.FeatureAccess) src).getName() : null;
+                    if (q == null || !q.equalsIgnoreCase(qualifier)) {
+                        continue;
+                    }
+                    r.total++;
+                    if (r.refs.size() >= cap) {
+                        r.truncated = true;
+                        continue; // keep counting total, stop collecting
+                    }
+                    MethodRef mr = new MethodRef();
+                    mr.modulePath = relPath;
+                    mr.module = pathToModuleLabel(relPath);
+                    mr.method = enclosingMethodName(e);
+                    ICompositeNode n = NodeModelUtils.getNode(e);
+                    mr.line = (n != null) ? n.getStartLine() : 0;
+                    mr.text = (n != null) ? oneLine(n.getText()) : null;
+                    r.refs.add(mr);
+                }
+            }
+            r.scannedModules = parsed;
+            r.found = true;
+            r.returned = r.refs.size();
+        } catch (Exception ex) {
+            r.message = "find method references failed: " + ex.getClass().getSimpleName()
+                    + (ex.getMessage() != null ? ": " + ex.getMessage() : "");
+        }
+        return r;
+    }
+
+    /** Collect every .bsl file under the project's src (or root) — the candidate set. */
+    private void collectBslFiles(IProject p, List<IFile> out) throws CoreException {
+        final org.eclipse.core.resources.IContainer root =
+                p.getFolder("src").exists() ? p.getFolder("src") : p;
+        root.accept(res -> {
+            if (res instanceof IFile && res.getName().endsWith(".bsl")) {
+                out.add((IFile) res);
+            }
+            return true;
+        });
+    }
+
+    /** The name of the BSL Method (procedure/function) containing a node; null if module-level. */
+    private String enclosingMethodName(EObject e) {
+        for (EObject c = e; c != null; c = c.eContainer()) {
+            if (c instanceof com._1c.g5.v8.dt.bsl.model.Method) {
+                return ((com._1c.g5.v8.dt.bsl.model.Method) c).getName();
+            }
+        }
+        return null;
+    }
+
+    /** Best-effort readable module label from a project-relative .bsl path (inverse of the folder map). */
+    private String pathToModuleLabel(String relPath) {
+        try {
+            String pth = relPath.replace('\\', '/');
+            int i = pth.indexOf("src/");
+            String rest = (i >= 0) ? pth.substring(i + 4) : pth;
+            String[] parts = rest.split("/");
+            if (parts.length < 2) {
+                return null;
+            }
+            String type = MD_FOLDER_INV.get(parts[0]);
+            if (type == null) {
+                return null;
+            }
+            if ("CommonModule".equals(type) || "CommonForm".equals(type) || "CommonCommand".equals(type)) {
+                return type + "." + parts[1];
+            }
+            StringBuilder sb = new StringBuilder(type).append('.').append(parts[1]);
+            if (parts.length >= 5 && "Forms".equals(parts[2])) {
+                sb.append(".Form.").append(parts[3]);
+            } else {
+                String last = parts[parts.length - 1];
+                if (last.endsWith(".bsl") && !"Module.bsl".equals(last)) {
+                    sb.append(" (").append(last.substring(0, last.length() - 4)).append(')');
+                }
+            }
+            return sb.toString();
+        } catch (RuntimeException ex) {
+            return null;
+        }
+    }
+
+    /** Collapse a multi-line snippet to a single trimmed line, capped for readability. */
+    private static String oneLine(String s) {
+        if (s == null) {
+            return null;
+        }
+        String t = s.replaceAll("\\s+", " ").strip();
+        return t.length() > 200 ? t.substring(0, 200) + "..." : t;
+    }
+
     // ---- Structure arguments of outgoing calls — static key analysis (best-effort) ----------
 
     /** One outgoing call site + the top-level keys of the Структура argument passed to it (best-effort). */
@@ -1680,6 +1910,12 @@ public final class EdtModelGateway {
         // handler — separate from the form-level handlers). Empty when the item has none.
         public List<FormEvt> handlers = new ArrayList<>();
         public Boolean cellHyperlink; // the cell is rendered as a clickable hyperlink (FormField only)
+        // Input-field design props (InputField only) — password masking + the reveal ("eye") choice
+        // button, the design-time signal for the "show a stored secret on the client" pattern. null = n/a.
+        public Boolean passwordMode;              // the field masks input as ***
+        public Boolean choiceButton;              // an in-field choice button is shown
+        public Boolean choiceButtonPicture;       // a choice-button picture is set — the button carries a glyph (the eye)
+        public String choiceButtonRepresentation; // where the choice button is drawn (non-Auto only)
         public List<FormNode> children = new ArrayList<>();
     }
 
@@ -1902,8 +2138,10 @@ public final class EdtModelGateway {
                 n.enabled = ((Visible) item).isEnabled();
             }
             if (item instanceof FormField) {
-                n.readOnly = ((FormField) item).isReadOnly();
-                n.cellHyperlink = ((FormField) item).isCellHyperlink() ? Boolean.TRUE : null;
+                FormField ff = (FormField) item;
+                n.readOnly = ff.isReadOnly();
+                n.cellHyperlink = ff.isCellHyperlink() ? Boolean.TRUE : null;
+                readInputFieldProps(ff, n); // password / choice-button ("eye") design props
             } else if (item instanceof Table) {
                 n.readOnly = ((Table) item).isReadOnly();
             }
@@ -1930,6 +2168,39 @@ public final class EdtModelGateway {
             }
         }
         return n;
+    }
+
+    /**
+     * Input-field design props from the .form: РежимПароля (the field masks input) and the choice
+     * ("eye") button — КнопкаВыбора / КартинкаКнопкиВыбора — the design-time signal for the reveal-password
+     * idiom. Only an InputField carries these (its ext-info is InputFieldExtInfo); other field kinds have
+     * none. Emits only the meaningful (true / present / non-Auto) value to keep the tree lean. The picture
+     * is reported as presence, not a name (the .form ref is an EMF proxy, not a plain CommonPicture name).
+     * Best-effort; never throws.
+     */
+    private void readInputFieldProps(FormField ff, FormNode n) {
+        try {
+            FieldExtInfo ext = ff.getExtInfo();
+            if (!(ext instanceof InputFieldExtInfo)) {
+                return;
+            }
+            InputFieldExtInfo in = (InputFieldExtInfo) ext;
+            if (Boolean.TRUE.equals(in.getPasswordMode())) {
+                n.passwordMode = Boolean.TRUE;
+            }
+            if (Boolean.TRUE.equals(in.getChoiceButton())) {
+                n.choiceButton = Boolean.TRUE;
+            }
+            if (in.getChoiceButtonPicture() != null) {
+                n.choiceButtonPicture = Boolean.TRUE;
+            }
+            String rep = enumName(in.getChoiceButtonRepresentation());
+            if (rep != null && !"auto".equalsIgnoreCase(rep)) {
+                n.choiceButtonRepresentation = rep;
+            }
+        } catch (RuntimeException ignored) {
+            // design props are best-effort
+        }
     }
 
     /** The Managed*Type literal of an item (field/group/button/decoration kind); null otherwise. */

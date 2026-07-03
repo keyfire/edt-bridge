@@ -45,15 +45,28 @@ public final class FindReferencesTool {
 
         JsonObject fqn = new JsonObject();
         fqn.addProperty("type", "string");
-        fqn.addProperty("description", "Target top object FQN (English type prefix), e.g. Catalog.ВнешниеПользователи");
+        fqn.addProperty("description", "Target top object FQN (English type prefix), e.g. Catalog.Контрагенты "
+                + "— or CommonModule.X when method is given (method-caller mode).");
+
+        JsonObject method = new JsonObject();
+        method.addProperty("type", "string");
+        method.addProperty("description", "Optional. When given, switches to method-caller mode: returns the BSL "
+                + "call sites of the method of fqn (fqn = CommonModule.X) as module + line + call text. Separates "
+                + "a qualified X.Method(...) call from same-named local procedures. Best-effort (literal calls).");
+
+        JsonObject moduleType = new JsonObject();
+        moduleType.addProperty("type", "string");
+        moduleType.addProperty("description", "Reserved for non-CommonModule owners in method-caller mode. Optional.");
 
         JsonObject limit = new JsonObject();
         limit.addProperty("type", "integer");
-        limit.addProperty("description", "Max references returned (default " + DEFAULT_LIMIT + ")");
+        limit.addProperty("description", "Max references / call sites returned (default " + DEFAULT_LIMIT + ")");
 
         JsonObject props = new JsonObject();
         props.add("projectName", pn);
         props.add("fqn", fqn);
+        props.add("method", method);
+        props.add("moduleType", moduleType);
         props.add("limit", limit);
 
         JsonArray req = new JsonArray();
@@ -68,20 +81,27 @@ public final class FindReferencesTool {
         JsonObject t = new JsonObject();
         t.addProperty("name", name());
         t.addProperty("description",
-                "Inbound references to a top-level metadata object (metadata + BSL usages) from the live EDT model.");
-        t.addProperty("descriptionRu", "Входящие ссылки на объект метаданных верхнего уровня (метаданные + использование в BSL) из живой модели EDT.");
+                "Inbound references to a top-level metadata object (metadata membership: subsystems, the "
+                + "Configuration lists) from the live BM cross-reference index. With method given, switches to "
+                + "method-caller mode: the BSL call sites of CommonModule.X.method (module + line + call text), "
+                + "found by scanning the project's BSL — the counterpart the BM index does NOT cover.");
+        t.addProperty("descriptionRu",
+                "Входящие ссылки на объект метаданных верхнего уровня (членство в метаданных: подсистемы, "
+                + "списки Configuration) из BM-индекса перекрёстных ссылок. С параметром method – режим поиска "
+                + "мест вызова: BSL-места вызова CommonModule.X.method (модуль + строка + текст вызова), обходом "
+                + "BSL проекта – то, чего BM-индекс не покрывает.");
         t.add("inputSchema", schema);
         return t;
     }
 
     public JsonObject call(JsonObject args) {
-        String project = (args.has("projectName") && !args.get("projectName").isJsonNull())
-                ? args.get("projectName").getAsString() : null;
-        String fqn = (args.has("fqn") && !args.get("fqn").isJsonNull())
-                ? args.get("fqn").getAsString() : null;
+        String project = getStr(args, "projectName");
+        String fqn = getStr(args, "fqn");
         if (project == null || fqn == null) {
             return McpServer.toolError("projectName and fqn are required");
         }
+        String method = getStr(args, "method");
+        String moduleType = getStr(args, "moduleType");
         int limit = DEFAULT_LIMIT;
         if (args.has("limit") && !args.get("limit").isJsonNull()) {
             try {
@@ -89,6 +109,9 @@ public final class FindReferencesTool {
             } catch (RuntimeException ignored) {
                 // keep default
             }
+        }
+        if (method != null) {
+            return methodCallers(project, fqn, moduleType, method, limit);
         }
         try {
             EdtModelGateway.RefResult res = gateway.getReferences(project, fqn, limit);
@@ -114,5 +137,52 @@ public final class FindReferencesTool {
         } catch (Exception e) {
             return McpServer.toolError("edt_find_references failed: " + e.getMessage());
         }
+    }
+
+    /** Method-caller mode: render the BSL call sites of fqn's method. */
+    private JsonObject methodCallers(String project, String fqn, String moduleType, String method, int limit) {
+        try {
+            EdtModelGateway.MethodRefsResult res =
+                    gateway.findMethodReferences(project, fqn, moduleType, method, limit);
+            JsonObject o = new JsonObject();
+            o.addProperty("mode", "methodCallers");
+            o.addProperty("found", res.found);
+            o.addProperty("fqn", res.fqn);
+            o.addProperty("method", res.method);
+            if (res.qualifier != null) {
+                o.addProperty("qualifier", res.qualifier);
+            }
+            o.addProperty("total", res.total);
+            o.addProperty("returned", res.returned);
+            o.addProperty("truncated", res.truncated);
+            o.addProperty("scannedModules", res.scannedModules);
+            if (res.message != null) {
+                o.addProperty("message", res.message);
+            }
+            JsonArray arr = new JsonArray();
+            for (EdtModelGateway.MethodRef m : res.refs) {
+                JsonObject e = new JsonObject();
+                if (m.module != null) {
+                    e.addProperty("module", m.module);
+                }
+                e.addProperty("modulePath", m.modulePath);
+                if (m.method != null) {
+                    e.addProperty("method", m.method);
+                }
+                e.addProperty("line", m.line);
+                if (m.text != null) {
+                    e.addProperty("text", m.text);
+                }
+                arr.add(e);
+            }
+            o.add("callSites", arr);
+            return McpServer.textResult(new GsonBuilder().setPrettyPrinting().create().toJson(o));
+        } catch (Exception e) {
+            return McpServer.toolError("edt_find_references (method-caller mode) failed: " + e.getMessage());
+        }
+    }
+
+    private static String getStr(JsonObject a, String k) {
+        return (a.has(k) && !a.get(k).isJsonNull()) ? a.get(k).getAsString() : null;
     }
 }

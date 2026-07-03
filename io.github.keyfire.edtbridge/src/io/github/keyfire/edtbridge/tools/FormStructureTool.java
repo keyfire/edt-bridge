@@ -63,7 +63,9 @@ public final class FormStructureTool {
                 + "(form event -> BSL handler). Items also carry their static visible/enabled/readOnly "
                 + "(DESIGN values from .form — runtime BSL e.g. ПриСозданииНаСервере may override them), "
                 + "per-item event handlers (e.g. a table column's Selection/Выбор handler), a cellHyperlink "
-                + "flag, and for buttons the wired command + representation/placement (command -> button). The "
+                + "flag, for input fields the password/choice-button design props (passwordMode / choiceButton / "
+                + "choiceButtonPicture — the reveal-eye secret idiom), and for buttons the wired command + "
+                + "representation/placement (command -> button). The "
                 + "form's declarative conditional appearance (УсловноеОформление: fields + filter + appearance) "
                 + "is returned in conditionalAppearance when present. Cleaner than parsing the serialized .form.");
         t.addProperty("descriptionRu",
@@ -71,8 +73,10 @@ public final class FormStructureTool {
                 + "(поля, группы, таблицы, кнопки, декорации) с их привязками к данным, а также "
                 + "реквизиты формы (с типами значений), команды, параметры и обработчики событий "
                 + "(событие формы -> процедура BSL). У элементов также: обработчики уровня элемента "
-                + "(например, обработчик Выбор у колонки таблицы), флаг cellHyperlink и для кнопок – "
-                + "привязанная команда + представление/размещение (команда -> кнопка). Декларативное "
+                + "(например, обработчик Выбор у колонки таблицы), флаг cellHyperlink, у полей ввода – "
+                + "design-свойства пароля/кнопки выбора (passwordMode / choiceButton / choiceButtonPicture – "
+                + "идиома «глазика» раскрытия секрета) и для кнопок – привязанная команда + "
+                + "представление/размещение (команда -> кнопка). Декларативное "
                 + "условное оформление (УсловноеОформление: поля + отбор + оформление) – в "
                 + "conditionalAppearance, если задано. Чище, чем разбор сериализованного файла .form.");
         t.add("inputSchema", schema);
@@ -238,6 +242,18 @@ public final class FormStructureTool {
             }
             if (n.cellHyperlink != null) {
                 o.addProperty("cellHyperlink", n.cellHyperlink.booleanValue());
+            }
+            if (n.passwordMode != null) {
+                o.addProperty("passwordMode", n.passwordMode.booleanValue());
+            }
+            if (n.choiceButton != null) {
+                o.addProperty("choiceButton", n.choiceButton.booleanValue());
+            }
+            if (n.choiceButtonPicture != null) {
+                o.addProperty("choiceButtonPicture", n.choiceButtonPicture.booleanValue());
+            }
+            if (n.choiceButtonRepresentation != null) {
+                o.addProperty("choiceButtonRepresentation", n.choiceButtonRepresentation);
             }
             if (n.command != null) {
                 o.addProperty("command", n.command);
