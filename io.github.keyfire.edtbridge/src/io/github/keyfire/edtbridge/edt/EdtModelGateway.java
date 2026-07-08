@@ -1053,6 +1053,341 @@ public final class EdtModelGateway {
         return s;
     }
 
+    public static final class AddMethodResult {
+        public boolean ok;
+        public boolean applied;
+        public boolean applyPending;
+        public String modulePath;
+        public boolean moduleFound;
+        public String methodName;        // parsed from the spliced model
+        public String methodKind;        // Procedure | Function
+        public Boolean export;
+        public Boolean nameAvailable;    // false when the name already exists in the module
+        public boolean valid;            // methodText is exactly one method AND the spliced module parses clean
+        public String region;            // requested region (echo)
+        public Boolean regionFound;
+        public boolean serverBlock;      // requested
+        public Boolean serverBlockFound;
+        public String insertAfter;       // anchor description (method name / region header / <end of module>)
+        public int insertLine = -1;      // 1-based line of the inserted method in the spliced text
+        public String preview;           // text snippet around the insertion (dry-run)
+        public String plan;
+        public String message;
+    }
+
+    /**
+     * Add a new procedure/function to a module's BSL. Model-guided text splice:
+     * parse the module, resolve the insertion offset from the node model (a named {@code region}, the server
+     * {@code #Если Сервер} block, or after the last method), splice the caller's {@code methodText} and
+     * validate by RE-PARSING the result — the tool refuses to write anything that does not parse cleanly,
+     * adds not exactly one method, or duplicates an existing name. Dry-run unless {@code apply} is true.
+     * Additive (a new method is non-breaking) — no force. Token + EDITABLE are enforced by the server/caller.
+     */
+    public AddMethodResult addMethod(String projectName, String fqn, String moduleType, String modulePath,
+            String methodText, String region, Boolean serverBlockArg, boolean apply) {
+        AddMethodResult r = new AddMethodResult();
+        r.region = (region != null && !region.isBlank()) ? region : null;
+        boolean serverBlock = Boolean.TRUE.equals(serverBlockArg);
+        r.serverBlock = serverBlock;
+        IProject p = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+        if (!p.exists() || !p.isOpen()) {
+            r.message = "project not found or closed: " + projectName;
+            return r;
+        }
+        String relPath = modulePath;
+        if (relPath == null || relPath.isBlank()) {
+            ModuleTextResult shim = new ModuleTextResult();
+            relPath = resolveModulePath(p, fqn, moduleType, shim);
+            if (relPath == null) {
+                r.message = shim.message;
+                return r;
+            }
+        }
+        IFile file = p.getFile(relPath);
+        if (!file.exists()) {
+            r.message = "module file not found: " + relPath;
+            return r;
+        }
+        r.modulePath = relPath;
+        if (methodText == null || methodText.isBlank()) {
+            r.message = "methodText is required";
+            return r;
+        }
+        try {
+            String fullText = readText(file);
+            String eol = fullText.contains("\r\n") ? "\r\n" : "\n";
+
+            // 1) parse the original module; refuse to edit a module that does not already parse cleanly.
+            BslContext ctx0 = loadBslText(projectName, relPath, fullText);
+            if (ctx0.error != null || ctx0.resource == null) {
+                r.message = "cannot parse target module: " + ctx0.error;
+                return r;
+            }
+            if (!ctx0.resource.getErrors().isEmpty()) {
+                r.message = "target module has parse errors; refusing to edit a non-parsing module ("
+                        + firstError(ctx0.resource) + ")";
+                return r;
+            }
+            Module module0 = firstModule(ctx0.resource);
+            if (module0 == null) {
+                r.message = "no BSL module parsed from " + relPath;
+                return r;
+            }
+            r.moduleFound = true;
+            java.util.Set<String> baseline = new java.util.HashSet<>();
+            int baselineCount = 0;
+            for (com._1c.g5.v8.dt.bsl.model.Method m : module0.allMethods()) {
+                baseline.add(m.getName().toLowerCase());
+                baselineCount++;
+            }
+
+            // 2) resolve the insertion scope from the model (never a regex).
+            int[] scope = new int[] {0, fullText.length()};   // [start, end)
+            EObject serverIf = null;
+            if (serverBlock) {
+                serverIf = findServerIf(module0);
+                if (serverIf == null) {
+                    r.serverBlockFound = Boolean.FALSE;
+                    r.message = "server preprocessor block (#Если Сервер ...) not found in module";
+                    return r;
+                }
+                r.serverBlockFound = Boolean.TRUE;
+                ICompositeNode sn = NodeModelUtils.getNode(serverIf);
+                scope = new int[] {sn.getOffset(), sn.getEndOffset()};
+            }
+            EObject regionEo = null;
+            if (r.region != null) {
+                regionEo = findRegion(module0, r.region, scope);
+                if (regionEo == null) {
+                    r.regionFound = Boolean.FALSE;
+                    r.message = "region not found: #Область " + r.region
+                            + (serverBlock ? " (inside the server block)" : "");
+                    return r;
+                }
+                r.regionFound = Boolean.TRUE;
+                ICompositeNode rn = NodeModelUtils.getNode(regionEo);
+                scope = new int[] {rn.getOffset(), rn.getEndOffset()};
+            }
+
+            // anchor = the textually-last method belonging to the target scope. Membership is by the
+            // MODEL, never a text-offset window: EDT nests consecutive top-level #Область regions
+            // (region B parses as a child of region A), so both an offset window AND a plain
+            // isAncestor(regionA, ...) wrongly pull in region B's methods and land the insert at the
+            // module end instead of inside region A (a wrong-location bug). For a region we
+            // therefore require the method's IMMEDIATE enclosing region to equal the target region
+            // (excludes nested regions); for a server block, any method inside it (incl. its nested
+            // regions) is in scope, so containment is correct there.
+            com._1c.g5.v8.dt.bsl.model.Method anchor = null;
+            int anchorEnd = -1;
+            for (com._1c.g5.v8.dt.bsl.model.Method m : module0.allMethods()) {
+                boolean inScope;
+                if (regionEo != null) {
+                    inScope = (immediateRegion(m) == regionEo);
+                } else if (serverIf != null) {
+                    inScope = EcoreUtil.isAncestor(serverIf, m);
+                } else {
+                    inScope = true;
+                }
+                if (!inScope) {
+                    continue;
+                }
+                ICompositeNode mn = NodeModelUtils.getNode(m);
+                if (mn == null) {
+                    continue;
+                }
+                if (mn.getEndOffset() > anchorEnd) {
+                    anchorEnd = mn.getEndOffset();
+                    anchor = m;
+                }
+            }
+
+            String normalized = normalizeEol(methodText.strip(), eol);
+            int insertPos;
+            String block;
+            if (anchor != null) {
+                insertPos = anchorEnd;
+                block = eol + eol + normalized;
+                r.insertAfter = anchor.getName();
+            } else if (regionEo != null || serverIf != null) {
+                // Empty scope: place after the header line (#Область ... / #Если ... Тогда).
+                int nl = fullText.indexOf('\n', scope[0]);
+                insertPos = (nl < 0) ? scope[0] : nl + 1;
+                block = eol + normalized + eol;
+                r.insertAfter = (regionEo != null) ? ("#Область " + r.region + " (empty)") : "#Если Сервер (empty)";
+            } else {
+                // Whole module, no methods: append at the end.
+                insertPos = fullText.length();
+                block = (fullText.endsWith("\n") ? eol : eol + eol) + normalized + eol;
+                r.insertAfter = "<end of module>";
+            }
+            String spliced = fullText.substring(0, insertPos) + block + fullText.substring(insertPos);
+
+            // 3) safety invariant: the spliced module must re-parse cleanly and add exactly one method.
+            BslContext ctx1 = loadBslText(projectName, relPath, spliced);
+            if (ctx1.error != null || ctx1.resource == null) {
+                r.message = "spliced module failed to parse: " + ctx1.error;
+                return r;
+            }
+            Module module1 = firstModule(ctx1.resource);
+            if (module1 == null || !ctx1.resource.getErrors().isEmpty()) {
+                r.valid = false;
+                r.message = "refused: the result would not parse cleanly (bad methodText or insertion point). "
+                        + firstError(ctx1.resource);
+                return r;
+            }
+            // Identify the inserted method by node position inside the spliced block.
+            int blockStart = insertPos;
+            int blockEnd = insertPos + block.length();
+            com._1c.g5.v8.dt.bsl.model.Method added = null;
+            int newCount = 0;
+            for (com._1c.g5.v8.dt.bsl.model.Method m : module1.allMethods()) {
+                newCount++;
+                ICompositeNode mn = NodeModelUtils.getNode(m);
+                if (added == null && mn != null && mn.getOffset() >= blockStart && mn.getOffset() < blockEnd) {
+                    added = m;
+                }
+            }
+            if (newCount != baselineCount + 1 || added == null) {
+                r.valid = false;
+                r.message = "refused: methodText must be exactly one BSL procedure/function (parsed "
+                        + (newCount - baselineCount) + " new methods)";
+                return r;
+            }
+            r.methodName = added.getName();
+            r.methodKind = (added instanceof com._1c.g5.v8.dt.bsl.model.Function) ? "Function" : "Procedure";
+            r.export = Boolean.valueOf(added.isExport());
+            boolean dup = baseline.contains(added.getName().toLowerCase());
+            r.nameAvailable = Boolean.valueOf(!dup);
+            if (dup) {
+                r.valid = false;
+                r.message = "refused: method '" + added.getName()
+                        + "' already exists in the module (add is not replace)";
+                return r;
+            }
+            r.valid = true;
+            ICompositeNode addedNode = NodeModelUtils.getNode(added);
+            r.insertLine = (addedNode != null) ? addedNode.getStartLine() : -1;
+            r.preview = previewAround(spliced, blockStart, blockEnd);
+            r.plan = "Insert " + r.methodKind + " " + r.methodName + (Boolean.TRUE.equals(r.export) ? " (Export)" : "")
+                    + " after " + r.insertAfter + " in " + relPath
+                    + (r.region != null ? " [region " + r.region + "]" : "")
+                    + (serverBlock ? " [server block]" : "");
+
+            if (!apply) {
+                r.ok = true;
+                r.applyPending = true;
+                r.message = "dry-run: validated, nothing written. Re-call with apply=true to write.";
+                return r;
+            }
+
+            // 4) apply — atomic file write; EDT re-reads the .bsl on its next model access.
+            file.setContents(new ByteArrayInputStream(spliced.getBytes(StandardCharsets.UTF_8)),
+                    true, true, new NullProgressMonitor());
+            r.applied = true;
+            r.ok = true;
+            r.message = "method added to " + relPath;
+            return r;
+        } catch (Exception e) {
+            r.message = "add method failed: " + e.getClass().getSimpleName()
+                    + (e.getMessage() != null ? ": " + e.getMessage() : "");
+            return r;
+        }
+    }
+
+    private static Module firstModule(XtextResource res) {
+        for (EObject e : res.getContents()) {
+            if (e instanceof Module) {
+                return (Module) e;
+            }
+        }
+        return null;
+    }
+
+    private static String firstError(XtextResource res) {
+        return (res == null || res.getErrors().isEmpty()) ? "" : String.valueOf(res.getErrors().get(0).getMessage());
+    }
+
+    /** Parse {@code text} as the BSL module at {@code modulePath} into a transient resource (real URI for scoping). */
+    private BslContext loadBslText(String projectName, String modulePath, String text) {
+        BslContext ctx = new BslContext();
+        try {
+            Injector injector = bslInjector();
+            if (injector == null) {
+                ctx.error = "BSL services unavailable (EDT BSL bundle not active)";
+                return ctx;
+            }
+            IResourceFactory factory = injector.getInstance(IResourceFactory.class);
+            XtextResourceSet resourceSet = injector.getInstance(XtextResourceSet.class);
+            URI uri = URI.createURI("platform:/resource/" + projectName + "/" + modulePath);
+            XtextResource resource = (XtextResource) factory.createResource(uri);
+            resourceSet.getResources().add(resource);
+            resource.load(new ByteArrayInputStream(text.getBytes(StandardCharsets.UTF_8)), resourceSet.getLoadOptions());
+            EcoreUtil.resolveAll(resource);
+            ctx.injector = injector;
+            ctx.resource = resource;
+        } catch (Exception e) {
+            ctx.error = e.getClass().getSimpleName() + (e.getMessage() != null ? ": " + e.getMessage() : "");
+        }
+        return ctx;
+    }
+
+    /** First {@code #Если Сервер ...} preprocessor whose condition text mentions the Сервер symbol (best-effort). */
+    private static EObject findServerIf(Module module) {
+        for (java.util.Iterator<EObject> it = module.eAllContents(); it.hasNext();) {
+            EObject e = it.next();
+            if (e instanceof com._1c.g5.v8.dt.bsl.model.IfPreprocessor) {
+                ICompositeNode n = NodeModelUtils.getNode(e);
+                if (n != null && n.getText().contains("Сервер")) {
+                    return e;
+                }
+            }
+        }
+        return null;
+    }
+
+    /** Named {@code #Область} whose node lies within {@code scope} (any nesting level). */
+    private static EObject findRegion(Module module, String name, int[] scope) {
+        for (java.util.Iterator<EObject> it = module.eAllContents(); it.hasNext();) {
+            EObject e = it.next();
+            if (e instanceof com._1c.g5.v8.dt.bsl.model.RegionPreprocessor) {
+                com._1c.g5.v8.dt.bsl.model.RegionPreprocessor rp = (com._1c.g5.v8.dt.bsl.model.RegionPreprocessor) e;
+                if (name.equalsIgnoreCase(rp.getName())) {
+                    ICompositeNode n = NodeModelUtils.getNode(e);
+                    if (n != null && n.getOffset() >= scope[0] && n.getOffset() < scope[1]) {
+                        return e;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    /** The nearest enclosing {@code #Область} of an element, or {@code null} if it is outside any region. */
+    private static EObject immediateRegion(EObject e) {
+        for (EObject c = e.eContainer(); c != null; c = c.eContainer()) {
+            if (c instanceof com._1c.g5.v8.dt.bsl.model.RegionPreprocessor) {
+                return c;
+            }
+        }
+        return null;
+    }
+
+    private static String normalizeEol(String s, String eol) {
+        String lf = s.replace("\r\n", "\n").replace("\r", "\n");
+        return "\n".equals(eol) ? lf : lf.replace("\n", eol);
+    }
+
+    private static String previewAround(String text, int from, int to) {
+        int a = Math.max(0, from - 80);
+        int b = Math.min(text.length(), to + 40);
+        String snip = text.substring(a, b);
+        if (snip.length() > 1200) {
+            snip = snip.substring(0, 1200) + " ...";
+        }
+        return snip;
+    }
+
+
     /** Resolve an FQN (+ optional moduleType) to a workspace-relative .bsl path; lists candidates if ambiguous. */
     private String resolveModulePath(IProject p, String fqn, String moduleType, ModuleTextResult r) {
         if (fqn == null || fqn.isBlank()) {

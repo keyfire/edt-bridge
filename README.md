@@ -38,6 +38,7 @@ the change and serializes the `.mdo`.
 | Write tool | What it does |
 |------------|--------------|
 | `edt_add_attribute` | Add an attribute to a metadata object (type / klass / synonym / comment), validated. |
+| `edt_add_method` | Add a procedure/function to a module's BSL — model-guided insert into a named `#Область` / server block / after the last method; dry-run by default, refuses any result that would not re-parse cleanly. |
 | `edt_modify_attribute` | Change an existing attribute's type, synonym or comment. |
 | `edt_remove_attribute` | Remove an attribute (reference-checked; refuses if referenced unless forced). |
 | `edt_rename` | Rename an object or member and **cascade every reference in metadata AND BSL** via EDT's native refactoring engine (`force` required — a rename is a breaking change). |
@@ -200,6 +201,7 @@ AI-агентам и другим инструментам по протокол
 | Инструмент записи | Что делает |
 |-------------------|------------|
 | `edt_add_attribute` | Добавляет реквизит объекту метаданных (тип / синоним / comment), с валидацией. |
+| `edt_add_method` | Добавляет процедуру/функцию в BSL модуля — вставка по модели в указанную `#Область` / серверный блок / после последнего метода; по умолчанию dry-run, отказ, если результат не парсится. |
 | `edt_modify_attribute` | Меняет тип, синоним или comment существующего реквизита. |
 | `edt_remove_attribute` | Удаляет реквизит (проверка ссылок; отказ при наличии ссылок без force). |
 | `edt_rename` | Переименовывает объект или член с **каскадом всех ссылок в метаданных И в BSL** через штатный движок рефакторинга EDT (нужен `force` – переименование ломает совместимость). |

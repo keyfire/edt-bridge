@@ -26,6 +26,7 @@ import java.util.logging.Logger;
 
 import io.github.keyfire.edtbridge.edt.EdtModelGateway;
 import io.github.keyfire.edtbridge.tools.AddAttributeTool;
+import io.github.keyfire.edtbridge.tools.AddMethodTool;
 import io.github.keyfire.edtbridge.tools.RemoveAttributeTool;
 import io.github.keyfire.edtbridge.tools.ModifyAttributeTool;
 import io.github.keyfire.edtbridge.tools.RenameTool;
@@ -229,6 +230,7 @@ applyI18n();loadStatus();loadTools();
     private final FormStructureTool formStructure = new FormStructureTool();
     private final FormRenderTool formRender = new FormRenderTool();
     private final AddAttributeTool addAttribute = new AddAttributeTool();
+    private final AddMethodTool addMethod = new AddMethodTool();
     private final RemoveAttributeTool removeAttribute = new RemoveAttributeTool();
     private final ModifyAttributeTool modifyAttribute = new ModifyAttributeTool();
     private final RenameTool rename = new RenameTool();
@@ -444,6 +446,7 @@ applyI18n();loadStatus();loadTools();
         tools.add(formStructure.descriptor());
         tools.add(formRender.descriptor());
         tools.add(addAttribute.descriptor());
+        tools.add(addMethod.descriptor());
         tools.add(removeAttribute.descriptor());
         tools.add(modifyAttribute.descriptor());
         tools.add(rename.descriptor());
@@ -509,6 +512,10 @@ applyI18n();loadStatus();loadTools();
         if (addAttribute.name().equals(name)) {
             JsonObject denied = writeTokenGate(addAttribute.isWrite(), name);
             return denied != null ? denied : addAttribute.call(args);
+        }
+        if (addMethod.name().equals(name)) {
+            JsonObject denied = writeTokenGate(addMethod.isWrite(), name);
+            return denied != null ? denied : addMethod.call(args);
         }
         if (removeAttribute.name().equals(name)) {
             JsonObject denied = writeTokenGate(removeAttribute.isWrite(), name);
