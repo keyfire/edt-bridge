@@ -39,6 +39,7 @@ the change and serializes the `.mdo`.
 |------------|--------------|
 | `edt_add_attribute` | Add an attribute to a metadata object (type / klass / synonym / comment), validated. |
 | `edt_add_method` | Add a procedure/function to a module's BSL — model-guided insert into a named `#Область` / server block / after the last method; dry-run by default, refuses any result that would not re-parse cleanly. |
+| `edt_delete_method` | Delete a procedure/function from a module's BSL — the inverse of `edt_add_method`: model-guided cut of the method plus its adjacent doc comments; dry-run returns the exact text that would be removed (`deletedText`, a one-paste recovery); refuses any result that would not re-parse cleanly or would lose more than this one method (`force` required — deleting code is destructive). |
 | `edt_modify_attribute` | Change an existing attribute's type, synonym or comment. |
 | `edt_remove_attribute` | Remove an attribute (reference-checked; refuses if referenced unless forced). |
 | `edt_rename` | Rename an object or member and **cascade every reference in metadata AND BSL** via EDT's native refactoring engine (`force` required — a rename is a breaking change). |
@@ -98,6 +99,9 @@ mvn -f pom.xml clean verify
 
 To run EDT **headless** (no GUI window) so the server serves the live model, use
 `run-headless.ps1` (Windows) or `run-headless.sh --workspace <ws>` (macOS / Linux).
+On Windows, `toggle-headless.ps1` starts/stops the headless server with one action, and
+`make-shortcut.ps1 -Workspace <ws>` puts a desktop shortcut for it — handy when you want the
+bridge without launching the EDT GUI at all (a running GUI EDT is never touched).
 
 Smoke-test with curl:
 
@@ -136,8 +140,8 @@ toggle (defaults to the browser locale).
 
 - Binds **`127.0.0.1` only** — never a public interface.
 - **Writes are gated**: every write tool requires a configured token, defaults to a dry-run, and
-  operates only on your own local EDT model; `edt_rename` and `edt_delete_object` additionally need an
-  explicit `force`. No code execution: `edt_validate_query` only parses and validates.
+  operates only on your own local EDT model; `edt_rename`, `edt_delete_object` and `edt_delete_method`
+  additionally need an explicit `force`. No code execution: `edt_validate_query` only parses and validates.
 - Optional **shared-secret token** — set `EDT_BRIDGE_TOKEN` (or `-Dedt.bridge.token=`) and send
   `Authorization: Bearer <token>` (or `X-Edt-Bridge-Token: <token>`). Any local process can reach
   the port, so set a token for shared machines.
@@ -202,6 +206,7 @@ AI-агентам и другим инструментам по протокол
 |-------------------|------------|
 | `edt_add_attribute` | Добавляет реквизит объекту метаданных (тип / синоним / comment), с валидацией. |
 | `edt_add_method` | Добавляет процедуру/функцию в BSL модуля — вставка по модели в указанную `#Область` / серверный блок / после последнего метода; по умолчанию dry-run, отказ, если результат не парсится. |
+| `edt_delete_method` | Удаляет процедуру/функцию из BSL модуля — обратная операция к `edt_add_method`: вырезание по модели метода вместе с прилегающим комментарием-описанием; dry-run возвращает точный удаляемый текст (`deletedText` – восстановление одной вставкой); отказ, если результат не парсится или теряется что-то кроме этого одного метода (нужен `force` – удаление кода деструктивно). |
 | `edt_modify_attribute` | Меняет тип, синоним или comment существующего реквизита. |
 | `edt_remove_attribute` | Удаляет реквизит (проверка ссылок; отказ при наличии ссылок без force). |
 | `edt_rename` | Переименовывает объект или член с **каскадом всех ссылок в метаданных И в BSL** через штатный движок рефакторинга EDT (нужен `force` – переименование ломает совместимость). |
@@ -261,6 +266,9 @@ mvn -f pom.xml clean verify
 
 Чтобы запустить EDT **headless** (без окна GUI), используйте `run-headless.ps1` (Windows) или
 `run-headless.sh --workspace <ws>` (macOS / Linux).
+На Windows `toggle-headless.ps1` запускает/останавливает headless-сервер одним действием, а
+`make-shortcut.ps1 -Workspace <ws>` создаёт для него ярлык на рабочем столе – удобно, когда
+bridge нужен без запуска GUI EDT вообще (запущенный GUI EDT скрипт никогда не трогает).
 
 Проверка через curl:
 
@@ -294,8 +302,8 @@ curl -s -X POST http://127.0.0.1:8770/mcp -H "Content-Type: application/json" \
 
 - Слушает **только `127.0.0.1`** — никогда не публичный интерфейс.
 - **Запись под защитой**: каждый инструмент записи требует токен, по умолчанию dry-run и работает
-  только с вашей локальной моделью EDT; `edt_rename` и `edt_delete_object` дополнительно требуют явный
-  `force`. Выполнения
+  только с вашей локальной моделью EDT; `edt_rename`, `edt_delete_object` и `edt_delete_method`
+  дополнительно требуют явный `force`. Выполнения
   кода нет: `edt_validate_query` только разбирает и валидирует.
 - Опциональный **общий секрет-токен** — задайте `EDT_BRIDGE_TOKEN` (или `-Dedt.bridge.token=`) и
   присылайте `Authorization: Bearer <token>` (или `X-Edt-Bridge-Token: <token>`).

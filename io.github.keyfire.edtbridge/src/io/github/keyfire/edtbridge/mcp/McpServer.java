@@ -31,6 +31,7 @@ import io.github.keyfire.edtbridge.tools.RemoveAttributeTool;
 import io.github.keyfire.edtbridge.tools.ModifyAttributeTool;
 import io.github.keyfire.edtbridge.tools.RenameTool;
 import io.github.keyfire.edtbridge.tools.CreateObjectTool;
+import io.github.keyfire.edtbridge.tools.DeleteMethodTool;
 import io.github.keyfire.edtbridge.tools.DeleteObjectTool;
 import io.github.keyfire.edtbridge.tools.FindReferencesTool;
 import io.github.keyfire.edtbridge.tools.FormRenderTool;
@@ -231,6 +232,7 @@ applyI18n();loadStatus();loadTools();
     private final FormRenderTool formRender = new FormRenderTool();
     private final AddAttributeTool addAttribute = new AddAttributeTool();
     private final AddMethodTool addMethod = new AddMethodTool();
+    private final DeleteMethodTool deleteMethod = new DeleteMethodTool();
     private final RemoveAttributeTool removeAttribute = new RemoveAttributeTool();
     private final ModifyAttributeTool modifyAttribute = new ModifyAttributeTool();
     private final RenameTool rename = new RenameTool();
@@ -447,6 +449,7 @@ applyI18n();loadStatus();loadTools();
         tools.add(formRender.descriptor());
         tools.add(addAttribute.descriptor());
         tools.add(addMethod.descriptor());
+        tools.add(deleteMethod.descriptor());
         tools.add(removeAttribute.descriptor());
         tools.add(modifyAttribute.descriptor());
         tools.add(rename.descriptor());
@@ -516,6 +519,10 @@ applyI18n();loadStatus();loadTools();
         if (addMethod.name().equals(name)) {
             JsonObject denied = writeTokenGate(addMethod.isWrite(), name);
             return denied != null ? denied : addMethod.call(args);
+        }
+        if (deleteMethod.name().equals(name)) {
+            JsonObject denied = writeTokenGate(deleteMethod.isWrite(), name);
+            return denied != null ? denied : deleteMethod.call(args);
         }
         if (removeAttribute.name().equals(name)) {
             JsonObject denied = writeTokenGate(removeAttribute.isWrite(), name);

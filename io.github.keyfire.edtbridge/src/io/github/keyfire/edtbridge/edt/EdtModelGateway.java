@@ -1294,6 +1294,230 @@ public final class EdtModelGateway {
         }
     }
 
+    // ---- Phase 2 write — delete a BSL method from a module --------------------------------------------
+
+    /** Cap for {@link DeleteMethodResult#deletedText} (recovery payload, not a transport for huge modules). */
+    private static final int DELETED_TEXT_CAP = 40_000;
+
+    /** Result of {@link #deleteMethod}. */
+    public static final class DeleteMethodResult {
+        public boolean ok;
+        public boolean applied;
+        public boolean applyPending;
+        public String modulePath;
+        public boolean moduleFound;
+        public boolean methodFound;
+        public String methodName;        // actual-case name from the model
+        public String methodKind;        // Procedure | Function
+        public Boolean export;
+        public boolean valid;            // the module without the method re-parses clean, exactly one method gone
+        public boolean forced;
+        public int lineFrom = -1;        // 1-based method lines in the ORIGINAL text
+        public int lineTo = -1;
+        public String deletedText;       // the exact removed text (recovery: paste it back to restore)
+        public boolean deletedTextTruncated;
+        public String preview;           // text around the seam after removal
+        public String plan;
+        public String message;
+    }
+
+    /**
+     * Delete a procedure/function from a module's BSL — the inverse of {@link #addMethod}. Model-guided
+     * text cut: locate the {@code Method} node by name, cut its exact node range plus the ADJACENT leading
+     * doc-comment lines and the blank separation above (comments separated by a blank line are preserved),
+     * and validate by RE-PARSING — refuse any result that does not parse cleanly or removes anything but
+     * exactly this one method. Dry-run unless {@code apply}; deleting code is destructive and (for an
+     * exported method) breaking for consumers, so an apply additionally requires {@code force=true}.
+     * Token + EDITABLE are the server/caller's gates.
+     */
+    public DeleteMethodResult deleteMethod(String projectName, String fqn, String moduleType, String modulePath,
+            String methodName, boolean apply, boolean force) {
+        DeleteMethodResult r = new DeleteMethodResult();
+        r.forced = force;
+        IProject p = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+        if (!p.exists() || !p.isOpen()) {
+            r.message = "project not found or closed: " + projectName;
+            return r;
+        }
+        String relPath = modulePath;
+        if (relPath == null || relPath.isBlank()) {
+            ModuleTextResult shim = new ModuleTextResult();
+            relPath = resolveModulePath(p, fqn, moduleType, shim);
+            if (relPath == null) {
+                r.message = shim.message;
+                return r;
+            }
+        }
+        IFile file = p.getFile(relPath);
+        if (!file.exists()) {
+            r.message = "module file not found: " + relPath;
+            return r;
+        }
+        r.modulePath = relPath;
+        if (methodName == null || methodName.isBlank()) {
+            r.message = "methodName is required";
+            return r;
+        }
+        try {
+            String fullText = readText(file);
+
+            // 1) parse the original module; refuse to edit a module that does not already parse cleanly.
+            BslContext ctx0 = loadBslText(projectName, relPath, fullText);
+            if (ctx0.error != null || ctx0.resource == null) {
+                r.message = "cannot parse target module: " + ctx0.error;
+                return r;
+            }
+            if (!ctx0.resource.getErrors().isEmpty()) {
+                r.message = "target module has parse errors; refusing to edit a non-parsing module ("
+                        + firstError(ctx0.resource) + ")";
+                return r;
+            }
+            Module module0 = firstModule(ctx0.resource);
+            if (module0 == null) {
+                r.message = "no BSL module parsed from " + relPath;
+                return r;
+            }
+            r.moduleFound = true;
+
+            // 2) locate the method by name (BSL names are case-insensitive) via the MODEL, never a regex.
+            java.util.Set<String> baseline = new java.util.HashSet<>();
+            com._1c.g5.v8.dt.bsl.model.Method target = null;
+            int matches = 0;
+            int baselineCount = 0;
+            for (com._1c.g5.v8.dt.bsl.model.Method m : module0.allMethods()) {
+                baseline.add(m.getName().toLowerCase());
+                baselineCount++;
+                if (methodName.equalsIgnoreCase(m.getName())) {
+                    matches++;
+                    target = m;
+                }
+            }
+            if (target == null) {
+                r.methodFound = false;
+                r.message = "method not found in module: " + methodName;
+                return r;
+            }
+            if (matches > 1) {
+                r.methodFound = true;
+                r.message = "refused: " + matches + " methods named '" + methodName
+                        + "' in the module (ambiguous); fix the module first";
+                return r;
+            }
+            r.methodFound = true;
+            r.methodName = target.getName();
+            r.methodKind = (target instanceof com._1c.g5.v8.dt.bsl.model.Function) ? "Function" : "Procedure";
+            r.export = Boolean.valueOf(target.isExport());
+            ICompositeNode mn = NodeModelUtils.getNode(target);
+            if (mn == null) {
+                r.message = "no node model for method " + r.methodName;
+                return r;
+            }
+            r.lineFrom = mn.getStartLine();
+            r.lineTo = mn.getEndLine();
+
+            // 3) cut range: the method node [totalOffset, endOffset) — i.e. the method PLUS its leading
+            //    hidden tokens (the blank separation above and the adjacent doc comments), which makes
+            //    the delete the exact byte inverse of addMethod's "eol+eol+text" splice. Two guards keep
+            //    content that only LOOKS attached: (a) a trailing same-line comment of the previous
+            //    statement stays on its line; (b) comments separated from the method by a blank line
+            //    (e.g. the module header) stay — the cut then starts after the LAST blank line.
+            int sigStart = mn.getOffset();
+            int cutEnd = mn.getEndOffset();
+            int cutStart = mn.getTotalOffset();
+            int firstNl = fullText.indexOf('\n', cutStart);
+            if (firstNl >= 0 && firstNl < sigStart && !fullText.substring(cutStart, firstNl).isBlank()) {
+                cutStart = firstNl + 1;   // (a) keep the previous line's trailing comment
+            }
+            boolean nonWsAbove = false;
+            int lastBlankEnd = -1;
+            for (int pos = cutStart; pos < sigStart; ) {
+                int nl = fullText.indexOf('\n', pos);
+                int end = (nl < 0 || nl >= sigStart) ? sigStart : nl + 1;
+                if (fullText.substring(pos, end).isBlank()) {
+                    if (nonWsAbove) {
+                        lastBlankEnd = end;
+                    }
+                } else {
+                    nonWsAbove = true;
+                }
+                pos = end;
+            }
+            if (lastBlankEnd > 0) {
+                cutStart = lastBlankEnd;  // (b) keep the separated comment block + its blank line
+            }
+            String removed = fullText.substring(cutStart, cutEnd);
+            String spliced = fullText.substring(0, cutStart) + fullText.substring(cutEnd);
+
+            // 4) safety invariant: the module without the method must re-parse cleanly and lose exactly
+            //    this one method (every other name still present).
+            BslContext ctx1 = loadBslText(projectName, relPath, spliced);
+            if (ctx1.error != null || ctx1.resource == null) {
+                r.message = "module without the method failed to parse: " + ctx1.error;
+                return r;
+            }
+            Module module1 = firstModule(ctx1.resource);
+            if (module1 == null || !ctx1.resource.getErrors().isEmpty()) {
+                r.valid = false;
+                r.message = "refused: the result would not parse cleanly (the method's node range is not "
+                        + "self-contained). " + firstError(ctx1.resource);
+                return r;
+            }
+            java.util.Set<String> after = new java.util.HashSet<>();
+            int newCount = 0;
+            for (com._1c.g5.v8.dt.bsl.model.Method m : module1.allMethods()) {
+                after.add(m.getName().toLowerCase());
+                newCount++;
+            }
+            java.util.Set<String> expected = new java.util.HashSet<>(baseline);
+            expected.remove(r.methodName.toLowerCase());
+            if (newCount != baselineCount - 1 || !after.equals(expected)) {
+                r.valid = false;
+                r.message = "refused: the cut would not remove exactly the one method '" + r.methodName
+                        + "' (before " + baselineCount + ", after " + newCount + ")";
+                return r;
+            }
+            r.valid = true;
+            r.deletedText = removed;
+            if (r.deletedText.length() > DELETED_TEXT_CAP) {
+                r.deletedText = r.deletedText.substring(0, DELETED_TEXT_CAP);
+                r.deletedTextTruncated = true;
+            }
+            r.preview = previewAround(spliced, cutStart, cutStart);
+            String exportWarn = Boolean.TRUE.equals(r.export)
+                    ? " WARNING: exported method — deleting it breaks consumers; check callers via "
+                            + "edt_find_references (method mode) and prefer deprecation."
+                    : "";
+            r.plan = "Delete " + r.methodKind + " " + r.methodName
+                    + (Boolean.TRUE.equals(r.export) ? " (Export)" : "") + " from " + relPath
+                    + " [lines " + r.lineFrom + "-" + r.lineTo + "]";
+
+            if (!apply) {
+                r.ok = true;
+                r.applyPending = true;
+                r.message = "dry-run: validated, nothing deleted. Re-call with apply=true AND force=true "
+                        + "to delete." + exportWarn;
+                return r;
+            }
+            if (!force) {
+                r.message = "apply refused: deleting a method is destructive; pass force=true (the owner's "
+                        + "explicit override) to delete." + exportWarn;
+                return r;
+            }
+
+            // 5) apply — atomic file write; EDT re-reads the .bsl on its next model access.
+            file.setContents(new ByteArrayInputStream(spliced.getBytes(StandardCharsets.UTF_8)),
+                    true, true, new NullProgressMonitor());
+            r.applied = true;
+            r.ok = true;
+            r.message = "method " + r.methodName + " deleted from " + relPath + "." + exportWarn;
+            return r;
+        } catch (Exception e) {
+            r.message = "delete method failed: " + e.getClass().getSimpleName()
+                    + (e.getMessage() != null ? ": " + e.getMessage() : "");
+            return r;
+        }
+    }
+
     private static Module firstModule(XtextResource res) {
         for (EObject e : res.getContents()) {
             if (e instanceof Module) {
