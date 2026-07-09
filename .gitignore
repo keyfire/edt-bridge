@@ -3,3 +3,5 @@ bin/
 *.jar
 target/
 .DS_Store
+# dist/ carries the single release-asset jar (published by .github/workflows/release.yml on a tag)
+!dist/*.jar

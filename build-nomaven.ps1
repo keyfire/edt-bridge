@@ -6,7 +6,8 @@
 # Defaults assume a typical install; override -Pool / -JdkHome if yours differ.
 param(
   [string]$Pool    = (Join-Path $env:USERPROFILE ".p2\pool\plugins"),
-  [string]$JdkHome = $(if ($env:JAVA_HOME) { $env:JAVA_HOME } else { "" })
+  [string]$JdkHome = $(if ($env:JAVA_HOME) { $env:JAVA_HOME } else { "" }),
+  [switch]$Dist    # also place the jar into dist/ (the release asset published by the GitHub workflow)
 )
 $ErrorActionPreference = "Stop"
 $root   = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -95,4 +96,12 @@ $jarPath = Join-Path $out "io.github.keyfire.edtbridge_0.0.1.$ts.jar"
 & $jarexe cfm $jarPath $mfTmp -C $bin .
 if ($LASTEXITCODE -ne 0) { throw "jar failed (exit $LASTEXITCODE)" }
 "BUILT: $jarPath"
+if ($Dist) {
+  # dist/ holds exactly one jar - the release asset the GitHub workflow publishes on a tag.
+  $distDir = Join-Path $root "dist"
+  New-Item -ItemType Directory -Force -Path $distDir | Out-Null
+  Get-ChildItem $distDir -Filter "io.github.keyfire.edtbridge_*.jar" -ErrorAction SilentlyContinue | Remove-Item -Force
+  Copy-Item $jarPath $distDir
+  "DIST: $(Join-Path $distDir (Split-Path $jarPath -Leaf)) - commit it, tag vX.Y.Z, push the tag to release."
+}
 "Install: copy to <EDT>\dropins\ and restart EDT, then curl http://127.0.0.1:8770/mcp"

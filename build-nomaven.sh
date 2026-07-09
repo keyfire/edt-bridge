@@ -12,10 +12,12 @@ set -euo pipefail
 
 POOL=""
 JDK_HOME="${JAVA_HOME:-}"
+DIST=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --pool)     POOL="${2:?--pool needs a value}"; shift 2 ;;
     --jdk-home) JDK_HOME="${2:?--jdk-home needs a value}"; shift 2 ;;
+    --dist)     DIST=1; shift ;;   # also place the jar into dist/ (the release asset)
     -h|--help)  grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 2 ;;
   esac
@@ -143,10 +145,20 @@ echo "OK: compiled."
 
 # Package the bundle jar (concrete version instead of .qualifier).
 cp "$bundle/plugin.xml" "$bin/"
+# The DS component descriptor (Service-Component in the manifest) must be inside the jar, or the
+# lazy bundle never activates headless and the MCP server never starts (mirrors build.properties).
+cp -R "$bundle/OSGI-INF" "$bin/"
 ts="$(date +%Y%m%d%H%M)"
 mf="$out/MANIFEST.MF"
 sed "s/0\.0\.1\.qualifier/0.0.1.$ts/" "$bundle/META-INF/MANIFEST.MF" > "$mf"
 jarPath="$out/io.github.keyfire.edtbridge_0.0.1.$ts.jar"
 "$JAREXE" cfm "$jarPath" "$mf" -C "$bin" .
 echo "BUILT: $jarPath"
+if [ "$DIST" = 1 ]; then
+  # dist/ holds exactly one jar - the release asset the GitHub workflow publishes on a tag.
+  mkdir -p "$root/dist"
+  rm -f "$root/dist/io.github.keyfire.edtbridge_"*.jar
+  cp "$jarPath" "$root/dist/"
+  echo "DIST: $root/dist/$(basename "$jarPath") - commit it, tag vX.Y.Z, push the tag to release."
+fi
 echo "Install: copy to <EDT>/dropins/ and restart EDT, then curl http://127.0.0.1:8770/mcp"

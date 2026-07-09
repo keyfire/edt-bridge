@@ -90,6 +90,19 @@ Produces `build/io.github.keyfire.edtbridge_0.0.1.<timestamp>.jar`.
 mvn -f pom.xml clean verify
 ```
 
+## Releases
+
+Prebuilt jars are published on the [GitHub Releases page](https://github.com/keyfire/edt-bridge/releases)
+with a `SHA256SUMS.txt` checksum file.
+
+Why CI does not compile the jar: the build needs the 1C:EDT SDK bundles (`com._1c.*`), which are
+proprietary and cannot be redistributed or fetched anonymously — a hosted runner has no legal way
+to get the compile classpath. So a release is cut from a locally built jar: the maintainer runs
+`build-nomaven.ps1 -Dist` (or `./build-nomaven.sh --dist`), commits the jar under `dist/`, tags the
+commit `vX.Y.Z` and pushes the tag — `.github/workflows/release.yml` then creates the release and
+attaches the jar + checksum. You can always verify an asset by rebuilding from the tagged source
+against your own EDT install and comparing the class files.
+
 ## Install & run
 
 1. Copy the built jar into EDT's `dropins/` folder — Windows: `…/installations/<EDT>/1cedt/dropins/`;
@@ -256,6 +269,19 @@ powershell -File build-nomaven.ps1 -Pool "D:\path\.p2\pool\plugins" -JdkHome "C:
 ```
 mvn -f pom.xml clean verify
 ```
+
+## Релизы
+
+Готовые jar публикуются на [странице Releases](https://github.com/keyfire/edt-bridge/releases)
+вместе с файлом контрольных сумм `SHA256SUMS.txt`.
+
+Почему CI не компилирует jar: для сборки нужны SDK-бандлы 1C:EDT (`com._1c.*`) — они проприетарные,
+их нельзя ни распространять, ни скачать анонимно, поэтому у облачного раннера нет легального
+способа получить classpath. Релиз собирается локально: мейнтейнер выполняет
+`build-nomaven.ps1 -Dist` (или `./build-nomaven.sh --dist`), коммитит jar в `dist/`, ставит тег
+`vX.Y.Z` и пушит его — `.github/workflows/release.yml` создаёт релиз и прикладывает jar +
+контрольную сумму. Любой ассет можно проверить, пересобрав тегнутый исходник против своего EDT
+и сравнив class-файлы.
 
 ## Установка и запуск
 
