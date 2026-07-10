@@ -162,7 +162,7 @@ toggle (defaults to the browser locale).
 
 ## Status & roadmap
 
-- **Phase 1 (read) + Phase 2 (write) + Phase 3 (debug) — done.** 25 tools: 14 read + 6 write +
+- **Phase 1 (read) + Phase 2 (write) + Phase 3 (debug) — done.** 27 tools: 14 read + 8 write +
   5 debug (above).
 - **`edt_outgoing_structures` is best-effort and general.** It reports the top-level keys of the
   structure passed to any qualified outgoing call; pass the optional `qualifier` prefix to scope to one
@@ -337,8 +337,8 @@ curl -s -X POST http://127.0.0.1:8770/mcp -H "Content-Type: application/json" \
 
 ## Статус и план
 
-- **Фаза 1 (чтение) + Фаза 2 (запись) + Фаза 3 (отладка) — готовы.** 25 инструментов: 14 read +
-  6 write + 5 debug (выше).
+- **Фаза 1 (чтение) + Фаза 2 (запись) + Фаза 3 (отладка) — готовы.** 27 инструментов: 14 read +
+  8 write + 5 debug (выше).
 - **`edt_outgoing_structures` — best-effort и общий.** Возвращает ключи верхнего уровня структуры,
   передаваемой в любой квалифицированный исходящий вызов; необязательный префикс `qualifier`
   ограничивает одним слоем — например `ПрограммныйИнтерфейсСервиса` для проекта, направляющего
