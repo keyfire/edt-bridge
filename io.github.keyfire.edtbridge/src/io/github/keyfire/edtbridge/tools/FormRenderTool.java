@@ -43,6 +43,8 @@ public final class FormRenderTool {
         props.add("fqn", strProp("Form FQN, e.g. CommonForm.МояФорма, Catalog.Контрагенты.Form.ФормаЭлемента"));
         props.add("variant", strProp("Interface variant: TAXI (8.3) or VERSION8_5 (default VERSION8_5)"));
         props.add("theme", strProp("Theme: LIGHT (default) or DARK"));
+        props.add("density", strProp("Field density: NORMAL (default) or COMPACT — COMPACT matches EDT's compact editor mode (denser fields, larger relative font)"));
+        props.add("ratio", intProp("Interface common ratio in percent (default 100). Raise (e.g. 125/150) to enlarge the interface — text grows relative to fields, to match a Hi-DPI editor view."));
         props.add("width", intProp("Viewport width px (default 1280)"));
         props.add("height", intProp("Viewport height px (default 800)"));
         props.add("scale", intProp("Upscale the finished PNG by this percent (>100; default 100 = native size). E.g. 150 to roughly match a 150% display. Raster upscale — the render itself is at 100%."));
@@ -79,6 +81,8 @@ public final class FormRenderTool {
         }
         String variant = getStr(args, "variant");
         String theme = getStr(args, "theme");
+        String density = getStr(args, "density");
+        int ratio = getInt(args, "ratio", 0);
         int width = getInt(args, "width", 0);
         int height = getInt(args, "height", 0);
         int scale = getInt(args, "scale", 0);
@@ -88,7 +92,7 @@ public final class FormRenderTool {
             outPath = new File(System.getProperty("java.io.tmpdir"), "edt_form_" + safe + ".png").getAbsolutePath();
         }
         try {
-            EdtModelGateway.RenderResult res = gateway.renderForm(project, fqn, variant, theme, width, height, scale, outPath);
+            EdtModelGateway.RenderResult res = gateway.renderForm(project, fqn, variant, theme, density, ratio, width, height, scale, outPath);
             JsonObject o = new JsonObject();
             o.addProperty("ok", res.ok);
             o.addProperty("fqn", res.fqn);

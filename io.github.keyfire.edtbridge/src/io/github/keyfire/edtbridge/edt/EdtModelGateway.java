@@ -3215,7 +3215,7 @@ public final class EdtModelGateway {
      * Must run on the SWT UI thread (the Display thread); the MCP single-thread executor owns it.
      */
     public RenderResult renderForm(String projectName, String fqn, String variantName, String themeName,
-            int width, int height, int scale, String outPath) {
+            String densityName, int commonRatio, int width, int height, int scale, String outPath) {
         RenderResult r = new RenderResult();
         r.fqn = fqn;
         IProject p = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
@@ -3235,6 +3235,8 @@ public final class EdtModelGateway {
         }
         final ClientInterfaceVariant variant = parseVariant(variantName);
         final ClientInterfaceTheme theme = parseTheme(themeName);
+        final ClientInterfaceScale density = parseScale(densityName);
+        final int ratio = commonRatio > 0 ? commonRatio : 100;
         final int w = width > 0 ? width : 1280;
         final int h = height > 0 ? height : 800;
 
@@ -3250,7 +3252,7 @@ public final class EdtModelGateway {
                 // GUI EDT: marshal onto the workbench UI thread. syncExec briefly blocks the editor
                 // for the render (~1-2 s) — the same thread EDT's own form preview uses.
                 final Display wd = workbenchDisplay;
-                wd.syncExec(() -> renderOnUi(r, wd, model, mm, fqn, variant, theme, w, h, zoom, outPath));
+                wd.syncExec(() -> renderOnUi(r, wd, model, mm, fqn, variant, theme, density, ratio, w, h, zoom, outPath));
             } else {
                 // Headless CLI: private Display on the dedicated render thread.
                 RENDER_EXECUTOR.submit(() -> {
@@ -3258,7 +3260,7 @@ public final class EdtModelGateway {
                     if (d == null) {
                         d = new Display();
                     }
-                    renderOnUi(r, d, model, mm, fqn, variant, theme, w, h, zoom, outPath);
+                    renderOnUi(r, d, model, mm, fqn, variant, theme, density, ratio, w, h, zoom, outPath);
                     return null;
                 }).get();
             }
@@ -3284,9 +3286,9 @@ public final class EdtModelGateway {
 
     /** The whole render, on the SWT UI thread. Fills {@code r}; never throws. */
     private void renderOnUi(RenderResult r, Display d, IBmModel model, IBmModelManager mm, String fqn,
-            ClientInterfaceVariant variant, ClientInterfaceTheme theme, int w, int h, int zoom, String outPath) {
+            ClientInterfaceVariant variant, ClientInterfaceTheme theme, ClientInterfaceScale scale,
+            int commonRatio, int w, int h, int zoom, String outPath) {
         final boolean isDark = theme == ClientInterfaceTheme.ECIT_DARK;
-        final ClientInterfaceScale scale = ClientInterfaceScale.ECIS_NORMAL;
         final LFTargetPlatform targetPlatform = LFTargetPlatform.ELFT_THIN_THICK_CLIENT;
         final Version version = Version.LATEST;
 
@@ -3323,7 +3325,7 @@ public final class EdtModelGateway {
             projection = IThemeProjection.createDesktopProjection(gc);
             setHippoTheme(projection, createHippoTheme(isDark, targetPlatform, variant, compat));
             IPlatformVisualComputer pvc = projection.getPlatformVisualComputer();
-            pvc.setCommonRatio(100);
+            pvc.setCommonRatio(commonRatio);
 
             // 3) services + wire the offscreen windows. EDT's own composite doubles as the image
             //    supplier + mouse listener, so a null supplier/listener trips SWT's null check —
@@ -3497,6 +3499,14 @@ public final class EdtModelGateway {
             return ClientInterfaceTheme.ECIT_DARK;
         }
         return ClientInterfaceTheme.ECIT_LIGHT;
+    }
+
+    /** Interface density (field spacing): COMPACT matches EDT's compact editor mode; default NORMAL. */
+    private ClientInterfaceScale parseScale(String name) {
+        if (name != null && name.trim().toUpperCase().contains("COMPACT")) {
+            return ClientInterfaceScale.ECIS_COMPACT;
+        }
+        return ClientInterfaceScale.ECIS_NORMAL;
     }
 
     /** Class + message + top stack frames (and cause) — enough to locate a render-pipeline failure. */
