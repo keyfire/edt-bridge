@@ -173,7 +173,6 @@ toggle (defaults to the browser locale).
 - **Known limitation:** the server is currently single-threaded, so a long operation (e.g. a rename,
   whose native refactoring can run for minutes) blocks other requests until it finishes — the server
   appears unresponsive meanwhile. Making it multi-threaded / async is planned.
-- **Later:** test runs (YAXUnit / Vanessa) — out of scope here.
 
 ## License
 
@@ -350,7 +349,6 @@ curl -s -X POST http://127.0.0.1:8770/mcp -H "Content-Type: application/json" \
 - **Известное ограничение:** сервер пока однопоточный, поэтому долгая операция (напр. переименование,
   чей нативный рефакторинг может идти минутами) блокирует другие запросы до завершения — всё это время
   сервер не отвечает. Многопоточность / async запланированы.
-- **Дальше:** прогон тестов (YAXUnit / Vanessa) — вне этой фазы.
 
 ## Лицензия
 
