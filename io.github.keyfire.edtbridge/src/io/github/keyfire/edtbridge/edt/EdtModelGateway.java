@@ -65,6 +65,7 @@ import org.eclipse.swt.graphics.ImageLoader;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Shell;
+import org.eclipse.ui.PlatformUI;
 import org.eclipse.xtext.diagnostics.Severity;
 import org.eclipse.xtext.nodemodel.ICompositeNode;
 import org.eclipse.xtext.nodemodel.util.NodeModelUtils;
@@ -3238,25 +3239,47 @@ public final class EdtModelGateway {
         final int h = height > 0 ? height : 800;
 
         final int zoom = scale;
-        // Render on a dedicated thread with its OWN Display, isolated from the workbench's main UI
-        // thread: in a GUI EDT the platform Display lives on the main thread, so marshalling the
-        // render onto it (syncExec) freezes/​times-out the editor. A private Display avoids that and
-        // also works headless. The thread is single, so the Display is created once and reused.
+        // Where to run the render depends on the runtime. NativeRenderService.setWindows() disposes
+        // widgets it owns, and in a GUI EDT those belong to the workbench's main-thread Display — so
+        // the render MUST run on that thread (a private Display throws "Invalid thread access" inside
+        // setWindows). Headless CLI has no workbench Display, so there we own a private one on a
+        // dedicated single thread (created once, reused). Pick per runtime:
         try {
-            RENDER_EXECUTOR.submit(() -> {
-                Display d = Display.findDisplay(Thread.currentThread());
-                if (d == null) {
-                    d = new Display();
-                }
-                renderOnUi(r, d, model, mm, fqn, variant, theme, w, h, zoom, outPath);
-                return null;
-            }).get();
+            Display workbenchDisplay = workbenchDisplayOrNull();
+            if (workbenchDisplay != null && !workbenchDisplay.isDisposed()) {
+                // GUI EDT: marshal onto the workbench UI thread. syncExec briefly blocks the editor
+                // for the render (~1-2 s) — the same thread EDT's own form preview uses.
+                final Display wd = workbenchDisplay;
+                wd.syncExec(() -> renderOnUi(r, wd, model, mm, fqn, variant, theme, w, h, zoom, outPath));
+            } else {
+                // Headless CLI: private Display on the dedicated render thread.
+                RENDER_EXECUTOR.submit(() -> {
+                    Display d = Display.findDisplay(Thread.currentThread());
+                    if (d == null) {
+                        d = new Display();
+                    }
+                    renderOnUi(r, d, model, mm, fqn, variant, theme, w, h, zoom, outPath);
+                    return null;
+                }).get();
+            }
         } catch (Exception e) {
             if (r.message == null) {
                 r.message = describeThrowable(e);
             }
         }
         return r;
+    }
+
+    /** The workbench's main-thread Display in a GUI EDT, or null when running headless (CLI). */
+    private static Display workbenchDisplayOrNull() {
+        try {
+            if (PlatformUI.isWorkbenchRunning()) {
+                return PlatformUI.getWorkbench().getDisplay();
+            }
+        } catch (Throwable ignore) {
+            // No workbench (headless) — fall through to null.
+        }
+        return null;
     }
 
     /** The whole render, on the SWT UI thread. Fills {@code r}; never throws. */
