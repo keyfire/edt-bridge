@@ -53,8 +53,14 @@ public final class ProjectErrorsTool {
         JsonObject t = new JsonObject();
         t.addProperty("name", name());
         t.addProperty("description",
-                "List EDT validation problems (errors/warnings) for a project, from the live workspace.");
-        t.addProperty("descriptionRu", "Список проблем валидации EDT (ошибки/предупреждения) по проекту, из живой рабочей области.");
+                "List EDT validation problems for a project from the live workspace: both standard "
+                + "Eclipse markers (syntax/build) and EDT check results (Standards, e.g. com.e1c.v8codestyle) "
+                + "read from EDT's own marker store. Each problem carries source (eclipse|edt-check), "
+                + "severity, message, resource, line, and for EDT checks the checkId and EDT grade.");
+        t.addProperty("descriptionRu", "Список проблем валидации EDT по проекту из живой рабочей области: "
+                + "и стандартные маркеры Eclipse (синтаксис/сборка), и результаты проверок EDT (Стандарты, "
+                + "напр. com.e1c.v8codestyle) из собственного хранилища маркеров EDT. У каждой проблемы – "
+                + "источник (eclipse|edt-check), важность, сообщение, ресурс, строка, а у проверок EDT – checkId и класс важности.");
         t.add("inputSchema", schema);
         return t;
     }
@@ -74,7 +80,19 @@ public final class ProjectErrorsTool {
                 o.addProperty("message", p.message);
                 o.addProperty("resource", p.resource);
                 o.addProperty("line", p.line);
-                o.addProperty("markerType", p.markerType);
+                o.addProperty("source", p.source);
+                if (p.checkId != null) {
+                    o.addProperty("checkId", p.checkId);
+                }
+                if (p.edtSeverity != null) {
+                    o.addProperty("edtSeverity", p.edtSeverity);
+                }
+                if (p.location != null) {
+                    o.addProperty("location", p.location);
+                }
+                if (p.markerType != null) {
+                    o.addProperty("markerType", p.markerType);
+                }
                 arr.add(o);
             }
             JsonObject payload = new JsonObject();

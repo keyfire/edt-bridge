@@ -52,6 +52,7 @@ $need = @(
   'com._1c.g5.v8.dt.form.presentation',
   'com._1c.g5.v8.dt.dcs.model',
   'com._1c.g5.v8.dt.platform',
+  'com._1c.g5.v8.dt.validation',
   'com._1c.g5.v8.dt.refactoring.core',
   'com._1c.g5.v8.dt.md.refactoring',
   'com._1c.g5.v8.bm.core',

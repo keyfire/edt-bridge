@@ -66,6 +66,10 @@ import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.ui.PlatformUI;
+import com._1c.g5.v8.dt.validation.marker.IMarkerManager;
+import com._1c.g5.v8.dt.validation.marker.Marker;
+import com._1c.g5.v8.dt.validation.marker.MarkerFilter;
+import com._1c.g5.v8.dt.validation.marker.MarkerSeverity;
 import org.eclipse.xtext.diagnostics.Severity;
 import org.eclipse.xtext.nodemodel.ICompositeNode;
 import org.eclipse.xtext.nodemodel.util.NodeModelUtils;
@@ -230,11 +234,15 @@ public final class EdtModelGateway {
     /** A single validation problem (errors and warnings). */
     public static final class Problem {
         public String project;
-        public String severity; // ERROR | WARNING
+        public String severity; // ERROR | WARNING | INFO
         public String message;
         public String resource; // project-relative path
         public int line;        // -1 if not applicable
         public String markerType;
+        public String source;   // "eclipse" (Eclipse IMarker) | "edt-check" (EDT check store)
+        public String checkId;  // EDT check id, e.g. com.e1c.v8codestyle.bsl:module-unused-local-variable
+        public String edtSeverity; // EDT grade for edt-check: BLOCKER/CRITICAL/MAJOR/MINOR/TRIVIAL
+        public String location; // EDT location, e.g. "строка 8" or a field presentation
     }
 
     public List<Problem> getProjectErrors(String projectName) throws CoreException {
@@ -256,6 +264,7 @@ public final class EdtModelGateway {
 
         List<Problem> out = new ArrayList<>();
         for (IProject p : projects) {
+            // 1) Standard Eclipse markers (syntax/build problems surfaced as IMarker.PROBLEM).
             IMarker[] markers = p.findMarkers(IMarker.PROBLEM, true, IResource.DEPTH_INFINITE);
             for (IMarker m : markers) {
                 int sev = m.getAttribute(IMarker.SEVERITY, IMarker.SEVERITY_INFO);
@@ -276,10 +285,73 @@ public final class EdtModelGateway {
                 } catch (CoreException e) {
                     pr.markerType = "?";
                 }
+                pr.source = "eclipse";
                 out.add(pr);
             }
+            // 2) EDT validation markers (the "Standards"/check results, com.e1c.v8codestyle & co).
+            //    These live in EDT's OWN marker store (IMarkerManager), NOT as Eclipse IMarker, so
+            //    step 1 misses them — yet this is exactly what EDT's Problems/Checks view shows.
+            out.addAll(readEdtCheckMarkers(p));
         }
         return out;
+    }
+
+    /**
+     * Read EDT check markers from EDT's marker store (IMarkerManager) for one project. Returns empty
+     * on any failure (headless CLI without the service, API mismatch) so Eclipse markers still work.
+     */
+    private List<Problem> readEdtCheckMarkers(IProject p) {
+        List<Problem> out = new ArrayList<>();
+        try {
+            IMarkerManager mgr = ServiceAccess.get(IMarkerManager.class);
+            if (mgr == null) {
+                return out;
+            }
+            mgr.markers(MarkerFilter.createProjectFilter(p)).forEach(mk -> {
+                MarkerSeverity ms = mk.getSeverity();
+                if (ms == null || ms == MarkerSeverity.NONE) {
+                    return;
+                }
+                Problem pr = new Problem();
+                pr.project = p.getName();
+                pr.edtSeverity = ms.name();
+                pr.severity = mapEdtSeverity(ms);
+                pr.message = mk.getMessage();
+                pr.checkId = mk.getCheckId();
+                pr.location = mk.getLocation();
+                pr.resource = mk.getObjectPresentation();
+                pr.line = parseLine(mk.getLocation());
+                pr.source = "edt-check";
+                out.add(pr);
+            });
+        } catch (Throwable t) {
+            // EDT marker store unavailable / API mismatch — keep Eclipse markers only.
+        }
+        return out;
+    }
+
+    /** Map EDT's 1C grade to the ERROR/WARNING/INFO buckets project_errors already uses. */
+    private static String mapEdtSeverity(MarkerSeverity ms) {
+        switch (ms) {
+            case ERRORS:
+            case BLOCKER:
+            case CRITICAL:
+                return "ERROR";
+            case MAJOR:
+            case MINOR:
+                return "WARNING";
+            default:
+                return "INFO"; // TRIVIAL
+        }
+    }
+
+    /** Pull a line number out of an EDT location like "строка 8" / "line 8"; -1 if none. */
+    private static int parseLine(String location) {
+        if (location == null) {
+            return -1;
+        }
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d+)").matcher(location);
+        return m.find() ? Integer.parseInt(m.group(1)) : -1;
     }
 
     /** Names of the currently open workspace projects (for the status dashboard). */
