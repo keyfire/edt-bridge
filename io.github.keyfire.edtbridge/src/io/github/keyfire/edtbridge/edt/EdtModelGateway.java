@@ -196,6 +196,7 @@ import com._1c.g5.v8.dt.debug.core.model.IBslVariable;
 import com._1c.g5.v8.dt.debug.core.model.values.IBslValue;
 import com._1c.g5.v8.dt.debug.core.model.IDebugMonitoringManager;
 import com._1c.g5.v8.dt.debug.model.base.data.DebugTargetType;
+import com._1c.g5.v8.dt.debug.model.area.DebugAreaInfo;
 import com._1c.g5.v8.dt.debug.core.model.evaluation.IEvaluationEngine;
 import com._1c.g5.v8.dt.debug.core.model.evaluation.IEvaluationRequest;
 import com._1c.g5.v8.dt.debug.core.model.evaluation.IEvaluationResult;
@@ -5379,10 +5380,16 @@ public final class EdtModelGateway {
                 // Auto-attach to running debug items so threads appear (background jobs, server calls,
                 // clients). Without this the connection is up but has no threads to inspect/suspend.
                 try {
+                    // All desktop debug-item types (mobile excluded). Crucially includes the FILE_MODE
+                    // variants (JOB_FILE_MODE, WEB_SOCKET_FILE_MODE) and plain CLIENT — a thin client
+                    // against a FILE infobase registers through those, so a narrower list sees no threads.
                     rt.setAutoconnectDebugTargets(java.util.List.of(
-                            DebugTargetType.JOB, DebugTargetType.SERVER, DebugTargetType.MANAGED_CLIENT,
-                            DebugTargetType.WEB_CLIENT, DebugTargetType.HTTP_SERVICE,
-                            DebugTargetType.WEB_SERVICE));
+                            DebugTargetType.CLIENT, DebugTargetType.MANAGED_CLIENT, DebugTargetType.WEB_CLIENT,
+                            DebugTargetType.SERVER, DebugTargetType.SERVER_EMULATION,
+                            DebugTargetType.JOB, DebugTargetType.JOB_FILE_MODE,
+                            DebugTargetType.WEB_SOCKET, DebugTargetType.WEB_SOCKET_FILE_MODE,
+                            DebugTargetType.HTTP_SERVICE, DebugTargetType.WEB_SERVICE,
+                            DebugTargetType.ODATA, DebugTargetType.COM_CONNECTOR));
                 } catch (Exception autoEx) {
                     r.warning = "autoconnect targets not set (" + autoEx.getClass().getSimpleName()
                             + ") — threads may not attach; ";
@@ -5408,6 +5415,24 @@ public final class EdtModelGateway {
                     }
                 }
             }
+            // Subscribe to the infobase's data areas. WITHOUT this the target is attached but sees NO
+            // threads: a running client executes inside a data area the debugger isn't scoped to, so
+            // getThreads() stays empty. For a plain (non-multitenant) infobase this is the single
+            // default area; subscribe to every area the server reports.
+            String areaNote = "";
+            if (rt != null) {
+                try {
+                    java.util.List<DebugAreaInfo> areas = rt.getDebugAreas();
+                    if (areas != null && !areas.isEmpty()) {
+                        rt.setDebugAreas(areas);
+                        areaNote = "subscribed to " + areas.size() + " data area(s)";
+                    } else {
+                        areaNote = "no data areas reported by the server";
+                    }
+                } catch (Exception areaEx) {
+                    areaNote = "setDebugAreas failed (" + areaEx.getClass().getSimpleName() + ") — threads may stay hidden";
+                }
+            }
             r.targetCount = launch.getDebugTargets().length;
             if (rt == null) {
                 detachLaunch(lm, launch);
@@ -5430,8 +5455,8 @@ public final class EdtModelGateway {
             r.message = "attached debug session " + sid + " to " + url + " (infobase " + alias + ")"
                     + (r.connected ? " — connected" : " — created, not yet connected");
             r.warning = (r.warning == null ? "" : r.warning)
-                    + "ОТЛАДКА ЖИВОЙ ИБ – только тестовый стенд, никогда продакшен . Скоуп областей "
-                    + "данных (setDebugAreas) пока НЕ применён – не подключайтесь к мультиарендной ИБ без него.";
+                    + "ОТЛАДКА ЖИВОЙ ИБ – только тестовый стенд, никогда продакшен. Области данных: "
+                    + areaNote + ".";
         } catch (Exception ex) {
             if (launch != null) {
                 detachLaunch(lm, launch);
