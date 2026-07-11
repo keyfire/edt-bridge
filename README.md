@@ -12,7 +12,7 @@ semantic cross-references, and **query validation against the project's actual m
 
 **English** · [Русский](#русский)
 
-Development notes and updates (in Russian): the [1С × ИИ: инженерный цех](https://t.me/ceh_1c_ai) Telegram channel.
+Development notes and updates (in Russian): the [1C × AI: engineering workshop](https://t.me/ceh_1c_ai) Telegram channel.
 
 ## Tools
 
