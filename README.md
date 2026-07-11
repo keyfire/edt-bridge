@@ -12,6 +12,8 @@ semantic cross-references, and **query validation against the project's actual m
 
 **English** · [Русский](#русский)
 
+Development notes and updates (in Russian): the [1С × ИИ: инженерный цех](https://t.me/ceh_1c_ai) Telegram channel.
+
 ## Tools
 
 | Tool | What it returns |
@@ -191,6 +193,8 @@ AI-агентам и другим инструментам по протокол
 
 > Чтение **и** запись. Только localhost; запись под токеном и по умолчанию dry-run. Плагин работает
 > внутри EDT — EDT должен быть запущен с открытым проектом.
+
+Заметки о разработке и новости – в Telegram-канале [1С × ИИ: инженерный цех](https://t.me/ceh_1c_ai).
 
 ## Инструменты
 
