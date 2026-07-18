@@ -1,5 +1,7 @@
 # Security Policy
 
+**English** · [Русский](SECURITY.ru.md)
+
 ## Supported versions
 
 edt-bridge is pre-1.0 and ships fixes on the latest release line only. Please reproduce on the most

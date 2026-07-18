@@ -1,5 +1,7 @@
 # Contributing to edt-bridge
 
+**English** · [Русский](CONTRIBUTING.ru.md)
+
 Thanks for your interest. edt-bridge is a 1C:EDT plugin plus a small Python wrapper; this guide
 covers building it, the conventions, and how to propose changes.
 
@@ -22,12 +24,12 @@ bundles, which are proprietary and provided by your local EDT install (so there 
 
 ```powershell
 # Windows – defaults: -Pool %USERPROFILE%\.p2\pool\plugins, -JdkHome %JAVA_HOME%
-powershell -ExecutionPolicy Bypass -File build-nomaven.ps1
+powershell -ExecutionPolicy Bypass -File scripts/build-nomaven.ps1
 ```
 
 ```bash
 # macOS / Linux – --pool auto-detected from the installed 1C:EDT component pool
-./build-nomaven.sh
+./scripts/build-nomaven.sh
 ```
 
 The jar lands in `build/`. Maven + Tycho (`mvn -f pom.xml clean verify`) is available for a full
