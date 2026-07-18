@@ -153,8 +153,12 @@ cp "$bundle/plugin.xml" "$bin/"
 cp -R "$bundle/OSGI-INF" "$bin/"
 ts="$(date +%Y%m%d%H%M)"
 mf="$out/MANIFEST.MF"
-sed "s/0\.0\.1\.qualifier/0.0.1.$ts/" "$bundle/META-INF/MANIFEST.MF" > "$mf"
-jarPath="$out/io.github.keyfire.edtbridge_0.0.1.$ts.jar"
+# Base version comes from the manifest's Bundle-Version (X.Y.Z.qualifier), so a version bump
+# there flows into the jar name; .qualifier is replaced with the build timestamp.
+baseVer="$(sed -n 's/^Bundle-Version:[[:space:]]*\([0-9]*\.[0-9]*\.[0-9]*\)\.qualifier.*/\1/p' "$bundle/META-INF/MANIFEST.MF")"
+baseVer="${baseVer:-0.0.1}"
+sed "s/${baseVer}\.qualifier/${baseVer}.$ts/" "$bundle/META-INF/MANIFEST.MF" > "$mf"
+jarPath="$out/io.github.keyfire.edtbridge_${baseVer}.$ts.jar"
 "$JAREXE" cfm "$jarPath" "$mf" -C "$bin" .
 echo "BUILT: $jarPath"
 if [ "$DIST" = 1 ]; then

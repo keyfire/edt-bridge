@@ -93,10 +93,14 @@ Copy-Item (Join-Path $bundle "plugin.xml") $bin -Force
 # build.properties bin.includes; mirror that here.
 Copy-Item (Join-Path $bundle "OSGI-INF") $bin -Recurse -Force
 $ts = Get-Date -Format "yyyyMMddHHmm"
-$mf = (Get-Content (Join-Path $bundle "META-INF\MANIFEST.MF") -Raw) -replace '0\.0\.1\.qualifier', "0.0.1.$ts"
+$mfRaw = Get-Content (Join-Path $bundle "META-INF\MANIFEST.MF") -Raw
+# Base version comes from the manifest's Bundle-Version (X.Y.Z.qualifier), so a version bump
+# there flows into the jar name; .qualifier is replaced with the build timestamp.
+$baseVer = if ($mfRaw -match 'Bundle-Version:\s*(\d+\.\d+\.\d+)\.qualifier') { $Matches[1] } else { '0.0.1' }
+$mf = $mfRaw -replace ([regex]::Escape("$baseVer.qualifier")), "$baseVer.$ts"
 $mfTmp = Join-Path $out "MANIFEST.MF"
 Set-Content -Path $mfTmp -Value $mf -Encoding ASCII
-$jarPath = Join-Path $out "io.github.keyfire.edtbridge_0.0.1.$ts.jar"
+$jarPath = Join-Path $out "io.github.keyfire.edtbridge_$baseVer.$ts.jar"
 & $jarexe cfm $jarPath $mfTmp -C $bin .
 if ($LASTEXITCODE -ne 0) { throw "jar failed (exit $LASTEXITCODE)" }
 "BUILT: $jarPath"

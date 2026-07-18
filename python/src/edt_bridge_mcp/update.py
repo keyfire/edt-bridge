@@ -118,7 +118,9 @@ def install_latest_jar(dropins: Path, emit=log) -> bool:
             expected = None
             for line in sums_tmp.read_text(encoding="utf-8").splitlines():
                 parts = line.split()
-                if len(parts) >= 2 and parts[-1].lstrip("*") == name:
+                # `sha256sum dist/<jar>` writes the path with its dist/ prefix; match on the
+                # basename so a path-prefixed checksum line still verifies the downloaded asset.
+                if len(parts) >= 2 and parts[-1].lstrip("*").rsplit("/", 1)[-1] == name:
                     expected = parts[0].lower()
             actual = _sha256(tmp)
             if expected is None:
