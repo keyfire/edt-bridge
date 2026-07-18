@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "edt-bridge-mcp"
+version = "0.1.0"
+description = "stdio MCP front-end for the edt-bridge 1C:EDT plugin: proxies to a running EDT, or auto-starts a headless one"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+authors = [{ name = "edt-bridge contributors" }]
+keywords = ["1c", "edt", "mcp", "model-context-protocol"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Build Tools",
+]
+
+[project.urls]
+Homepage = "https://github.com/keyfire/edt-bridge"
+
+[project.scripts]
+edt-bridge-mcp = "edt_bridge_mcp.server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
