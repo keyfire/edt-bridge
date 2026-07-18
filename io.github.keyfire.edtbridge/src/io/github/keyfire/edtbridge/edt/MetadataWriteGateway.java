@@ -217,8 +217,8 @@ public final class MetadataWriteGateway {
         if (r.message == null) {
             r.ok = r.ownerFound && r.ownerSupportsAttributes && Boolean.TRUE.equals(r.nameAvailable)
                     && r.typeValid && (r.refFqn == null || Boolean.TRUE.equals(r.refResolved));
-            r.plan = "Добавить реквизит \"" + name + "\" типа " + (r.typeParsed != null ? r.typeParsed : typeSpec)
-                    + " в " + ownerFqn + (synonymRu != null && !synonymRu.isBlank() ? " (синоним: " + synonymRu + ")" : "");
+            r.plan = "Add attribute \"" + name + "\" of type " + (r.typeParsed != null ? r.typeParsed : typeSpec)
+                    + " to " + ownerFqn + (synonymRu != null && !synonymRu.isBlank() ? " (synonym: " + synonymRu + ")" : "");
             if (!r.typeValid) {
                 r.message = "type not recognized: \"" + typeSpec + "\" (supported: Строка(N), Число(N,M), "
                         + "Булево, Дата/ДатаВремя/Время, ХранилищеЗначения, ОпределяемыйТип.X, and a reference "
@@ -399,8 +399,8 @@ public final class MetadataWriteGateway {
             return r; // owner/attr-not-found message already set
         }
         r.ok = !r.referenced || force;
-        r.plan = "Удалить реквизит \"" + name + "\" из " + ownerFqn + " (входящих ссылок всего: "
-                + r.refCount + ", внешних: " + r.externalRefCount + ")";
+        r.plan = "Remove attribute \"" + name + "\" from " + ownerFqn + " (inbound references: "
+                + r.refCount + " total, " + r.externalRefCount + " external)";
         if (r.referenced && !force) {
             r.message = "attribute is referenced by " + r.externalRefCount + " other object(s) – removal "
                     + "blocked; pass force=true to remove anyway (this will break those references). "
@@ -573,19 +573,19 @@ public final class MetadataWriteGateway {
             return r;
         }
         r.ok = (!wantType || (r.typeValid && (r.refFqn == null || Boolean.TRUE.equals(r.refResolved))));
-        StringBuilder plan = new StringBuilder("Изменить реквизит \"" + name + "\" в " + ownerFqn + ":");
+        StringBuilder plan = new StringBuilder("Modify attribute \"" + name + "\" in " + ownerFqn + ":");
         if (wantType) {
-            plan.append(" тип ").append(r.currentType != null ? r.currentType : "?").append(" → ").append(r.newType);
+            plan.append(" type ").append(r.currentType != null ? r.currentType : "?").append(" → ").append(r.newType);
         }
         if (wantSyn) {
-            plan.append(" синоним(ru) → \"").append(newSynonymRu).append("\"");
+            plan.append(" synonym(ru) → \"").append(newSynonymRu).append("\"");
         }
         if (wantComment) {
             plan.append(" comment → \"").append(newComment).append("\"");
         }
         r.plan = plan.toString();
         if (wantType) {
-            r.warning = "смена типа реквизита может нарушить обратную совместимость (данные в ИБ и код).";
+            r.warning = "changing an attribute's type can break backward compatibility (infobase data and code).";
             if (!r.typeValid) {
                 r.message = "type not recognized: \"" + newType + "\"";
             } else if (r.refFqn != null && Boolean.FALSE.equals(r.refResolved)) {
@@ -816,12 +816,12 @@ public final class MetadataWriteGateway {
             return r; // message already set
         }
         r.ok = r.refactoringCount > 0 && r.problems.isEmpty();
-        r.plan = "Переименовать " + (r.topObject ? "объект" : "реквизит/член") + " \"" + r.currentName
-                + "\" → \"" + newName + "\" в " + targetFqn + " (затрагиваемых изменений: "
+        r.plan = "Rename " + (r.topObject ? "object" : "attribute/member") + " \"" + r.currentName
+                + "\" → \"" + newName + "\" in " + targetFqn + " (affected changes: "
                 + r.items.size() + (r.truncated ? "+" : "") + ", refactorings: " + r.refactoringCount + ")";
-        r.warning = "переименование меняет контракт метаданных и НАРУШАЕТ обратную совместимость для "
-                + "конфигураций-партнёров (SA/SM/расширения на других внедрениях);. Каскад "
-                + "затрагивает метаданные И BSL во всех проектах. Требуется одобрение владельца.";
+        r.warning = "a rename changes the metadata contract and BREAKS backward compatibility for "
+                + "dependent configurations and extensions on other deployments. The cascade touches "
+                + "metadata AND BSL across all projects. Requires explicit confirmation (force).";
         if (!r.problems.isEmpty()) {
             r.message = "refactoring engine reported " + r.problems.size() + " problem(s) – apply blocked "
                     + "(e.g. name taken, or object not editable / support-locked).";
@@ -1067,12 +1067,12 @@ public final class MetadataWriteGateway {
             return r; // target-not-found message already set
         }
         r.ok = r.refactoringCount > 0 && r.problems.isEmpty();
-        r.plan = "Удалить " + (r.topObject ? "объект" : "член") + " \"" + r.name + "\" (" + targetFqn
-                + "), затрагиваемых изменений: " + r.items.size() + (r.truncated ? "+" : "")
+        r.plan = "Delete " + (r.topObject ? "object" : "member") + " \"" + r.name + "\" (" + targetFqn
+                + "); affected changes: " + r.items.size() + (r.truncated ? "+" : "")
                 + ", refactorings: " + r.refactoringCount;
-        r.warning = "удаление объекта НЕОБРАТИМО и НАРУШАЕТ обратную совместимость для конфигураций-партнёров; "
-                + "каскад удаляет .mdo объекта и чистит ссылки в метаданных И BSL во всех проектах. Требуется "
-                + "одобрение владельца. Перед apply сделайте резервную копию.";
+        r.warning = "deleting an object is IRREVERSIBLE and BREAKS backward compatibility for dependent "
+                + "configurations; the cascade removes the object's .mdo and clears references in metadata "
+                + "AND BSL across all projects. Requires explicit confirmation (force). Back up before apply.";
         if (!r.problems.isEmpty()) {
             r.message = "refactoring engine reported " + r.problems.size() + " problem(s) – apply blocked "
                     + "(e.g. object not editable / support-locked).";
@@ -1260,12 +1260,11 @@ public final class MetadataWriteGateway {
         });
 
         r.ok = r.configFound && featureName[0] != null && Boolean.TRUE.equals(r.nameAvailable);
-        r.plan = "Создать " + objectType + " \"" + name + "\" (" + fqn + ")"
-                + (r.feature != null ? " в Configuration." + r.feature : "")
-                + (synonymRu != null && !synonymRu.isBlank() ? " (синоним: " + synonymRu + ")" : "");
-        r.warning = "новый объект становится частью контракта конфигурации (поставляемая технология, "
-                + "/alienability) – имя по конвенциям; добавление аддитивно и обратную совместимость "
-                + "не ломает.";
+        r.plan = "Create " + objectType + " \"" + name + "\" (" + fqn + ")"
+                + (r.feature != null ? " in Configuration." + r.feature : "")
+                + (synonymRu != null && !synonymRu.isBlank() ? " (synonym: " + synonymRu + ")" : "");
+        r.warning = "a new object becomes part of the configuration contract – name it per conventions; "
+                + "the addition is additive and does not break backward compatibility.";
         if (!r.configFound) {
             r.message = "Configuration top object not found";
         } else if (featureName[0] == null) {
