@@ -1,0 +1,21 @@
+name: Feature request
+description: Suggest a new tool or an improvement
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / use case
+      description: What are you trying to do that edt-bridge does not support yet?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: The tool or change you have in mind. Does it need EDT's *live* model (something a static parser cannot answer)?
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you looked at, and why they fall short.

@@ -1,0 +1,45 @@
+name: Bug report
+description: Something in edt-bridge behaves unexpectedly or fails
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please reproduce on the latest release first.
+        For a security-sensitive issue, use the security policy instead of this form (see SECURITY.md).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what actually happened.
+      placeholder: I called edt_... with ... and expected ..., but ...
+    validations:
+      required: true
+  - type: textarea
+    id: tool-response
+    attributes:
+      label: Tool response / EDT log
+      description: The tool's JSON response, or the relevant line from the EDT log.
+      render: text
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: edt-bridge version, 1C:EDT version, and OS.
+      placeholder: "edt-bridge 0.2.1, 1C:EDT 2026.1, Windows 11"
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: How is EDT running?
+      options:
+        - GUI EDT
+        - Headless (auto-started by the wrapper)
+        - Headless (run-headless script)
+        - Not sure
+  - type: input
+    id: client
+    attributes:
+      label: MCP client
+      description: e.g. Claude Code, the built-in dashboard, direct HTTP.
