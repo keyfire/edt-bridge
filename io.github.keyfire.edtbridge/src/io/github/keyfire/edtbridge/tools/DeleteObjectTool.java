@@ -25,7 +25,7 @@ import com.google.gson.JsonObject;
 /**
  * MCP tool: edt_delete_object - WRITE (Phase 2). The inverse of edt_create_object: deletes a metadata
  * object (a top object such as Catalog.X, or a child member) and cascades the removal of every reference
- * in metadata AND BSL using EDT's OWN refactoring engine — not a brittle text edit. Dry-run by default
+ * in metadata AND BSL using EDT's OWN refactoring engine – not a brittle text edit. Dry-run by default
  * (apply=false) returns the engine's change list + validation problems. Deleting an object is
  * irreversible and breaking for peer configurations: an apply requires a configured token AND force=true
  * (the owner's explicit override); the caller must verify bsl_support_status EDITABLE before apply.
@@ -38,7 +38,7 @@ public final class DeleteObjectTool {
         return "edt_delete_object";
     }
 
-    /** Write tool — the server gates this on a configured token. */
+    /** Write tool – the server gates this on a configured token. */
     public boolean isWrite() {
         return true;
     }
@@ -72,7 +72,7 @@ public final class DeleteObjectTool {
                 + "engine removes the object's .mdo and updates the Configuration. Dry-run by default: returns "
                 + "the engine's change list + validation problems WITHOUT deleting. apply=true performs the "
                 + "cascade; requires a configured token AND force=true (delete is irreversible and breaking for "
-                + "peer configurations — owner approval). Verify bsl_support_status EDITABLE before apply.");
+                + "peer configurations – owner approval). Verify bsl_support_status EDITABLE before apply.");
         t.addProperty("descriptionRu",
                 "ЗАПИСЬ (Phase 2): удалить объект метаданных (объект или его член) с каскадным удалением ВСЕХ "
                 + "ссылок в метаданных И в BSL через штатный движок рефакторинга EDT; движок сам удаляет .mdo "

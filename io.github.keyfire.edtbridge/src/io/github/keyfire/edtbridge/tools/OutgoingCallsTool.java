@@ -44,7 +44,7 @@ public final class OutgoingCallsTool {
         props.add("moduleType", strProp("For object FQNs: ObjectModule / ManagerModule / ... Optional."));
         props.add("method", strProp("Restrict the analysis to this procedure/function. Optional (default: "
                 + "the whole module)."));
-        props.add("modulePath", strProp("Workspace-relative .bsl path — an alternative to fqn. Optional."));
+        props.add("modulePath", strProp("Workspace-relative .bsl path – an alternative to fqn. Optional."));
         props.add("extApiPrefix", strProp("Module-name prefix treated as the ExtAPI layer for the extApi "
                 + "flag (default: ПрограммныйИнтерфейсСервиса). Optional."));
 
@@ -59,15 +59,15 @@ public final class OutgoingCallsTool {
         JsonObject t = new JsonObject();
         t.addProperty("name", name());
         t.addProperty("description",
-                "READ: which methods a module / method / form module CALLS (one level out) — the reverse of "
+                "READ: which methods a module / method / form module CALLS (one level out) – the reverse of "
                 + "edt_find_references. Returns distinct qualifier.method targets with a call-site count and "
                 + "an extApi flag (calls through the ExtAPI layer, default prefix ПрограммныйИнтерфейсСервиса). "
                 + "Resolve by fqn or modulePath; optional method to scope to one procedure/function.");
         t.addProperty("descriptionRu",
-                "ЧТЕНИЕ: какие методы вызывает модуль / метод / модуль формы (на один уровень наружу) — "
+                "ЧТЕНИЕ: какие методы вызывает модуль / метод / модуль формы (на один уровень наружу) – "
                 + "обратное к edt_find_references. Возвращает различные цели вида квалификатор.метод с числом "
                 + "мест вызова и флагом extApi (вызовы через слой ExtAPI, префикс по умолчанию "
-                + "ПрограммныйИнтерфейсСервиса). Адресация по fqn или modulePath; method — ограничить одной "
+                + "ПрограммныйИнтерфейсСервиса). Адресация по fqn или modulePath; method – ограничить одной "
                 + "процедурой/функцией.");
         t.add("inputSchema", schema);
         return t;

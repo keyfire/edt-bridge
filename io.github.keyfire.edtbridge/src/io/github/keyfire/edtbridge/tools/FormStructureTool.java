@@ -61,10 +61,10 @@ public final class FormStructureTool {
                 + "(fields, groups, tables, buttons, decorations) with their data bindings, plus the "
                 + "form's attributes (with value types), commands, parameters and event handlers "
                 + "(form event -> BSL handler). Items also carry their static visible/enabled/readOnly "
-                + "(DESIGN values from .form — runtime BSL e.g. ПриСозданииНаСервере may override them), "
+                + "(DESIGN values from .form – runtime BSL e.g. ПриСозданииНаСервере may override them), "
                 + "per-item event handlers (e.g. a table column's Selection/Выбор handler), a cellHyperlink "
                 + "flag, for input fields the password/choice-button design props (passwordMode / choiceButton / "
-                + "choiceButtonPicture — the reveal-eye secret idiom), and for buttons the wired command + "
+                + "choiceButtonPicture – the reveal-eye secret idiom), and for buttons the wired command + "
                 + "representation/placement (command -> button). The "
                 + "form's declarative conditional appearance (УсловноеОформление: fields + filter + appearance) "
                 + "is returned in conditionalAppearance when present. Cleaner than parsing the serialized .form.");

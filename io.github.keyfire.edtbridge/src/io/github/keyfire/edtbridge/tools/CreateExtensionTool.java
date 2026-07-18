@@ -37,14 +37,14 @@ public final class CreateExtensionTool {
         return "edt_create_extension";
     }
 
-    /** Write tool — the server gates this on a configured token. */
+    /** Write tool – the server gates this on a configured token. */
     public boolean isWrite() {
         return true;
     }
 
     public JsonObject descriptor() {
         JsonObject props = new JsonObject();
-        props.add("name", strProp("New extension project (and extension configuration) name — "
+        props.add("name", strProp("New extension project (and extension configuration) name – "
                 + "a valid identifier, Cyrillic allowed"));
         props.add("baseProjectName", strProp("Base configuration project in the workspace that the "
                 + "extension extends"));
@@ -73,7 +73,7 @@ public final class CreateExtensionTool {
                 + "configuration project, via EDT's own IExtensionProjectManager (the New Configuration "
                 + "Extension wizard engine); stamps the extension's name prefix and purpose. Dry-run by "
                 + "default: validates and returns the plan WITHOUT creating. apply=true creates the "
-                + "project (model loads in background — poll edt_projects). Additive — no force needed — "
+                + "project (model loads in background – poll edt_projects). Additive – no force needed – "
                 + "but requires a configured token.");
         t.addProperty("descriptionRu",
                 "ЗАПИСЬ (Phase 2): создать новый проект РАСШИРЕНИЯ конфигурации к базовому проекту "

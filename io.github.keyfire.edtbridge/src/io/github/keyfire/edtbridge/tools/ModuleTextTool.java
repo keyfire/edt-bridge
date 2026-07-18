@@ -40,14 +40,14 @@ public final class ModuleTextTool {
         JsonObject props = new JsonObject();
         props.add("projectName", strProp("EDT project name"));
         props.add("fqn", strProp("Module FQN: CommonModule.X, a form (DataProcessor.X.Form.Y / "
-                + "CommonForm.Y), or an object (Catalog.X) — for objects also pass moduleType. Omit if "
+                + "CommonForm.Y), or an object (Catalog.X) – for objects also pass moduleType. Omit if "
                 + "modulePath is given."));
-        props.add("moduleType", strProp("For object FQNs: which module — ObjectModule / ManagerModule / "
+        props.add("moduleType", strProp("For object FQNs: which module – ObjectModule / ManagerModule / "
                 + "RecordSetModule / ValueManagerModule / CommandModule. Optional."));
         props.add("method", strProp("Return only this procedure/function's source (the method list is "
                 + "always returned). Optional."));
         props.add("modulePath", strProp("Workspace-relative .bsl path (e.g. src/CommonModules/X/Module.bsl) "
-                + "— an alternative to fqn. Optional."));
+                + "– an alternative to fqn. Optional."));
 
         JsonArray req = new JsonArray();
         req.add("projectName");
@@ -68,7 +68,7 @@ public final class ModuleTextTool {
                 "ЧТЕНИЕ: исходный BSL модуля (или одного метода) + список процедур/функций модуля с "
                 + "сигнатурами, из живой рабочей области. Адресация по fqn (CommonModule.X, FQN формы или "
                 + "объект + moduleType) либо по modulePath. Если у объекта несколько модулей и не выбран "
-                + "moduleType — вернёт варианты в availableModules.");
+                + "moduleType – вернёт варианты в availableModules.");
         t.add("inputSchema", schema);
         return t;
     }

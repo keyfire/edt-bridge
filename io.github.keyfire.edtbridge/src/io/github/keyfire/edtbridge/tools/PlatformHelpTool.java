@@ -45,7 +45,7 @@ public final class PlatformHelpTool {
                 + "or \"ValueTable Add\". All terms must appear in the page title. Omit when reading a page."));
         props.add("path", strProp("Read this exact page (a `path` from a search hit) as text instead "
                 + "of searching."));
-        props.add("bundle", strProp("The `bundle` of the page to read (from the search hit). Optional — "
+        props.add("bundle", strProp("The `bundle` of the page to read (from the search hit). Optional – "
                 + "resolved from the index when omitted."));
         props.add("limit", numProp("Max search hits (default 15)."));
 
@@ -56,11 +56,11 @@ public final class PlatformHelpTool {
         JsonObject t = new JsonObject();
         t.addProperty("name", name());
         t.addProperty("description",
-                "READ: the 1C:Enterprise platform Syntax Helper bundled with EDT (real API reference — "
+                "READ: the 1C:Enterprise platform Syntax Helper bundled with EDT (real API reference – "
                 + "objects, methods, properties, events, Ru+En). Search by name, or read a page by its "
                 + "path. Use this to consult the actual API instead of guessing signatures.");
         t.addProperty("descriptionRu",
-                "ЧТЕНИЕ: Синтакс-помощник платформы 1С:Предприятие из поставки EDT (реальная справка API — "
+                "ЧТЕНИЕ: Синтакс-помощник платформы 1С:Предприятие из поставки EDT (реальная справка API – "
                 + "объекты, методы, свойства, события, рус+англ). Поиск по имени или чтение страницы по "
                 + "пути. Свериться с фактическим API вместо угадывания сигнатур.");
         t.add("inputSchema", schema);

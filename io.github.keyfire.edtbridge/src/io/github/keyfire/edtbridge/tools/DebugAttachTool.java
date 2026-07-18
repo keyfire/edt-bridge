@@ -27,7 +27,7 @@ import com.google.gson.JsonObject;
  * infobase's debug server (dbgs) by building a REMOTE_RUNTIME Eclipse launch and launching it in debug
  * mode; the connected target is stored under a returned sessionId for the control/inspect/evaluate tools.
  * Token-gated. STAND-ONLY: target a test stand, never production. Data-area scoping is not
- * yet applied — do not attach to a multi-tenant production IB.
+ * yet applied – do not attach to a multi-tenant production IB.
  */
 public final class DebugAttachTool {
 
@@ -37,7 +37,7 @@ public final class DebugAttachTool {
         return "edt_debug_attach";
     }
 
-    /** Session/exec tool — the server gates this on a configured token. */
+    /** Session/exec tool – the server gates this on a configured token. */
     public boolean isWrite() {
         return true;
     }
@@ -64,7 +64,7 @@ public final class DebugAttachTool {
         t.addProperty("description",
                 "WRITE/SESSION (Phase 3): attach a debug session to a RUNNING infobase's debug "
                 + "server (dbgs). Builds a REMOTE_RUNTIME launch and launches it in debug mode; returns a "
-                + "sessionId for the follow-up debug tools. Requires a configured token. STAND-ONLY — target "
+                + "sessionId for the follow-up debug tools. Requires a configured token. STAND-ONLY – target "
                 + "a test stand, never production. Data-area scoping not yet applied.");
         t.addProperty("descriptionRu",
                 "ЗАПИСЬ/СЕССИЯ (Фаза 3): подключить сессию отладки к debug-серверу (dbgs) ЗАПУЩЕННОЙ "

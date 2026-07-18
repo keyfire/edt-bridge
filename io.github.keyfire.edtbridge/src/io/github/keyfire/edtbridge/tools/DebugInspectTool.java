@@ -50,12 +50,12 @@ public final class DebugInspectTool {
         JsonObject t = new JsonObject();
         t.addProperty("name", name());
         t.addProperty("description",
-                "READ (Phase 3): inspect a live debug session — list its threads (debug items: "
+                "READ (Phase 3): inspect a live debug session – list its threads (debug items: "
                 + "background jobs, server calls, clients) and, for SUSPENDED threads, their BSL stack frames "
                 + "+ the top frame's variables (name/value/type). Read-only. Suspend first (edt_debug_control) "
                 + "or wait for a breakpoint hit to see frames.");
         t.addProperty("descriptionRu",
-                "ЧТЕНИЕ (Фаза 3): осмотреть живую сессию отладки — список потоков (debug-объекты: "
+                "ЧТЕНИЕ (Фаза 3): осмотреть живую сессию отладки – список потоков (debug-объекты: "
                 + "фоновые задания, серверные вызовы, клиенты) и, для ПРИОСТАНОВЛЕННЫХ потоков, кадры стека BSL "
                 + "+ переменные верхнего кадра (имя/значение/тип). Только чтение. Чтобы увидеть кадры, сначала "
                 + "приостановите (edt_debug_control) или дождитесь срабатывания точки останова.");

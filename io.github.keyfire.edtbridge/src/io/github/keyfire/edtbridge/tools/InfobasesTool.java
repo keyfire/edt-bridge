@@ -24,7 +24,7 @@ import com.google.gson.JsonObject;
 
 /**
  * MCP tool: edt_infobases - READ. EDT's registered infobases (name, uuid, connection string)
- * plus which open project is associated with which infobase — the discovery step before
+ * plus which open project is associated with which infobase – the discovery step before
  * edt_update_infobase.
  */
 public final class InfobasesTool {
@@ -48,7 +48,7 @@ public final class InfobasesTool {
         t.addProperty("name", name());
         t.addProperty("description",
                 "READ: EDT's registered infobases (name, uuid, connection string) and the open "
-                + "projects' infobase associations — discover targets for edt_update_infobase.");
+                + "projects' infobase associations – discover targets for edt_update_infobase.");
         t.addProperty("descriptionRu",
                 "ЧТЕНИЕ: зарегистрированные информационные базы EDT (имя, uuid, строка соединения) и "
                 + "привязки открытых проектов к базам – выбор цели для edt_update_infobase.");

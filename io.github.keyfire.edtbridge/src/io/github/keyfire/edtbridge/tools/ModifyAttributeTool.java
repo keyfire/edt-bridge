@@ -24,7 +24,7 @@ import com.google.gson.JsonObject;
 
 /**
  * MCP tool: edt_modify_attribute - WRITE (Phase 2). Changes an existing attribute's type, ru synonym
- * and/or comment. Changing the TYPE may break backward compatibility (data + code) — a warning is
+ * and/or comment. Changing the TYPE may break backward compatibility (data + code) – a warning is
  * returned. Dry-run by default (apply=false). Requires a configured token; the caller must verify
  * bsl_support_status EDITABLE before apply.
  */
@@ -36,7 +36,7 @@ public final class ModifyAttributeTool {
         return "edt_modify_attribute";
     }
 
-    /** Write tool — the server gates this on a configured token. */
+    /** Write tool – the server gates this on a configured token. */
     public boolean isWrite() {
         return true;
     }
@@ -46,7 +46,7 @@ public final class ModifyAttributeTool {
         props.add("projectName", strProp("EDT project name"));
         props.add("ownerFqn", strProp("Object that holds the attribute, e.g. Catalog.Контрагенты"));
         props.add("name", strProp("Existing attribute name to modify (Cyrillic)"));
-        props.add("newType", strProp("New value type (same syntax as edt_add_attribute). Optional — omit to keep."));
+        props.add("newType", strProp("New value type (same syntax as edt_add_attribute). Optional – omit to keep."));
         props.add("newSynonymRu", strProp("New Russian synonym. Optional; empty string clears it."));
         props.add("newComment", strProp("New comment. Optional; empty string clears it."));
         props.add("apply", boolProp("false (default) = dry-run: validate + return current→new plan, change nothing. "
@@ -65,7 +65,7 @@ public final class ModifyAttributeTool {
         JsonObject t = new JsonObject();
         t.addProperty("name", name());
         t.addProperty("description",
-                "WRITE (Phase 2): modify an existing attribute — type, ru synonym and/or comment (provide at "
+                "WRITE (Phase 2): modify an existing attribute – type, ru synonym and/or comment (provide at "
                 + "least one). Dry-run by default: validates and returns the current→new plan WITHOUT changing. "
                 + "apply=true performs the change. Changing the type may break backward compatibility (warned). "
                 + "Requires a configured token. Verify bsl_support_status EDITABLE before apply.");

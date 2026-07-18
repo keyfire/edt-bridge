@@ -83,7 +83,7 @@ public final class McpServer {
     static final String SERVER_NAME = "edt-bridge";
     static final String SERVER_VERSION = "0.0.1";
     // Default MCP protocol revision when the client doesn't send one. The server actually echoes the
-    // client's requested protocolVersion (see initializeResult) — we implement the stable base
+    // client's requested protocolVersion (see initializeResult) – we implement the stable base
     // JSON-RPC tools subset, which is compatible across revisions. Latest revision as of 2025-11-25.
     static final String PROTOCOL_VERSION = "2025-06-18";
 
@@ -283,7 +283,7 @@ applyI18n();loadStatus();loadTools();
         enableNativeFormRender();
         InetAddress loopback = InetAddress.getByName("127.0.0.1");
         int wanted = resolvePort();
-        // Bind to the wanted port, or the next free one within a small range — so a second EDT
+        // Bind to the wanted port, or the next free one within a small range – so a second EDT
         // instance (its 8770 already taken) still comes up instead of failing to start. The actual
         // port is reported in /status and in the log so a client can discover it.
         IOException lastError = null;
@@ -303,8 +303,8 @@ applyI18n();loadStatus();loadTools();
         http.createContext("/mcp", this::handle);
         http.createContext("/status", this::handleStatus);
         http.createContext("/", this::handleRoot);
-        // A bounded thread pool (not a single thread): a long operation — a rename or a project
-        // create can run for many seconds — no longer blocks every other request. EDT's BM model does
+        // A bounded thread pool (not a single thread): a long operation – a rename or a project
+        // create can run for many seconds – no longer blocks every other request. EDT's BM model does
         // its own read/write locking, so concurrent handlers are serialized only where the model needs.
         http.setExecutor(new ThreadPoolExecutor(2, MAX_WORKER_THREADS, 60L, TimeUnit.SECONDS,
                 new LinkedBlockingQueue<>(), namedDaemonThreadFactory()));
@@ -339,7 +339,7 @@ applyI18n();loadStatus();loadTools();
     /**
      * Enable EDT's native form-layout renderer. {@code NativeRenderService} reads these flags into
      * {@code static final} fields in its class initializer, so they must be set BEFORE that class
-     * loads (it loads lazily on the first form render — well after this). Without them
+     * loads (it loads lazily on the first form render – well after this). Without them
      * {@code HippoLayoutService} returns a layout with a null image. Don't override an explicit value.
      */
     private void enableNativeFormRender() {

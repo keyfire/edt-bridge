@@ -34,7 +34,7 @@ public final class DebugDetachTool {
         return "edt_debug_detach";
     }
 
-    /** Session tool — the server gates this on a configured token. */
+    /** Session tool – the server gates this on a configured token. */
     public boolean isWrite() {
         return true;
     }

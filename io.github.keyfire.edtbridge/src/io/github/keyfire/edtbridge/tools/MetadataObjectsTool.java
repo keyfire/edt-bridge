@@ -41,7 +41,7 @@ public final class MetadataObjectsTool {
     public JsonObject descriptor() {
         JsonObject pn = new JsonObject();
         pn.addProperty("type", "string");
-        pn.addProperty("description", "EDT project name. OPTIONAL — omit to search across ALL open projects "
+        pn.addProperty("description", "EDT project name. OPTIONAL – omit to search across ALL open projects "
                 + "(each result is tagged with its project).");
 
         JsonObject type = new JsonObject();

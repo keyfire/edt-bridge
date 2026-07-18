@@ -9,7 +9,7 @@ Jar update:
 - puts it into ``<EDT>/dropins`` and removes older copies (two singletons of the same bundle
   make Equinox resolve an arbitrary one);
 - never touches a GUI EDT: with one running, the new jar simply applies on its next restart.
-  A running headless ``1cedtcli`` keeps the OLD jar loaded until it is restarted — the wrapper
+  A running headless ``1cedtcli`` keeps the OLD jar loaded until it is restarted – the wrapper
   restarts it automatically on the next auto-start.
 
 Wrapper update:
@@ -87,7 +87,7 @@ def purge_stale_jars(dropins: Path | None, emit=log) -> int:
             old.unlink()
             removed += 1
         except OSError:
-            emit(f"stale jar is locked (a running EDT?): {old.name} — remove it after a restart")
+            emit(f"stale jar is locked (a running EDT?): {old.name} – remove it after a restart")
     if removed:
         emit(f"purged {removed} stale jar(s) from dropins, kept {jars[-1].name}")
     return removed
@@ -116,7 +116,7 @@ def install_latest_jar(dropins: Path, emit=log) -> bool:
                       and a.get("name", "").endswith(".jar")), None)
     sums_asset = next((a for a in assets if a.get("name") == "SHA256SUMS.txt"), None)
     if jar_asset is None:
-        emit(f"the latest release ({release.get('tag_name')}) carries no plugin jar — nothing to do")
+        emit(f"the latest release ({release.get('tag_name')}) carries no plugin jar – nothing to do")
         return False
     dropins.mkdir(parents=True, exist_ok=True)
 
@@ -147,15 +147,15 @@ def install_latest_jar(dropins: Path, emit=log) -> bool:
                     expected = parts[0].lower()
             actual = _sha256(tmp)
             if expected is None:
-                emit("checksum file has no entry for the jar — proceeding unverified")
+                emit("checksum file has no entry for the jar – proceeding unverified")
             elif expected != actual:
-                emit(f"CHECKSUM MISMATCH: expected {expected}, got {actual} — aborting")
+                emit(f"CHECKSUM MISMATCH: expected {expected}, got {actual} – aborting")
                 tmp.unlink(missing_ok=True)
                 return False
             else:
                 emit("checksum verified")
         except OSError as exc:
-            emit(f"checksum download failed ({exc}) — proceeding unverified")
+            emit(f"checksum download failed ({exc}) – proceeding unverified")
 
     target = dropins / name
     try:
@@ -172,7 +172,7 @@ def install_latest_jar(dropins: Path, emit=log) -> bool:
                 old.unlink()
                 removed += 1
             except OSError:
-                emit(f"old jar is locked (a running EDT?): {old.name} — remove it after a restart")
+                emit(f"old jar is locked (a running EDT?): {old.name} – remove it after a restart")
     emit(f"installed {name} into {dropins} (removed {removed} old cop{'ies' if removed != 1 else 'y'})")
     return True
 
@@ -180,7 +180,7 @@ def install_latest_jar(dropins: Path, emit=log) -> bool:
 def update_jar() -> bool:
     dropins = _find_dropins()
     if dropins is None:
-        log("EDT dropins not found — pass EDT_BRIDGE_EDT_DIR pointing at the …/1cedt folder")
+        log("EDT dropins not found – pass EDT_BRIDGE_EDT_DIR pointing at the .../1cedt folder")
         return False
     ok = install_latest_jar(dropins)
     if ok:
@@ -197,7 +197,7 @@ def update_wrapper() -> bool:
     tail = (proc.stdout or "") + (proc.stderr or "")
     if proc.returncode != 0:
         if "No matching distribution" in tail or "Could not find a version" in tail:
-            log("the package is not on PyPI yet — reinstall from a checkout instead "
+            log("the package is not on PyPI yet – reinstall from a checkout instead "
                 "(pipx install --force <repo>/python)")
         else:
             log(f"pip upgrade failed: {tail.strip().splitlines()[-1] if tail.strip() else proc.returncode}")

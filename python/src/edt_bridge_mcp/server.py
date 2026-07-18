@@ -1,21 +1,21 @@
 """stdio MCP front-end for the edt-bridge 1C:EDT plugin.
 
-The Java plugin serves plain JSON-RPC over HTTP on 127.0.0.1:8770 — but an MCP client
+The Java plugin serves plain JSON-RPC over HTTP on 127.0.0.1:8770 – but an MCP client
 configured with an HTTP URL simply loses the server whenever EDT is not running. This
 wrapper is what the client talks to instead (stdio, install via pipx):
 
 - if the bridge port is alive (a GUI EDT or a headless one), every request is forwarded;
-- if not, it AUTO-STARTS a headless EDT (1cedtcli with a keepalive pipe — the same recipe
+- if not, it AUTO-STARTS a headless EDT (1cedtcli with a keepalive pipe – the same recipe
   as run-headless.ps1) and forwards once it is ready;
 - `initialize` / `tools/list` never block a client session: while the backend is starting,
   `tools/list` returns an empty list, and a `notifications/tools/list_changed` follows as
-  soon as the backend is up — the client re-pulls the real tool list then.
+  soon as the backend is up – the client re-pulls the real tool list then.
 
 Configuration (CLI flags override the environment):
     EDT_BRIDGE_PORT           bridge port (default 8770)
     EDT_BRIDGE_TOKEN          write-tools token, forwarded as Authorization: Bearer
-    EDT_BRIDGE_WORKSPACE      EDT workspace path — required for the headless auto-start
-    EDT_BRIDGE_EDT_DIR        EDT install dir (…/1cedt); auto-detected when omitted
+    EDT_BRIDGE_WORKSPACE      EDT workspace path – required for the headless auto-start
+    EDT_BRIDGE_EDT_DIR        EDT install dir (.../1cedt); auto-detected when omitted
     EDT_BRIDGE_START_TIMEOUT  seconds to wait for a starting backend (default 360)
     EDT_BRIDGE_AUTOSTART      set to 0/false to never launch anything (proxy-only)
 
@@ -43,7 +43,7 @@ PROTOCOL_FALLBACK = "2024-11-05"
 
 
 def log(message: str) -> None:
-    """Diagnostics go to stderr — stdout carries only JSON-RPC frames."""
+    """Diagnostics go to stderr – stdout carries only JSON-RPC frames."""
     print(f"[edt-bridge-mcp] {message}", file=sys.stderr, flush=True)
 
 
@@ -120,7 +120,7 @@ class Backend:
         """Make sure a backend is reachable.
 
         wait=True blocks until ready (or timeout); wait=False only kicks off a background
-        start. Returns (ready, message) — message explains a False.
+        start. Returns (ready, message) – message explains a False.
         """
         if self.is_up():
             return True, "up"
@@ -143,12 +143,12 @@ class Backend:
             time.sleep(3)
         return False, (
             f"headless EDT did not become ready in {self.start_timeout}s "
-            "(first model load of a big workspace can take longer — retry, or raise "
+            "(first model load of a big workspace can take longer – retry, or raise "
             "EDT_BRIDGE_START_TIMEOUT)"
         )
 
     def _gui_edt_running(self) -> bool:
-        """True when a GUI EDT (1cedt) process exists — we then refuse to launch headless
+        """True when a GUI EDT (1cedt) process exists – we then refuse to launch headless
         (the GUI holds the workspace lock; the user likely just lacks the plugin there)."""
         try:
             if os.name == "nt":
@@ -201,47 +201,47 @@ class Backend:
 
     def _ensure_plugin_jar(self, cli_dir: Path) -> tuple[bool, str]:
         """Deliver the plugin jar into EDT's dropins when it is missing: the wrapper installs
-        from PyPI, the jar comes from the latest GitHub release — so a bare
+        from PyPI, the jar comes from the latest GitHub release – so a bare
         `pipx install edt-bridge-mcp` is enough to get a working bridge."""
         from . import update
 
         dropins = cli_dir / "dropins"
         if update.has_jar(dropins):
             return True, "jar present"
-        log("plugin jar is missing in dropins — delivering the latest release jar")
+        log("plugin jar is missing in dropins – delivering the latest release jar")
         if update.install_latest_jar(dropins, emit=log):
             return True, "jar delivered"
         return False, (
             "the edt-bridge plugin jar is missing in EDT's dropins and could not be "
-            "downloaded from GitHub Releases — install it manually (see the repository README)"
+            "downloaded from GitHub Releases – install it manually (see the repository README)"
         )
 
     def _launch_headless(self) -> tuple[bool, str]:
         """Start 1cedtcli with the keepalive pipe (the run-headless recipe), detached."""
         if self._headless_cli_running():
-            return True, "a headless 1cedtcli is already starting — waiting for it"
+            return True, "a headless 1cedtcli is already starting – waiting for it"
         if self._gui_edt_running():
-            gui_hint = ("bridge port is dead but a GUI EDT is running — refusing to start a "
+            gui_hint = ("bridge port is dead but a GUI EDT is running – refusing to start a "
                         "headless one (workspace lock).")
             cli = self._find_cli()
             if cli is not None:
                 delivered, _ = self._ensure_plugin_jar(cli.parent)
                 if delivered:
-                    return False, gui_hint + (" The plugin jar is in dropins — restart that "
+                    return False, gui_hint + (" The plugin jar is in dropins – restart that "
                                               "EDT to activate the bridge, or close it.")
             return False, gui_hint + (" Install/enable the edt-bridge plugin in that EDT, "
                                       "or close it.")
         if not self.workspace:
             return False, (
-                "bridge is not running and no workspace is configured for auto-start — "
+                "bridge is not running and no workspace is configured for auto-start – "
                 "pass --workspace or set EDT_BRIDGE_WORKSPACE (or open EDT with the "
                 "edt-bridge plugin yourself)"
             )
         cli = self._find_cli()
         if cli is None:
             return False, (
-                "1cedtcli not found — pass --edt-dir or set EDT_BRIDGE_EDT_DIR to the "
-                "…/1cedt install folder"
+                "1cedtcli not found – pass --edt-dir or set EDT_BRIDGE_EDT_DIR to the "
+                ".../1cedt install folder"
             )
         jar_ok, jar_msg = self._ensure_plugin_jar(cli.parent)
         if not jar_ok:
@@ -326,11 +326,11 @@ class StdioServer:
             if self.backend.is_ready():
                 if not self._announced_ready:
                     self._announced_ready = True
-                    log("backend is ready — announcing tools/list_changed")
+                    log("backend is ready – announcing tools/list_changed")
                     self._notify_tools_changed()
                 return
             time.sleep(3)
-        log("backend did not become ready — no tools to announce")
+        log("backend did not become ready – no tools to announce")
 
     def _kick_background_start(self) -> None:
         ready, msg = self.backend.ensure(wait=False)
@@ -340,7 +340,7 @@ class StdioServer:
                 self._notify_tools_changed()
             return
         log(f"backend not up ({msg})")
-        if msg in ("starting", "a headless 1cedtcli is already starting — waiting for it"):
+        if msg in ("starting", "a headless 1cedtcli is already starting – waiting for it"):
             threading.Thread(target=self._announce_when_ready, daemon=True).start()
 
     # -- dispatch --------------------------------------------------------
@@ -382,7 +382,7 @@ class StdioServer:
         if method is None:
             return
         if req_id is None:
-            return  # unknown notification — drop
+            return  # unknown notification – drop
         if self.backend.is_up():
             self._forward_or_error(message, req_id)
         else:
@@ -434,7 +434,7 @@ def main() -> int:
                     "'edt-bridge-mcp self-update' refreshes the plugin jar and the wrapper",
     )
     parser.add_argument("--workspace", help="EDT workspace path for the headless auto-start")
-    parser.add_argument("--edt-dir", help="EDT install dir (…/1cedt); auto-detected when omitted")
+    parser.add_argument("--edt-dir", help="EDT install dir (.../1cedt); auto-detected when omitted")
     parser.add_argument("--port", type=int, help="bridge port (default 8770)")
     parser.add_argument("--start-timeout", type=int, help="seconds to wait for a starting backend")
     parser.add_argument("--no-autostart", action="store_true", help="never launch a headless EDT")

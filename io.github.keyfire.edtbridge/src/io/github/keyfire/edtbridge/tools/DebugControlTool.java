@@ -35,7 +35,7 @@ public final class DebugControlTool {
         return "edt_debug_control";
     }
 
-    /** Session/exec tool — the server gates this on a configured token. */
+    /** Session/exec tool – the server gates this on a configured token. */
     public boolean isWrite() {
         return true;
     }
@@ -59,11 +59,11 @@ public final class DebugControlTool {
         JsonObject t = new JsonObject();
         t.addProperty("name", name());
         t.addProperty("description",
-                "WRITE/SESSION (Phase 3): control execution of a live debug session — "
+                "WRITE/SESSION (Phase 3): control execution of a live debug session – "
                 + "suspend/resume the target, or stepOver/stepInto/stepReturn a suspended thread. Requires a "
                 + "configured token. Pair with edt_debug_inspect to read state after suspend/step.");
         t.addProperty("descriptionRu",
-                "ЗАПИСЬ/СЕССИЯ (Фаза 3): управление выполнением живой сессии отладки — "
+                "ЗАПИСЬ/СЕССИЯ (Фаза 3): управление выполнением живой сессии отладки – "
                 + "suspend/resume цели или stepOver/stepInto/stepReturn приостановленного потока. Требует "
                 + "токен. Состояние после suspend/step смотрите через edt_debug_inspect.");
         t.add("inputSchema", schema);

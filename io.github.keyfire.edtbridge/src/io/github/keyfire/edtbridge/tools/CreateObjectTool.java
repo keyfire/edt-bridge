@@ -24,7 +24,7 @@ import com.google.gson.JsonObject;
 
 /**
  * MCP tool: edt_create_object - WRITE (Phase 2). Creates a new top-level metadata object
- * (Catalog/Document/Enum/InformationRegister/…) using EDT's own object factory + per-type initializer
+ * (Catalog/Document/Enum/InformationRegister/...) using EDT's own object factory + per-type initializer
  * (so it is born valid), registers it as a BM top object and links it into the Configuration. Dry-run
  * by default. Adding an object is additive (non-breaking) → no force; still requires a
  * configured token, and the caller must verify bsl_support_status EDITABLE before apply.
@@ -37,7 +37,7 @@ public final class CreateObjectTool {
         return "edt_create_object";
     }
 
-    /** Write tool — the server gates this on a configured token. */
+    /** Write tool – the server gates this on a configured token. */
     public boolean isWrite() {
         return true;
     }
@@ -70,13 +70,13 @@ public final class CreateObjectTool {
         t.addProperty("name", name());
         t.addProperty("description",
                 "WRITE (Phase 2): create a new top metadata object (Catalog/Document/Enum/"
-                + "InformationRegister/…) via EDT's own factory + per-type initializer, registered in the "
+                + "InformationRegister/...) via EDT's own factory + per-type initializer, registered in the "
                 + "Configuration. Dry-run by default: validates and returns the plan WITHOUT creating. "
-                + "apply=true creates it (object .mdo + Configuration.mdo). Additive — no force needed — but "
+                + "apply=true creates it (object .mdo + Configuration.mdo). Additive – no force needed – but "
                 + "requires a configured token. Verify bsl_support_status EDITABLE before apply.");
         t.addProperty("descriptionRu",
                 "ЗАПИСЬ (Phase 2): создать новый объект метаданных (Справочник/Документ/Перечисление/"
-                + "РегистрСведений/…) через штатную фабрику EDT + инициализатор типа, с регистрацией в "
+                + "РегистрСведений/...) через штатную фабрику EDT + инициализатор типа, с регистрацией в "
                 + "Configuration. По умолчанию dry-run: проверяет и возвращает план БЕЗ создания. apply=true "
                 + "создаёт (object .mdo + Configuration.mdo). Аддитивно – force не нужен – но требует токен. "
                 + "Перед apply проверить bsl_support_status = EDITABLE.");

@@ -25,9 +25,9 @@ import com.google.gson.JsonObject;
 /**
  * MCP tool: edt_outgoing_structures - READ. Companion to edt_outgoing_calls (which gives the call
  * targets): for each outgoing (qualified) call in a method/module, the top-level keys of the
- * Структура passed as its argument, collected from {@code <var>.Вставить("key", …)} inserts on the
- * argument variable, expanding a seed/template helper ({@code <var> = Helper(…)}) one level when it
- * lives in the same module. Heuristic — literal keys only, flow-insensitive, no external helpers or
+ * Структура passed as its argument, collected from {@code <var>.Вставить("key", ...)} inserts on the
+ * argument variable, expanding a seed/template helper ({@code <var> = Helper(...)}) one level when it
+ * lives in the same module. Heuristic – literal keys only, flow-insensitive, no external helpers or
  * {@code Новый Структура("a,b")}; {@code partial} flags an incomplete result. An optional qualifier
  * filter scopes to one layer (e.g. ПрограммныйИнтерфейсСервиса for an ExtAPI wrapper).
  */
@@ -47,8 +47,8 @@ public final class OutgoingStructuresTool {
         props.add("moduleType", strProp("For object FQNs: ObjectModule / ManagerModule / ... Optional."));
         props.add("method", strProp("Restrict the analysis to this procedure/function. Optional (default: "
                 + "the whole module)."));
-        props.add("modulePath", strProp("Workspace-relative .bsl path — an alternative to fqn. Optional."));
-        props.add("qualifier", strProp("Only report calls whose qualifier starts with this prefix — a module/"
+        props.add("modulePath", strProp("Workspace-relative .bsl path – an alternative to fqn. Optional."));
+        props.add("qualifier", strProp("Only report calls whose qualifier starts with this prefix – a module/"
                 + "object name (e.g. ПрограммныйИнтерфейсСервиса to scope to an ExtAPI layer, or ФоновыеЗадания). "
                 + "Omit = all qualified outgoing calls that pass a structure. Optional."));
 
@@ -64,18 +64,18 @@ public final class OutgoingStructuresTool {
         t.addProperty("name", name());
         t.addProperty("description",
                 "READ (best-effort): the top-level keys of the Структура passed as an argument to each "
-                + "outgoing (qualified) call — what data goes into the call, the companion to "
-                + "edt_outgoing_calls (which gives the call targets). Collects <var>.Вставить(\"key\", …) on "
-                + "the argument variable and expands a same-module seed/template helper (<var> = Helper(…)) "
+                + "outgoing (qualified) call – what data goes into the call, the companion to "
+                + "edt_outgoing_calls (which gives the call targets). Collects <var>.Вставить(\"key\", ...) on "
+                + "the argument variable and expands a same-module seed/template helper (<var> = Helper(...)) "
                 + "one level. Heuristic: literal keys only, flow-insensitive; partial=true flags an "
                 + "incomplete result. Optional qualifier filter scopes to one layer (e.g. "
                 + "ПрограммныйИнтерфейсСервиса for an ExtAPI wrapper). Resolve by fqn or modulePath.");
         t.addProperty("descriptionRu",
                 "ЧТЕНИЕ (best-effort): ключи верхнего уровня Структуры, передаваемой аргументом в каждый "
-                + "исходящий (квалифицированный) вызов — какие данные уходят в вызов, пара к edt_outgoing_calls "
-                + "(тот даёт цели вызовов). Собирает <Перем>.Вставить(\"ключ\", …) по переменной-аргументу и "
-                + "раскрывает хелпер-шаблон того же модуля (<Перем> = Хелпер(…)) на один уровень. Эвристика: "
-                + "только литеральные ключи, без учёта ветвлений; partial=true — результат неполный. "
+                + "исходящий (квалифицированный) вызов – какие данные уходят в вызов, пара к edt_outgoing_calls "
+                + "(тот даёт цели вызовов). Собирает <Перем>.Вставить(\"ключ\", ...) по переменной-аргументу и "
+                + "раскрывает хелпер-шаблон того же модуля (<Перем> = Хелпер(...)) на один уровень. Эвристика: "
+                + "только литеральные ключи, без учёта ветвлений; partial=true – результат неполный. "
                 + "Необязательный фильтр qualifier ограничивает одним слоем (например ПрограммныйИнтерфейсСервиса "
                 + "для обвязки ExtAPI). Адресация по fqn или modulePath.");
         t.add("inputSchema", schema);

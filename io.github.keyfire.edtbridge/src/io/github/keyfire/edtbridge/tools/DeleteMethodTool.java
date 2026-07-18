@@ -24,7 +24,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 
 /**
- * MCP tool: edt_delete_method - WRITE (Phase 2). Deletes a procedure/function from a module — the
+ * MCP tool: edt_delete_method - WRITE (Phase 2). Deletes a procedure/function from a module – the
  * inverse of edt_add_method. Dry-run by default (apply=false): parses the module, locates the method by
  * name via the model, returns the plan + the exact text that would be removed WITHOUT writing.
  * apply=true cuts the method (plus its adjacent leading doc comments and the blank separation above)
@@ -41,7 +41,7 @@ public final class DeleteMethodTool {
         return "edt_delete_method";
     }
 
-    /** Write tool — the server gates this on a configured token. */
+    /** Write tool – the server gates this on a configured token. */
     public boolean isWrite() {
         return true;
     }
@@ -77,13 +77,13 @@ public final class DeleteMethodTool {
         JsonObject t = new JsonObject();
         t.addProperty("name", name());
         t.addProperty("description",
-                "WRITE (Phase 2): delete a procedure/function from a module's BSL — the inverse of "
-                + "edt_add_method. Dry-run by default — parses the module, locates the method by name via the "
+                "WRITE (Phase 2): delete a procedure/function from a module's BSL – the inverse of "
+                + "edt_add_method. Dry-run by default – parses the module, locates the method by name via the "
                 + "model (never a regex), and returns the plan + the exact text that would be removed WITHOUT "
                 + "writing. apply=true cuts the method (with its adjacent leading doc comments and the blank "
                 + "line above) and writes the .bsl, but only if the result re-parses cleanly and loses exactly "
                 + "this one method (safety invariant), AND force=true (destructive; deleting an EXPORTED "
-                + "method breaks consumers — check callers via edt_find_references method mode and prefer "
+                + "method breaks consumers – check callers via edt_find_references method mode and prefer "
                 + "deprecation). Requires a configured token; caller must verify bsl_support_status EDITABLE "
                 + "before apply.");
         t.addProperty("descriptionRu",

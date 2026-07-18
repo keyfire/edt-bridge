@@ -24,7 +24,7 @@ import com.google.gson.JsonObject;
 
 /**
  * MCP tool: edt_evaluate - EXEC (Phase 3). Evaluates an ARBITRARY BSL expression in a suspended
- * frame of a live debug session — i.e. arbitrary code execution against a live infobase. The heaviest-gated
+ * frame of a live debug session – i.e. arbitrary code execution against a live infobase. The heaviest-gated
  * tool: requires (1) a configured token, (2) per-call allowCodeExecution=true, and (3) the server-side
  * switch EDT_BRIDGE_ALLOW_EVALUATE=1. Off by default. STAND-ONLY, never production.
  */
@@ -36,7 +36,7 @@ public final class DebugEvaluateTool {
         return "edt_evaluate";
     }
 
-    /** Exec tool — the server gates this on a configured token (plus the in-tool opt-in + env switch). */
+    /** Exec tool – the server gates this on a configured token (plus the in-tool opt-in + env switch). */
     public boolean isWrite() {
         return true;
     }
@@ -48,7 +48,7 @@ public final class DebugEvaluateTool {
                 + "variable name, or 1+1). Executes against the live infobase."));
         props.add("threadName", strProp("Which suspended thread (optional; default = first suspended)."));
         props.add("frameLevel", intProp("Stack frame level to evaluate in (optional; default 0 = top)."));
-        props.add("allowCodeExecution", boolProp("MUST be true to run — explicit confirmation that this "
+        props.add("allowCodeExecution", boolProp("MUST be true to run – explicit confirmation that this "
                 + "executes arbitrary BSL against a live infobase."));
 
         JsonArray req = new JsonArray();
@@ -64,13 +64,13 @@ public final class DebugEvaluateTool {
         JsonObject t = new JsonObject();
         t.addProperty("name", name());
         t.addProperty("description",
-                "EXEC (Phase 3): evaluate an ARBITRARY BSL expression in a suspended debug frame — "
+                "EXEC (Phase 3): evaluate an ARBITRARY BSL expression in a suspended debug frame – "
                 + "arbitrary code execution against a live infobase. Heaviest gate: requires a configured "
                 + "token AND allowCodeExecution=true AND the server switch EDT_BRIDGE_ALLOW_EVALUATE=1 (off by "
                 + "default). STAND-ONLY, never production. Suspend a thread first (edt_debug_control) or hit a "
                 + "breakpoint.");
         t.addProperty("descriptionRu",
-                "ИСПОЛНЕНИЕ (Фаза 3): вычислить ПРОИЗВОЛЬНОЕ BSL-выражение в приостановленном кадре — "
+                "ИСПОЛНЕНИЕ (Фаза 3): вычислить ПРОИЗВОЛЬНОЕ BSL-выражение в приостановленном кадре – "
                 + "это исполнение произвольного кода против живой ИБ. Самый жёсткий гейт: нужен токен И "
                 + "allowCodeExecution=true И серверный переключатель EDT_BRIDGE_ALLOW_EVALUATE=1 (по умолчанию "
                 + "выключено). ТОЛЬКО СТЕНД, никогда продакшен. Сначала приостановите поток "

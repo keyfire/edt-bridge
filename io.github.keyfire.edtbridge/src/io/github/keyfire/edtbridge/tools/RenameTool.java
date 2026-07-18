@@ -25,7 +25,7 @@ import com.google.gson.JsonObject;
 /**
  * MCP tool: edt_rename - WRITE (Phase 2). Renames a metadata object or a child member
  * (attribute / dimension / resource / ...) and cascades every reference in metadata AND BSL using
- * EDT's OWN refactoring engine — not a brittle text replace. Dry-run by default (apply=false) returns
+ * EDT's OWN refactoring engine – not a brittle text replace. Dry-run by default (apply=false) returns
  * the engine's full change list + validation problems. Renaming is the widest backward-compatibility
  * surface: an apply requires a configured token AND force=true (the owner's explicit
  * breaking-change override); the caller must verify bsl_support_status EDITABLE before apply.
@@ -38,7 +38,7 @@ public final class RenameTool {
         return "edt_rename";
     }
 
-    /** Write tool — the server gates this on a configured token. */
+    /** Write tool – the server gates this on a configured token. */
     public boolean isWrite() {
         return true;
     }
@@ -73,7 +73,7 @@ public final class RenameTool {
                 + "resource/...) and cascade every reference in metadata AND BSL via EDT's native refactoring "
                 + "engine. Dry-run by default: returns the engine's change list + validation problems WITHOUT "
                 + "changing. apply=true performs the cascade; requires a configured token AND force=true (rename "
-                + "is breaking for peer configurations —, owner approval). Verify bsl_support_status "
+                + "is breaking for peer configurations –, owner approval). Verify bsl_support_status "
                 + "EDITABLE before apply.");
         t.addProperty("descriptionRu",
                 "ЗАПИСЬ (Phase 2): переименовать объект метаданных или его член (реквизит/измерение/"

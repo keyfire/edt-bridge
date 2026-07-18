@@ -26,7 +26,7 @@ import com.google.gson.JsonObject;
  * MCP tool: edt_add_attribute - WRITE (Phase 2). Adds an attribute to a metadata object.
  * Dry-run by default (apply=false): validates the planned change (owner resolvable, name free, type
  * parses, reference target exists) and returns the plan without writing. apply=true performs the real
- * write — builds the TypeDescription, creates the attribute and commits. Requires a configured token
+ * write – builds the TypeDescription, creates the attribute and commits. Requires a configured token
  * (write tool, owner decision); the caller must verify bsl_support_status EDITABLE before apply.
  */
 public final class AddAttributeTool {
@@ -37,7 +37,7 @@ public final class AddAttributeTool {
         return "edt_add_attribute";
     }
 
-    /** Write tool — the server gates this on a configured token. */
+    /** Write tool – the server gates this on a configured token. */
     public boolean isWrite() {
         return true;
     }
@@ -72,13 +72,13 @@ public final class AddAttributeTool {
         JsonObject t = new JsonObject();
         t.addProperty("name", name());
         t.addProperty("description",
-                "WRITE (Phase 2): add an attribute to a metadata object. Dry-run by default — validates "
+                "WRITE (Phase 2): add an attribute to a metadata object. Dry-run by default – validates "
                 + "(owner exists, name free, type parses, reference target exists) and returns the plan "
                 + "WITHOUT writing. apply=true performs the write (creates the attribute and commits). "
                 + "Requires a configured token. Caller must verify bsl_support_status EDITABLE before "
                 + "any apply.");
         t.addProperty("descriptionRu",
-                "ЗАПИСЬ (Phase 2): добавить реквизит объекту метаданных. По умолчанию dry-run — проверяет "
+                "ЗАПИСЬ (Phase 2): добавить реквизит объекту метаданных. По умолчанию dry-run – проверяет "
                 + "(объект есть, имя свободно, тип распознан, ссылочный тип существует) и возвращает план "
                 + "БЕЗ записи. apply=true – реальная запись (создаёт реквизит и фиксирует). Требует токен. "
                 + "Перед apply вызывающий обязан проверить bsl_support_status = EDITABLE.");

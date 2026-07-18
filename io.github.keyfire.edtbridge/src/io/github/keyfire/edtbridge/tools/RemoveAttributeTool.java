@@ -37,7 +37,7 @@ public final class RemoveAttributeTool {
         return "edt_remove_attribute";
     }
 
-    /** Write tool — the server gates this on a configured token. */
+    /** Write tool – the server gates this on a configured token. */
     public boolean isWrite() {
         return true;
     }
@@ -50,7 +50,7 @@ public final class RemoveAttributeTool {
         props.add("apply", boolProp("false (default) = dry-run: report references + plan, remove nothing. "
                 + "true = perform the removal (commit + serialize). Verify bsl_support_status EDITABLE first."));
         props.add("force", boolProp("false (default) = refuse if the attribute has inbound references. "
-                + "true = remove even if referenced (WILL break those references — last resort)."));
+                + "true = remove even if referenced (WILL break those references – last resort)."));
 
         JsonArray req = new JsonArray();
         req.add("projectName");
@@ -65,7 +65,7 @@ public final class RemoveAttributeTool {
         JsonObject t = new JsonObject();
         t.addProperty("name", name());
         t.addProperty("description",
-                "WRITE (Phase 2): remove an attribute from a metadata object. DESTRUCTIVE — a schema "
+                "WRITE (Phase 2): remove an attribute from a metadata object. DESTRUCTIVE – a schema "
                 + "change. Dry-run by default: checks inbound references (BM xref) and returns the plan "
                 + "WITHOUT removing. apply=true removes (commit + serialize); blocked if referenced unless "
                 + "force=true. Requires a configured token. Verify bsl_support_status EDITABLE before apply "

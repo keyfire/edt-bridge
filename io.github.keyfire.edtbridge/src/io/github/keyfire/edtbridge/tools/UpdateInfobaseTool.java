@@ -24,9 +24,9 @@ import com.google.gson.JsonObject;
 
 /**
  * MCP tool: edt_update_infobase - WRITE (Phase 2). Updates an infobase's configuration FROM an EDT
- * project (configuration or configuration extension) via EDT's own synchronization engine — the
+ * project (configuration or configuration extension) via EDT's own synchronization engine – the
  * "Update infobase configuration" action. Db-structure changes are auto-confirmed; a conflict (the
- * infobase has its own changes) aborts. Dry-run by default; token-gated. THE INFOBASE IS MUTATED —
+ * infobase has its own changes) aborts. Dry-run by default; token-gated. THE INFOBASE IS MUTATED –
  * use on stands you own, not production.
  */
 public final class UpdateInfobaseTool {
@@ -45,7 +45,7 @@ public final class UpdateInfobaseTool {
         JsonObject props = new JsonObject();
         props.add("projectName", strProp("EDT project to update the infobase from (a configuration "
                 + "or a configuration-extension project)"));
-        props.add("infobase", strProp("Target infobase name or uuid (see edt_infobases). Optional — "
+        props.add("infobase", strProp("Target infobase name or uuid (see edt_infobases). Optional – "
                 + "defaults to the project's associated infobase."));
         props.add("apply", boolProp("false (default) = dry-run: resolve the target and report the "
                 + "current project-vs-infobase state. true = update the infobase configuration."));
@@ -64,7 +64,7 @@ public final class UpdateInfobaseTool {
                 "WRITE (Phase 2): update an infobase's configuration FROM an EDT project "
                 + "(configuration or extension) via EDT's own synchronization engine (the \"Update "
                 + "infobase configuration\" action). Db-structure changes auto-confirmed; a conflict "
-                + "aborts the update. Dry-run by default; apply=true mutates the infobase — use stands "
+                + "aborts the update. Dry-run by default; apply=true mutates the infobase – use stands "
                 + "you own. Token-gated.");
         t.addProperty("descriptionRu",
                 "ЗАПИСЬ (Phase 2): обновить конфигурацию информационной базы ИЗ проекта EDT "

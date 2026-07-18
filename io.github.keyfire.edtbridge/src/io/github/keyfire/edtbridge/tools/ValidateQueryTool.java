@@ -38,7 +38,7 @@ public final class ValidateQueryTool {
     public JsonObject descriptor() {
         JsonObject pn = new JsonObject();
         pn.addProperty("type", "string");
-        pn.addProperty("description", "EDT project name — supplies the metadata scope for the query");
+        pn.addProperty("description", "EDT project name – supplies the metadata scope for the query");
 
         JsonObject q = new JsonObject();
         q.addProperty("type", "string");

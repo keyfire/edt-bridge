@@ -43,11 +43,11 @@ public final class FormRenderTool {
         props.add("fqn", strProp("Form FQN, e.g. CommonForm.МояФорма, Catalog.Контрагенты.Form.ФормаЭлемента"));
         props.add("variant", strProp("Interface variant: TAXI (8.3) or VERSION8_5 (default VERSION8_5)"));
         props.add("theme", strProp("Theme: LIGHT (default) or DARK"));
-        props.add("density", strProp("Field density: NORMAL (default) or COMPACT — COMPACT matches EDT's compact editor mode (denser fields, larger relative font)"));
-        props.add("ratio", intProp("Interface common ratio in percent (default 100). Raise (e.g. 125/150) to enlarge the interface — text grows relative to fields, to match a Hi-DPI editor view."));
+        props.add("density", strProp("Field density: NORMAL (default) or COMPACT – COMPACT matches EDT's compact editor mode (denser fields, larger relative font)"));
+        props.add("ratio", intProp("Interface common ratio in percent (default 100). Raise (e.g. 125/150) to enlarge the interface – text grows relative to fields, to match a Hi-DPI editor view."));
         props.add("width", intProp("Viewport width px (default 1280)"));
         props.add("height", intProp("Viewport height px (default 800)"));
-        props.add("scale", intProp("Upscale the finished PNG by this percent (>100; default 100 = native size). E.g. 150 to roughly match a 150% display. Raster upscale — the render itself is at 100%."));
+        props.add("scale", intProp("Upscale the finished PNG by this percent (>100; default 100 = native size). E.g. 150 to roughly match a 150% display. Raster upscale – the render itself is at 100%."));
         props.add("outPath", strProp("Absolute PNG output path (default: <tmp>/edt_form_<...>.png)"));
 
         JsonArray req = new JsonArray();

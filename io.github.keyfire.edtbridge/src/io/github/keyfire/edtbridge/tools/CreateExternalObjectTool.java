@@ -41,10 +41,10 @@ public final class CreateExternalObjectTool {
 
     public JsonObject descriptor() {
         JsonObject props = new JsonObject();
-        props.add("name", strProp("New external data processor project (and object) name — a valid "
+        props.add("name", strProp("New external data processor project (and object) name – a valid "
                 + "identifier, Cyrillic allowed"));
         props.add("baseProjectName", strProp("Configuration project the processor is developed for "
-                + "(links its runtime version and types context). Optional — omit for standalone."));
+                + "(links its runtime version and types context). Optional – omit for standalone."));
         props.add("apply", boolProp("false (default) = dry-run: validate and return the plan. "
                 + "true = create the project."));
 
@@ -62,7 +62,7 @@ public final class CreateExternalObjectTool {
                 "WRITE (Phase 2): create a new EXTERNAL DATA PROCESSOR project via EDT's own "
                 + "IExternalObjectProjectManager (the wizard engine), optionally linked to a base "
                 + "configuration project. Dry-run by default; apply=true creates the project (model "
-                + "loads in background — poll edt_projects). Token-gated. Use edt_dump_external_object "
+                + "loads in background – poll edt_projects). Token-gated. Use edt_dump_external_object "
                 + "to compile it into an .epf afterwards.");
         t.addProperty("descriptionRu",
                 "ЗАПИСЬ (Phase 2): создать новый проект ВНЕШНЕЙ ОБРАБОТКИ через штатный "

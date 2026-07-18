@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "edt-bridge-mcp"
-version = "0.2.0"
+version = "0.2.1"
 description = "stdio MCP front-end for the edt-bridge 1C:EDT plugin: proxies to a running EDT, or auto-starts a headless one"
 readme = "README.md"
 license = "Apache-2.0"

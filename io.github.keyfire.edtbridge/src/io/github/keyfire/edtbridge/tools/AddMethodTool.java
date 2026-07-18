@@ -39,7 +39,7 @@ public final class AddMethodTool {
         return "edt_add_method";
     }
 
-    /** Write tool — the server gates this on a configured token. */
+    /** Write tool – the server gates this on a configured token. */
     public boolean isWrite() {
         return true;
     }
@@ -77,16 +77,16 @@ public final class AddMethodTool {
         t.addProperty("name", name());
         t.addProperty("description",
                 "WRITE (Phase 2): add a new procedure/function to a module's BSL. Dry-run by "
-                + "default — parses the module, validates methodText is exactly one legal method with a free "
+                + "default – parses the module, validates methodText is exactly one legal method with a free "
                 + "name, computes the insertion point from the model (region / server block / after the last "
                 + "method) and returns the plan + preview WITHOUT writing. apply=true writes the .bsl, but "
-                + "only if the spliced module re-parses cleanly (safety invariant — a bad methodText or "
+                + "only if the spliced module re-parses cleanly (safety invariant – a bad methodText or "
                 + "offset can never corrupt the module, worst case is a refused apply). Additive (a new "
-                + "method is non-breaking) — no force. Requires a configured token; caller must verify "
+                + "method is non-breaking) – no force. Requires a configured token; caller must verify "
                 + "bsl_support_status EDITABLE before apply (cannot add to vendor-locked modules).");
         t.addProperty("descriptionRu",
                 "ЗАПИСЬ (Phase 2): добавить новую процедуру/функцию в BSL модуля. По умолчанию "
-                + "dry-run — парсит модуль, проверяет, что methodText – ровно один корректный метод со "
+                + "dry-run – парсит модуль, проверяет, что methodText – ровно один корректный метод со "
                 + "свободным именем, вычисляет точку вставки по модели (регион / серверный блок / после "
                 + "последнего метода) и возвращает план + предпросмотр БЕЗ записи. apply=true пишет .bsl, но "
                 + "только если результат парсится без ошибок (инвариант безопасности – плохой methodText или "

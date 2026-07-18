@@ -240,7 +240,7 @@ import com.google.inject.Injector;
 public final class EdtModelGateway {
 
     /**
-     * Dedicated single thread that owns the SWT Display used for form rendering — isolated from both
+     * Dedicated single thread that owns the SWT Display used for form rendering – isolated from both
      * the MCP HTTP thread and a GUI workbench's main UI thread, so {@code edt_form_render} works in
      * either a headless CLI or a running GUI EDT without freezing the editor.
      */
@@ -309,7 +309,7 @@ public final class EdtModelGateway {
             }
             // 2) EDT validation markers (the "Standards"/check results, com.e1c.v8codestyle & co).
             //    These live in EDT's OWN marker store (IMarkerManager), NOT as Eclipse IMarker, so
-            //    step 1 misses them — yet this is exactly what EDT's Problems/Checks view shows.
+            //    step 1 misses them – yet this is exactly what EDT's Problems/Checks view shows.
             out.addAll(readEdtCheckMarkers(p));
         }
         return out;
@@ -344,7 +344,7 @@ public final class EdtModelGateway {
                 out.add(pr);
             });
         } catch (Throwable t) {
-            // EDT marker store unavailable / API mismatch — keep Eclipse markers only.
+            // EDT marker store unavailable / API mismatch – keep Eclipse markers only.
         }
         return out;
     }
@@ -442,7 +442,7 @@ public final class EdtModelGateway {
         public String synonymRu;
         /** Child members grouped by feature (attributes, tabularSections, forms, ...). */
         public List<MdGroup> structure = new ArrayList<>();
-        /** Structural (MdObject-typed) containment features that EXIST for this type but are empty —
+        /** Structural (MdObject-typed) containment features that EXIST for this type but are empty –
          *  so a caller can tell "this object has no attributes" from "attributes not reported". */
         public List<String> emptyStructuralFeatures = new ArrayList<>();
     }
@@ -516,11 +516,11 @@ public final class EdtModelGateway {
      * (attributes, tabularSections, forms, commands, templates, dimensions, resources,
      * enumValues, ...), recursing up to {@code maxDepth} levels so a tabular section's own
      * attributes nest one level deeper. Derived/transient containments (producedTypes,
-     * dbViewDefs) are skipped — they are computed, not structural, and never {@link MdObject}.
+     * dbViewDefs) are skipped – they are computed, not structural, and never {@link MdObject}.
      */
     /**
      * Names of MdObject-typed containment features that EXIST on {@code obj}'s type but contributed no
-     * group in {@code present} (i.e. are empty) — lets the caller distinguish "none" from "not reported".
+     * group in {@code present} (i.e. are empty) – lets the caller distinguish "none" from "not reported".
      */
     private List<String> emptyStructuralFeatures(EObject obj, List<MdGroup> present) {
         List<String> empty = new ArrayList<>();
@@ -820,7 +820,7 @@ public final class EdtModelGateway {
             }
             MdListResult r = listMetadata(p.getName(), type, nameFilter, remaining);
             if (r.error != null) {
-                agg.error = r.error;   // e.g. unknown type — same for every project
+                agg.error = r.error;   // e.g. unknown type – same for every project
                 break;
             }
             for (MdItem it : r.items) {
@@ -861,7 +861,7 @@ public final class EdtModelGateway {
      * Validate a 1C query (QL) against the live metadata of {@code projectName}: syntax + semantics
      * (unknown tables/fields, type mismatches) via EDT's own QL validator. The transient query
      * resource is given a {@code platform:/resource/<project>/...ql} URI so the QL scope provider
-     * resolves metadata for that project — it derives the project from the resource URI
+     * resolves metadata for that project – it derives the project from the resource URI
      * (IResourceLookup), not from a file on disk (none is created; text is loaded from memory).
      */
     public QueryValidation validateQuery(String projectName, String queryText) {
@@ -1051,7 +1051,7 @@ public final class EdtModelGateway {
      * BSL source of a module/method from the live workspace. Resolve the module either by
      * {@code modulePath} (workspace-relative .bsl) directly, or by {@code fqn} (+ optional
      * {@code moduleType} like ObjectModule/ManagerModule; forms and common modules resolve to Module.bsl).
-     * Returns the procedure/function list with signatures and the source text — of the whole module, or of
+     * Returns the procedure/function list with signatures and the source text – of the whole module, or of
      * a single {@code method} when given. When a top object has several module files and none is selected,
      * returns the candidates in {@code availableModules}.
      */
@@ -1171,9 +1171,9 @@ public final class EdtModelGateway {
      * Add a new procedure/function to a module's BSL. Model-guided text splice:
      * parse the module, resolve the insertion offset from the node model (a named {@code region}, the server
      * {@code #Если Сервер} block, or after the last method), splice the caller's {@code methodText} and
-     * validate by RE-PARSING the result — the tool refuses to write anything that does not parse cleanly,
+     * validate by RE-PARSING the result – the tool refuses to write anything that does not parse cleanly,
      * adds not exactly one method, or duplicates an existing name. Dry-run unless {@code apply} is true.
-     * Additive (a new method is non-breaking) — no force. Token + EDITABLE are enforced by the server/caller.
+     * Additive (a new method is non-breaking) – no force. Token + EDITABLE are enforced by the server/caller.
      */
     public AddMethodResult addMethod(String projectName, String fqn, String moduleType, String modulePath,
             String methodText, String region, Boolean serverBlockArg, boolean apply) {
@@ -1372,7 +1372,7 @@ public final class EdtModelGateway {
                 return r;
             }
 
-            // 4) apply — atomic file write; EDT re-reads the .bsl on its next model access.
+            // 4) apply – atomic file write; EDT re-reads the .bsl on its next model access.
             file.setContents(new ByteArrayInputStream(spliced.getBytes(StandardCharsets.UTF_8)),
                     true, true, new NullProgressMonitor());
             r.applied = true;
@@ -1386,7 +1386,7 @@ public final class EdtModelGateway {
         }
     }
 
-    // ---- Phase 2 write — delete a BSL method from a module --------------------------------------------
+    // ---- Phase 2 write – delete a BSL method from a module --------------------------------------------
 
     /** Cap for {@link DeleteMethodResult#deletedText} (recovery payload, not a transport for huge modules). */
     private static final int DELETED_TEXT_CAP = 40_000;
@@ -1414,10 +1414,10 @@ public final class EdtModelGateway {
     }
 
     /**
-     * Delete a procedure/function from a module's BSL — the inverse of {@link #addMethod}. Model-guided
+     * Delete a procedure/function from a module's BSL – the inverse of {@link #addMethod}. Model-guided
      * text cut: locate the {@code Method} node by name, cut its exact node range plus the ADJACENT leading
      * doc-comment lines and the blank separation above (comments separated by a blank line are preserved),
-     * and validate by RE-PARSING — refuse any result that does not parse cleanly or removes anything but
+     * and validate by RE-PARSING – refuse any result that does not parse cleanly or removes anything but
      * exactly this one method. Dry-run unless {@code apply}; deleting code is destructive and (for an
      * exported method) breaking for consumers, so an apply additionally requires {@code force=true}.
      * Token + EDITABLE are the server/caller's gates.
@@ -1507,12 +1507,12 @@ public final class EdtModelGateway {
             r.lineFrom = mn.getStartLine();
             r.lineTo = mn.getEndLine();
 
-            // 3) cut range: the method node [totalOffset, endOffset) — i.e. the method PLUS its leading
+            // 3) cut range: the method node [totalOffset, endOffset) – i.e. the method PLUS its leading
             //    hidden tokens (the blank separation above and the adjacent doc comments), which makes
             //    the delete the exact byte inverse of addMethod's "eol+eol+text" splice. Two guards keep
             //    content that only LOOKS attached: (a) a trailing same-line comment of the previous
             //    statement stays on its line; (b) comments separated from the method by a blank line
-            //    (e.g. the module header) stay — the cut then starts after the LAST blank line.
+            //    (e.g. the module header) stay – the cut then starts after the LAST blank line.
             int sigStart = mn.getOffset();
             int cutEnd = mn.getEndOffset();
             int cutStart = mn.getTotalOffset();
@@ -1576,7 +1576,7 @@ public final class EdtModelGateway {
             }
             r.preview = previewAround(spliced, cutStart, cutStart);
             String exportWarn = Boolean.TRUE.equals(r.export)
-                    ? " WARNING: exported method — deleting it breaks consumers; check callers via "
+                    ? " WARNING: exported method – deleting it breaks consumers; check callers via "
                             + "edt_find_references (method mode) and prefer deprecation."
                     : "";
             r.plan = "Delete " + r.methodKind + " " + r.methodName
@@ -1596,7 +1596,7 @@ public final class EdtModelGateway {
                 return r;
             }
 
-            // 5) apply — atomic file write; EDT re-reads the .bsl on its next model access.
+            // 5) apply – atomic file write; EDT re-reads the .bsl on its next model access.
             file.setContents(new ByteArrayInputStream(spliced.getBytes(StandardCharsets.UTF_8)),
                     true, true, new NullProgressMonitor());
             r.applied = true;
@@ -1764,7 +1764,7 @@ public final class EdtModelGateway {
         }
         r.message = r.availableModules.isEmpty()
                 ? "no .bsl modules in " + folder
-                : "several modules — pass moduleType (one of: " + String.join(", ", r.availableModules) + ")";
+                : "several modules – pass moduleType (one of: " + String.join(", ", r.availableModules) + ")";
         return null;
     }
 
@@ -1796,7 +1796,7 @@ public final class EdtModelGateway {
     private static final int OUTGOING_CAP = 1000;
 
     /**
-     * The methods CALLED BY a module or a single method — the reverse of
+     * The methods CALLED BY a module or a single method – the reverse of
      * {@link #getReferences} (which gives inbound refs). Parses the BSL via the Xtext model and walks
      * invocation expressions, aggregating distinct {@code qualifier.method} call targets with a site
      * count, and flagging calls through the ExtAPI layer ({@code extApiPrefix}, default
@@ -1909,7 +1909,7 @@ public final class EdtModelGateway {
 
     // ---- Method-level find references ------------------------------------------------------------
 
-    /** Folder name -> FQN type prefix — the inverse of {@link #MD_FOLDER}, for a readable caller label. */
+    /** Folder name -> FQN type prefix – the inverse of {@link #MD_FOLDER}, for a readable caller label. */
     private static final Map<String, String> MD_FOLDER_INV = Map.ofEntries(
             Map.entry("Catalogs", "Catalog"), Map.entry("Documents", "Document"),
             Map.entry("DocumentJournals", "DocumentJournal"), Map.entry("Enums", "Enum"),
@@ -1953,11 +1953,11 @@ public final class EdtModelGateway {
     }
 
     /**
-     * BSL call sites of a specific method — the method-level counterpart of {@link #getReferences}, whose
+     * BSL call sites of a specific method – the method-level counterpart of {@link #getReferences}, whose
      * BM cross-reference index tracks metadata membership (subsystem content, the Configuration lists) but
      * NOT BSL call sites. Because no index maps "callers of CommonModule.X.Method", this walks the project's
      * BSL: a cheap raw-text prefilter (skip modules whose text lacks the method name) narrows to candidates,
-     * then each candidate is parsed and its invocations are matched by qualifier ({@code X}) + method name —
+     * then each candidate is parsed and its invocations are matched by qualifier ({@code X}) + method name –
      * which separates a qualified {@code X.Method(...)} call from same-named LOCAL procedures. Best-effort:
      * literal qualified calls only (not a call through a variable that holds the module, nor dynamic feature
      * names). The target is a common-module method: {@code fqn = CommonModule.X}, {@code method = Method}.
@@ -1977,7 +1977,7 @@ public final class EdtModelGateway {
             return r;
         }
         // The call qualifier = the called module's call-name. For CommonModule.X that is X; otherwise
-        // best-effort the last FQN segment (object-manager calls use a 2-part qualifier — out of scope).
+        // best-effort the last FQN segment (object-manager calls use a 2-part qualifier – out of scope).
         String qualifier = null;
         if (fqn != null && !fqn.isBlank()) {
             String[] s = fqn.split("\\.");
@@ -2003,7 +2003,7 @@ public final class EdtModelGateway {
                     continue;
                 }
                 // Cheap prefilter: the method name must appear literally (BSL identifiers are
-                // case-insensitive) — otherwise this file cannot hold the call. Skip without parsing.
+                // case-insensitive) – otherwise this file cannot hold the call. Skip without parsing.
                 if (text.toLowerCase(java.util.Locale.ROOT).indexOf(methodLc) < 0) {
                     continue;
                 }
@@ -2033,7 +2033,7 @@ public final class EdtModelGateway {
                     }
                     com._1c.g5.v8.dt.bsl.model.FeatureAccess fa =
                             ((com._1c.g5.v8.dt.bsl.model.Invocation) e).getMethodAccess();
-                    // Only qualified calls (X.Method) — skips same-named local procedures.
+                    // Only qualified calls (X.Method) – skips same-named local procedures.
                     if (!(fa instanceof com._1c.g5.v8.dt.bsl.model.DynamicFeatureAccess)) {
                         continue;
                     }
@@ -2072,7 +2072,7 @@ public final class EdtModelGateway {
         return r;
     }
 
-    /** Collect every .bsl file under the project's src (or root) — the candidate set. */
+    /** Collect every .bsl file under the project's src (or root) – the candidate set. */
     private void collectBslFiles(IProject p, List<IFile> out) throws CoreException {
         final org.eclipse.core.resources.IContainer root =
                 p.getFolder("src").exists() ? p.getFolder("src") : p;
@@ -2135,7 +2135,7 @@ public final class EdtModelGateway {
         return t.length() > 200 ? t.substring(0, 200) + "..." : t;
     }
 
-    // ---- Structure arguments of outgoing calls — static key analysis (best-effort) ----------
+    // ---- Structure arguments of outgoing calls – static key analysis (best-effort) ----------
 
     /** One outgoing call site + the top-level keys of the Структура argument passed to it (best-effort). */
     public static final class OutgoingStructureSite {
@@ -2162,9 +2162,9 @@ public final class EdtModelGateway {
     /**
      * Best-effort static analysis of the Структура arguments passed to outgoing (qualified) calls: for
      * each call site in a method/module, the top-level keys of the structure passed as an argument,
-     * collected from {@code <var>.Вставить("key", …)} inserts on that variable, with one-level expansion
-     * of a seed/template helper ({@code <var> = Helper(…)}) resolvable in the same module. An optional
-     * {@code qualifierFilter} (prefix) scopes to one layer (e.g. ПрограммныйИнтерфейсСервиса). Heuristic —
+     * collected from {@code <var>.Вставить("key", ...)} inserts on that variable, with one-level expansion
+     * of a seed/template helper ({@code <var> = Helper(...)}) resolvable in the same module. An optional
+     * {@code qualifierFilter} (prefix) scopes to one layer (e.g. ПрограммныйИнтерфейсСервиса). Heuristic –
      * flow-insensitive, literal keys only, does not follow external helpers, dynamic keys or
      * {@code Новый Структура("a,b")} constructors; {@code partial=true} flags an incomplete result.
      * Read-only; never throws.
@@ -2250,7 +2250,7 @@ public final class EdtModelGateway {
                 for (com._1c.g5.v8.dt.bsl.model.Expression param : inv.getParams()) {
                     OutgoingStructureSite site = describeStructureArg(param, module, inserts, assigns);
                     if (site == null) {
-                        continue;   // arg is not a structure (string / number / ...) — skip
+                        continue;   // arg is not a structure (string / number / ...) – skip
                     }
                     if (r.structures.size() >= OUTGOING_CAP) {
                         r.truncated = true;
@@ -2320,7 +2320,7 @@ public final class EdtModelGateway {
             }
         }
         if (helper == null) {
-            return false;   // helper not in this module — caller marks partial
+            return false;   // helper not in this module – caller marks partial
         }
         Map<String, java.util.LinkedHashSet<String>> hi = collectStructInserts(helper);
         String retVar = returnVarOf(helper);
@@ -2339,7 +2339,7 @@ public final class EdtModelGateway {
         return true;
     }
 
-    /** Collect {@code <var>.Вставить("key", …)} literal keys grouped by receiver variable, within a scope. */
+    /** Collect {@code <var>.Вставить("key", ...)} literal keys grouped by receiver variable, within a scope. */
     private Map<String, java.util.LinkedHashSet<String>> collectStructInserts(EObject scope) {
         Map<String, java.util.LinkedHashSet<String>> map = new java.util.LinkedHashMap<>();
         for (java.util.Iterator<EObject> it = scope.eAllContents(); it.hasNext();) {
@@ -2374,7 +2374,7 @@ public final class EdtModelGateway {
         return map;
     }
 
-    /** Collect {@code <var> = SomeFunc(…)} assignments (the seeding helper name) within a scope. */
+    /** Collect {@code <var> = SomeFunc(...)} assignments (the seeding helper name) within a scope. */
     private Map<String, String> collectAssigns(EObject scope) {
         Map<String, String> map = new java.util.LinkedHashMap<>();
         for (java.util.Iterator<EObject> it = scope.eAllContents(); it.hasNext();) {
@@ -2422,7 +2422,7 @@ public final class EdtModelGateway {
         if (t.length() >= 2 && t.charAt(0) == '"' && t.charAt(t.length() - 1) == '"') {
             return t.substring(1, t.length() - 1);
         }
-        return null;   // not a string literal (dynamic key) — skip
+        return null;   // not a string literal (dynamic key) – skip
     }
 
     /** A BSL module parsed into a transient Xtext resource, positioned at an offset. */
@@ -2548,7 +2548,7 @@ public final class EdtModelGateway {
         public String itemType;   // the Managed*Type literal (InputField, UsualGroup, ...) when applicable
         public String dataPath;   // bound data path for data items (e.g. "Объект.Наименование"); null otherwise
         public String title;      // ru title, when present
-        // Static (.form) properties — note these are the DESIGN values; BSL (e.g. ПриСозданииНаСервере)
+        // Static (.form) properties – note these are the DESIGN values; BSL (e.g. ПриСозданииНаСервере)
         // may change them at runtime. null = not applicable to this item kind.
         public Boolean visible;
         public Boolean enabled;
@@ -2557,15 +2557,15 @@ public final class EdtModelGateway {
         public String command;        // name of the referenced command (matches a form command, best-effort)
         public String representation; // ButtonRepresentation (Text / Picture / ...), when set
         public String placement;      // placement area in a command bar / menu, when set
-        // per-item event handlers (columns/fields carry their own — e.g. a cell-click "Выбор"/Selection
-        // handler — separate from the form-level handlers). Empty when the item has none.
+        // per-item event handlers (columns/fields carry their own – e.g. a cell-click "Выбор"/Selection
+        // handler – separate from the form-level handlers). Empty when the item has none.
         public List<FormEvt> handlers = new ArrayList<>();
         public Boolean cellHyperlink; // the cell is rendered as a clickable hyperlink (FormField only)
-        // Input-field design props (InputField only) — password masking + the reveal ("eye") choice
+        // Input-field design props (InputField only) – password masking + the reveal ("eye") choice
         // button, the design-time signal for the "show a stored secret on the client" pattern. null = n/a.
         public Boolean passwordMode;              // the field masks input as ***
         public Boolean choiceButton;              // an in-field choice button is shown
-        public Boolean choiceButtonPicture;       // a choice-button picture is set — the button carries a glyph (the eye)
+        public Boolean choiceButtonPicture;       // a choice-button picture is set – the button carries a glyph (the eye)
         public String choiceButtonRepresentation; // where the choice button is drawn (non-Auto only)
         public List<FormNode> children = new ArrayList<>();
     }
@@ -2655,7 +2655,7 @@ public final class EdtModelGateway {
                 r.fqn = fqn;
                 // A common form is a top object (CommonForm); the editable content (items,
                 // attributes) is the form.model.Form reached via BasicForm.getForm(). A catalog/
-                // document form is NOT a top object — only its owner is — so resolve "Owner.Form.Name"
+                // document form is NOT a top object – only its owner is – so resolve "Owner.Form.Name"
                 // through the owner's "forms" feature.
                 EObject mdForm = transaction.getTopObjectByFqn(fqn);
                 Form form = asFormContent(mdForm);
@@ -2823,7 +2823,7 @@ public final class EdtModelGateway {
 
     /**
      * Input-field design props from the .form: РежимПароля (the field masks input) and the choice
-     * ("eye") button — КнопкаВыбора / КартинкаКнопкиВыбора — the design-time signal for the reveal-password
+     * ("eye") button – КнопкаВыбора / КартинкаКнопкиВыбора – the design-time signal for the reveal-password
      * idiom. Only an InputField carries these (its ext-info is InputFieldExtInfo); other field kinds have
      * none. Emits only the meaningful (true / present / non-Auto) value to keep the tree lean. The picture
      * is reported as presence, not a name (the .form ref is an EMF proxy, not a plain CommonPicture name).
@@ -2953,7 +2953,7 @@ public final class EdtModelGateway {
      * Collect the form's declarative conditional appearance (УсловноеОформление) from the .form
      * (DCS settings): for each rule the formatted fields, the selection conditions and the set
      * appearance parameters. Rules built at runtime in BSL (УстановитьУсловноеОформление) are NOT
-     * here — only what is stored declaratively in the .form. Best-effort; never throws.
+     * here – only what is stored declaratively in the .form. Best-effort; never throws.
      */
     private void collectConditionalAppearance(Form form, FormDetails r) {
         try {
@@ -3008,7 +3008,7 @@ public final class EdtModelGateway {
     private String renderFilterItem(FilterItem fi) {
         try {
             if (!(fi instanceof DataCompositionFilterItem)) {
-                return fi.eClass().getName(); // a filter group (AND/OR) — note the kind, no deep render
+                return fi.eClass().getName(); // a filter group (AND/OR) – note the kind, no deep render
             }
             DataCompositionFilterItem f = (DataCompositionFilterItem) fi;
             String left = dcValueText(f.getLeft());
@@ -3333,7 +3333,7 @@ public final class EdtModelGateway {
 
         final int zoom = scale;
         // Where to run the render depends on the runtime. NativeRenderService.setWindows() disposes
-        // widgets it owns, and in a GUI EDT those belong to the workbench's main-thread Display — so
+        // widgets it owns, and in a GUI EDT those belong to the workbench's main-thread Display – so
         // the render MUST run on that thread (a private Display throws "Invalid thread access" inside
         // setWindows). Headless CLI has no workbench Display, so there we own a private one on a
         // dedicated single thread (created once, reused). Pick per runtime:
@@ -3341,7 +3341,7 @@ public final class EdtModelGateway {
             Display workbenchDisplay = workbenchDisplayOrNull();
             if (workbenchDisplay != null && !workbenchDisplay.isDisposed()) {
                 // GUI EDT: marshal onto the workbench UI thread. syncExec briefly blocks the editor
-                // for the render (~1-2 s) — the same thread EDT's own form preview uses.
+                // for the render (~1-2 s) – the same thread EDT's own form preview uses.
                 final Display wd = workbenchDisplay;
                 wd.syncExec(() -> renderOnUi(r, wd, model, mm, fqn, variant, theme, density, ratio, w, h, zoom, outPath));
             } else {
@@ -3370,7 +3370,7 @@ public final class EdtModelGateway {
                 return PlatformUI.getWorkbench().getDisplay();
             }
         } catch (Throwable ignore) {
-            // No workbench (headless) — fall through to null.
+            // No workbench (headless) – fall through to null.
         }
         return null;
     }
@@ -3419,7 +3419,7 @@ public final class EdtModelGateway {
             pvc.setCommonRatio(commonRatio);
 
             // 3) services + wire the offscreen windows. EDT's own composite doubles as the image
-            //    supplier + mouse listener, so a null supplier/listener trips SWT's null check —
+            //    supplier + mouse listener, so a null supplier/listener trips SWT's null check –
             //    pass a real backing image and a no-op listener.
             renderService = new RenderServiceProvider().get(version);
             transformator = new TransformatorServiceProvider().get();
@@ -3435,7 +3435,7 @@ public final class EdtModelGateway {
             final String[] err = {null};
             // 4) drive the render in a read-WRITE transaction that is ROLLED BACK: the layout/render
             //    pipeline mutates the form model (e.g. setVerticalScroll), so a read-only transaction
-            //    fails; executeAndRollback is what EDT's own WYSIWYG uses — changes never persist.
+            //    fails; executeAndRollback is what EDT's own WYSIWYG uses – changes never persist.
             model.executeAndRollback(new AbstractBmTask<Object>("edt-bridge.renderForm") {
                 @Override
                 public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
@@ -3526,7 +3526,7 @@ public final class EdtModelGateway {
     /**
      * The form's command-interface mapping model (needed by the layout session). Built the way EDT's
      * form editor does it: register the mapping in a {@link MappingController} and get the completed
-     * root synchronously — {@code buildRootModel()} alone leaves the CMI incomplete for forms with a
+     * root synchronously – {@code buildRootModel()} alone leaves the CMI incomplete for forms with a
      * rich command interface (object forms).
      */
     private CommandInterfaceMapping buildCmi(Form form, IBmModel model, IBmModelManager mm) {
@@ -3600,7 +3600,7 @@ public final class EdtModelGateway {
         return ClientInterfaceScale.ECIS_NORMAL;
     }
 
-    /** Class + message + top stack frames (and cause) — enough to locate a render-pipeline failure. */
+    /** Class + message + top stack frames (and cause) – enough to locate a render-pipeline failure. */
     private String describeThrowable(Throwable t) {
         StringBuilder sb = new StringBuilder(t.getClass().getName());
         if (t.getMessage() != null) {
@@ -3634,7 +3634,7 @@ public final class EdtModelGateway {
         }
     }
 
-    // ---- Metadata write, Phase 2: add attribute — DRY-RUN stage --------------------------
+    // ---- Metadata write, Phase 2: add attribute – DRY-RUN stage --------------------------
 
     /** Result of {@link #addAttribute}. */
     public static final class AddAttrResult {
@@ -3660,16 +3660,16 @@ public final class EdtModelGateway {
     /**
      * Phase-2 write tool: add an attribute to a metadata object. Two stages, by {@code apply}:
      * <ul>
-     *   <li>{@code apply=false} (default) — DRY-RUN: validate (owner resolvable, attribute name free,
+     *   <li>{@code apply=false} (default) – DRY-RUN: validate (owner resolvable, attribute name free,
      *       type string parses, reference target exists) and return the planned change WITHOUT writing.
-     *   <li>{@code apply=true} — perform the write: build the {@link TypeDescription} from the type
+     *   <li>{@code apply=true} – perform the write: build the {@link TypeDescription} from the type
      *       string (platform-primitive proxy via {@link IEObjectProvider}, or the target object's
      *       produced {@code Ref} type via {@link MdProducedTypesUtil}), create the attribute, set its
      *       name/synonym/comment/type/uuid, attach it to the owner's {@code attributes}, and commit in
      *       a BM read-write transaction. The write is skipped when validation fails (nothing written).
      * </ul>
      * The {@code bsl_support_status = EDITABLE} gate before an apply is the caller's
-     * responsibility — the EDT support API is not on the surface, so it stays a process gate for now.
+     * responsibility – the EDT support API is not on the surface, so it stays a process gate for now.
      */
     public AddAttrResult addAttribute(String projectName, String ownerFqnRaw, String name, String typeSpec,
             String synonymRu, String comment, boolean apply) {
@@ -3777,11 +3777,11 @@ public final class EdtModelGateway {
                 r.message = "reference target not found: " + r.refFqn;
             }
         }
-        // Stage 2 — apply: only when requested AND validation passed. Refuse to write otherwise.
+        // Stage 2 – apply: only when requested AND validation passed. Refuse to write otherwise.
         if (apply) {
             if (!r.ok) {
                 r.message = (r.message == null ? "validation failed" : r.message)
-                        + " — apply refused (nothing written).";
+                        + " – apply refused (nothing written).";
                 return r;
             }
             final Version version = projectVersion(p);
@@ -3816,7 +3816,7 @@ public final class EdtModelGateway {
                 r.applied = true;
                 r.message = "written: added attribute \"" + name + "\" to " + ownerFqn
                         + (exported ? " (serialized to .mdo)"
-                                : " — WARNING: committed in-memory but forceExport did not persist (.mdo unchanged)");
+                                : " – WARNING: committed in-memory but forceExport did not persist (.mdo unchanged)");
             } catch (RuntimeException ex) {
                 r.applied = false;
                 r.message = "apply failed (nothing committed): " + ex.getClass().getSimpleName()
@@ -3847,7 +3847,7 @@ public final class EdtModelGateway {
     }
 
     /**
-     * Phase-2 write tool: remove an attribute from a metadata object. DESTRUCTIVE — removing an
+     * Phase-2 write tool: remove an attribute from a metadata object. DESTRUCTIVE – removing an
      * attribute is a schema change (drops the column in a real infobase). Checks inbound references
      * first (BM cross-reference index): if referenced, removal is blocked unless {@code force=true}.
      * Dry-run by default ({@code apply=false}) reports references + the plan. The caller must verify
@@ -3876,7 +3876,7 @@ public final class EdtModelGateway {
             return r;
         }
 
-        // Stage 1 — locate the attribute and collect its inbound references (read).
+        // Stage 1 – locate the attribute and collect its inbound references (read).
         model.executeReadonlyTask(new AbstractBmTask<Object>("edt-bridge.removeAttribute.inspect") {
             @Override
             public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
@@ -3909,7 +3909,7 @@ public final class EdtModelGateway {
                 }
                 r.attrFound = true;
                 // The BM xref index also counts the owner's own internal plumbing (producedTypes,
-                // own forms, presentation) — those are NOT a breakage signal and EDT updates them on
+                // own forms, presentation) – those are NOT a breakage signal and EDT updates them on
                 // removal. Only references from OTHER top objects matter, so classify and block on those.
                 Collection<IBmCrossReference> refs = tx.getReferences(attr.bmGetUri());
                 r.refCount = refs.size();
@@ -3949,16 +3949,16 @@ public final class EdtModelGateway {
         r.plan = "Удалить реквизит \"" + name + "\" из " + ownerFqn + " (входящих ссылок всего: "
                 + r.refCount + ", внешних: " + r.externalRefCount + ")";
         if (r.referenced && !force) {
-            r.message = "attribute is referenced by " + r.externalRefCount + " other object(s) — removal "
+            r.message = "attribute is referenced by " + r.externalRefCount + " other object(s) – removal "
                     + "blocked; pass force=true to remove anyway (this will break those references). "
                     + "Note: BSL text references may not be captured by the model index.";
         }
 
-        // Stage 2 — apply: remove from the containment, commit, serialize. Refused when not ok.
+        // Stage 2 – apply: remove from the containment, commit, serialize. Refused when not ok.
         if (apply) {
             if (!r.ok) {
                 r.message = (r.message == null ? "cannot remove" : r.message)
-                        + " — apply refused (nothing removed).";
+                        + " – apply refused (nothing removed).";
                 return r;
             }
             try {
@@ -3986,7 +3986,7 @@ public final class EdtModelGateway {
                 r.applied = true;
                 r.message = "removed attribute \"" + name + "\" from " + ownerFqn
                         + (exported ? " (serialized to .mdo)"
-                                : " — WARNING: removed in-memory but forceExport did not persist (.mdo unchanged)");
+                                : " – WARNING: removed in-memory but forceExport did not persist (.mdo unchanged)");
             } catch (RuntimeException ex) {
                 r.applied = false;
                 r.message = "remove failed (nothing committed): " + ex.getClass().getSimpleName()
@@ -4021,8 +4021,8 @@ public final class EdtModelGateway {
     }
 
     /**
-     * Phase-2 write tool: modify an existing attribute — its type, ru synonym and/or comment. At least
-     * one change must be requested. Changing the TYPE may break backward compatibility (data + code) —
+     * Phase-2 write tool: modify an existing attribute – its type, ru synonym and/or comment. At least
+     * one change must be requested. Changing the TYPE may break backward compatibility (data + code) –
      * a warning is returned. Dry-run by default ({@code apply=false}). Caller verifies
      * {@code bsl_support_status = EDITABLE} before apply.
      */
@@ -4045,7 +4045,7 @@ public final class EdtModelGateway {
         boolean wantSyn = newSynonymRu != null;
         boolean wantComment = newComment != null;
         if (!wantType && !wantSyn && !wantComment) {
-            r.message = "nothing to change — provide at least one of newType, newSynonymRu, newComment";
+            r.message = "nothing to change – provide at least one of newType, newSynonymRu, newComment";
             return r;
         }
         r.typeChange = wantType;
@@ -4063,7 +4063,7 @@ public final class EdtModelGateway {
             r.newType = pt.display;
         }
 
-        // Stage 1 — find the attribute, capture its current type, validate the new type's references.
+        // Stage 1 – find the attribute, capture its current type, validate the new type's references.
         model.executeReadonlyTask(new AbstractBmTask<Object>("edt-bridge.modifyAttribute.inspect") {
             @Override
             public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
@@ -4140,10 +4140,10 @@ public final class EdtModelGateway {
             }
         }
 
-        // Stage 2 — apply.
+        // Stage 2 – apply.
         if (apply) {
             if (!r.ok) {
-                r.message = (r.message == null ? "cannot modify" : r.message) + " — apply refused (nothing changed).";
+                r.message = (r.message == null ? "cannot modify" : r.message) + " – apply refused (nothing changed).";
                 return r;
             }
             final Version version = projectVersion(p);
@@ -4187,7 +4187,7 @@ public final class EdtModelGateway {
                 r.applied = true;
                 r.message = "modified attribute \"" + name + "\" in " + ownerFqn
                         + (exported ? " (serialized to .mdo)"
-                                : " — WARNING: changed in-memory but forceExport did not persist (.mdo unchanged)");
+                                : " – WARNING: changed in-memory but forceExport did not persist (.mdo unchanged)");
             } catch (RuntimeException ex) {
                 r.applied = false;
                 r.message = "modify failed (nothing committed): " + ex.getClass().getSimpleName()
@@ -4239,15 +4239,15 @@ public final class EdtModelGateway {
     /**
      * Phase-2 flagship write tool: rename a metadata object OR a child member (attribute,
      * dimension, resource, ...) and cascade every reference in metadata AND BSL, using EDT's OWN
-     * refactoring engine ({@link IMdRefactoringService#createMdObjectRenameRefactoring}) — not a brittle
+     * refactoring engine ({@link IMdRefactoringService#createMdObjectRenameRefactoring}) – not a brittle
      * text replace. Two stages by {@code apply}:
      * <ul>
-     *   <li>{@code apply=false} (default) — DRY-RUN: resolve the target, build the refactoring(s) and
+     *   <li>{@code apply=false} (default) – DRY-RUN: resolve the target, build the refactoring(s) and
      *       return their change items ({@code getItems}) + validation problems ({@code getStatus}),
      *       performing nothing.
-     *   <li>{@code apply=true} — perform the cascade via {@code IRefactoring.perform()}, run inside
+     *   <li>{@code apply=true} – perform the cascade via {@code IRefactoring.perform()}, run inside
      *       {@link IProjectOperationApi#performExclusiveOperation} (the build pipeline is suspended and
-     *       the project locked — exactly how EDT's own editor applies a name change). The engine manages
+     *       the project locked – exactly how EDT's own editor applies a name change). The engine manages
      *       its own BM write transactions and serializes the touched objects.
      * </ul>
      * Renaming is the widest backward-compatibility surface: a rename is breaking for peer
@@ -4287,7 +4287,7 @@ public final class EdtModelGateway {
             return r;
         }
 
-        // Stage 1 — resolve the target and BUILD the refactoring (read-only). Building is pure analysis
+        // Stage 1 – resolve the target and BUILD the refactoring (read-only). Building is pure analysis
         // (it computes the change list + problems), so it is safe inside a read-only BM transaction,
         // which also guarantees the MdObject we hand to the engine is live. perform() happens later,
         // OUTSIDE any transaction (it opens its own write transactions via a batch session).
@@ -4298,7 +4298,7 @@ public final class EdtModelGateway {
                 EObject target = tx.getTopObjectByFqn(targetFqn);
                 boolean top = target instanceof MdObject;
                 if (!top) {
-                    // Not a top object — resolve a child member by its full FQN (e.g.
+                    // Not a top object – resolve a child member by its full FQN (e.g.
                     // Catalog.Контрагенты.Attribute.ИНН). The FQN is the top object (first two segments)
                     // followed by (kind, name) pairs; walk them by name (a child MdObject does NOT
                     // support bmGetFqn, only top objects do).
@@ -4370,20 +4370,20 @@ public final class EdtModelGateway {
                 + "конфигураций-партнёров (SA/SM/расширения на других внедрениях);. Каскад "
                 + "затрагивает метаданные И BSL во всех проектах. Требуется одобрение владельца.";
         if (!r.problems.isEmpty()) {
-            r.message = "refactoring engine reported " + r.problems.size() + " problem(s) — apply blocked "
+            r.message = "refactoring engine reported " + r.problems.size() + " problem(s) – apply blocked "
                     + "(e.g. name taken, or object not editable / support-locked).";
         }
 
-        // Stage 2 — apply: perform the cascade. Requires force=true (the breaking-change override) AND a
+        // Stage 2 – apply: perform the cascade. Requires force=true (the breaking-change override) AND a
         // clean dry-run. Runs OUTSIDE the read transaction, inside an exclusive project operation.
         if (apply) {
             if (!force) {
-                r.message = "rename is a breaking change for peer configurations — apply "
+                r.message = "rename is a breaking change for peer configurations – apply "
                         + "refused; pass force=true (owner's explicit override) to perform it.";
                 return r;
             }
             if (!r.ok) {
-                r.message = (r.message == null ? "cannot rename" : r.message) + " — apply refused (nothing changed).";
+                r.message = (r.message == null ? "cannot rename" : r.message) + " – apply refused (nothing changed).";
                 return r;
             }
             try {
@@ -4406,10 +4406,10 @@ public final class EdtModelGateway {
                 }
                 r.applied = true;
                 r.message = "renamed \"" + r.currentName + "\" → \"" + newName + "\" in " + targetFqn
-                        + " — cascade performed across metadata + BSL.";
+                        + " – cascade performed across metadata + BSL.";
             } catch (Exception ex) {
                 r.applied = false;
-                r.message = "apply failed (cascade may be partial — verify the working tree): "
+                r.message = "apply failed (cascade may be partial – verify the working tree): "
                         + ex.getClass().getSimpleName() + (ex.getMessage() != null ? ": " + ex.getMessage() : "");
             }
         }
@@ -4419,7 +4419,7 @@ public final class EdtModelGateway {
     /**
      * Resolve a child {@link MdObject} from its FQN segments: from {@code container}, consume the
      * remaining (kind, name) pairs starting at {@code idx}, descending one named child per pair. The
-     * kind segment (e.g. "Attribute"/"TabularSection"/"Form") disambiguates when names collide — a
+     * kind segment (e.g. "Attribute"/"TabularSection"/"Form") disambiguates when names collide – a
      * child's eClass name ends with it (CatalogAttribute → "Attribute"). Child objects do not expose
      * a BM FQN, so this name-walk is how a nested member is located.
      */
@@ -4505,17 +4505,17 @@ public final class EdtModelGateway {
     }
 
     /**
-     * Delete a metadata object (the inverse of {@link #createObject}) — a top object (e.g.
-     * {@code Catalog.X}) or a child member — and cascade the removal of every reference in metadata AND
+     * Delete a metadata object (the inverse of {@link #createObject}) – a top object (e.g.
+     * {@code Catalog.X}) or a child member – and cascade the removal of every reference in metadata AND
      * BSL using EDT's OWN refactoring engine
      * ({@link IMdRefactoringService#createMdObjectDeleteRefactoring}), the same native machinery as
      * {@link #renameObject}. The engine deletes the object's {@code .mdo} (and its directory) and updates
      * the {@code Configuration}, so no manual detach/forceExport is needed. Two stages by {@code apply}:
      * <ul>
-     *   <li>{@code apply=false} (default) — DRY-RUN: resolve the target, build the delete refactoring and
+     *   <li>{@code apply=false} (default) – DRY-RUN: resolve the target, build the delete refactoring and
      *       return its change items ({@code getItems}) + validation problems ({@code getStatus}), deleting
      *       nothing.
-     *   <li>{@code apply=true} — perform the cascade via {@code IRefactoring.perform()} inside
+     *   <li>{@code apply=true} – perform the cascade via {@code IRefactoring.perform()} inside
      *       {@link IProjectOperationApi#performExclusiveOperation} (build pipeline suspended, project
      *       locked), exactly as the rename apply does.
      * </ul>
@@ -4548,7 +4548,7 @@ public final class EdtModelGateway {
             return r;
         }
 
-        // Stage 1 — resolve the target and BUILD the delete refactoring (read-only analysis), mirroring
+        // Stage 1 – resolve the target and BUILD the delete refactoring (read-only analysis), mirroring
         // rename: building is pure analysis (change list + problems), safe in a read-only BM transaction,
         // and guarantees the MdObject handed to the engine is live. perform() happens later, outside any tx.
         final List<IRefactoring> built = new ArrayList<>();
@@ -4621,20 +4621,20 @@ public final class EdtModelGateway {
                 + "каскад удаляет .mdo объекта и чистит ссылки в метаданных И BSL во всех проектах. Требуется "
                 + "одобрение владельца. Перед apply сделайте резервную копию.";
         if (!r.problems.isEmpty()) {
-            r.message = "refactoring engine reported " + r.problems.size() + " problem(s) — apply blocked "
+            r.message = "refactoring engine reported " + r.problems.size() + " problem(s) – apply blocked "
                     + "(e.g. object not editable / support-locked).";
         }
 
-        // Stage 2 — apply: perform the delete cascade. Requires force=true (the breaking-change override)
+        // Stage 2 – apply: perform the delete cascade. Requires force=true (the breaking-change override)
         // AND a clean dry-run. Runs outside the read transaction, inside an exclusive project operation.
         if (apply) {
             if (!force) {
-                r.message = "delete is an irreversible breaking change for peer configurations — apply "
+                r.message = "delete is an irreversible breaking change for peer configurations – apply "
                         + "refused; pass force=true (owner's explicit override) to perform it.";
                 return r;
             }
             if (!r.ok) {
-                r.message = (r.message == null ? "cannot delete" : r.message) + " — apply refused (nothing deleted).";
+                r.message = (r.message == null ? "cannot delete" : r.message) + " – apply refused (nothing deleted).";
                 return r;
             }
             try {
@@ -4657,10 +4657,10 @@ public final class EdtModelGateway {
                 }
                 r.applied = true;
                 r.message = "deleted \"" + r.name + "\" (" + targetFqn
-                        + ") — cascade performed across metadata + BSL.";
+                        + ") – cascade performed across metadata + BSL.";
             } catch (Exception ex) {
                 r.applied = false;
-                r.message = "apply failed (cascade may be partial — verify the working tree): "
+                r.message = "apply failed (cascade may be partial – verify the working tree): "
                         + ex.getClass().getSimpleName() + (ex.getMessage() != null ? ": " + ex.getMessage() : "");
             }
         }
@@ -4691,7 +4691,7 @@ public final class EdtModelGateway {
 
     /**
      * Normalize the class prefix of a top-object FQN from a Russian metadata kind
-     * (Справочник, Документ, …) to the English MdClass name (Catalog, Document, …)
+     * (Справочник, Документ, ...) to the English MdClass name (Catalog, Document, ...)
      * expected by {@code getTopObjectByFqn}. The object NAME (which may be Cyrillic)
      * is left untouched. FQNs that already use an English prefix, or whose head is
      * unknown, are returned unchanged.
@@ -4729,14 +4729,14 @@ public final class EdtModelGateway {
 
     /**
      * Phase-2 write tool: create a new TOP metadata object (Catalog, Document, Enum,
-     * InformationRegister, …) using EDT's own object factory + per-type initializer (so the object is
+     * InformationRegister, ...) using EDT's own object factory + per-type initializer (so the object is
      * born valid, with standard attributes/presentations), then register it as a BM top object and link
      * it into the {@code Configuration}. Two stages by {@code apply}:
      * <ul>
-     *   <li>{@code apply=false} (default) — DRY-RUN: validate (type → eClass; {@code name} a legal 1C
+     *   <li>{@code apply=false} (default) – DRY-RUN: validate (type → eClass; {@code name} a legal 1C
      *       identifier; FQN free; the {@code Configuration} has a containment feature for the eClass) and
      *       return the plan, creating nothing.
-     *   <li>{@code apply=true} — perform the recipe (from EDT's New-object wizard): {@code factory.create}
+     *   <li>{@code apply=true} – perform the recipe (from EDT's New-object wizard): {@code factory.create}
      *       → set name/synonym/comment → {@code tx.toTransactionObject} → {@code tx.attachTopObject(fqn)}
      *       → add to the config feature → {@code factory.fillDefaultReferences}, then forceExport the new
      *       object AND the Configuration. Creating an object is additive (non-breaking) → no
@@ -4786,7 +4786,7 @@ public final class EdtModelGateway {
             return r;
         }
 
-        // Stage 1 — validate against the live model (read): config present, has a feature for this
+        // Stage 1 – validate against the live model (read): config present, has a feature for this
         // eClass, and the FQN is free.
         final String[] featureName = {null};
         model.executeReadonlyTask(new AbstractBmTask<Object>("edt-bridge.createObject.validate") {
@@ -4811,7 +4811,7 @@ public final class EdtModelGateway {
                 + (r.feature != null ? " в Configuration." + r.feature : "")
                 + (synonymRu != null && !synonymRu.isBlank() ? " (синоним: " + synonymRu + ")" : "");
         r.warning = "новый объект становится частью контракта конфигурации (поставляемая технология, "
-                + "/alienability) — имя по конвенциям; добавление аддитивно и обратную совместимость "
+                + "/alienability) – имя по конвенциям; добавление аддитивно и обратную совместимость "
                 + "не ломает.";
         if (!r.configFound) {
             r.message = "Configuration top object not found";
@@ -4821,11 +4821,11 @@ public final class EdtModelGateway {
             r.message = "object already exists: " + fqn;
         }
 
-        // Stage 2 — apply: factory-create (initialized) outside the tx, then attach + link inside it.
+        // Stage 2 – apply: factory-create (initialized) outside the tx, then attach + link inside it.
         if (apply) {
             if (!r.ok) {
                 r.message = (r.message == null ? "validation failed" : r.message)
-                        + " — apply refused (nothing created).";
+                        + " – apply refused (nothing created).";
                 return r;
             }
             IModelObjectFactory factory = modelObjectFactory();
@@ -4874,11 +4874,11 @@ public final class EdtModelGateway {
                 r.applied = true;
                 r.message = "created " + objectType + " " + fqn
                         + ((exportedObj && exportedCfg) ? " (serialized: object .mdo + Configuration.mdo)"
-                                : " — WARNING: created in-memory but forceExport incomplete (object=" + exportedObj
+                                : " – WARNING: created in-memory but forceExport incomplete (object=" + exportedObj
                                         + ", configuration=" + exportedCfg + ")");
             } catch (RuntimeException ex) {
                 r.applied = false;
-                r.message = "create failed (verify the working tree — a partial object may remain): "
+                r.message = "create failed (verify the working tree – a partial object may remain): "
                         + ex.getClass().getSimpleName() + (ex.getMessage() != null ? ": " + ex.getMessage() : "");
             }
         }
@@ -4910,8 +4910,8 @@ public final class EdtModelGateway {
 
     /**
      * The {@code Configuration} list {@link EReference} that holds objects of {@code eClass} (e.g.
-     * {@code catalogs}). In EDT's mdclass model these are NON-containment references — top objects are
-     * owned by the BM, and the Configuration just lists them — so scan all many-valued references, not
+     * {@code catalogs}). In EDT's mdclass model these are NON-containment references – top objects are
+     * owned by the BM, and the Configuration just lists them – so scan all many-valued references, not
      * only containments. Prefer an exact type match over a supertype one.
      */
     private EReference findConfigFeature(EObject config, EClass eClass) {
@@ -4973,17 +4973,17 @@ public final class EdtModelGateway {
 
     /**
      * Phase-2 write tool: create a NEW configuration-extension PROJECT next to a base configuration
-     * project, via EDT's own {@link IExtensionProjectManager} — the engine behind the
+     * project, via EDT's own {@link IExtensionProjectManager} – the engine behind the
      * File &gt; New &gt; Configuration Extension wizard. Two stages by {@code apply}:
      * <ul>
-     *   <li>{@code apply=false} (default) — DRY-RUN: validate (extension name a legal identifier and
+     *   <li>{@code apply=false} (default) – DRY-RUN: validate (extension name a legal identifier and
      *       free in the workspace; base project open and carrying a Configuration; purpose known) and
      *       return the plan, creating nothing.
-     *   <li>{@code apply=true} — create the project in the default workspace location with the base
+     *   <li>{@code apply=true} – create the project in the default workspace location with the base
      *       project's runtime version, then stamp the extension Configuration's {@code namePrefix} and
      *       {@code configurationExtensionPurpose} and serialize it. The new project's model loads in
      *       background jobs; the stamp step polls for it briefly and reports {@code stamped=false} if
-     *       the model is still not ready (re-run later — the create itself is done).
+     *       the model is still not ready (re-run later – the create itself is done).
      * </ul>
      */
     public CreateExtensionResult createExtension(String name, String baseProjectName, String namePrefix,
@@ -5040,7 +5040,7 @@ public final class EdtModelGateway {
         }
         if (!r.ok) {
             r.message = (r.message == null ? "validation failed" : r.message)
-                    + " — apply refused (nothing created).";
+                    + " – apply refused (nothing created).";
             return r;
         }
         IExtensionProjectManager epm = ServiceAccess.get(IExtensionProjectManager.class);
@@ -5052,7 +5052,7 @@ public final class EdtModelGateway {
         try {
             // create() attaches the given Configuration object DIRECTLY to the new project's model
             // (ExtensionProjectManager.attachConfiguration -> tx.attachTopObject, no copy). So it must
-            // be a FRESH, detached Configuration — the base project's live config fails "object is
+            // be a FRESH, detached Configuration – the base project's live config fails "object is
             // already attached", and null fails the lifecycle. Build one via the md factory (same
             // factory create_object uses); create() names it after the project.
             EObject freshConfig = factory.create(
@@ -5070,7 +5070,7 @@ public final class EdtModelGateway {
             r.stamped = stampExtensionConfiguration(created, namePrefix, purpose);
             r.message = "created extension project " + name + " extending " + baseProjectName
                     + (r.stamped ? " (prefix/purpose stamped and serialized)"
-                            : " — WARNING: created, but prefix/purpose stamping incomplete (the project"
+                            : " – WARNING: created, but prefix/purpose stamping incomplete (the project"
                               + " model is still loading; re-check later and stamp via the model)");
         } catch (CoreException | RuntimeException ex) {
             r.applied = false;
@@ -5116,7 +5116,7 @@ public final class EdtModelGateway {
                         return dt != null && mm.forceExport(dt, "Configuration");
                     }
                 } catch (RuntimeException ignored) {
-                    // model not ready for writes yet — keep polling
+                    // model not ready for writes yet – keep polling
                 }
             }
             try {
@@ -5185,7 +5185,7 @@ public final class EdtModelGateway {
         }
         if (!r.ok) {
             r.message = (r.message == null ? "validation failed" : r.message)
-                    + " — apply refused (nothing created).";
+                    + " – apply refused (nothing created).";
             return r;
         }
         IExternalObjectProjectManager eom = ServiceAccess.get(IExternalObjectProjectManager.class);
@@ -5212,7 +5212,7 @@ public final class EdtModelGateway {
             r.location = (created != null && created.getLocation() != null)
                     ? created.getLocation().toOSString() : null;
             r.message = "created external data processor project " + name
-                    + " (the project model loads in background — poll edt_projects)";
+                    + " (the project model loads in background – poll edt_projects)";
         } catch (CoreException | RuntimeException ex) {
             r.applied = false;
             r.message = "create failed: " + describeCause(ex);
@@ -5234,7 +5234,7 @@ public final class EdtModelGateway {
 
     /**
      * Phase-2 write tool: dump (compile) an external data processor / external report of a project
-     * into a binary {@code .epf}/{@code .erf} file via EDT's own {@link IExternalObjectDumper} —
+     * into a binary {@code .epf}/{@code .erf} file via EDT's own {@link IExternalObjectDumper} –
      * the engine behind the wizard's "auto-dump" support. Requires a locally installed 1C platform
      * matching the project version ({@code validateDumpGeneration} reports that). Dry-run by default.
      */
@@ -5286,7 +5286,7 @@ public final class EdtModelGateway {
         }
         if (!r.ok) {
             r.message = (r.message == null ? "validation failed" : r.message)
-                    + " — apply refused (nothing dumped).";
+                    + " – apply refused (nothing dumped).";
             return r;
         }
         IExternalObjectDumper dumper = ServiceAccess.get(IExternalObjectDumper.class);
@@ -5368,7 +5368,7 @@ public final class EdtModelGateway {
                         }
                     });
                 } catch (Exception ignored) {
-                    // a project without association support — skip
+                    // a project without association support – skip
                 }
             }
         }
@@ -5391,10 +5391,10 @@ public final class EdtModelGateway {
 
     /**
      * Phase-2 write tool: update an infobase's configuration FROM an EDT project (a configuration
-     * or a configuration-extension project) via EDT's own {@link IInfobaseSynchronizationManager} —
+     * or a configuration-extension project) via EDT's own {@link IInfobaseSynchronizationManager} –
      * the engine behind "Update infobase configuration". The infobase is picked by name or UUID, or
      * defaults to the project's associated one. Database-structure changes are confirmed
-     * automatically; a CONFLICT (the infobase has its own changes) aborts the update — resolve it
+     * automatically; a CONFLICT (the infobase has its own changes) aborts the update – resolve it
      * interactively in EDT then. Dry-run by default.
      */
     public UpdateInfobaseResult updateInfobase(String projectName, String infobase, boolean apply) {
@@ -5418,7 +5418,7 @@ public final class EdtModelGateway {
                 try {
                     ref = im.findInfobaseByUuid(UUID.fromString(infobase.trim())).orElse(null);
                 } catch (IllegalArgumentException notAUuid) {
-                    // not a UUID — name lookup already failed
+                    // not a UUID – name lookup already failed
                 }
             }
             if (ref == null) {
@@ -5434,7 +5434,7 @@ public final class EdtModelGateway {
                 ref = null;
             }
             if (ref == null) {
-                r.message = "the project has no associated infobase — pass the infobase name or uuid";
+                r.message = "the project has no associated infobase – pass the infobase name or uuid";
                 return r;
             }
         }
@@ -5470,7 +5470,7 @@ public final class EdtModelGateway {
                     com._1c.g5.v8.dt.platform.services.core.infobases.sync.v2.IInfobaseSynchronizationFlow flow,
                     IProgressMonitor monitor) {
                 throw new IllegalStateException(
-                        "the infobase has its own configuration changes — batch update aborted; "
+                        "the infobase has its own configuration changes – batch update aborted; "
                         + "resolve the conflict interactively in EDT");
             }
         };
@@ -5516,7 +5516,7 @@ public final class EdtModelGateway {
     /**
      * Search the platform Syntax Helper, or read one page. The docs are the HTML reference shipped
      * inside EDT's {@code com._1c.g5.v8.dt.platform.doc_v8_*} bundles (objects, methods, properties,
-     * events — the real 1C:Enterprise API, in Russian + English). {@code path} non-empty → read that
+     * events – the real 1C:Enterprise API, in Russian + English). {@code path} non-empty → read that
      * page as text; otherwise search titles for {@code query} (all whitespace-separated terms must
      * appear, case-insensitive; matches Ru or En names).
      */
@@ -5596,7 +5596,7 @@ public final class EdtModelGateway {
                 Bundle self = FrameworkUtil.getBundle(EdtModelGateway.class);
                 ctx = (self == null) ? null : self.getBundleContext();
             } catch (RuntimeException ignored) {
-                // no framework context — leave the index empty
+                // no framework context – leave the index empty
             }
             if (ctx != null) {
                 String base = "com._1c.g5.v8.dt.platform.doc";
@@ -5689,7 +5689,7 @@ public final class EdtModelGateway {
         return s.trim();
     }
 
-    /** Exception summary with its cause chain — EDT wraps the real error (e.g. a lifecycle
+    /** Exception summary with its cause chain – EDT wraps the real error (e.g. a lifecycle
      *  RESOURCE_LOADING failure) several layers deep, so the top message alone is uninformative. */
     private static String describeCause(Throwable ex) {
         StringBuilder sb = new StringBuilder();
@@ -5768,7 +5768,7 @@ public final class EdtModelGateway {
             return;
         }
         // Platform types are served by the version-specific TypeItemProvider, registered for eClass
-        // TYPE_ITEM (NOT TYPE — that registry slot is empty), e.g. ...platform.type.v8_5_1.TypeItemProvider.
+        // TYPE_ITEM (NOT TYPE – that registry slot is empty), e.g. ...platform.type.v8_5_1.TypeItemProvider.
         IEObjectProvider provider = IEObjectProvider.Registry.INSTANCE.get(McorePackage.Literals.TYPE_ITEM, version);
         if (provider == null) {
             throw new IllegalStateException("no platform type provider (TYPE_ITEM) for version " + version);
@@ -6054,7 +6054,7 @@ public final class EdtModelGateway {
         return md.eClass().getName() + "." + md.getName();
     }
 
-    // ---- Phase 3 debugger — attach a live debug session ---------------------------------
+    // ---- Phase 3 debugger – attach a live debug session ---------------------------------
 
     /** A live debug session: the Eclipse launch + the connected 1C runtime debug target. */
     public static final class DebugSession {
@@ -6100,7 +6100,7 @@ public final class EdtModelGateway {
      * target the {@code tests} stand, never production.
      *
      * <p>Written against the reverse-engineered debug API; the feasibility spike ({@link #debugProbe})
-     * proved the infra loads headless — this is the live network half, verified on the stand.
+     * proved the infra loads headless – this is the live network half, verified on the stand.
      */
     public AttachResult attachDebug(String projectName, String serverUrl, int serverPort,
             String infobaseAlias, String infobaseUuid) {
@@ -6126,7 +6126,7 @@ public final class EdtModelGateway {
         boolean haveAlias = infobaseAlias != null && !infobaseAlias.isBlank();
         boolean haveUuid = infobaseUuid != null && !infobaseUuid.isBlank();
         if (!haveAlias && !haveUuid) {
-            r.message = "infobaseAlias (or infobaseUuid) is required — a debug server hosts many infobases; "
+            r.message = "infobaseAlias (or infobaseUuid) is required – a debug server hosts many infobases; "
                     + "specify which one (the infobase's debug-server alias).";
             return r;
         }
@@ -6162,7 +6162,7 @@ public final class EdtModelGateway {
             }
             // Attach EXACTLY as EDT's RemoteRuntimeDebugLaunchDelegate does, but WITHOUT
             // ILaunchConfiguration.launch(): that path runs preLaunchCheck/saveBeforeLaunch which load
-            // org.eclipse.debug.ui (Prompter/ISuspendTrigger) — absent headless, so the launch aborts.
+            // org.eclipse.debug.ui (Prompter/ISuspendTrigger) – absent headless, so the launch aborts.
             // Instead build a DtLaunch directly and ask the target manager to create the remote target.
             launch = new DtLaunch(wc, ILaunchManager.DEBUG_MODE, "RemoteDebugServer", mon);
             lm.addLaunch(launch);
@@ -6180,7 +6180,7 @@ public final class EdtModelGateway {
                 // clients). Without this the connection is up but has no threads to inspect/suspend.
                 try {
                     // All desktop debug-item types (mobile excluded). Crucially includes the FILE_MODE
-                    // variants (JOB_FILE_MODE, WEB_SOCKET_FILE_MODE) and plain CLIENT — a thin client
+                    // variants (JOB_FILE_MODE, WEB_SOCKET_FILE_MODE) and plain CLIENT – a thin client
                     // against a FILE infobase registers through those, so a narrower list sees no threads.
                     rt.setAutoconnectDebugTargets(java.util.List.of(
                             DebugTargetType.CLIENT, DebugTargetType.MANAGED_CLIENT, DebugTargetType.WEB_CLIENT,
@@ -6191,7 +6191,7 @@ public final class EdtModelGateway {
                             DebugTargetType.ODATA, DebugTargetType.COM_CONNECTOR));
                 } catch (Exception autoEx) {
                     r.warning = "autoconnect targets not set (" + autoEx.getClass().getSimpleName()
-                            + ") — threads may not attach; ";
+                            + ") – threads may not attach; ";
                 }
             }
             r.launched = true;
@@ -6229,13 +6229,13 @@ public final class EdtModelGateway {
                         areaNote = "no data areas reported by the server";
                     }
                 } catch (Exception areaEx) {
-                    areaNote = "setDebugAreas failed (" + areaEx.getClass().getSimpleName() + ") — threads may stay hidden";
+                    areaNote = "setDebugAreas failed (" + areaEx.getClass().getSimpleName() + ") – threads may stay hidden";
                 }
             }
             r.targetCount = launch.getDebugTargets().length;
             if (rt == null) {
                 detachLaunch(lm, launch);
-                r.message = "createRemote returned no target — check the infobase alias and that the "
+                r.message = "createRemote returned no target – check the infobase alias and that the "
                         + "infobase is running with debugging enabled.";
                 return r;
             }
@@ -6252,7 +6252,7 @@ public final class EdtModelGateway {
             r.sessionId = sid;
             r.ok = true;
             r.message = "attached debug session " + sid + " to " + url + " (infobase " + alias + ")"
-                    + (r.connected ? " — connected" : " — created, not yet connected");
+                    + (r.connected ? " – connected" : " – created, not yet connected");
             r.warning = (r.warning == null ? "" : r.warning)
                     + "ОТЛАДКА ЖИВОЙ ИБ – только тестовый стенд, никогда продакшен. Области данных: "
                     + areaNote + ".";
@@ -6302,7 +6302,7 @@ public final class EdtModelGateway {
         return true;
     }
 
-    // ---- Phase 3 debugger — inspect (threads / stack frames / variables) ----------------
+    // ---- Phase 3 debugger – inspect (threads / stack frames / variables) ----------------
 
     /** A variable in a stack frame: name + rendered value. */
     public static final class DbgVar {
@@ -6343,7 +6343,7 @@ public final class EdtModelGateway {
     private static final int DBG_VAR_CAP = 100;
 
     /**
-     *: inspect a live debug session — list its threads (debug items) and, for suspended ones,
+     *: inspect a live debug session – list its threads (debug items) and, for suspended ones,
      * their BSL stack frames + the top frame's variables. Read-only. The session must have been opened by
      * {@link #attachDebug}. Frames/variables are only present for SUSPENDED threads (suspend via
      * {@link #controlDebug} or a breakpoint hit).
@@ -6448,7 +6448,7 @@ public final class EdtModelGateway {
         }
     }
 
-    // ---- Phase 3 debugger — control (suspend / resume / step) ---------------------------
+    // ---- Phase 3 debugger – control (suspend / resume / step) ---------------------------
 
     /** Result of {@link #controlDebug}. */
     public static final class ControlResult {
@@ -6555,7 +6555,7 @@ public final class EdtModelGateway {
         }
     }
 
-    // ---- Phase 3 debugger — evaluate (arbitrary BSL expression) --------------------------
+    // ---- Phase 3 debugger – evaluate (arbitrary BSL expression) --------------------------
 
     /** Result of {@link #evaluateDebug}. */
     public static final class EvaluateResult {
@@ -6575,7 +6575,7 @@ public final class EdtModelGateway {
      * frame of a live debug session and return the result. This is <b>arbitrary code execution against a
      * live infobase</b>, so it is gated three ways: (1) a configured token (the tool is a write tool),
      * (2) the per-call {@code allowCodeExecution=true} opt-in, and (3) the server-side switch
-     * {@code EDT_BRIDGE_ALLOW_EVALUATE} (env) — all required; off by default. STAND-ONLY.
+     * {@code EDT_BRIDGE_ALLOW_EVALUATE} (env) – all required; off by default. STAND-ONLY.
      *
      * <p>Runs via {@link IEvaluationEngine#evaluateExpression} (async; we wait on a latch for the
      * {@link IEvaluationListener} callback) on the chosen suspended thread's frame.
@@ -6587,7 +6587,7 @@ public final class EdtModelGateway {
         r.expression = expression;
         // Gate 1: per-call opt-in.
         if (!allowCodeExecution) {
-            r.message = "refused: edt_evaluate runs ARBITRARY BSL against a live infobase — pass "
+            r.message = "refused: edt_evaluate runs ARBITRARY BSL against a live infobase – pass "
                     + "allowCodeExecution=true to confirm .";
             return r;
         }
@@ -6595,7 +6595,7 @@ public final class EdtModelGateway {
         String sw = System.getenv("EDT_BRIDGE_ALLOW_EVALUATE");
         boolean enabled = sw != null && (sw.equals("1") || sw.equalsIgnoreCase("true") || sw.equalsIgnoreCase("yes"));
         if (!enabled) {
-            r.message = "refused: server-side evaluate is disabled — set EDT_BRIDGE_ALLOW_EVALUATE=1 to "
+            r.message = "refused: server-side evaluate is disabled – set EDT_BRIDGE_ALLOW_EVALUATE=1 to "
                     + "enable code execution .";
             return r;
         }
@@ -6611,7 +6611,7 @@ public final class EdtModelGateway {
         try {
             IBslStackFrame frame = suspendedFrame(s.target, threadName, frameLevel);
             if (frame == null) {
-                r.message = "no suspended frame to evaluate in — suspend a thread first (edt_debug_control "
+                r.message = "no suspended frame to evaluate in – suspend a thread first (edt_debug_control "
                         + "suspend) or hit a breakpoint.";
                 return r;
             }

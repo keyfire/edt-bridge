@@ -43,11 +43,11 @@ public final class ProjectsTool {
         JsonObject t = new JsonObject();
         t.addProperty("name", name());
         t.addProperty("description",
-                "READ: list the workspace projects — name, disk location, natures, open state, and whether "
+                "READ: list the workspace projects – name, disk location, natures, open state, and whether "
                 + "each is a 1C:EDT project. Use it to discover what is addressable (e.g. which project name "
                 + "maps to which folder) before calling the other tools.");
         t.addProperty("descriptionRu",
-                "ЧТЕНИЕ: список проектов рабочей области — имя, путь на диске, natures, открыт ли, и является "
+                "ЧТЕНИЕ: список проектов рабочей области – имя, путь на диске, natures, открыт ли, и является "
                 + "ли проектом 1C:EDT. Помогает понять, что вообще можно адресовать (какое имя проекта какой "
                 + "папке соответствует), до вызова остальных инструментов.");
         t.add("inputSchema", schema);

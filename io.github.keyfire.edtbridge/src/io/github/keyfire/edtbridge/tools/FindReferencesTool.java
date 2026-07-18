@@ -46,7 +46,7 @@ public final class FindReferencesTool {
         JsonObject fqn = new JsonObject();
         fqn.addProperty("type", "string");
         fqn.addProperty("description", "Target top object FQN (English type prefix), e.g. Catalog.Контрагенты "
-                + "— or CommonModule.X when method is given (method-caller mode).");
+                + "– or CommonModule.X when method is given (method-caller mode).");
 
         JsonObject method = new JsonObject();
         method.addProperty("type", "string");
@@ -84,7 +84,7 @@ public final class FindReferencesTool {
                 "Inbound references to a top-level metadata object (metadata membership: subsystems, the "
                 + "Configuration lists) from the live BM cross-reference index. With method given, switches to "
                 + "method-caller mode: the BSL call sites of CommonModule.X.method (module + line + call text), "
-                + "found by scanning the project's BSL — the counterpart the BM index does NOT cover.");
+                + "found by scanning the project's BSL – the counterpart the BM index does NOT cover.");
         t.addProperty("descriptionRu",
                 "Входящие ссылки на объект метаданных верхнего уровня (членство в метаданных: подсистемы, "
                 + "списки Configuration) из BM-индекса перекрёстных ссылок. С параметром method – режим поиска "
