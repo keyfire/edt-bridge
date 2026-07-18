@@ -30,7 +30,12 @@ import io.github.keyfire.edtbridge.tools.AddMethodTool;
 import io.github.keyfire.edtbridge.tools.RemoveAttributeTool;
 import io.github.keyfire.edtbridge.tools.ModifyAttributeTool;
 import io.github.keyfire.edtbridge.tools.RenameTool;
+import io.github.keyfire.edtbridge.tools.CreateExtensionTool;
+import io.github.keyfire.edtbridge.tools.CreateExternalObjectTool;
 import io.github.keyfire.edtbridge.tools.CreateObjectTool;
+import io.github.keyfire.edtbridge.tools.DumpExternalObjectTool;
+import io.github.keyfire.edtbridge.tools.InfobasesTool;
+import io.github.keyfire.edtbridge.tools.UpdateInfobaseTool;
 import io.github.keyfire.edtbridge.tools.DeleteMethodTool;
 import io.github.keyfire.edtbridge.tools.DeleteObjectTool;
 import io.github.keyfire.edtbridge.tools.FindReferencesTool;
@@ -237,6 +242,11 @@ applyI18n();loadStatus();loadTools();
     private final ModifyAttributeTool modifyAttribute = new ModifyAttributeTool();
     private final RenameTool rename = new RenameTool();
     private final CreateObjectTool createObject = new CreateObjectTool();
+    private final CreateExtensionTool createExtension = new CreateExtensionTool();
+    private final CreateExternalObjectTool createExternalObject = new CreateExternalObjectTool();
+    private final DumpExternalObjectTool dumpExternalObject = new DumpExternalObjectTool();
+    private final InfobasesTool infobases = new InfobasesTool();
+    private final UpdateInfobaseTool updateInfobase = new UpdateInfobaseTool();
     private final DeleteObjectTool deleteObject = new DeleteObjectTool();
     private final DebugAttachTool debugAttach = new DebugAttachTool();
     private final DebugDetachTool debugDetach = new DebugDetachTool();
@@ -454,6 +464,11 @@ applyI18n();loadStatus();loadTools();
         tools.add(modifyAttribute.descriptor());
         tools.add(rename.descriptor());
         tools.add(createObject.descriptor());
+        tools.add(createExtension.descriptor());
+        tools.add(createExternalObject.descriptor());
+        tools.add(dumpExternalObject.descriptor());
+        tools.add(infobases.descriptor());
+        tools.add(updateInfobase.descriptor());
         tools.add(deleteObject.descriptor());
         tools.add(debugAttach.descriptor());
         tools.add(debugDetach.descriptor());
@@ -539,6 +554,25 @@ applyI18n();loadStatus();loadTools();
         if (createObject.name().equals(name)) {
             JsonObject denied = writeTokenGate(createObject.isWrite(), name);
             return denied != null ? denied : createObject.call(args);
+        }
+        if (createExtension.name().equals(name)) {
+            JsonObject denied = writeTokenGate(createExtension.isWrite(), name);
+            return denied != null ? denied : createExtension.call(args);
+        }
+        if (createExternalObject.name().equals(name)) {
+            JsonObject denied = writeTokenGate(createExternalObject.isWrite(), name);
+            return denied != null ? denied : createExternalObject.call(args);
+        }
+        if (dumpExternalObject.name().equals(name)) {
+            JsonObject denied = writeTokenGate(dumpExternalObject.isWrite(), name);
+            return denied != null ? denied : dumpExternalObject.call(args);
+        }
+        if (infobases.name().equals(name)) {
+            return infobases.call(args);
+        }
+        if (updateInfobase.name().equals(name)) {
+            JsonObject denied = writeTokenGate(updateInfobase.isWrite(), name);
+            return denied != null ? denied : updateInfobase.call(args);
         }
         if (deleteObject.name().equals(name)) {
             JsonObject denied = writeTokenGate(deleteObject.isWrite(), name);

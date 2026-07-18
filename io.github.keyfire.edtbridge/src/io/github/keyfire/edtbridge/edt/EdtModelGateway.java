@@ -36,6 +36,7 @@ import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IFolder;
 import org.eclipse.core.resources.IMarker;
 import org.eclipse.core.resources.IProject;
+import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.IWorkspaceRoot;
 import org.eclipse.core.resources.ResourcesPlugin;
@@ -96,7 +97,21 @@ import com._1c.g5.v8.dt.core.model.IModelObjectFactory;
 import com._1c.g5.v8.dt.core.operations.IProjectOperationApi;
 import com._1c.g5.v8.dt.core.operations.ProjectPipelineJob;
 import com._1c.g5.v8.dt.core.platform.IBmModelManager;
+import com._1c.g5.v8.dt.core.platform.IConfigurationProvider;
 import com._1c.g5.v8.dt.core.platform.IDtProject;
+import com._1c.g5.v8.dt.core.platform.IExtensionProjectManager;
+import com._1c.g5.v8.dt.core.platform.IExternalObjectProjectManager;
+import com._1c.g5.v8.dt.platform.services.core.dump.IExternalObjectDumpSupport;
+import com._1c.g5.v8.dt.platform.services.core.dump.IExternalObjectDumper;
+import com._1c.g5.v8.dt.platform.services.core.infobases.IInfobaseAssociationManager;
+import com._1c.g5.v8.dt.platform.services.core.infobases.IInfobaseManager;
+import com._1c.g5.v8.dt.platform.services.core.infobases.sync.IInfobaseConfigurationChange;
+import com._1c.g5.v8.dt.platform.services.core.infobases.sync.IInfobaseSynchronizationManager;
+import com._1c.g5.v8.dt.platform.services.core.infobases.sync.IInfobaseUpdateCallback;
+import com._1c.g5.v8.dt.platform.services.core.infobases.sync.IInfobaseUpdateConflictResolver;
+import com._1c.g5.v8.dt.platform.services.core.infobases.sync.InfobaseConflictResolution;
+import com._1c.g5.v8.dt.platform.services.model.InfobaseReference;
+import com._1c.g5.v8.dt.platform.services.model.Section;
 import com._1c.g5.v8.dt.form.model.AbstractDataPath;
 import com._1c.g5.v8.dt.form.model.Button;
 import com._1c.g5.v8.dt.form.model.CommandHandler;
@@ -149,6 +164,7 @@ import com._1c.g5.v8.dt.metadata.mdclass.AbstractForm;
 import com._1c.g5.v8.dt.metadata.mdclass.BasicForm;
 import com._1c.g5.v8.dt.metadata.mdclass.CompatibilityMode;
 import com._1c.g5.v8.dt.metadata.mdclass.Configuration;
+import com._1c.g5.v8.dt.metadata.mdclass.ConfigurationExtensionPurpose;
 import com._1c.g5.v8.dt.platform.version.Version;
 import com._1c.g5.v8.dt.mcore.DateFractions;
 import com._1c.g5.v8.dt.mcore.DateQualifiers;
@@ -4933,6 +4949,538 @@ public final class EdtModelGateway {
             // fall through to LATEST
         }
         return Version.LATEST;
+    }
+
+    /** Result of {@link #createExtension}. */
+    public static final class CreateExtensionResult {
+        public boolean ok;            // dry-run valid → an apply would create
+        public boolean applied;       // the extension project was created
+        public String name;           // extension project (and extension configuration) name
+        public String baseProject;    // base configuration project it extends
+        public String namePrefix;     // extension name prefix (stamped on its Configuration)
+        public String purpose;        // Customization / AddOn / Patch (enum name)
+        public boolean nameValid;
+        public Boolean nameAvailable; // no workspace project with this name yet; null if not checked
+        public boolean baseFound;     // base project exists, is open and has a Configuration
+        public String version;        // runtime version inherited from the base project
+        public String location;       // created project's disk location
+        public boolean stamped;       // prefix/purpose written and serialized
+        public String plan;
+        public String message;
+    }
+
+    /**
+     * Phase-2 write tool: create a NEW configuration-extension PROJECT next to a base configuration
+     * project, via EDT's own {@link IExtensionProjectManager} — the engine behind the
+     * File &gt; New &gt; Configuration Extension wizard. Two stages by {@code apply}:
+     * <ul>
+     *   <li>{@code apply=false} (default) — DRY-RUN: validate (extension name a legal identifier and
+     *       free in the workspace; base project open and carrying a Configuration; purpose known) and
+     *       return the plan, creating nothing.
+     *   <li>{@code apply=true} — create the project in the default workspace location with the base
+     *       project's runtime version, then stamp the extension Configuration's {@code namePrefix} and
+     *       {@code configurationExtensionPurpose} and serialize it. The new project's model loads in
+     *       background jobs; the stamp step polls for it briefly and reports {@code stamped=false} if
+     *       the model is still not ready (re-run later — the create itself is done).
+     * </ul>
+     */
+    public CreateExtensionResult createExtension(String name, String baseProjectName, String namePrefix,
+            String purposeName, boolean apply) {
+        CreateExtensionResult r = new CreateExtensionResult();
+        r.name = name;
+        r.baseProject = baseProjectName;
+        r.namePrefix = namePrefix;
+
+        if (name == null || name.isBlank() || !IDENT.matcher(name).matches()) {
+            r.message = "name is not a valid identifier: \"" + name
+                    + "\" (letters/digits/underscore; must not start with a digit, no spaces)";
+            return r;
+        }
+        r.nameValid = true;
+        if (namePrefix == null || namePrefix.isBlank() || !IDENT.matcher(namePrefix).matches()) {
+            r.message = "namePrefix is required and must be a valid identifier (e.g. \"Расш_\")";
+            return r;
+        }
+        final ConfigurationExtensionPurpose purpose = resolvePurpose(purposeName);
+        if (purpose == null) {
+            r.message = "unknown purpose: \"" + purposeName
+                    + "\" (supported: Customization/Адаптация, AddOn/Дополнение, Patch/Исправление; "
+                    + "default Customization)";
+            return r;
+        }
+        r.purpose = purpose.getName();
+
+        IProject base = (baseProjectName == null || baseProjectName.isBlank()) ? null
+                : ResourcesPlugin.getWorkspace().getRoot().getProject(baseProjectName);
+        if (base == null || !base.exists() || !base.isOpen()) {
+            r.message = "base project not found or closed: " + baseProjectName;
+            return r;
+        }
+        IConfigurationProvider cp = ServiceAccess.get(IConfigurationProvider.class);
+        Configuration baseConfig = (cp == null) ? null : cp.getConfiguration(base);
+        r.baseFound = baseConfig != null;
+        if (baseConfig == null) {
+            r.message = "base project has no Configuration (not a 1C:EDT configuration project?): "
+                    + baseProjectName;
+            return r;
+        }
+        r.nameAvailable = !ResourcesPlugin.getWorkspace().getRoot().getProject(name).exists();
+        Version version = projectVersion(base);
+        r.version = String.valueOf(version);
+        r.ok = Boolean.TRUE.equals(r.nameAvailable);
+        r.plan = "Create extension project \"" + name + "\" (prefix " + namePrefix + ", purpose "
+                + r.purpose + ") extending " + baseProjectName + " [" + r.version + "]";
+        if (Boolean.FALSE.equals(r.nameAvailable)) {
+            r.message = "a project with this name already exists in the workspace: " + name;
+        }
+        if (!apply) {
+            return r;
+        }
+        if (!r.ok) {
+            r.message = (r.message == null ? "validation failed" : r.message)
+                    + " — apply refused (nothing created).";
+            return r;
+        }
+        IExtensionProjectManager epm = ServiceAccess.get(IExtensionProjectManager.class);
+        if (epm == null) {
+            r.message = "IExtensionProjectManager service unavailable";
+            return r;
+        }
+        try {
+            IProject created = epm.create(name, version, baseConfig, base, new NullProgressMonitor());
+            r.location = (created != null && created.getLocation() != null)
+                    ? created.getLocation().toOSString() : null;
+            r.applied = true;
+            r.stamped = stampExtensionConfiguration(created, namePrefix, purpose);
+            r.message = "created extension project " + name + " extending " + baseProjectName
+                    + (r.stamped ? " (prefix/purpose stamped and serialized)"
+                            : " — WARNING: created, but prefix/purpose stamping incomplete (the project"
+                              + " model is still loading; re-check later and stamp via the model)");
+        } catch (CoreException | RuntimeException ex) {
+            r.applied = false;
+            r.message = "create failed: " + ex.getClass().getSimpleName()
+                    + (ex.getMessage() != null ? ": " + ex.getMessage() : "");
+        }
+        return r;
+    }
+
+    /**
+     * Stamp {@code namePrefix} + {@code purpose} on a freshly created extension project's
+     * Configuration and serialize it. The project's BM model loads asynchronously after
+     * {@link IExtensionProjectManager#create}, so poll briefly (up to ~30 s) for the model and its
+     * Configuration top object before giving up. Returns whether the stamp + export happened.
+     */
+    private boolean stampExtensionConfiguration(IProject created, String namePrefix,
+            ConfigurationExtensionPurpose purpose) {
+        if (created == null) {
+            return false;
+        }
+        IBmModelManager mm = ServiceAccess.get(IBmModelManager.class);
+        if (mm == null) {
+            return false;
+        }
+        for (int attempt = 0; attempt < 15; attempt++) {
+            IBmModel model = mm.getModel(created);
+            if (model != null) {
+                try {
+                    Boolean done = model.execute(
+                            new AbstractBmTask<Boolean>("edt-bridge.createExtension.stamp") {
+                                @Override
+                                public Boolean execute(IBmTransaction tx, IProgressMonitor monitor) {
+                                    EObject cfg = tx.getTopObjectByFqn("Configuration");
+                                    if (!(cfg instanceof Configuration)) {
+                                        return Boolean.FALSE;
+                                    }
+                                    ((Configuration) cfg).setNamePrefix(namePrefix);
+                                    ((Configuration) cfg).setConfigurationExtensionPurpose(purpose);
+                                    return Boolean.TRUE;
+                                }
+                            });
+                    if (Boolean.TRUE.equals(done)) {
+                        IDtProject dt = mm.getDtProject(model);
+                        return dt != null && mm.forceExport(dt, "Configuration");
+                    }
+                } catch (RuntimeException ignored) {
+                    // model not ready for writes yet — keep polling
+                }
+            }
+            try {
+                Thread.sleep(2000L);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return false;
+    }
+
+    /** Result of {@link #createExternalObject}. */
+    public static final class CreateExternalObjectResult {
+        public boolean ok;
+        public boolean applied;
+        public String name;
+        public String baseProject;    // optional configuration project the processor is "for"
+        public boolean nameValid;
+        public Boolean nameAvailable;
+        public String version;
+        public String location;
+        public String plan;
+        public String message;
+    }
+
+    /**
+     * Phase-2 write tool: create a NEW external-data-processor PROJECT via EDT's own
+     * {@link IExternalObjectProjectManager} (the engine behind the New External Data Processor
+     * wizard). {@code baseProjectName} is optional: with it, the processor project is linked to that
+     * configuration project (its runtime version and types context); without it, a standalone
+     * processor project with the default runtime version. Dry-run by default.
+     */
+    public CreateExternalObjectResult createExternalObject(String name, String baseProjectName,
+            boolean apply) {
+        CreateExternalObjectResult r = new CreateExternalObjectResult();
+        r.name = name;
+        r.baseProject = (baseProjectName == null || baseProjectName.isBlank()) ? null : baseProjectName;
+
+        if (name == null || name.isBlank() || !IDENT.matcher(name).matches()) {
+            r.message = "name is not a valid identifier: \"" + name
+                    + "\" (letters/digits/underscore; must not start with a digit, no spaces)";
+            return r;
+        }
+        r.nameValid = true;
+        IProject base = null;
+        if (r.baseProject != null) {
+            base = ResourcesPlugin.getWorkspace().getRoot().getProject(r.baseProject);
+            if (!base.exists() || !base.isOpen()) {
+                r.message = "base project not found or closed: " + r.baseProject;
+                return r;
+            }
+        }
+        r.nameAvailable = !ResourcesPlugin.getWorkspace().getRoot().getProject(name).exists();
+        Version version = (base != null) ? projectVersion(base) : Version.LATEST;
+        r.version = String.valueOf(version);
+        r.ok = Boolean.TRUE.equals(r.nameAvailable);
+        r.plan = "Create external data processor project \"" + name + "\""
+                + (r.baseProject != null ? " for configuration project " + r.baseProject : " (standalone)")
+                + " [" + r.version + "]";
+        if (Boolean.FALSE.equals(r.nameAvailable)) {
+            r.message = "a project with this name already exists in the workspace: " + name;
+        }
+        if (!apply) {
+            return r;
+        }
+        if (!r.ok) {
+            r.message = (r.message == null ? "validation failed" : r.message)
+                    + " — apply refused (nothing created).";
+            return r;
+        }
+        IExternalObjectProjectManager eom = ServiceAccess.get(IExternalObjectProjectManager.class);
+        if (eom == null) {
+            r.message = "IExternalObjectProjectManager service unavailable";
+            return r;
+        }
+        try {
+            IProject created = eom.create(name, version, null, base, new NullProgressMonitor());
+            r.applied = true;
+            r.location = (created != null && created.getLocation() != null)
+                    ? created.getLocation().toOSString() : null;
+            r.message = "created external data processor project " + name
+                    + " (the project model loads in background — poll edt_projects)";
+        } catch (CoreException | RuntimeException ex) {
+            r.applied = false;
+            r.message = "create failed: " + ex.getClass().getSimpleName()
+                    + (ex.getMessage() != null ? ": " + ex.getMessage() : "");
+        }
+        return r;
+    }
+
+    /** Result of {@link #dumpExternalObject}. */
+    public static final class DumpExternalObjectResult {
+        public boolean ok;
+        public boolean applied;
+        public String project;
+        public String fqn;            // resolved top-object FQN (ExternalDataProcessor.X / ExternalReport.X)
+        public String targetPath;
+        public String validation;     // validateDumpGeneration status message (empty = OK)
+        public String plan;
+        public String message;
+    }
+
+    /**
+     * Phase-2 write tool: dump (compile) an external data processor / external report of a project
+     * into a binary {@code .epf}/{@code .erf} file via EDT's own {@link IExternalObjectDumper} —
+     * the engine behind the wizard's "auto-dump" support. Requires a locally installed 1C platform
+     * matching the project version ({@code validateDumpGeneration} reports that). Dry-run by default.
+     */
+    public DumpExternalObjectResult dumpExternalObject(String projectName, String objectName,
+            String kind, String targetPath, boolean apply) {
+        DumpExternalObjectResult r = new DumpExternalObjectResult();
+        r.project = projectName;
+        r.targetPath = targetPath;
+        IProject p = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName == null ? "" : projectName);
+        if (projectName == null || !p.exists() || !p.isOpen()) {
+            r.message = "project not found or closed: " + projectName;
+            return r;
+        }
+        String top = (kind != null && kind.trim().equalsIgnoreCase("report"))
+                ? "ExternalReport" : "ExternalDataProcessor";
+        final String fqn = top + "." + objectName;
+        r.fqn = fqn;
+        IBmModelManager mm = ServiceAccess.get(IBmModelManager.class);
+        IBmModel model = (mm == null) ? null : mm.getModel(p);
+        if (model == null) {
+            r.message = "no BM model for project: " + projectName;
+            return r;
+        }
+        final EObject[] found = {null};
+        model.executeReadonlyTask(new AbstractBmTask<Object>("edt-bridge.dumpExternalObject.find") {
+            @Override
+            public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
+                found[0] = tx.getTopObjectByFqn(fqn);
+                return null;
+            }
+        });
+        if (found[0] == null) {
+            r.message = "top object not found in the project: " + fqn;
+            return r;
+        }
+        IExternalObjectDumpSupport support = ServiceAccess.get(IExternalObjectDumpSupport.class);
+        if (support != null) {
+            IStatus st = support.validateDumpGeneration(p);
+            r.validation = (st == null || st.isOK()) ? "" : st.getMessage();
+        }
+        r.ok = (r.validation == null || r.validation.isEmpty());
+        r.plan = "Dump " + fqn + " to " + targetPath;
+        if (!r.ok) {
+            r.message = "dump generation is not available: " + r.validation
+                    + " (a local 1C platform matching the project version is required)";
+        }
+        if (!apply) {
+            return r;
+        }
+        if (!r.ok) {
+            r.message = (r.message == null ? "validation failed" : r.message)
+                    + " — apply refused (nothing dumped).";
+            return r;
+        }
+        IExternalObjectDumper dumper = ServiceAccess.get(IExternalObjectDumper.class);
+        if (dumper == null) {
+            r.message = "IExternalObjectDumper service unavailable";
+            return r;
+        }
+        try {
+            java.nio.file.Path target = java.nio.file.Path.of(targetPath);
+            if (target.getParent() != null) {
+                java.nio.file.Files.createDirectories(target.getParent());
+            }
+            dumper.dump(p, found[0], target, new NullProgressMonitor());
+            r.applied = java.nio.file.Files.exists(target);
+            r.message = r.applied ? ("dumped " + fqn + " to " + target)
+                    : "dumper finished but the target file is missing: " + target;
+        } catch (CoreException | java.io.IOException | RuntimeException ex) {
+            r.applied = false;
+            r.message = "dump failed: " + ex.getClass().getSimpleName()
+                    + (ex.getMessage() != null ? ": " + ex.getMessage() : "");
+        }
+        return r;
+    }
+
+    /** One registered infobase for {@link #listInfobases}. */
+    public static final class InfobaseInfo {
+        public String name;
+        public String uuid;
+        public String connection;
+    }
+
+    /** One project→infobase association for {@link #listInfobases}. */
+    public static final class InfobaseAssociationInfo {
+        public String project;
+        public String infobaseName;
+        public String infobaseUuid;
+    }
+
+    /** Result of {@link #listInfobases}. */
+    public static final class InfobasesResult {
+        public List<InfobaseInfo> infobases = new ArrayList<>();
+        public List<InfobaseAssociationInfo> associations = new ArrayList<>();
+        public String message;
+    }
+
+    /** Registered infobases (EDT's infobases list) + which open project is associated with which. */
+    public InfobasesResult listInfobases() {
+        InfobasesResult r = new InfobasesResult();
+        IInfobaseManager im = ServiceAccess.get(IInfobaseManager.class);
+        if (im == null) {
+            r.message = "IInfobaseManager service unavailable";
+            return r;
+        }
+        for (Section s : im.getAll()) {
+            if (s instanceof InfobaseReference) {
+                InfobaseReference ib = (InfobaseReference) s;
+                InfobaseInfo info = new InfobaseInfo();
+                info.name = ib.getName();
+                info.uuid = String.valueOf(ib.getUuid());
+                info.connection = String.valueOf(ib.getConnectionString());
+                r.infobases.add(info);
+            }
+        }
+        IInfobaseAssociationManager am = ServiceAccess.get(IInfobaseAssociationManager.class);
+        if (am != null) {
+            for (IProject p : ResourcesPlugin.getWorkspace().getRoot().getProjects()) {
+                if (!p.isOpen()) {
+                    continue;
+                }
+                try {
+                    am.getAssociation(p).ifPresent(assoc -> {
+                        InfobaseReference ib = assoc.getDefaultInfobase();
+                        if (ib != null) {
+                            InfobaseAssociationInfo ai = new InfobaseAssociationInfo();
+                            ai.project = p.getName();
+                            ai.infobaseName = ib.getName();
+                            ai.infobaseUuid = String.valueOf(ib.getUuid());
+                            r.associations.add(ai);
+                        }
+                    });
+                } catch (Exception ignored) {
+                    // a project without association support — skip
+                }
+            }
+        }
+        return r;
+    }
+
+    /** Result of {@link #updateInfobase}. */
+    public static final class UpdateInfobaseResult {
+        public boolean ok;
+        public boolean applied;
+        public String project;
+        public String infobaseName;
+        public String infobaseUuid;
+        public boolean connected;
+        public String equality;       // EDT's project-vs-infobase equality state, when known
+        public String status;         // the update IStatus, when applied
+        public String plan;
+        public String message;
+    }
+
+    /**
+     * Phase-2 write tool: update an infobase's configuration FROM an EDT project (a configuration
+     * or a configuration-extension project) via EDT's own {@link IInfobaseSynchronizationManager} —
+     * the engine behind "Update infobase configuration". The infobase is picked by name or UUID, or
+     * defaults to the project's associated one. Database-structure changes are confirmed
+     * automatically; a CONFLICT (the infobase has its own changes) aborts the update — resolve it
+     * interactively in EDT then. Dry-run by default.
+     */
+    public UpdateInfobaseResult updateInfobase(String projectName, String infobase, boolean apply) {
+        UpdateInfobaseResult r = new UpdateInfobaseResult();
+        r.project = projectName;
+        IProject p = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName == null ? "" : projectName);
+        if (projectName == null || !p.exists() || !p.isOpen()) {
+            r.message = "project not found or closed: " + projectName;
+            return r;
+        }
+        IInfobaseSynchronizationManager sm = ServiceAccess.get(IInfobaseSynchronizationManager.class);
+        IInfobaseManager im = ServiceAccess.get(IInfobaseManager.class);
+        if (sm == null || im == null) {
+            r.message = "infobase services unavailable (IInfobaseSynchronizationManager / IInfobaseManager)";
+            return r;
+        }
+        InfobaseReference ref = null;
+        if (infobase != null && !infobase.isBlank()) {
+            ref = im.findInfobaseByName(infobase.trim()).orElse(null);
+            if (ref == null) {
+                try {
+                    ref = im.findInfobaseByUuid(UUID.fromString(infobase.trim())).orElse(null);
+                } catch (IllegalArgumentException notAUuid) {
+                    // not a UUID — name lookup already failed
+                }
+            }
+            if (ref == null) {
+                r.message = "infobase not found by name or uuid: " + infobase;
+                return r;
+            }
+        } else {
+            IInfobaseAssociationManager am = ServiceAccess.get(IInfobaseAssociationManager.class);
+            try {
+                ref = (am == null) ? null
+                        : am.getAssociation(p).map(a -> a.getDefaultInfobase()).orElse(null);
+            } catch (Exception e) {
+                ref = null;
+            }
+            if (ref == null) {
+                r.message = "the project has no associated infobase — pass the infobase name or uuid";
+                return r;
+            }
+        }
+        r.infobaseName = ref.getName();
+        r.infobaseUuid = String.valueOf(ref.getUuid());
+        r.connected = sm.isConnected(p, ref);
+        try {
+            r.equality = String.valueOf(sm.getEqualityState(p, ref));
+        } catch (RuntimeException e) {
+            r.equality = null;
+        }
+        r.ok = true;
+        r.plan = "Update infobase \"" + r.infobaseName + "\" from project " + projectName
+                + " (db-structure changes auto-confirmed; a conflict aborts)";
+        if (!apply) {
+            return r;
+        }
+        final InfobaseReference target = ref;
+        IInfobaseUpdateCallback callback = new IInfobaseUpdateCallback() {
+            @Override
+            public boolean onConfirm(IProject project, InfobaseReference infobaseRef,
+                    List<com._1c.g5.designer.ssh.client.operation.IDbStructureChange> changes,
+                    IProgressMonitor monitor) {
+                return true; // batch mode: accept database-structure changes
+            }
+
+            @Override
+            public InfobaseConflictResolution resolveInfobaseChanges(IProject project,
+                    InfobaseReference infobaseRef, java.util.Set<EObject> set1, java.util.Set<EObject> set2,
+                    java.util.Set<String> set3, IInfobaseConfigurationChange change,
+                    IInfobaseUpdateConflictResolver resolver,
+                    IInfobaseUpdateConflictResolver.IConflictResolveAssist assist,
+                    com._1c.g5.v8.dt.platform.services.core.infobases.sync.v2.IInfobaseSynchronizationFlow flow,
+                    IProgressMonitor monitor) {
+                throw new IllegalStateException(
+                        "the infobase has its own configuration changes — batch update aborted; "
+                        + "resolve the conflict interactively in EDT");
+            }
+        };
+        try {
+            IStatus st = sm.updateInfobase(p, target, callback, false, new NullProgressMonitor());
+            r.status = (st == null) ? "null" : (st.isOK() ? "OK" : st.toString());
+            r.applied = st != null && st.isOK();
+            r.message = r.applied ? ("infobase \"" + r.infobaseName + "\" updated from " + projectName)
+                    : ("update finished with status: " + r.status);
+        } catch (RuntimeException ex) {
+            r.applied = false;
+            r.message = "update failed: " + ex.getClass().getSimpleName()
+                    + (ex.getMessage() != null ? ": " + ex.getMessage() : "");
+        }
+        return r;
+    }
+
+    /** Purpose name (EN or RU, case-insensitive) → enum; blank → CUSTOMIZATION; unknown → null. */
+    private static ConfigurationExtensionPurpose resolvePurpose(String s) {
+        if (s == null || s.isBlank()) {
+            return ConfigurationExtensionPurpose.CUSTOMIZATION;
+        }
+        switch (s.trim().toLowerCase()) {
+            case "customization":
+            case "адаптация":
+                return ConfigurationExtensionPurpose.CUSTOMIZATION;
+            case "addon":
+            case "add_on":
+            case "add-on":
+            case "дополнение":
+                return ConfigurationExtensionPurpose.ADD_ON;
+            case "patch":
+            case "исправление":
+                return ConfigurationExtensionPurpose.PATCH;
+            default:
+                return null;
+        }
     }
 
     /** The one-or-more parts of a parsed type: a composite's parts, or the single type itself. */

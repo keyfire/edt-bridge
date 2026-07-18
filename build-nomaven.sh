@@ -117,6 +117,9 @@ need=(
   com._1c.g5.v8.dt.form.layout.model
   com._1c.g5.v8.dt.form.presentation
   com._1c.g5.v8.dt.platform
+  com._1c.g5.v8.dt.platform.services.core
+  com._1c.g5.v8.dt.platform.services.model
+  com._1c.g5.designer.ssh.client
   com._1c.g5.v8.dt.refactoring.core
   com._1c.g5.v8.dt.md.refactoring
   com._1c.g5.v8.bm.core
