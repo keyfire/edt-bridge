@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="430" viewBox="0 0 820 430">
+  <style>
+    text { font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; }
+    .mono { font-family: Consolas, 'Cascadia Mono', Menlo, monospace; font-size: 10.2px; }
+    .title { font-size: 17px; font-weight: 600; fill: #eef1f8; }
+    .box-title { font-size: 14.5px; font-weight: 600; fill: #eef1f8; }
+    .box-body { font-size: 11.5px; fill: #aab3c7; }
+    .edge-sub { font-size: 11.5px; font-style: italic; fill: #8b95ab; }
+    .note { font-size: 12px; fill: #8b95ab; }
+    .box { fill: #232a38; stroke: #3b445c; }
+    .edge { stroke: #6d7891; stroke-width: 1.5; fill: none; }
+  </style>
+  <defs>
+    <marker id="ah2" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#6d7891"/>
+    </marker>
+  </defs>
+
+  <rect x="0.5" y="0.5" width="819" height="429" rx="12" fill="#14171e" stroke="#262c38"/>
+  <text x="410" y="36" text-anchor="middle" class="title">Полный цикл поставки через MCP</text>
+
+  <!-- 1 create -->
+  <rect x="26" y="76" width="176" height="124" rx="10" class="box"/>
+  <circle cx="44" cy="102" r="4" fill="#3794ff"/>
+  <text x="56" y="107" class="box-title">1. Создать</text>
+  <text x="40" y="131" class="mono" fill="#aab3c7">edt_create_extension</text>
+  <text x="40" y="149" class="mono" fill="#aab3c7">edt_create_external_object</text>
+  <text x="40" y="167" class="mono" fill="#aab3c7">edt_create_object</text>
+
+  <!-- 2 develop -->
+  <rect x="224" y="76" width="176" height="124" rx="10" class="box"/>
+  <circle cx="242" cy="102" r="4" fill="#56d364"/>
+  <text x="254" y="107" class="box-title">2. Разработать</text>
+  <text x="238" y="131" class="mono" fill="#aab3c7">edt_add_attribute</text>
+  <text x="238" y="149" class="mono" fill="#aab3c7">edt_add_method</text>
+  <text x="238" y="167" class="mono" fill="#aab3c7">edt_module_text</text>
+  <text x="238" y="185" class="mono" fill="#aab3c7">edt_project_errors</text>
+
+  <!-- 3 build -->
+  <rect x="422" y="76" width="176" height="124" rx="10" class="box"/>
+  <circle cx="440" cy="102" r="4" fill="#ffd23f"/>
+  <text x="452" y="107" class="box-title">3. Собрать</text>
+  <text x="436" y="131" class="mono" fill="#aab3c7">edt_dump_external_object</text>
+  <text x="436" y="151" class="box-body">.epf / .erf на диске</text>
+  <text x="436" y="169" class="box-body">(нужна локальная</text>
+  <text x="436" y="186" class="box-body">платформа 1С)</text>
+
+  <!-- 4 deliver -->
+  <rect x="620" y="76" width="174" height="124" rx="10" class="box"/>
+  <circle cx="638" cy="102" r="4" fill="#f0883e"/>
+  <text x="650" y="107" class="box-title">4. Доставить</text>
+  <text x="634" y="131" class="mono" fill="#aab3c7">edt_infobases</text>
+  <text x="634" y="149" class="mono" fill="#aab3c7">edt_update_infobase</text>
+
+  <line x1="202" y1="138" x2="220" y2="138" class="edge" marker-end="url(#ah2)"/>
+  <line x1="400" y1="138" x2="418" y2="138" class="edge" marker-end="url(#ah2)"/>
+  <line x1="598" y1="138" x2="616" y2="138" class="edge" marker-end="url(#ah2)"/>
+
+  <!-- target -->
+  <rect x="560" y="262" width="234" height="82" rx="10" class="box"/>
+  <circle cx="578" cy="288" r="4" fill="#39c5cf"/>
+  <text x="590" y="293" class="box-title">целевая ИБ</text>
+  <text x="574" y="316" class="box-body">например, тестовый стенд:</text>
+  <text x="574" y="334" class="box-body">конфигурация + расширения</text>
+  <line x1="716" y1="200" x2="700" y2="258" class="edge" marker-end="url(#ah2)"/>
+  <text x="794" y="222" text-anchor="end" class="edge-sub">изменения структуры БД</text>
+  <text x="794" y="237" text-anchor="end" class="edge-sub">подтверждаются сами</text>
+
+  <!-- iterate -->
+  <path d="M 560 310 C 300 366 152 274 114 206" class="edge" stroke-dasharray="6 4" marker-end="url(#ah2)"/>
+  <text x="310" y="354" text-anchor="middle" class="edge-sub">итерация: проверить на стенде, доработать, обновить снова</text>
+
+  <text x="26" y="402" class="note">Проекты расширений уходят в ИБ прямо из workspace (шаг 4); внешние обработки сначала собираются в .epf (шаг 3).</text>
+</svg>

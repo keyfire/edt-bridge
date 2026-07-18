@@ -14,6 +14,12 @@ semantic cross-references, and **query validation against the project's actual m
 
 Development notes and updates (in Russian): the [1C × AI: engineering workshop](https://t.me/ceh_1c_ai) Telegram channel.
 
+![How the bridge is wired](https://raw.githubusercontent.com/keyfire/edt-bridge/main/docs/architecture.png)
+
+> The recommended client entry point is the **[edt-bridge-mcp](python/README.md)** stdio wrapper
+> (`pipx install edt-bridge-mcp`): it forwards to a running EDT, auto-starts a headless one when
+> EDT is closed, and delivers the plugin jar into `dropins/` when it is missing.
+
 ## Tools
 
 | Tool | What it returns |
@@ -32,6 +38,7 @@ Development notes and updates (in Russian): the [1C × AI: engineering workshop]
 | `edt_form_render` | Renders a managed form to a PNG via EDT's native offscreen renderer (the engine behind the form-editor preview); chooses the interface variant (Taxi / 8.5) and theme. |
 | `edt_picture_export` | A CommonPicture's content from its Picture.zip: the variant list (DPI / interface variant 8.2 vs 8.5 / theme / isTemplate) + a recommended pick, and a chosen variant's bytes as base64. |
 | `edt_outgoing_structures` | **Best-effort companion to `edt_outgoing_calls`:** for each outgoing (qualified) call, the top-level keys of the `Структура` passed as its argument — collects `<var>.Вставить("key", …)` and expands a same-module template helper one level. Optional `qualifier` prefix scopes to one layer (e.g. `ПрограммныйИнтерфейсСервиса`). |
+| `edt_infobases` | EDT's registered infobases (name, uuid, connection string) and the open projects' infobase associations — discovery for `edt_update_infobase`. |
 
 **Write tools** mutate the model through EDT's own engine (not text edits). All are **token-gated**
 and **dry-run by default** (`apply=false` returns a plan and changes nothing); `apply=true` performs
@@ -46,6 +53,10 @@ the change and serializes the `.mdo`.
 | `edt_remove_attribute` | Remove an attribute (reference-checked; refuses if referenced unless forced). |
 | `edt_rename` | Rename an object or member and **cascade every reference in metadata AND BSL** via EDT's native refactoring engine (`force` required — a rename is a breaking change). |
 | `edt_create_object` | Create a new top object (Catalog/Document/Enum/InformationRegister/…) via EDT's factory + per-type initializer, registered in the Configuration. |
+| `edt_create_extension` | Create a new configuration-**extension project** next to a base configuration project (the New Configuration Extension wizard engine), stamping the extension's name prefix and purpose (Customization/AddOn/Patch). |
+| `edt_create_external_object` | Create a new **external data processor project**, optionally linked to a base configuration project — the start of the "processor → .epf" cycle. |
+| `edt_dump_external_object` | Compile an external data processor / report into a binary **`.epf`/`.erf`** via EDT's own dumper (needs a locally installed 1C platform matching the project version). |
+| `edt_update_infobase` | Update an infobase's configuration **from an EDT project** (configuration or extension) via EDT's synchronization engine — the "Update infobase configuration" action; db-structure changes auto-confirmed, a conflict aborts. |
 | `edt_delete_object` | Delete an object or member and **cascade the removal of every reference in metadata AND BSL** via EDT's native refactoring engine; removes the object's `.mdo` and updates the Configuration (`force` required — a delete is irreversible and breaking). |
 | `edt_debug_attach` | Attach a debug session to a **running** infobase's debug server (dbgs); returns a `sessionId` for the other debug tools (token-gated; use a test stand, not production). |
 | `edt_debug_detach` | Detach (terminate) a debug session and free the infobase. |
@@ -53,8 +64,15 @@ the change and serializes the `.mdo`.
 | `edt_debug_control` | Control execution: `suspend`/`resume` the target, or `stepOver`/`stepInto`/`stepReturn` a suspended thread (token-gated). |
 | `edt_evaluate` | Evaluate an **arbitrary BSL expression** in a suspended frame — code execution against the live infobase. Heaviest gate: token **and** per-call `allowCodeExecution=true` **and** the server switch `EDT_BRIDGE_ALLOW_EVALUATE=1` (off by default). |
 
+Together the create / develop / build / deliver tools close the full cycle without leaving MCP:
+
+![Full delivery cycle over MCP](https://raw.githubusercontent.com/keyfire/edt-bridge/main/docs/delivery.png)
+
 Naming convention: tools are `edt_*` (snake_case); parameters are camelCase (`projectName`,
-`fqn`, `queryText`); Cyrillic FQNs are supported (`Справочник.Контрагенты`).
+`fqn`, `queryText`); Cyrillic FQNs are supported (`Справочник.Контрагенты`). The `edt_` prefix
+is deliberate: an MCP host presents every server's tools to the agent as one flat list, so a
+name must carry its context itself — `edt_rename` stays unambiguous where a bare `rename` is
+dangerously generic.
 
 ## Requirements
 
@@ -195,6 +213,12 @@ AI-агентам и другим инструментам по протокол
 
 Заметки о разработке и новости – в Telegram-канале [1С × ИИ: инженерный цех](https://t.me/ceh_1c_ai).
 
+![Как устроен мост](https://raw.githubusercontent.com/keyfire/edt-bridge/main/docs/architecture.ru.png)
+
+> Рекомендуемая точка входа для клиента – stdio-обвязка **[edt-bridge-mcp](python/README.ru.md)**
+> (`pipx install edt-bridge-mcp`): она пробрасывает запросы в запущенную EDT, сама поднимает
+> headless-экземпляр, когда EDT закрыта, и сама доставляет jar плагина в `dropins/`, если его нет.
+
 ## Инструменты
 
 | Инструмент | Что возвращает |
@@ -213,6 +237,7 @@ AI-агентам и другим инструментам по протокол
 | `edt_form_render` | Рендерит управляемую форму в PNG штатным offscreen-рендером EDT (движок предпросмотра редактора форм); выбор варианта интерфейса (Такси / 8.5) и темы. |
 | `edt_picture_export` | Содержимое CommonPicture из Picture.zip: перечень вариантов (DPI / вариант интерфейса 8.2 или 8.5 / тема / isTemplate) + рекомендуемый, и байты выбранного варианта в base64. |
 | `edt_outgoing_structures` | **Best-effort, пара к `edt_outgoing_calls`:** для каждого исходящего (квалифицированного) вызова — ключи верхнего уровня `Структуры`, переданной аргументом; собирает `<Перем>.Вставить("ключ", …)` и раскрывает хелпер-шаблон того же модуля на один уровень. Необязательный префикс `qualifier` ограничивает одним слоем (напр. `ПрограммныйИнтерфейсСервиса`). |
+| `edt_infobases` | Зарегистрированные в EDT информационные базы (имя, uuid, строка соединения) и привязки открытых проектов к базам — выбор цели для `edt_update_infobase`. |
 
 **Инструменты записи** меняют модель через штатный движок EDT (не текстовой заменой). Все –
 **под токеном** и по умолчанию **dry-run** (`apply=false` возвращает план и ничего не меняет);
@@ -227,6 +252,10 @@ AI-агентам и другим инструментам по протокол
 | `edt_remove_attribute` | Удаляет реквизит (проверка ссылок; отказ при наличии ссылок без force). |
 | `edt_rename` | Переименовывает объект или член с **каскадом всех ссылок в метаданных И в BSL** через штатный движок рефакторинга EDT (нужен `force` – переименование ломает совместимость). |
 | `edt_create_object` | Создаёт новый топ-объект (Справочник/Документ/Перечисление/РегистрСведений/…) через фабрику EDT + инициализатор типа, с регистрацией в Configuration. |
+| `edt_create_extension` | Создаёт новый проект **расширения конфигурации** к базовому проекту (движок мастера нового расширения), проставляя префикс имён и назначение (Адаптация/Дополнение/Исправление). |
+| `edt_create_external_object` | Создаёт новый проект **внешней обработки**, при необходимости привязанный к базовому проекту конфигурации — начало цикла "обработка → .epf". |
+| `edt_dump_external_object` | Компилирует внешнюю обработку/отчёт в бинарный **`.epf`/`.erf`** штатным дампером EDT (нужна установленная платформа 1С, совместимая с версией проекта). |
+| `edt_update_infobase` | Обновляет конфигурацию информационной базы **из проекта EDT** (конфигурация или расширение) штатным механизмом синхронизации — действие "Обновить конфигурацию информационной базы"; изменения структуры БД подтверждаются автоматически, конфликт прерывает обновление. |
 | `edt_delete_object` | Удаляет объект или член с **каскадным удалением всех ссылок в метаданных И в BSL** через штатный движок рефакторинга EDT; удаляет `.mdo` объекта и правит Configuration (нужен `force` – удаление необратимо и ломает совместимость). |
 | `edt_debug_attach` | Подключает сессию отладки к debug-серверу (dbgs) **запущенной** ИБ; возвращает `sessionId` для остальных debug-инструментов (под токеном; использовать тестовый стенд, не продакшен). |
 | `edt_debug_detach` | Отключает (завершает) сессию отладки и освобождает ИБ. |
@@ -234,8 +263,14 @@ AI-агентам и другим инструментам по протокол
 | `edt_debug_control` | Управление выполнением: `suspend`/`resume` цели или `stepOver`/`stepInto`/`stepReturn` приостановленного потока (под токеном). |
 | `edt_evaluate` | Вычисляет **произвольное BSL-выражение** в приостановленном кадре — исполнение кода против живой ИБ. Самый жёсткий гейт: токен **и** per-call `allowCodeExecution=true` **и** серверный переключатель `EDT_BRIDGE_ALLOW_EVALUATE=1` (по умолчанию выключено). |
 
+Вместе инструменты создать / разработать / собрать / доставить замыкают полный цикл, не выходя из MCP:
+
+![Полный цикл поставки через MCP](https://raw.githubusercontent.com/keyfire/edt-bridge/main/docs/delivery.ru.png)
+
 Соглашение об именах: инструменты `edt_*` (snake_case); параметры camelCase (`projectName`,
-`fqn`, `queryText`); поддерживаются кириллические FQN (`Справочник.Контрагенты`).
+`fqn`, `queryText`); поддерживаются кириллические FQN (`Справочник.Контрагенты`). Префикс `edt_`
+сознательный: MCP-хост показывает агенту инструменты всех серверов одним списком, и имя должно
+нести контекст само — `edt_rename` однозначен там, где голый `rename` опасно многозначен.
 
 ## Требования
 
