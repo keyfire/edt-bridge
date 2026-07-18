@@ -1,4 +1,4 @@
-[English](CODE_OF_CONDUCT.md) · **Русский**
+[English](../../CODE_OF_CONDUCT.md) · **Русский**
 
 # Кодекс поведения участника
 

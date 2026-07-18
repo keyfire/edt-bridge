@@ -84,7 +84,7 @@ edt-bridge-mcp self-update --jar-only  # только jar
 [страницы Releases](https://github.com/keyfire/edt-bridge/releases), положите **один** в `dropins/`
 EDT, перезапустите EDT – сервер поднимется на 8770 (или следующем свободном порту). Клиент можно
 подключить напрямую по HTTP: `{ "edt-bridge": { "type": "http", "url": "http://127.0.0.1:8770/mcp" } }`.
-Подробности и сборка из исходников – в [README.ru.md](README.ru.md).
+Подробности и сборка из исходников – в [README.ru.md](docs/ru/README.ru.md).
 
 ## Если что-то не так
 

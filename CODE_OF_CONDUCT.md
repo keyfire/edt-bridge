@@ -1,6 +1,6 @@
 # Contributor Covenant Code of Conduct
 
-**English** · [Русский](CODE_OF_CONDUCT.ru.md)
+**English** · [Русский](docs/ru/CODE_OF_CONDUCT.ru.md)
 
 ## Our Pledge
 

@@ -12,7 +12,7 @@ AI-агентам и другим инструментам по протокол
 > Чтение **и** запись. Только localhost; запись под токеном и по умолчанию dry-run. Плагин
 > работает внутри EDT – EDT (GUI или headless) должна быть запущена с вашим проектом.
 
-[English](README.md) · **Русский**
+[English](../../README.md) · **Русский**
 
 Заметки о разработке и новости – в Telegram-канале [1С × ИИ: инженерный цех](https://t.me/ceh_1c_ai).
 
@@ -21,7 +21,7 @@ AI-агентам и другим инструментам по протокол
 ## Установка (рекомендуется: pipx)
 
 Одна команда ставит всё – и обвязку клиента, и плагин. Обвязка
-[**edt-bridge-mcp**](python/README.ru.md) – это stdio MCP-сервер, с которым разговаривает клиент;
+[**edt-bridge-mcp**](../../python/README.ru.md) – это stdio MCP-сервер, с которым разговаривает клиент;
 она пробрасывает запросы в запущенную EDT, **сама поднимает headless EDT**, когда ни одна не
 открыта, и **сама доставляет jar плагина** в `dropins/` EDT, если его нет. Никакой jar руками
 копировать не нужно.
@@ -38,7 +38,7 @@ claude mcp add edt-bridge -- edt-bridge-mcp --workspace "D:\\путь\\к\\works
 ```
 
 Это вся настройка. Флаги обвязки, токен write-инструментов и `self-update` описаны в
-[python/README.ru.md](python/README.ru.md). Хотите запускать плагин сами, без обвязки? См.
+[python/README.ru.md](../../python/README.ru.md). Хотите запускать плагин сами, без обвязки? См.
 [Установку вручную](#установка-вручную-без-обвязки) ниже.
 
 <details>
@@ -203,15 +203,15 @@ edt-bridge – молодой инструмент, и его возможнос
   локальному процессу – на общих машинах задавайте токен.
 - Порт: `EDT_BRIDGE_PORT` / `-Dedt.bridge.port=` (по умолчанию 8770; при занятости берётся
   следующий свободный).
-- Нашли проблему с безопасностью? Сообщите **приватно** – см. [SECURITY.md](SECURITY.md), а не
+- Нашли проблему с безопасностью? Сообщите **приватно** – см. [SECURITY.md](SECURITY.ru.md), а не
   публичным issue.
 
 ## Разработка
 
-Баг-репорты и pull request'ы приветствуются – см. [CONTRIBUTING.md](CONTRIBUTING.md) (сборка,
-соглашения, как проверить изменение) и [Кодекс поведения](CODE_OF_CONDUCT.md). Заметные изменения –
-в [CHANGELOG](CHANGELOG.md). edt-bridge – независимая clean-room реализация ([ORIGIN.md](ORIGIN.md)).
+Баг-репорты и pull request'ы приветствуются – см. [CONTRIBUTING.md](CONTRIBUTING.ru.md) (сборка,
+соглашения, как проверить изменение) и [Кодекс поведения](CODE_OF_CONDUCT.ru.md). Заметные изменения –
+в [CHANGELOG](CHANGELOG.ru.md). edt-bridge – независимая clean-room реализация ([ORIGIN.md](../../ORIGIN.md)).
 
 ## Лицензия
 
-[Apache License 2.0](LICENSE). См. [NOTICE](NOTICE) и [ORIGIN.md](ORIGIN.md).
+[Apache License 2.0](../../LICENSE). См. [NOTICE](../../NOTICE) и [ORIGIN.md](../../ORIGIN.md).

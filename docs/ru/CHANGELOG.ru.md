@@ -1,4 +1,4 @@
-[English](CHANGELOG.md) · **Русский**
+[English](../../CHANGELOG.md) · **Русский**
 
 # История изменений
 

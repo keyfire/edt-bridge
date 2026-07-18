@@ -1,6 +1,6 @@
 # Contributing to edt-bridge
 
-**English** · [Русский](CONTRIBUTING.ru.md)
+**English** · [Русский](docs/ru/CONTRIBUTING.ru.md)
 
 Thanks for your interest. edt-bridge is a 1C:EDT plugin plus a small Python wrapper; this guide
 covers building it, the conventions, and how to propose changes.

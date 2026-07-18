@@ -1,4 +1,4 @@
-[English](SECURITY.md) · **Русский**
+[English](../../SECURITY.md) · **Русский**
 
 # Политика безопасности
 

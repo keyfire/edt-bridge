@@ -12,7 +12,7 @@ deliver, all through EDT's own engine.
 > Read **and** write. Localhost only; writes are token-gated and dry-run by default. The plugin
 > runs inside EDT, so an EDT (GUI or headless) must be up with your project.
 
-**English** · [Русский](README.ru.md)
+**English** · [Русский](docs/ru/README.ru.md)
 
 Development notes and updates (in Russian): the [1C × AI: engineering workshop](https://t.me/ceh_1c_ai) Telegram channel.
 

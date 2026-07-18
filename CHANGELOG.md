@@ -1,6 +1,6 @@
 # Changelog
 
-**English** · [Русский](CHANGELOG.ru.md)
+**English** · [Русский](docs/ru/CHANGELOG.ru.md)
 
 All notable changes to edt-bridge are documented here.
 
