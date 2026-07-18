@@ -5033,33 +5033,21 @@ public final class EdtModelGateway {
         if (Boolean.FALSE.equals(r.nameAvailable)) {
             r.message = "a project with this name already exists in the workspace: " + name;
         }
-        if (!apply) {
-            return r;
-        }
-        if (!r.ok) {
+        // apply is intentionally gated: creating an extension PROJECT headless via
+        // IExtensionProjectManager.create does not work reliably — with the base configuration it
+        // fails the DT lifecycle RESOURCE_LOADING phase (BmAssertionException "object is already
+        // attached"), and with a null configuration it crashes the headless runtime during
+        // RESOURCE_LOADING. Until that lifecycle path is solved, dry-run validates and plans, and the
+        // project itself is created via EDT's New Configuration Extension wizard. Tracked as a known
+        // limitation; nothing is created here, so no residue is left in the workspace.
+        if (apply && r.ok) {
+            r.message = "validated. Apply is not yet supported headless: creating an extension "
+                    + "project via IExtensionProjectManager crashes the EDT project lifecycle "
+                    + "(RESOURCE_LOADING). Create the extension in the EDT \"New Configuration "
+                    + "Extension\" wizard, then use edt_* tools to develop and deliver it.";
+        } else if (apply) {
             r.message = (r.message == null ? "validation failed" : r.message)
                     + " — apply refused (nothing created).";
-            return r;
-        }
-        IExtensionProjectManager epm = ServiceAccess.get(IExtensionProjectManager.class);
-        if (epm == null) {
-            r.message = "IExtensionProjectManager service unavailable";
-            return r;
-        }
-        try {
-            IProject created = epm.create(name, version, baseConfig, base, new NullProgressMonitor());
-            r.location = (created != null && created.getLocation() != null)
-                    ? created.getLocation().toOSString() : null;
-            r.applied = true;
-            r.stamped = stampExtensionConfiguration(created, namePrefix, purpose);
-            r.message = "created extension project " + name + " extending " + baseProjectName
-                    + (r.stamped ? " (prefix/purpose stamped and serialized)"
-                            : " — WARNING: created, but prefix/purpose stamping incomplete (the project"
-                              + " model is still loading; re-check later and stamp via the model)");
-        } catch (CoreException | RuntimeException ex) {
-            r.applied = false;
-            r.message = "create failed: " + ex.getClass().getSimpleName()
-                    + (ex.getMessage() != null ? ": " + ex.getMessage() : "");
         }
         return r;
     }
@@ -5165,30 +5153,19 @@ public final class EdtModelGateway {
         if (Boolean.FALSE.equals(r.nameAvailable)) {
             r.message = "a project with this name already exists in the workspace: " + name;
         }
-        if (!apply) {
-            return r;
-        }
-        if (!r.ok) {
+        // apply is gated for the same reason as edt_create_extension: creating an external-object
+        // PROJECT headless via IExternalObjectProjectManager.create runs the same EDT project
+        // lifecycle that fails/crashes in RESOURCE_LOADING. Dry-run validates and plans; create the
+        // processor project via EDT's New External Data Processor wizard, then compile it with
+        // edt_dump_external_object. Known limitation; nothing is created here.
+        if (apply && r.ok) {
+            r.message = "validated. Apply is not yet supported headless: creating an external data "
+                    + "processor project via IExternalObjectProjectManager crashes the EDT project "
+                    + "lifecycle (RESOURCE_LOADING). Create the project in the EDT \"New External Data "
+                    + "Processor\" wizard, then compile it with edt_dump_external_object.";
+        } else if (apply) {
             r.message = (r.message == null ? "validation failed" : r.message)
                     + " — apply refused (nothing created).";
-            return r;
-        }
-        IExternalObjectProjectManager eom = ServiceAccess.get(IExternalObjectProjectManager.class);
-        if (eom == null) {
-            r.message = "IExternalObjectProjectManager service unavailable";
-            return r;
-        }
-        try {
-            IProject created = eom.create(name, version, null, base, new NullProgressMonitor());
-            r.applied = true;
-            r.location = (created != null && created.getLocation() != null)
-                    ? created.getLocation().toOSString() : null;
-            r.message = "created external data processor project " + name
-                    + " (the project model loads in background — poll edt_projects)";
-        } catch (CoreException | RuntimeException ex) {
-            r.applied = false;
-            r.message = "create failed: " + ex.getClass().getSimpleName()
-                    + (ex.getMessage() != null ? ": " + ex.getMessage() : "");
         }
         return r;
     }
@@ -5459,6 +5436,29 @@ public final class EdtModelGateway {
                     + (ex.getMessage() != null ? ": " + ex.getMessage() : "");
         }
         return r;
+    }
+
+    /** Exception summary with its cause chain — EDT wraps the real error (e.g. a lifecycle
+     *  RESOURCE_LOADING failure) several layers deep, so the top message alone is uninformative. */
+    private static String describeCause(Throwable ex) {
+        StringBuilder sb = new StringBuilder();
+        Throwable t = ex;
+        int depth = 0;
+        while (t != null && depth < 6) {
+            if (depth > 0) {
+                sb.append(" <- ");
+            }
+            sb.append(t.getClass().getSimpleName());
+            if (t.getMessage() != null) {
+                sb.append(": ").append(t.getMessage());
+            }
+            if (t.getCause() == t) {
+                break;
+            }
+            t = t.getCause();
+            depth++;
+        }
+        return sb.toString();
     }
 
     /** Purpose name (EN or RU, case-insensitive) → enum; blank → CUSTOMIZATION; unknown → null. */

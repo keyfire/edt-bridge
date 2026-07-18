@@ -8,3 +8,5 @@ target/
 __pycache__/
 *.pyc
 *.egg-info/
+python/dist/
+python/build/
