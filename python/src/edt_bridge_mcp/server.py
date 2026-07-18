@@ -6,7 +6,7 @@ wrapper is what the client talks to instead (stdio, install via pipx):
 
 - if the bridge port is alive (a GUI EDT or a headless one), every request is forwarded;
 - if not, it AUTO-STARTS a headless EDT (1cedtcli with a keepalive pipe – the same recipe
-  as run-headless.ps1) and forwards once it is ready;
+  as scripts/run-headless.ps1) and forwards once it is ready;
 - `initialize` / `tools/list` never block a client session: while the backend is starting,
   `tools/list` returns an empty list, and a `notifications/tools/list_changed` follows as
   soon as the backend is up – the client re-pulls the real tool list then.

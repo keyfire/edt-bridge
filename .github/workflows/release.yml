@@ -4,13 +4,13 @@
 # (com._1c.g5.v8.*), which are proprietary and cannot be redistributed or downloaded
 # anonymously - so a hosted runner has no legal way to obtain the compile classpath.
 # Instead, the maintainer builds locally against their own EDT install
-# (build-nomaven.ps1 -Dist / build-nomaven.sh --dist), commits the jar under dist/,
+# (scripts/build-nomaven.ps1 -Dist / scripts/build-nomaven.sh --dist), commits the jar under dist/,
 # and tags the commit; this workflow attaches that jar + its SHA256 to the release.
 # (If a self-hosted runner with EDT installed ever exists, a build job can replace the
 # dist/ pickup - the rest of the workflow stays the same.)
 #
 # Release flow:
-#   powershell -File build-nomaven.ps1 -Dist       (or ./build-nomaven.sh --dist)
+#   powershell -File scripts/build-nomaven.ps1 -Dist       (or ./scripts/build-nomaven.sh --dist)
 #   git add dist/ && git commit -m "Release vX.Y.Z"
 #   git tag vX.Y.Z && git push origin main vX.Y.Z
 name: release
@@ -35,7 +35,7 @@ jobs:
           jar=$(ls dist/io.github.keyfire.edtbridge_*.jar 2>/dev/null | sort | tail -n 1)
           if [ -z "$jar" ]; then
             echo "::error::No dist/io.github.keyfire.edtbridge_*.jar in the tagged commit." \
-                 "Build locally with build-nomaven.ps1 -Dist (or build-nomaven.sh --dist)," \
+                 "Build locally with scripts/build-nomaven.ps1 -Dist (or scripts/build-nomaven.sh --dist)," \
                  "commit dist/ and re-tag."
             exit 1
           fi

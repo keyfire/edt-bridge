@@ -148,8 +148,8 @@ The pipx wrapper delivers the jar and starts EDT for you. To run the plugin your
 3. **Restart EDT.** The plugin starts the MCP server on `http://127.0.0.1:8770/mcp` (or the next
    free port if 8770 is busy).
 
-To run EDT **headless** (no GUI): `run-headless.ps1 -Workspace <ws>` (Windows) or
-`run-headless.sh --workspace <ws>` (macOS / Linux); `toggle-headless.ps1` starts/stops it in one
+To run EDT **headless** (no GUI): `scripts/run-headless.ps1 -Workspace <ws>` (Windows) or
+`scripts/run-headless.sh --workspace <ws>` (macOS / Linux); `scripts/toggle-headless.ps1` starts/stops it in one
 action. A running GUI EDT is never touched.
 
 An MCP client can also talk to the plugin over HTTP directly (no wrapper) – add
@@ -162,19 +162,19 @@ No Maven (quickest – pure local JDK + the EDT pool, no network):
 
 ```powershell
 # Windows – defaults: -Pool %USERPROFILE%\.p2\pool\plugins, -JdkHome %JAVA_HOME%
-powershell -ExecutionPolicy Bypass -File build-nomaven.ps1
+powershell -ExecutionPolicy Bypass -File scripts/build-nomaven.ps1
 ```
 
 ```bash
 # macOS / Linux – --pool auto-detected from the installed 1C:EDT component pool
-./build-nomaven.sh
+./scripts/build-nomaven.sh
 ```
 
 Produces `build/io.github.keyfire.edtbridge_<version>.<timestamp>.jar`. Maven + Tycho
 (`mvn -f pom.xml clean verify`, edit `edt-bridge.target` first) is available for CI.
 
 Releases are cut from a locally built jar – CI cannot compile it (the 1C:EDT SDK bundles are
-proprietary and cannot be fetched anonymously). The maintainer runs `build-nomaven.ps1 -Dist`,
+proprietary and cannot be fetched anonymously). The maintainer runs `scripts/build-nomaven.ps1 -Dist`,
 commits the jar under `dist/`, tags `vX.Y.Z` and pushes the tag; `.github/workflows/release.yml`
 attaches the jar + checksum. Verify an asset by rebuilding from the tagged source and comparing.
 

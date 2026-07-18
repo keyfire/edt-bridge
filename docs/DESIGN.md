@@ -62,7 +62,7 @@ plugin that embeds an MCP server.
   `--release 17`.
 - Target platform: the **local EDT p2 bundle pool** (`<your-home>/.p2/pool/plugins`) referenced as a
   PDE/Tycho **Directory** location – offline, no p2 URL.
-- Two builds: `build-nomaven.ps1` (local JDK + pool) and Maven/Tycho (`pom.xml` + `edt-bridge.target`).
+- Two builds: `scripts/build-nomaven.ps1` (local JDK + pool) and Maven/Tycho (`pom.xml` + `edt-bridge.target`).
 
 ## Phases
 

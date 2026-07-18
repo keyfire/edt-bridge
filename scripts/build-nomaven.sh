@@ -23,7 +23,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-root="$(cd "$(dirname "$0")" && pwd)"
+root="$(cd "$(dirname "$0")/.." && pwd)"
 bundle="$root/io.github.keyfire.edtbridge"
 src="$bundle/src"
 out="$root/build"

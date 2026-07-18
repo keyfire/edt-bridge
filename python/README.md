@@ -10,7 +10,7 @@ is what the client talks to instead:
 
 - **EDT open** (GUI or headless) → every request is forwarded to the live bridge;
 - **EDT closed** → it **auto-starts a headless EDT** (`1cedtcli` with a keepalive pipe, the
-  same recipe as `run-headless.ps1`) and forwards once the model is ready;
+  same recipe as `scripts/run-headless.ps1`) and forwards once the model is ready;
 - **plugin jar missing** → it **delivers the jar itself** from the latest GitHub release
   (checksum-verified) into EDT's `dropins/` before starting – a bare
   `pipx install edt-bridge-mcp` is enough to get a working bridge;

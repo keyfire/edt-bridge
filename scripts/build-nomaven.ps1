@@ -10,7 +10,7 @@ param(
   [switch]$Dist    # also place the jar into dist/ (the release asset published by the GitHub workflow)
 )
 $ErrorActionPreference = "Stop"
-$root   = Split-Path -Parent $MyInvocation.MyCommand.Path
+$root   = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $bundle = Join-Path $root "io.github.keyfire.edtbridge"
 $src    = Join-Path $bundle "src"
 $out    = Join-Path $root "build"
