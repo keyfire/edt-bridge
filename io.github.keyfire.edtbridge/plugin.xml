@@ -6,4 +6,9 @@
    <extension point="org.eclipse.ui.startup">
       <startup class="io.github.keyfire.edtbridge.EarlyStartup"/>
    </extension>
+   <extension point="org.eclipse.ui.preferencePages">
+      <page id="io.github.keyfire.edtbridge.preferences"
+            name="EDT-Bridge"
+            class="io.github.keyfire.edtbridge.ui.EdtBridgePreferencePage"/>
+   </extension>
 </plugin>

@@ -16,7 +16,7 @@
  */
 package io.github.keyfire.edtbridge.tools;
 
-import io.github.keyfire.edtbridge.edt.EdtModelGateway;
+import io.github.keyfire.edtbridge.edt.BslGateway;
 import io.github.keyfire.edtbridge.mcp.McpServer;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -33,7 +33,7 @@ import com.google.gson.JsonObject;
  */
 public final class OutgoingStructuresTool {
 
-    private final EdtModelGateway gateway = new EdtModelGateway();
+    private final BslGateway gateway = new BslGateway();
 
     public String name() {
         return "edt_outgoing_structures";
@@ -96,7 +96,7 @@ public final class OutgoingStructuresTool {
             return McpServer.toolError("provide fqn or modulePath");
         }
         try {
-            EdtModelGateway.OutgoingStructuresResult res =
+            BslGateway.OutgoingStructuresResult res =
                     gateway.outgoingStructures(project, fqn, moduleType, method, modulePath, qualifier);
             JsonObject o = new JsonObject();
             o.addProperty("found", res.found);
@@ -110,7 +110,7 @@ public final class OutgoingStructuresTool {
                 o.addProperty("scope", res.scope);
             }
             JsonArray structures = new JsonArray();
-            for (EdtModelGateway.OutgoingStructureSite s : res.structures) {
+            for (BslGateway.OutgoingStructureSite s : res.structures) {
                 JsonObject so = new JsonObject();
                 if (s.qualifier != null) {
                     so.addProperty("qualifier", s.qualifier);

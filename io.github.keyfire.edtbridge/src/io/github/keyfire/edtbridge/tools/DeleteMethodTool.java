@@ -17,7 +17,7 @@
 
 package io.github.keyfire.edtbridge.tools;
 
-import io.github.keyfire.edtbridge.edt.EdtModelGateway;
+import io.github.keyfire.edtbridge.edt.BslGateway;
 import io.github.keyfire.edtbridge.mcp.McpServer;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -35,7 +35,7 @@ import com.google.gson.JsonObject;
  */
 public final class DeleteMethodTool {
 
-    private final EdtModelGateway gateway = new EdtModelGateway();
+    private final BslGateway gateway = new BslGateway();
 
     public String name() {
         return "edt_delete_method";
@@ -112,7 +112,7 @@ public final class DeleteMethodTool {
         boolean apply = args.has("apply") && !args.get("apply").isJsonNull() && args.get("apply").getAsBoolean();
         boolean force = args.has("force") && !args.get("force").isJsonNull() && args.get("force").getAsBoolean();
         try {
-            EdtModelGateway.DeleteMethodResult res = gateway.deleteMethod(project, fqn, moduleType, modulePath,
+            BslGateway.DeleteMethodResult res = gateway.deleteMethod(project, fqn, moduleType, modulePath,
                     methodName, apply, force);
             JsonObject o = new JsonObject();
             o.addProperty("ok", res.ok);

@@ -16,7 +16,7 @@
  */
 package io.github.keyfire.edtbridge.tools;
 
-import io.github.keyfire.edtbridge.edt.EdtModelGateway;
+import io.github.keyfire.edtbridge.edt.BslGateway;
 import io.github.keyfire.edtbridge.mcp.McpServer;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -30,7 +30,7 @@ import com.google.gson.JsonObject;
  */
 public final class ModuleTextTool {
 
-    private final EdtModelGateway gateway = new EdtModelGateway();
+    private final BslGateway gateway = new BslGateway();
 
     public String name() {
         return "edt_module_text";
@@ -86,7 +86,7 @@ public final class ModuleTextTool {
             return McpServer.toolError("provide fqn or modulePath");
         }
         try {
-            EdtModelGateway.ModuleTextResult res = gateway.moduleText(project, fqn, moduleType, method, modulePath);
+            BslGateway.ModuleTextResult res = gateway.moduleText(project, fqn, moduleType, method, modulePath);
             JsonObject o = new JsonObject();
             o.addProperty("found", res.found);
             if (res.fqn != null) {
@@ -103,7 +103,7 @@ public final class ModuleTextTool {
                 o.add("availableModules", am);
             }
             JsonArray methods = new JsonArray();
-            for (EdtModelGateway.BslMethod m : res.methods) {
+            for (BslGateway.BslMethod m : res.methods) {
                 JsonObject mo = new JsonObject();
                 mo.addProperty("name", m.name);
                 mo.addProperty("kind", m.kind);

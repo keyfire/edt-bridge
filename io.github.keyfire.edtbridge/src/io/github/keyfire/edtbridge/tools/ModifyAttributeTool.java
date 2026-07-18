@@ -16,7 +16,7 @@
  */
 package io.github.keyfire.edtbridge.tools;
 
-import io.github.keyfire.edtbridge.edt.EdtModelGateway;
+import io.github.keyfire.edtbridge.edt.MetadataWriteGateway;
 import io.github.keyfire.edtbridge.mcp.McpServer;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -30,7 +30,7 @@ import com.google.gson.JsonObject;
  */
 public final class ModifyAttributeTool {
 
-    private final EdtModelGateway gateway = new EdtModelGateway();
+    private final MetadataWriteGateway gateway = new MetadataWriteGateway();
 
     public String name() {
         return "edt_modify_attribute";
@@ -90,7 +90,7 @@ public final class ModifyAttributeTool {
         String newComment = has(args, "newComment") ? args.get("newComment").getAsString() : null;
         boolean apply = args.has("apply") && !args.get("apply").isJsonNull() && args.get("apply").getAsBoolean();
         try {
-            EdtModelGateway.ModifyAttrResult res =
+            MetadataWriteGateway.ModifyAttrResult res =
                     gateway.modifyAttribute(project, ownerFqn, name, newType, newSynonymRu, newComment, apply);
             JsonObject o = new JsonObject();
             o.addProperty("ok", res.ok);

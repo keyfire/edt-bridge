@@ -2,7 +2,7 @@ Manifest-Version: 1.0
 Bundle-ManifestVersion: 2
 Bundle-Name: edt-bridge
 Bundle-SymbolicName: io.github.keyfire.edtbridge;singleton:=true
-Bundle-Version: 0.2.1.qualifier
+Bundle-Version: 0.3.0.qualifier
 Bundle-Vendor: edt-bridge contributors
 Automatic-Module-Name: io.github.keyfire.edtbridge
 Bundle-RequiredExecutionEnvironment: JavaSE-17
@@ -11,6 +11,8 @@ Bundle-ActivationPolicy: lazy
 Service-Component: OSGI-INF/edtbridge-mcp.xml
 Require-Bundle: org.eclipse.core.runtime,
  org.eclipse.core.resources,
+ org.eclipse.equinox.preferences,
+ org.eclipse.jface,
  org.eclipse.ui,
  com.google.gson,
  org.eclipse.emf.ecore,
@@ -29,6 +31,7 @@ Require-Bundle: org.eclipse.core.runtime,
  com._1c.g5.v8.dt.form.presentation,
  com._1c.g5.v8.dt.dcs.model,
  com._1c.g5.v8.dt.platform,
+ com._1c.g5.v8.dt.export,
  com._1c.g5.v8.dt.platform.services.core,
  com._1c.g5.v8.dt.platform.services.model,
  com._1c.g5.designer.ssh.client,
@@ -44,4 +47,5 @@ Require-Bundle: org.eclipse.core.runtime,
  org.eclipse.xtext.util,
  com.google.inject
 Import-Package: com.sun.net.httpserver,
- org.osgi.framework
+ org.osgi.framework,
+ org.osgi.service.prefs

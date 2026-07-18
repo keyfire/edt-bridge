@@ -16,7 +16,7 @@
  */
 package io.github.keyfire.edtbridge.tools;
 
-import io.github.keyfire.edtbridge.edt.EdtModelGateway;
+import io.github.keyfire.edtbridge.edt.MetadataWriteGateway;
 import io.github.keyfire.edtbridge.mcp.McpServer;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -31,7 +31,7 @@ import com.google.gson.JsonObject;
  */
 public final class CreateObjectTool {
 
-    private final EdtModelGateway gateway = new EdtModelGateway();
+    private final MetadataWriteGateway gateway = new MetadataWriteGateway();
 
     public String name() {
         return "edt_create_object";
@@ -95,7 +95,7 @@ public final class CreateObjectTool {
         String comment = getStr(args, "comment");
         boolean apply = args.has("apply") && !args.get("apply").isJsonNull() && args.get("apply").getAsBoolean();
         try {
-            EdtModelGateway.CreateObjectResult res =
+            MetadataWriteGateway.CreateObjectResult res =
                     gateway.createObject(project, objectType, name, synonymRu, comment, apply);
             JsonObject o = new JsonObject();
             o.addProperty("ok", res.ok);

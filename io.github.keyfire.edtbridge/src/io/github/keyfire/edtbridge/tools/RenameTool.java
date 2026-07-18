@@ -16,7 +16,7 @@
  */
 package io.github.keyfire.edtbridge.tools;
 
-import io.github.keyfire.edtbridge.edt.EdtModelGateway;
+import io.github.keyfire.edtbridge.edt.MetadataWriteGateway;
 import io.github.keyfire.edtbridge.mcp.McpServer;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -32,7 +32,7 @@ import com.google.gson.JsonObject;
  */
 public final class RenameTool {
 
-    private final EdtModelGateway gateway = new EdtModelGateway();
+    private final MetadataWriteGateway gateway = new MetadataWriteGateway();
 
     public String name() {
         return "edt_rename";
@@ -96,7 +96,7 @@ public final class RenameTool {
         boolean apply = args.has("apply") && !args.get("apply").isJsonNull() && args.get("apply").getAsBoolean();
         boolean force = args.has("force") && !args.get("force").isJsonNull() && args.get("force").getAsBoolean();
         try {
-            EdtModelGateway.RenameResult res = gateway.renameObject(project, targetFqn, newName, apply, force);
+            MetadataWriteGateway.RenameResult res = gateway.renameObject(project, targetFqn, newName, apply, force);
             JsonObject o = new JsonObject();
             o.addProperty("ok", res.ok);
             o.addProperty("applied", res.applied);
@@ -115,7 +115,7 @@ public final class RenameTool {
             o.addProperty("refactoringCount", res.refactoringCount);
             if (!res.problems.isEmpty()) {
                 JsonArray probs = new JsonArray();
-                for (EdtModelGateway.RenameProblem pr : res.problems) {
+                for (MetadataWriteGateway.RenameProblem pr : res.problems) {
                     JsonObject po = new JsonObject();
                     po.addProperty("kind", pr.kind);
                     if (pr.object != null) {
@@ -126,7 +126,7 @@ public final class RenameTool {
                 o.add("problems", probs);
             }
             JsonArray items = new JsonArray();
-            for (EdtModelGateway.RenameItem it : res.items) {
+            for (MetadataWriteGateway.RenameItem it : res.items) {
                 JsonObject io = new JsonObject();
                 io.addProperty("name", it.name);
                 io.addProperty("optional", it.optional);

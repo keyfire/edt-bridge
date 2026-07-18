@@ -16,7 +16,7 @@
  */
 package io.github.keyfire.edtbridge.tools;
 
-import io.github.keyfire.edtbridge.edt.EdtModelGateway;
+import io.github.keyfire.edtbridge.edt.BslGateway;
 import io.github.keyfire.edtbridge.mcp.McpServer;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -30,7 +30,7 @@ import com.google.gson.JsonObject;
  */
 public final class OutgoingCallsTool {
 
-    private final EdtModelGateway gateway = new EdtModelGateway();
+    private final BslGateway gateway = new BslGateway();
 
     public String name() {
         return "edt_outgoing_calls";
@@ -87,7 +87,7 @@ public final class OutgoingCallsTool {
             return McpServer.toolError("provide fqn or modulePath");
         }
         try {
-            EdtModelGateway.OutgoingCallsResult res =
+            BslGateway.OutgoingCallsResult res =
                     gateway.outgoingCalls(project, fqn, moduleType, method, modulePath, extApiPrefix);
             JsonObject o = new JsonObject();
             o.addProperty("found", res.found);
@@ -102,7 +102,7 @@ public final class OutgoingCallsTool {
             }
             JsonArray calls = new JsonArray();
             int extApiCount = 0;
-            for (EdtModelGateway.OutgoingCall c : res.calls) {
+            for (BslGateway.OutgoingCall c : res.calls) {
                 JsonObject co = new JsonObject();
                 if (c.qualifier != null) {
                     co.addProperty("qualifier", c.qualifier);

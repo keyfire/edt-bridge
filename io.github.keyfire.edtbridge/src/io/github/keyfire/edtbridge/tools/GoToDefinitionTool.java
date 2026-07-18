@@ -16,7 +16,7 @@
  */
 package io.github.keyfire.edtbridge.tools;
 
-import io.github.keyfire.edtbridge.edt.EdtModelGateway;
+import io.github.keyfire.edtbridge.edt.BslGateway;
 import io.github.keyfire.edtbridge.mcp.McpServer;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -28,7 +28,7 @@ import com.google.gson.JsonObject;
  */
 public final class GoToDefinitionTool {
 
-    private final EdtModelGateway gateway = new EdtModelGateway();
+    private final BslGateway gateway = new BslGateway();
 
     public String name() {
         return "edt_go_to_definition";
@@ -78,7 +78,7 @@ public final class GoToDefinitionTool {
             return McpServer.toolError("provide line (and column) or offset");
         }
         try {
-            EdtModelGateway.DefinitionResult d = gateway.goToDefinition(project, modulePath, line, column, offset);
+            BslGateway.DefinitionResult d = gateway.goToDefinition(project, modulePath, line, column, offset);
             JsonObject o = new JsonObject();
             o.addProperty("found", d.found);
             if (!d.found) {

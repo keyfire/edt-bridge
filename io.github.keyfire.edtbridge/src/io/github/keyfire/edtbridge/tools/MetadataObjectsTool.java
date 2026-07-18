@@ -18,7 +18,7 @@ package io.github.keyfire.edtbridge.tools;
 
 import java.util.List;
 
-import io.github.keyfire.edtbridge.edt.EdtModelGateway;
+import io.github.keyfire.edtbridge.edt.MetadataReadGateway;
 import io.github.keyfire.edtbridge.mcp.McpServer;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -32,7 +32,7 @@ public final class MetadataObjectsTool {
 
     private static final int DEFAULT_LIMIT = 500;
 
-    private final EdtModelGateway gateway = new EdtModelGateway();
+    private final MetadataReadGateway gateway = new MetadataReadGateway();
 
     public String name() {
         return "edt_metadata_objects";
@@ -99,12 +99,12 @@ public final class MetadataObjectsTool {
             }
         }
         try {
-            EdtModelGateway.MdListResult res = (project == null)
+            MetadataReadGateway.MdListResult res = (project == null)
                     ? gateway.listMetadataAll(type, nameFilter, limit)
                     : gateway.listMetadata(project, type, nameFilter, limit);
             JsonArray arr = new JsonArray();
             if (res.items != null) {
-                for (EdtModelGateway.MdItem it : res.items) {
+                for (MetadataReadGateway.MdItem it : res.items) {
                     JsonObject o = new JsonObject();
                     o.addProperty("fqn", it.fqn);
                     o.addProperty("type", it.type);

@@ -16,7 +16,7 @@
  */
 package io.github.keyfire.edtbridge.tools;
 
-import io.github.keyfire.edtbridge.edt.EdtModelGateway;
+import io.github.keyfire.edtbridge.edt.FormGateway;
 import io.github.keyfire.edtbridge.mcp.McpServer;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -32,7 +32,7 @@ public final class FormStructureTool {
 
     private static final int DEFAULT_LIMIT = 500;
 
-    private final EdtModelGateway gateway = new EdtModelGateway();
+    private final FormGateway gateway = new FormGateway();
 
     public String name() {
         return "edt_form_structure";
@@ -91,7 +91,7 @@ public final class FormStructureTool {
         }
         int limit = getInt(args, "limit", DEFAULT_LIMIT);
         try {
-            EdtModelGateway.FormDetails d = gateway.getFormStructure(project, fqn, limit);
+            FormGateway.FormDetails d = gateway.getFormStructure(project, fqn, limit);
             JsonObject o = new JsonObject();
             o.addProperty("found", d.found);
             o.addProperty("fqn", d.fqn);
@@ -119,9 +119,9 @@ public final class FormStructureTool {
         }
     }
 
-    private JsonArray attributesJson(EdtModelGateway.FormDetails d) {
+    private JsonArray attributesJson(FormGateway.FormDetails d) {
         JsonArray arr = new JsonArray();
-        for (EdtModelGateway.FormAttr a : d.attributes) {
+        for (FormGateway.FormAttr a : d.attributes) {
             JsonObject o = new JsonObject();
             o.addProperty("name", a.name);
             if (a.valueType != null) {
@@ -135,9 +135,9 @@ public final class FormStructureTool {
         return arr;
     }
 
-    private JsonArray commandsJson(EdtModelGateway.FormDetails d) {
+    private JsonArray commandsJson(FormGateway.FormDetails d) {
         JsonArray arr = new JsonArray();
-        for (EdtModelGateway.FormCmd c : d.commands) {
+        for (FormGateway.FormCmd c : d.commands) {
             JsonObject o = new JsonObject();
             o.addProperty("name", c.name);
             if (c.title != null) {
@@ -151,9 +151,9 @@ public final class FormStructureTool {
         return arr;
     }
 
-    private JsonArray parametersJson(EdtModelGateway.FormDetails d) {
+    private JsonArray parametersJson(FormGateway.FormDetails d) {
         JsonArray arr = new JsonArray();
-        for (EdtModelGateway.FormParam pm : d.parameters) {
+        for (FormGateway.FormParam pm : d.parameters) {
             JsonObject o = new JsonObject();
             o.addProperty("name", pm.name);
             if (pm.valueType != null) {
@@ -164,16 +164,16 @@ public final class FormStructureTool {
         return arr;
     }
 
-    private JsonArray handlersJson(EdtModelGateway.FormDetails d) {
+    private JsonArray handlersJson(FormGateway.FormDetails d) {
         return evtArray(d.handlers);
     }
 
-    private static JsonArray evtArray(java.util.List<EdtModelGateway.FormEvt> handlers) {
+    private static JsonArray evtArray(java.util.List<FormGateway.FormEvt> handlers) {
         JsonArray arr = new JsonArray();
         if (handlers == null) {
             return arr;
         }
-        for (EdtModelGateway.FormEvt h : handlers) {
+        for (FormGateway.FormEvt h : handlers) {
             JsonObject o = new JsonObject();
             o.addProperty("name", h.name);
             if (h.event != null) {
@@ -184,9 +184,9 @@ public final class FormStructureTool {
         return arr;
     }
 
-    private JsonArray condAppearanceJson(EdtModelGateway.FormDetails d) {
+    private JsonArray condAppearanceJson(FormGateway.FormDetails d) {
         JsonArray arr = new JsonArray();
-        for (EdtModelGateway.CondAppearance c : d.conditionalAppearance) {
+        for (FormGateway.CondAppearance c : d.conditionalAppearance) {
             JsonObject o = new JsonObject();
             if (!c.use) {
                 o.addProperty("use", false);
@@ -213,12 +213,12 @@ public final class FormStructureTool {
         return arr;
     }
 
-    private JsonArray nodesJson(java.util.List<EdtModelGateway.FormNode> nodes) {
+    private JsonArray nodesJson(java.util.List<FormGateway.FormNode> nodes) {
         JsonArray arr = new JsonArray();
         if (nodes == null) {
             return arr;
         }
-        for (EdtModelGateway.FormNode n : nodes) {
+        for (FormGateway.FormNode n : nodes) {
             JsonObject o = new JsonObject();
             o.addProperty("name", n.name);
             o.addProperty("kind", n.kind);

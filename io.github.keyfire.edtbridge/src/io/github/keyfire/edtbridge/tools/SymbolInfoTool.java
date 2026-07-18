@@ -16,7 +16,7 @@
  */
 package io.github.keyfire.edtbridge.tools;
 
-import io.github.keyfire.edtbridge.edt.EdtModelGateway;
+import io.github.keyfire.edtbridge.edt.BslGateway;
 import io.github.keyfire.edtbridge.mcp.McpServer;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -29,7 +29,7 @@ import com.google.gson.JsonObject;
  */
 public final class SymbolInfoTool {
 
-    private final EdtModelGateway gateway = new EdtModelGateway();
+    private final BslGateway gateway = new BslGateway();
 
     public String name() {
         return "edt_symbol_info";
@@ -79,7 +79,7 @@ public final class SymbolInfoTool {
             return McpServer.toolError("provide line (and column) or offset");
         }
         try {
-            EdtModelGateway.SymbolInfoResult s = gateway.symbolInfo(project, modulePath, line, column, offset);
+            BslGateway.SymbolInfoResult s = gateway.symbolInfo(project, modulePath, line, column, offset);
             JsonObject o = new JsonObject();
             o.addProperty("found", s.found);
             if (!s.found) {

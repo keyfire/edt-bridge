@@ -16,7 +16,7 @@
  */
 package io.github.keyfire.edtbridge.tools;
 
-import io.github.keyfire.edtbridge.edt.EdtModelGateway;
+import io.github.keyfire.edtbridge.edt.MetadataWriteGateway;
 import io.github.keyfire.edtbridge.mcp.McpServer;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -31,7 +31,7 @@ import com.google.gson.JsonObject;
  */
 public final class CreateExtensionTool {
 
-    private final EdtModelGateway gateway = new EdtModelGateway();
+    private final MetadataWriteGateway gateway = new MetadataWriteGateway();
 
     public String name() {
         return "edt_create_extension";
@@ -95,7 +95,7 @@ public final class CreateExtensionTool {
         String purpose = getStr(args, "purpose");
         boolean apply = args.has("apply") && !args.get("apply").isJsonNull() && args.get("apply").getAsBoolean();
         try {
-            EdtModelGateway.CreateExtensionResult res =
+            MetadataWriteGateway.CreateExtensionResult res =
                     gateway.createExtension(name, baseProjectName, namePrefix, purpose, apply);
             JsonObject o = new JsonObject();
             o.addProperty("ok", res.ok);

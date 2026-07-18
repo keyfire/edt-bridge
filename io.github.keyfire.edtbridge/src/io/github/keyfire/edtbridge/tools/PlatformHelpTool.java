@@ -16,7 +16,7 @@
  */
 package io.github.keyfire.edtbridge.tools;
 
-import io.github.keyfire.edtbridge.edt.EdtModelGateway;
+import io.github.keyfire.edtbridge.edt.DocsGateway;
 import io.github.keyfire.edtbridge.mcp.McpServer;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -29,7 +29,7 @@ import com.google.gson.JsonObject;
  */
 public final class PlatformHelpTool {
 
-    private final EdtModelGateway gateway = new EdtModelGateway();
+    private final DocsGateway docs = new DocsGateway();
 
     public String name() {
         return "edt_platform_help";
@@ -74,7 +74,7 @@ public final class PlatformHelpTool {
         int limit = (args.has("limit") && !args.get("limit").isJsonNull())
                 ? args.get("limit").getAsInt() : 0;
         try {
-            EdtModelGateway.HelpResult res = gateway.platformHelp(query, path, bundle, limit);
+            DocsGateway.HelpResult res = docs.platformHelp(query, path, bundle, limit);
             JsonObject o = new JsonObject();
             o.addProperty("mode", res.mode);
             o.addProperty("indexed", res.indexed);
@@ -85,7 +85,7 @@ public final class PlatformHelpTool {
                 o.addProperty("text", res.text);
             } else {
                 JsonArray hits = new JsonArray();
-                for (EdtModelGateway.HelpEntry e : res.hits) {
+                for (DocsGateway.HelpEntry e : res.hits) {
                     JsonObject h = new JsonObject();
                     h.addProperty("title", e.title);
                     h.addProperty("version", e.version);

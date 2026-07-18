@@ -16,7 +16,7 @@
  */
 package io.github.keyfire.edtbridge.tools;
 
-import io.github.keyfire.edtbridge.edt.EdtModelGateway;
+import io.github.keyfire.edtbridge.edt.DebugGateway;
 import io.github.keyfire.edtbridge.mcp.McpServer;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -30,7 +30,7 @@ import com.google.gson.JsonObject;
  */
 public final class DebugEvaluateTool {
 
-    private final EdtModelGateway gateway = new EdtModelGateway();
+    private final DebugGateway gateway = new DebugGateway();
 
     public String name() {
         return "edt_evaluate";
@@ -91,7 +91,7 @@ public final class DebugEvaluateTool {
         boolean allow = args.has("allowCodeExecution") && !args.get("allowCodeExecution").isJsonNull()
                 && args.get("allowCodeExecution").getAsBoolean();
         try {
-            EdtModelGateway.EvaluateResult res =
+            DebugGateway.EvaluateResult res =
                     gateway.evaluateDebug(sessionId, expression, threadName, frameLevel, allow);
             JsonObject o = new JsonObject();
             o.addProperty("ok", res.ok);

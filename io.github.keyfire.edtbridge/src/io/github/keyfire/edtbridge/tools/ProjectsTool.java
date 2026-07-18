@@ -16,7 +16,7 @@
  */
 package io.github.keyfire.edtbridge.tools;
 
-import io.github.keyfire.edtbridge.edt.EdtModelGateway;
+import io.github.keyfire.edtbridge.edt.ProjectGateway;
 import io.github.keyfire.edtbridge.mcp.McpServer;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -29,7 +29,7 @@ import com.google.gson.JsonObject;
  */
 public final class ProjectsTool {
 
-    private final EdtModelGateway gateway = new EdtModelGateway();
+    private final ProjectGateway gateway = new ProjectGateway();
 
     public String name() {
         return "edt_projects";
@@ -56,9 +56,9 @@ public final class ProjectsTool {
 
     public JsonObject call(JsonObject args) {
         try {
-            java.util.List<EdtModelGateway.ProjInfo> projects = gateway.listProjectsDetailed();
+            java.util.List<ProjectGateway.ProjInfo> projects = gateway.listProjectsDetailed();
             JsonArray arr = new JsonArray();
-            for (EdtModelGateway.ProjInfo pi : projects) {
+            for (ProjectGateway.ProjInfo pi : projects) {
                 JsonObject o = new JsonObject();
                 o.addProperty("name", pi.name);
                 if (pi.location != null) {

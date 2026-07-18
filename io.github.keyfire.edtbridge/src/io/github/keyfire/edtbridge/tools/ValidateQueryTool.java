@@ -16,7 +16,7 @@
  */
 package io.github.keyfire.edtbridge.tools;
 
-import io.github.keyfire.edtbridge.edt.EdtModelGateway;
+import io.github.keyfire.edtbridge.edt.BslGateway;
 import io.github.keyfire.edtbridge.mcp.McpServer;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -29,7 +29,7 @@ import com.google.gson.JsonObject;
  */
 public final class ValidateQueryTool {
 
-    private final EdtModelGateway gateway = new EdtModelGateway();
+    private final BslGateway gateway = new BslGateway();
 
     public String name() {
         return "edt_validate_query";
@@ -78,12 +78,12 @@ public final class ValidateQueryTool {
             return McpServer.toolError("projectName and queryText are required");
         }
         try {
-            EdtModelGateway.QueryValidation v = gateway.validateQuery(project, queryText);
+            BslGateway.QueryValidation v = gateway.validateQuery(project, queryText);
             if (v.error != null) {
                 return McpServer.toolError("edt_validate_query: " + v.error);
             }
             JsonArray arr = new JsonArray();
-            for (EdtModelGateway.QueryIssue qi : v.issues) {
+            for (BslGateway.QueryIssue qi : v.issues) {
                 JsonObject o = new JsonObject();
                 o.addProperty("severity", qi.severity);
                 o.addProperty("message", qi.message);

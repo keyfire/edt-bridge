@@ -1,0 +1,45 @@
+# Publish the edt-bridge-mcp wrapper (python/) to PyPI on a version tag, via Trusted
+# Publishing (OIDC) - no API token stored in the repo. PyPI marks the release verified and
+# attaches provenance attestations.
+#
+# One-time setup on PyPI (maintainer): Manage project edt-bridge-mcp -> Publishing ->
+# Add a GitHub publisher with owner "keyfire", repo "edt-bridge",
+# workflow "pypi-publish.yml", environment "pypi".
+#
+# Runs alongside release.yml on the same v* tag: release.yml attaches the bundle jar to a
+# GitHub Release, this one ships the python wheel to PyPI. vscode-v* tags are not matched.
+name: pypi-publish
+
+on:
+  push:
+    tags: ["v[0-9]*"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install build
+      - name: Build the wheel and sdist
+        run: python -m build
+        working-directory: python
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: python/dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

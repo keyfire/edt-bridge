@@ -17,7 +17,7 @@
 
 package io.github.keyfire.edtbridge.tools;
 
-import io.github.keyfire.edtbridge.edt.EdtModelGateway;
+import io.github.keyfire.edtbridge.edt.BslGateway;
 import io.github.keyfire.edtbridge.mcp.McpServer;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -33,7 +33,7 @@ import com.google.gson.JsonObject;
  */
 public final class AddMethodTool {
 
-    private final EdtModelGateway gateway = new EdtModelGateway();
+    private final BslGateway gateway = new BslGateway();
 
     public String name() {
         return "edt_add_method";
@@ -111,7 +111,7 @@ public final class AddMethodTool {
                 ? Boolean.valueOf(args.get("serverBlock").getAsBoolean()) : null;
         boolean apply = args.has("apply") && !args.get("apply").isJsonNull() && args.get("apply").getAsBoolean();
         try {
-            EdtModelGateway.AddMethodResult res = gateway.addMethod(project, fqn, moduleType, modulePath,
+            BslGateway.AddMethodResult res = gateway.addMethod(project, fqn, moduleType, modulePath,
                     methodText, region, serverBlock, apply);
             JsonObject o = new JsonObject();
             o.addProperty("ok", res.ok);

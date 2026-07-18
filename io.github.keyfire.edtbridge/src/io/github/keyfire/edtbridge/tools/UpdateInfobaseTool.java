@@ -16,7 +16,7 @@
  */
 package io.github.keyfire.edtbridge.tools;
 
-import io.github.keyfire.edtbridge.edt.EdtModelGateway;
+import io.github.keyfire.edtbridge.edt.PlatformGateway;
 import io.github.keyfire.edtbridge.mcp.McpServer;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -31,7 +31,7 @@ import com.google.gson.JsonObject;
  */
 public final class UpdateInfobaseTool {
 
-    private final EdtModelGateway gateway = new EdtModelGateway();
+    private final PlatformGateway gateway = new PlatformGateway();
 
     public String name() {
         return "edt_update_infobase";
@@ -85,7 +85,7 @@ public final class UpdateInfobaseTool {
         String infobase = getStr(args, "infobase");
         boolean apply = args.has("apply") && !args.get("apply").isJsonNull() && args.get("apply").getAsBoolean();
         try {
-            EdtModelGateway.UpdateInfobaseResult res = gateway.updateInfobase(projectName, infobase, apply);
+            PlatformGateway.UpdateInfobaseResult res = gateway.updateInfobase(projectName, infobase, apply);
             JsonObject o = new JsonObject();
             o.addProperty("ok", res.ok);
             o.addProperty("applied", res.applied);

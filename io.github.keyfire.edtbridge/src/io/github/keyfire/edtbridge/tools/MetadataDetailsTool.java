@@ -16,7 +16,7 @@
  */
 package io.github.keyfire.edtbridge.tools;
 
-import io.github.keyfire.edtbridge.edt.EdtModelGateway;
+import io.github.keyfire.edtbridge.edt.MetadataReadGateway;
 import io.github.keyfire.edtbridge.mcp.McpServer;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -28,7 +28,7 @@ import com.google.gson.JsonObject;
  */
 public final class MetadataDetailsTool {
 
-    private final EdtModelGateway gateway = new EdtModelGateway();
+    private final MetadataReadGateway gateway = new MetadataReadGateway();
 
     public String name() {
         return "edt_metadata_details";
@@ -77,7 +77,7 @@ public final class MetadataDetailsTool {
             return McpServer.toolError("projectName and fqn are required");
         }
         try {
-            EdtModelGateway.MdDetails d = gateway.getMetadataDetails(project, fqn);
+            MetadataReadGateway.MdDetails d = gateway.getMetadataDetails(project, fqn);
             JsonObject o = new JsonObject();
             o.addProperty("found", d.found);
             o.addProperty("fqn", d.fqn);
@@ -102,16 +102,16 @@ public final class MetadataDetailsTool {
         }
     }
 
-    private JsonArray groupsToJson(java.util.List<EdtModelGateway.MdGroup> groups) {
+    private JsonArray groupsToJson(java.util.List<MetadataReadGateway.MdGroup> groups) {
         JsonArray arr = new JsonArray();
         if (groups == null) {
             return arr;
         }
-        for (EdtModelGateway.MdGroup g : groups) {
+        for (MetadataReadGateway.MdGroup g : groups) {
             JsonObject go = new JsonObject();
             go.addProperty("feature", g.feature);
             JsonArray items = new JsonArray();
-            for (EdtModelGateway.MdChild c : g.items) {
+            for (MetadataReadGateway.MdChild c : g.items) {
                 items.add(childToJson(c));
             }
             go.addProperty("count", items.size());
@@ -121,7 +121,7 @@ public final class MetadataDetailsTool {
         return arr;
     }
 
-    private JsonObject childToJson(EdtModelGateway.MdChild c) {
+    private JsonObject childToJson(MetadataReadGateway.MdChild c) {
         JsonObject o = new JsonObject();
         o.addProperty("name", c.name);
         o.addProperty("type", c.type);

@@ -16,7 +16,7 @@
  */
 package io.github.keyfire.edtbridge.tools;
 
-import io.github.keyfire.edtbridge.edt.EdtModelGateway;
+import io.github.keyfire.edtbridge.edt.PlatformGateway;
 import io.github.keyfire.edtbridge.mcp.McpServer;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -29,7 +29,7 @@ import com.google.gson.JsonObject;
  */
 public final class InfobasesTool {
 
-    private final EdtModelGateway gateway = new EdtModelGateway();
+    private final PlatformGateway gateway = new PlatformGateway();
 
     public String name() {
         return "edt_infobases";
@@ -58,10 +58,10 @@ public final class InfobasesTool {
 
     public JsonObject call(JsonObject args) {
         try {
-            EdtModelGateway.InfobasesResult res = gateway.listInfobases();
+            PlatformGateway.InfobasesResult res = gateway.listInfobases();
             JsonObject o = new JsonObject();
             JsonArray bases = new JsonArray();
-            for (EdtModelGateway.InfobaseInfo b : res.infobases) {
+            for (PlatformGateway.InfobaseInfo b : res.infobases) {
                 JsonObject jb = new JsonObject();
                 jb.addProperty("name", b.name);
                 jb.addProperty("uuid", b.uuid);
@@ -70,7 +70,7 @@ public final class InfobasesTool {
             }
             o.add("infobases", bases);
             JsonArray assoc = new JsonArray();
-            for (EdtModelGateway.InfobaseAssociationInfo a : res.associations) {
+            for (PlatformGateway.InfobaseAssociationInfo a : res.associations) {
                 JsonObject ja = new JsonObject();
                 ja.addProperty("project", a.project);
                 ja.addProperty("infobaseName", a.infobaseName);

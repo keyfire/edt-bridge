@@ -18,7 +18,7 @@ package io.github.keyfire.edtbridge.tools;
 
 import java.io.File;
 
-import io.github.keyfire.edtbridge.edt.EdtModelGateway;
+import io.github.keyfire.edtbridge.edt.FormGateway;
 import io.github.keyfire.edtbridge.mcp.McpServer;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -31,7 +31,7 @@ import com.google.gson.JsonObject;
  */
 public final class FormRenderTool {
 
-    private final EdtModelGateway gateway = new EdtModelGateway();
+    private final FormGateway gateway = new FormGateway();
 
     public String name() {
         return "edt_form_render";
@@ -92,7 +92,7 @@ public final class FormRenderTool {
             outPath = new File(System.getProperty("java.io.tmpdir"), "edt_form_" + safe + ".png").getAbsolutePath();
         }
         try {
-            EdtModelGateway.RenderResult res = gateway.renderForm(project, fqn, variant, theme, density, ratio, width, height, scale, outPath);
+            FormGateway.RenderResult res = gateway.renderForm(project, fqn, variant, theme, density, ratio, width, height, scale, outPath);
             JsonObject o = new JsonObject();
             o.addProperty("ok", res.ok);
             o.addProperty("fqn", res.fqn);

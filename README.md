@@ -183,6 +183,12 @@ attaches the jar + checksum. Verify an asset by rebuilding from the tagged sourc
 Open `http://127.0.0.1:8770/` in a browser for a built-in dashboard: server status, the open EDT
 projects, and an interactive runner for every tool. Light/dark theme and an EN/RU language toggle.
 
+## Reporting issues
+
+edt-bridge is young and its tools may have bugs or rough edges. If something behaves unexpectedly,
+fails, or you have a feature request, please open a **[GitHub issue](https://github.com/keyfire/edt-bridge/issues)** –
+include what you did, what you expected, and the tool's response (or the relevant EDT log line).
+
 ## Security
 
 - Binds **`127.0.0.1` only** – never a public interface.
@@ -193,6 +199,14 @@ projects, and an interactive runner for every tool. Light/dark theme and an EN/R
   `Authorization: Bearer <token>` (or `X-Edt-Bridge-Token: <token>`). Any local process can reach
   the port, so set a token on shared machines.
 - Port: `EDT_BRIDGE_PORT` / `-Dedt.bridge.port=` (default 8770; the next free port is used if busy).
+- Found a security problem? Report it **privately** – see [SECURITY.md](SECURITY.md), not a public issue.
+
+## Contributing
+
+Bug reports and pull requests are welcome – see [CONTRIBUTING.md](CONTRIBUTING.md) (build,
+conventions, how to verify a change) and the [Code of Conduct](CODE_OF_CONDUCT.md). Notable changes
+are tracked in the [CHANGELOG](CHANGELOG.md). edt-bridge is an independent, clean-room implementation
+([ORIGIN.md](ORIGIN.md)).
 
 ## License
 

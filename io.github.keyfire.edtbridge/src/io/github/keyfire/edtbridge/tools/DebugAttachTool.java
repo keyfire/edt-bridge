@@ -16,7 +16,7 @@
  */
 package io.github.keyfire.edtbridge.tools;
 
-import io.github.keyfire.edtbridge.edt.EdtModelGateway;
+import io.github.keyfire.edtbridge.edt.DebugGateway;
 import io.github.keyfire.edtbridge.mcp.McpServer;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -31,7 +31,7 @@ import com.google.gson.JsonObject;
  */
 public final class DebugAttachTool {
 
-    private final EdtModelGateway gateway = new EdtModelGateway();
+    private final DebugGateway gateway = new DebugGateway();
 
     public String name() {
         return "edt_debug_attach";
@@ -86,7 +86,7 @@ public final class DebugAttachTool {
         int port = (args.has("serverPort") && !args.get("serverPort").isJsonNull())
                 ? args.get("serverPort").getAsInt() : 0;
         try {
-            EdtModelGateway.AttachResult res = gateway.attachDebug(project, serverUrl, port, alias, uuid);
+            DebugGateway.AttachResult res = gateway.attachDebug(project, serverUrl, port, alias, uuid);
             JsonObject o = new JsonObject();
             o.addProperty("ok", res.ok);
             if (res.sessionId != null) {

@@ -16,7 +16,7 @@
  */
 package io.github.keyfire.edtbridge.tools;
 
-import io.github.keyfire.edtbridge.edt.EdtModelGateway;
+import io.github.keyfire.edtbridge.edt.FormGateway;
 import io.github.keyfire.edtbridge.mcp.McpServer;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -31,7 +31,7 @@ import com.google.gson.JsonObject;
  */
 public final class PictureExportTool {
 
-    private final EdtModelGateway gateway = new EdtModelGateway();
+    private final FormGateway gateway = new FormGateway();
 
     public String name() {
         return "edt_picture_export";
@@ -78,7 +78,7 @@ public final class PictureExportTool {
         }
         String variant = getStr(args, "variant");
         try {
-            EdtModelGateway.PictureResult res = gateway.exportPicture(project, fqn, variant);
+            FormGateway.PictureResult res = gateway.exportPicture(project, fqn, variant);
             JsonObject o = new JsonObject();
             o.addProperty("found", res.found);
             o.addProperty("fqn", res.fqn);
@@ -107,9 +107,9 @@ public final class PictureExportTool {
         }
     }
 
-    private JsonArray variantsJson(EdtModelGateway.PictureResult res) {
+    private JsonArray variantsJson(FormGateway.PictureResult res) {
         JsonArray arr = new JsonArray();
-        for (EdtModelGateway.PictureVariant v : res.variants) {
+        for (FormGateway.PictureVariant v : res.variants) {
             JsonObject o = new JsonObject();
             o.addProperty("name", v.name);
             if (v.contentType != null) {

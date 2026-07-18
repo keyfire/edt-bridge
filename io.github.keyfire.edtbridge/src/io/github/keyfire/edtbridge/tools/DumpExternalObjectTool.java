@@ -16,7 +16,7 @@
  */
 package io.github.keyfire.edtbridge.tools;
 
-import io.github.keyfire.edtbridge.edt.EdtModelGateway;
+import io.github.keyfire.edtbridge.edt.MetadataWriteGateway;
 import io.github.keyfire.edtbridge.mcp.McpServer;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -29,7 +29,7 @@ import com.google.gson.JsonObject;
  */
 public final class DumpExternalObjectTool {
 
-    private final EdtModelGateway gateway = new EdtModelGateway();
+    private final MetadataWriteGateway gateway = new MetadataWriteGateway();
 
     public String name() {
         return "edt_dump_external_object";
@@ -85,7 +85,7 @@ public final class DumpExternalObjectTool {
         String kind = getStr(args, "kind");
         boolean apply = args.has("apply") && !args.get("apply").isJsonNull() && args.get("apply").getAsBoolean();
         try {
-            EdtModelGateway.DumpExternalObjectResult res =
+            MetadataWriteGateway.DumpExternalObjectResult res =
                     gateway.dumpExternalObject(projectName, objectName, kind, targetPath, apply);
             JsonObject o = new JsonObject();
             o.addProperty("ok", res.ok);

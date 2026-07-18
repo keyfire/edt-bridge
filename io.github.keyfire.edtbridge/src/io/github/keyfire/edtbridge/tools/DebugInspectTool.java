@@ -16,7 +16,7 @@
  */
 package io.github.keyfire.edtbridge.tools;
 
-import io.github.keyfire.edtbridge.edt.EdtModelGateway;
+import io.github.keyfire.edtbridge.edt.DebugGateway;
 import io.github.keyfire.edtbridge.mcp.McpServer;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -29,7 +29,7 @@ import com.google.gson.JsonObject;
  */
 public final class DebugInspectTool {
 
-    private final EdtModelGateway gateway = new EdtModelGateway();
+    private final DebugGateway gateway = new DebugGateway();
 
     public String name() {
         return "edt_debug_inspect";
@@ -69,14 +69,14 @@ public final class DebugInspectTool {
             return McpServer.toolError("sessionId is required");
         }
         try {
-            EdtModelGateway.InspectResult res = gateway.inspectDebug(sessionId);
+            DebugGateway.InspectResult res = gateway.inspectDebug(sessionId);
             JsonObject o = new JsonObject();
             o.addProperty("ok", res.ok);
             o.addProperty("sessionId", res.sessionId);
             o.addProperty("targetTerminated", res.targetTerminated);
             o.addProperty("threadCount", res.threadCount);
             JsonArray threads = new JsonArray();
-            for (EdtModelGateway.DbgThread th : res.threads) {
+            for (DebugGateway.DbgThread th : res.threads) {
                 JsonObject to = new JsonObject();
                 if (th.name != null) {
                     to.addProperty("name", th.name);
@@ -87,7 +87,7 @@ public final class DebugInspectTool {
                 to.addProperty("suspended", th.suspended);
                 if (!th.frames.isEmpty()) {
                     JsonArray frames = new JsonArray();
-                    for (EdtModelGateway.DbgFrame f : th.frames) {
+                    for (DebugGateway.DbgFrame f : th.frames) {
                         JsonObject fo = new JsonObject();
                         fo.addProperty("level", f.level);
                         fo.addProperty("line", f.line);
@@ -99,7 +99,7 @@ public final class DebugInspectTool {
                         }
                         if (!f.variables.isEmpty()) {
                             JsonArray vars = new JsonArray();
-                            for (EdtModelGateway.DbgVar v : f.variables) {
+                            for (DebugGateway.DbgVar v : f.variables) {
                                 JsonObject vo = new JsonObject();
                                 vo.addProperty("name", v.name);
                                 if (v.value != null) {

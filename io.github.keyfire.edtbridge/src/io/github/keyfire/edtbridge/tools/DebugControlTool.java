@@ -16,7 +16,7 @@
  */
 package io.github.keyfire.edtbridge.tools;
 
-import io.github.keyfire.edtbridge.edt.EdtModelGateway;
+import io.github.keyfire.edtbridge.edt.DebugGateway;
 import io.github.keyfire.edtbridge.mcp.McpServer;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -29,7 +29,7 @@ import com.google.gson.JsonObject;
  */
 public final class DebugControlTool {
 
-    private final EdtModelGateway gateway = new EdtModelGateway();
+    private final DebugGateway gateway = new DebugGateway();
 
     public String name() {
         return "edt_debug_control";
@@ -78,7 +78,7 @@ public final class DebugControlTool {
         }
         String threadName = getStr(args, "threadName");
         try {
-            EdtModelGateway.ControlResult res = gateway.controlDebug(sessionId, action, threadName);
+            DebugGateway.ControlResult res = gateway.controlDebug(sessionId, action, threadName);
             JsonObject o = new JsonObject();
             o.addProperty("ok", res.ok);
             o.addProperty("sessionId", res.sessionId);

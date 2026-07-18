@@ -18,7 +18,8 @@ package io.github.keyfire.edtbridge.tools;
 
 import java.util.List;
 
-import io.github.keyfire.edtbridge.edt.EdtModelGateway;
+import io.github.keyfire.edtbridge.edt.BslGateway;
+import io.github.keyfire.edtbridge.edt.MetadataReadGateway;
 import io.github.keyfire.edtbridge.mcp.McpServer;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -32,7 +33,8 @@ public final class FindReferencesTool {
 
     private static final int DEFAULT_LIMIT = 200;
 
-    private final EdtModelGateway gateway = new EdtModelGateway();
+    private final BslGateway gateway = new BslGateway();
+    private final MetadataReadGateway mdRead = new MetadataReadGateway();
 
     public String name() {
         return "edt_find_references";
@@ -114,10 +116,10 @@ public final class FindReferencesTool {
             return methodCallers(project, fqn, moduleType, method, limit);
         }
         try {
-            EdtModelGateway.RefResult res = gateway.getReferences(project, fqn, limit);
+            MetadataReadGateway.RefResult res = mdRead.getReferences(project, fqn, limit);
             JsonArray arr = new JsonArray();
             if (res.refs != null) {
-                for (EdtModelGateway.Ref r : res.refs) {
+                for (MetadataReadGateway.Ref r : res.refs) {
                     JsonObject o = new JsonObject();
                     o.addProperty("sourceFqn", r.sourceFqn);
                     o.addProperty("sourceType", r.sourceType);
@@ -142,7 +144,7 @@ public final class FindReferencesTool {
     /** Method-caller mode: render the BSL call sites of fqn's method. */
     private JsonObject methodCallers(String project, String fqn, String moduleType, String method, int limit) {
         try {
-            EdtModelGateway.MethodRefsResult res =
+            BslGateway.MethodRefsResult res =
                     gateway.findMethodReferences(project, fqn, moduleType, method, limit);
             JsonObject o = new JsonObject();
             o.addProperty("mode", "methodCallers");
@@ -160,7 +162,7 @@ public final class FindReferencesTool {
                 o.addProperty("message", res.message);
             }
             JsonArray arr = new JsonArray();
-            for (EdtModelGateway.MethodRef m : res.refs) {
+            for (BslGateway.MethodRef m : res.refs) {
                 JsonObject e = new JsonObject();
                 if (m.module != null) {
                     e.addProperty("module", m.module);

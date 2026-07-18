@@ -16,7 +16,8 @@
  */
 package io.github.keyfire.edtbridge.tools;
 
-import io.github.keyfire.edtbridge.edt.EdtModelGateway;
+import io.github.keyfire.edtbridge.edt.MetadataWriteGateway;
+import io.github.keyfire.edtbridge.edt.MetadataReadGateway;
 import io.github.keyfire.edtbridge.mcp.McpServer;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -31,7 +32,7 @@ import com.google.gson.JsonObject;
  */
 public final class RemoveAttributeTool {
 
-    private final EdtModelGateway gateway = new EdtModelGateway();
+    private final MetadataWriteGateway gateway = new MetadataWriteGateway();
 
     public String name() {
         return "edt_remove_attribute";
@@ -89,7 +90,7 @@ public final class RemoveAttributeTool {
         boolean apply = args.has("apply") && !args.get("apply").isJsonNull() && args.get("apply").getAsBoolean();
         boolean force = args.has("force") && !args.get("force").isJsonNull() && args.get("force").getAsBoolean();
         try {
-            EdtModelGateway.RemoveAttrResult res = gateway.removeAttribute(project, ownerFqn, name, apply, force);
+            MetadataWriteGateway.RemoveAttrResult res = gateway.removeAttribute(project, ownerFqn, name, apply, force);
             JsonObject o = new JsonObject();
             o.addProperty("ok", res.ok);
             o.addProperty("applied", res.applied);
@@ -108,7 +109,7 @@ public final class RemoveAttributeTool {
             o.addProperty("force", res.forced);
             if (res.refs != null && !res.refs.isEmpty()) {
                 JsonArray refs = new JsonArray();
-                for (EdtModelGateway.Ref ref : res.refs) {
+                for (MetadataReadGateway.Ref ref : res.refs) {
                     JsonObject ro = new JsonObject();
                     ro.addProperty("sourceFqn", ref.sourceFqn);
                     ro.addProperty("sourceType", ref.sourceType);

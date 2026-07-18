@@ -27,7 +27,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
-import io.github.keyfire.edtbridge.edt.EdtModelGateway;
+import io.github.keyfire.edtbridge.edt.ProjectGateway;
 import io.github.keyfire.edtbridge.tools.AddAttributeTool;
 import io.github.keyfire.edtbridge.tools.AddMethodTool;
 import io.github.keyfire.edtbridge.tools.RemoveAttributeTool;
@@ -39,6 +39,10 @@ import io.github.keyfire.edtbridge.tools.CreateObjectTool;
 import io.github.keyfire.edtbridge.tools.DumpExternalObjectTool;
 import io.github.keyfire.edtbridge.tools.InfobasesTool;
 import io.github.keyfire.edtbridge.tools.PlatformHelpTool;
+import io.github.keyfire.edtbridge.tools.PlatformInstallationsTool;
+import io.github.keyfire.edtbridge.tools.RegisterPlatformTool;
+import io.github.keyfire.edtbridge.tools.CreateInfobaseTool;
+import io.github.keyfire.edtbridge.tools.BuildExtensionTool;
 import io.github.keyfire.edtbridge.tools.UpdateInfobaseTool;
 import io.github.keyfire.edtbridge.tools.DeleteMethodTool;
 import io.github.keyfire.edtbridge.tools.DeleteObjectTool;
@@ -251,6 +255,10 @@ applyI18n();loadStatus();loadTools();
     private final DumpExternalObjectTool dumpExternalObject = new DumpExternalObjectTool();
     private final InfobasesTool infobases = new InfobasesTool();
     private final UpdateInfobaseTool updateInfobase = new UpdateInfobaseTool();
+    private final PlatformInstallationsTool platformInstallations = new PlatformInstallationsTool();
+    private final RegisterPlatformTool registerPlatform = new RegisterPlatformTool();
+    private final CreateInfobaseTool createInfobase = new CreateInfobaseTool();
+    private final BuildExtensionTool buildExtension = new BuildExtensionTool();
     private final PlatformHelpTool platformHelp = new PlatformHelpTool();
     private final DeleteObjectTool deleteObject = new DeleteObjectTool();
     private final DebugAttachTool debugAttach = new DebugAttachTool();
@@ -258,7 +266,7 @@ applyI18n();loadStatus();loadTools();
     private final DebugInspectTool debugInspect = new DebugInspectTool();
     private final DebugControlTool debugControl = new DebugControlTool();
     private final DebugEvaluateTool debugEvaluate = new DebugEvaluateTool();
-    private final EdtModelGateway gateway = new EdtModelGateway();
+    private final ProjectGateway gateway = new ProjectGateway();
     private HttpServer http;
     private int port;
 
@@ -353,6 +361,9 @@ applyI18n();loadStatus();loadTools();
 
     private int resolvePort() {
         String p = System.getProperty("edt.bridge.port", System.getenv("EDT_BRIDGE_PORT"));
+        if (p == null || p.isBlank()) {
+            p = io.github.keyfire.edtbridge.EdtBridgePrefs.get(io.github.keyfire.edtbridge.EdtBridgePrefs.KEY_PORT);
+        }
         try {
             return (p == null || p.isBlank()) ? 8770 : Integer.parseInt(p.trim());
         } catch (NumberFormatException e) {
@@ -361,7 +372,11 @@ applyI18n();loadStatus();loadTools();
     }
 
     private String token() {
+        // launch-time config wins; otherwise the value set on the "edt-bridge" preference page.
         String t = System.getProperty("edt.bridge.token", System.getenv("EDT_BRIDGE_TOKEN"));
+        if (t == null || t.isBlank()) {
+            t = io.github.keyfire.edtbridge.EdtBridgePrefs.get(io.github.keyfire.edtbridge.EdtBridgePrefs.KEY_TOKEN);
+        }
         return (t == null || t.isBlank()) ? null : t.trim();
     }
 
@@ -511,6 +526,10 @@ applyI18n();loadStatus();loadTools();
         tools.add(dumpExternalObject.descriptor());
         tools.add(infobases.descriptor());
         tools.add(updateInfobase.descriptor());
+        tools.add(platformInstallations.descriptor());
+        tools.add(registerPlatform.descriptor());
+        tools.add(createInfobase.descriptor());
+        tools.add(buildExtension.descriptor());
         tools.add(platformHelp.descriptor());
         tools.add(deleteObject.descriptor());
         tools.add(debugAttach.descriptor());
@@ -612,6 +631,21 @@ applyI18n();loadStatus();loadTools();
         }
         if (infobases.name().equals(name)) {
             return infobases.call(args);
+        }
+        if (platformInstallations.name().equals(name)) {
+            return platformInstallations.call(args);
+        }
+        if (registerPlatform.name().equals(name)) {
+            JsonObject denied = writeTokenGate(registerPlatform.isWrite(), name);
+            return denied != null ? denied : registerPlatform.call(args);
+        }
+        if (createInfobase.name().equals(name)) {
+            JsonObject denied = writeTokenGate(createInfobase.isWrite(), name);
+            return denied != null ? denied : createInfobase.call(args);
+        }
+        if (buildExtension.name().equals(name)) {
+            JsonObject denied = writeTokenGate(buildExtension.isWrite(), name);
+            return denied != null ? denied : buildExtension.call(args);
         }
         if (platformHelp.name().equals(name)) {
             return platformHelp.call(args);

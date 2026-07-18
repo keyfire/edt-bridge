@@ -31,6 +31,10 @@ $need = @(
   'org.eclipse.core.jobs',
   'org.eclipse.ui.workbench',
   'org.eclipse.ui',
+  'org.eclipse.jface',
+  'org.eclipse.core.commands',
+  'org.eclipse.equinox.preferences',
+  'org.osgi.service.prefs',
   'com.google.gson',
   'org.eclipse.emf.ecore',
   'org.eclipse.emf.common',
@@ -52,6 +56,7 @@ $need = @(
   'com._1c.g5.v8.dt.form.presentation',
   'com._1c.g5.v8.dt.dcs.model',
   'com._1c.g5.v8.dt.platform',
+  'com._1c.g5.v8.dt.export',
   'com._1c.g5.v8.dt.platform.services.core',
   'com._1c.g5.v8.dt.platform.services.model',
   'com._1c.g5.designer.ssh.client',
@@ -92,6 +97,9 @@ Copy-Item (Join-Path $bundle "plugin.xml") $bin -Force
 # lazy bundle never activates headless and the MCP server never starts. Tycho includes it via
 # build.properties bin.includes; mirror that here.
 Copy-Item (Join-Path $bundle "OSGI-INF") $bin -Recurse -Force
+# icons/ holds the preference-page info image; include it in the jar (build.properties bin.includes).
+$iconsDir = Join-Path $bundle "icons"
+if (Test-Path $iconsDir) { Copy-Item $iconsDir $bin -Recurse -Force }
 $ts = Get-Date -Format "yyyyMMddHHmm"
 $mfRaw = Get-Content (Join-Path $bundle "META-INF\MANIFEST.MF") -Raw
 # Base version comes from the manifest's Bundle-Version (X.Y.Z.qualifier), so a version bump
