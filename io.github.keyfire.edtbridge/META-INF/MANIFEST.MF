@@ -2,7 +2,7 @@ Manifest-Version: 1.0
 Bundle-ManifestVersion: 2
 Bundle-Name: edt-bridge
 Bundle-SymbolicName: io.github.keyfire.edtbridge;singleton:=true
-Bundle-Version: 0.1.1.qualifier
+Bundle-Version: 0.2.0.qualifier
 Bundle-Vendor: edt-bridge contributors
 Automatic-Module-Name: io.github.keyfire.edtbridge
 Bundle-RequiredExecutionEnvironment: JavaSE-17

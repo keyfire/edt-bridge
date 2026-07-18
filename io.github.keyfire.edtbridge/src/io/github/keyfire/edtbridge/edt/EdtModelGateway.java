@@ -85,6 +85,8 @@ import org.eclipse.xtext.validation.CheckMode;
 import org.eclipse.xtext.validation.IResourceValidator;
 import org.eclipse.xtext.validation.Issue;
 import org.osgi.framework.Bundle;
+import org.osgi.framework.BundleContext;
+import org.osgi.framework.FrameworkUtil;
 
 import com._1c.g5.v8.bm.core.IBmCrossReference;
 import com._1c.g5.v8.bm.core.IBmObject;
@@ -5033,21 +5035,46 @@ public final class EdtModelGateway {
         if (Boolean.FALSE.equals(r.nameAvailable)) {
             r.message = "a project with this name already exists in the workspace: " + name;
         }
-        // apply is intentionally gated: creating an extension PROJECT headless via
-        // IExtensionProjectManager.create does not work reliably — with the base configuration it
-        // fails the DT lifecycle RESOURCE_LOADING phase (BmAssertionException "object is already
-        // attached"), and with a null configuration it crashes the headless runtime during
-        // RESOURCE_LOADING. Until that lifecycle path is solved, dry-run validates and plans, and the
-        // project itself is created via EDT's New Configuration Extension wizard. Tracked as a known
-        // limitation; nothing is created here, so no residue is left in the workspace.
-        if (apply && r.ok) {
-            r.message = "validated. Apply is not yet supported headless: creating an extension "
-                    + "project via IExtensionProjectManager crashes the EDT project lifecycle "
-                    + "(RESOURCE_LOADING). Create the extension in the EDT \"New Configuration "
-                    + "Extension\" wizard, then use edt_* tools to develop and deliver it.";
-        } else if (apply) {
+        if (!apply) {
+            return r;
+        }
+        if (!r.ok) {
             r.message = (r.message == null ? "validation failed" : r.message)
                     + " — apply refused (nothing created).";
+            return r;
+        }
+        IExtensionProjectManager epm = ServiceAccess.get(IExtensionProjectManager.class);
+        IModelObjectFactory factory = modelObjectFactory();
+        if (epm == null || factory == null) {
+            r.message = "extension project services unavailable (IExtensionProjectManager / md factory)";
+            return r;
+        }
+        try {
+            // create() attaches the given Configuration object DIRECTLY to the new project's model
+            // (ExtensionProjectManager.attachConfiguration -> tx.attachTopObject, no copy). So it must
+            // be a FRESH, detached Configuration — the base project's live config fails "object is
+            // already attached", and null fails the lifecycle. Build one via the md factory (same
+            // factory create_object uses); create() names it after the project.
+            EObject freshConfig = factory.create(
+                    (EClass) MdClassPackage.eINSTANCE.getEClassifier("Configuration"), version);
+            if (!(freshConfig instanceof Configuration)) {
+                r.message = "md factory did not produce a Configuration (got "
+                        + (freshConfig == null ? "null" : freshConfig.eClass().getName()) + ")";
+                return r;
+            }
+            IProject created = epm.create(name, version, (Configuration) freshConfig, base,
+                    new NullProgressMonitor());
+            r.location = (created != null && created.getLocation() != null)
+                    ? created.getLocation().toOSString() : null;
+            r.applied = true;
+            r.stamped = stampExtensionConfiguration(created, namePrefix, purpose);
+            r.message = "created extension project " + name + " extending " + baseProjectName
+                    + (r.stamped ? " (prefix/purpose stamped and serialized)"
+                            : " — WARNING: created, but prefix/purpose stamping incomplete (the project"
+                              + " model is still loading; re-check later and stamp via the model)");
+        } catch (CoreException | RuntimeException ex) {
+            r.applied = false;
+            r.message = "create failed: " + describeCause(ex);
         }
         return r;
     }
@@ -5153,19 +5180,42 @@ public final class EdtModelGateway {
         if (Boolean.FALSE.equals(r.nameAvailable)) {
             r.message = "a project with this name already exists in the workspace: " + name;
         }
-        // apply is gated for the same reason as edt_create_extension: creating an external-object
-        // PROJECT headless via IExternalObjectProjectManager.create runs the same EDT project
-        // lifecycle that fails/crashes in RESOURCE_LOADING. Dry-run validates and plans; create the
-        // processor project via EDT's New External Data Processor wizard, then compile it with
-        // edt_dump_external_object. Known limitation; nothing is created here.
-        if (apply && r.ok) {
-            r.message = "validated. Apply is not yet supported headless: creating an external data "
-                    + "processor project via IExternalObjectProjectManager crashes the EDT project "
-                    + "lifecycle (RESOURCE_LOADING). Create the project in the EDT \"New External Data "
-                    + "Processor\" wizard, then compile it with edt_dump_external_object.";
-        } else if (apply) {
+        if (!apply) {
+            return r;
+        }
+        if (!r.ok) {
             r.message = (r.message == null ? "validation failed" : r.message)
                     + " — apply refused (nothing created).";
+            return r;
+        }
+        IExternalObjectProjectManager eom = ServiceAccess.get(IExternalObjectProjectManager.class);
+        IModelObjectFactory factory = modelObjectFactory();
+        if (eom == null || factory == null) {
+            r.message = "external object project services unavailable "
+                    + "(IExternalObjectProjectManager / md factory)";
+            return r;
+        }
+        try {
+            // Like create_extension: create() attaches the given root MdObject directly, so it must be
+            // a FRESH, detached object (not null). Build an ExternalDataProcessor via the md factory.
+            EObject freshRoot = factory.create(
+                    (EClass) MdClassPackage.eINSTANCE.getEClassifier("ExternalDataProcessor"), version);
+            if (!(freshRoot instanceof MdObject)) {
+                r.message = "md factory did not produce an ExternalDataProcessor (got "
+                        + (freshRoot == null ? "null" : freshRoot.eClass().getName()) + ")";
+                return r;
+            }
+            ((MdObject) freshRoot).setName(name);
+            IProject created = eom.create(name, version, (MdObject) freshRoot, base,
+                    new NullProgressMonitor());
+            r.applied = true;
+            r.location = (created != null && created.getLocation() != null)
+                    ? created.getLocation().toOSString() : null;
+            r.message = "created external data processor project " + name
+                    + " (the project model loads in background — poll edt_projects)";
+        } catch (CoreException | RuntimeException ex) {
+            r.applied = false;
+            r.message = "create failed: " + describeCause(ex);
         }
         return r;
     }
@@ -5436,6 +5486,207 @@ public final class EdtModelGateway {
                     + (ex.getMessage() != null ? ": " + ex.getMessage() : "");
         }
         return r;
+    }
+
+    // ── Platform Syntax Helper docs (the real 1C:Enterprise API reference bundled with EDT) ──
+
+    /** One documentation page: its title (Ru + En) and how to read it (bundle + entry path). */
+    public static final class HelpEntry {
+        public String title;
+        public String bundle;
+        public String path;
+        public String version;   // platform version tag of the source bundle (v8_5_1, ...)
+    }
+
+    /** Result of {@link #platformHelp}. */
+    public static final class HelpResult {
+        public String mode;                    // "search" | "page"
+        public List<HelpEntry> hits = new ArrayList<>();  // search mode
+        public String title;                   // page mode
+        public String text;                    // page mode: tag-stripped content
+        public String bundle;
+        public String path;
+        public int indexed;                    // how many pages the index holds
+        public String message;
+    }
+
+    // Lazy title index over the platform Syntax Helper bundles; built once, then reused.
+    private volatile List<HelpEntry> helpIndex;
+
+    /**
+     * Search the platform Syntax Helper, or read one page. The docs are the HTML reference shipped
+     * inside EDT's {@code com._1c.g5.v8.dt.platform.doc_v8_*} bundles (objects, methods, properties,
+     * events — the real 1C:Enterprise API, in Russian + English). {@code path} non-empty → read that
+     * page as text; otherwise search titles for {@code query} (all whitespace-separated terms must
+     * appear, case-insensitive; matches Ru or En names).
+     */
+    public HelpResult platformHelp(String query, String path, String bundle, int limit) {
+        HelpResult r = new HelpResult();
+        List<HelpEntry> index = ensureHelpIndex();
+        r.indexed = index.size();
+        if (index.isEmpty()) {
+            r.message = "no platform documentation bundles found "
+                    + "(com._1c.g5.v8.dt.platform.doc_v8_* not installed in this EDT)";
+            return r;
+        }
+        if (path != null && !path.isBlank()) {
+            r.mode = "page";
+            String sn = (bundle != null && !bundle.isBlank()) ? bundle
+                    : index.stream().filter(e -> e.path.equals(path)).map(e -> e.bundle)
+                            .findFirst().orElse(null);
+            if (sn == null) {
+                r.message = "page not in the index; pass the exact path from a search hit "
+                        + "(and its bundle)";
+                return r;
+            }
+            String html = readBundleEntry(sn, path);
+            if (html == null) {
+                r.message = "could not read the page: " + sn + "!" + path;
+                return r;
+            }
+            r.bundle = sn;
+            r.path = path;
+            r.title = extractTitle(html);
+            r.text = htmlToText(html);
+            return r;
+        }
+        r.mode = "search";
+        if (query == null || query.isBlank()) {
+            r.message = "query is required for search";
+            return r;
+        }
+        String[] terms = query.trim().toLowerCase().split("\\s+");
+        int cap = (limit > 0) ? limit : 15;
+        java.util.Set<String> seenTitles = new java.util.HashSet<>();
+        for (HelpEntry e : index) {
+            String hay = e.title.toLowerCase();
+            boolean all = true;
+            for (String t : terms) {
+                if (!hay.contains(t)) {
+                    all = false;
+                    break;
+                }
+            }
+            // The generic and version bundles repeat the same page; show each title once.
+            if (all && seenTitles.add(e.title)) {
+                r.hits.add(e);
+                if (r.hits.size() >= cap) {
+                    break;
+                }
+            }
+        }
+        if (r.hits.isEmpty()) {
+            r.message = "nothing matched \"" + query + "\" among " + index.size() + " pages";
+        }
+        return r;
+    }
+
+    private List<HelpEntry> ensureHelpIndex() {
+        List<HelpEntry> local = helpIndex;
+        if (local != null) {
+            return local;
+        }
+        synchronized (this) {
+            if (helpIndex != null) {
+                return helpIndex;
+            }
+            List<HelpEntry> built = new ArrayList<>();
+            BundleContext ctx = null;
+            try {
+                Bundle self = FrameworkUtil.getBundle(EdtModelGateway.class);
+                ctx = (self == null) ? null : self.getBundleContext();
+            } catch (RuntimeException ignored) {
+                // no framework context — leave the index empty
+            }
+            if (ctx != null) {
+                String base = "com._1c.g5.v8.dt.platform.doc";
+                for (Bundle b : ctx.getBundles()) {
+                    String sn = b.getSymbolicName();
+                    // The generic bundle (base name) holds the full Syntax Helper; the version bundles
+                    // (base_v8_5_1, base_v8_3_27, ...) add version-specific pages. Index them all.
+                    if (sn == null || !(sn.equals(base) || sn.startsWith(base + "_v8_"))) {
+                        continue;
+                    }
+                    String version = sn.equals(base) ? "generic" : sn.substring(base.length() + 1);
+                    java.util.Enumeration<java.net.URL> entries =
+                            b.findEntries("nl/ru/html", "*.html", true);
+                    if (entries == null) {
+                        continue;
+                    }
+                    while (entries.hasMoreElements()) {
+                        java.net.URL url = entries.nextElement();
+                        String p = url.getPath();
+                        String title = readTitle(url);
+                        if (title == null || title.isBlank()) {
+                            continue;
+                        }
+                        HelpEntry e = new HelpEntry();
+                        e.title = title;
+                        e.bundle = sn;
+                        e.path = p.startsWith("/") ? p.substring(1) : p;
+                        e.version = version;
+                        built.add(e);
+                    }
+                }
+            }
+            helpIndex = built;
+            return built;
+        }
+    }
+
+    /** Read only enough of an entry to extract its {@code <title>} (the index is title-only). */
+    private static String readTitle(java.net.URL url) {
+        try (java.io.InputStream in = url.openStream()) {
+            byte[] buf = new byte[2048];
+            int n = in.read(buf);
+            if (n <= 0) {
+                return null;
+            }
+            return extractTitle(new String(buf, 0, n, java.nio.charset.StandardCharsets.UTF_8));
+        } catch (java.io.IOException e) {
+            return null;
+        }
+    }
+
+    private String readBundleEntry(String symbolicName, String path) {
+        Bundle b = Platform.getBundle(symbolicName);
+        if (b == null) {
+            return null;
+        }
+        java.net.URL url = b.getEntry(path);
+        if (url == null) {
+            return null;
+        }
+        try (java.io.InputStream in = url.openStream()) {
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                out.write(buf, 0, n);
+            }
+            return out.toString(java.nio.charset.StandardCharsets.UTF_8);
+        } catch (java.io.IOException e) {
+            return null;
+        }
+    }
+
+    private static final Pattern TITLE_RE =
+            Pattern.compile("<title>(.*?)</title>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+
+    private static String extractTitle(String html) {
+        java.util.regex.Matcher m = TITLE_RE.matcher(html);
+        return m.find() ? m.group(1).replaceAll("\\s+", " ").trim() : null;
+    }
+
+    /** HTML → readable text: drop script/style, tags to spaces, unescape the few common entities. */
+    private static String htmlToText(String html) {
+        String s = html.replaceAll("(?is)<(script|style)[^>]*>.*?</\\1>", " ");
+        s = s.replaceAll("(?i)<br\\s*/?>", "\n").replaceAll("(?i)</p>", "\n");
+        s = s.replaceAll("<[^>]+>", " ");
+        s = s.replace("&nbsp;", " ").replace("&lt;", "<").replace("&gt;", ">")
+                .replace("&quot;", "\"").replace("&#39;", "'").replace("&amp;", "&");
+        s = s.replaceAll("[ \\t]+", " ").replaceAll("\\s*\\n\\s*", "\n").replaceAll("\\n{3,}", "\n\n");
+        return s.trim();
     }
 
     /** Exception summary with its cause chain — EDT wraps the real error (e.g. a lifecycle

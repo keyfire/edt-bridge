@@ -74,9 +74,32 @@ def _find_dropins() -> Path | None:
     return None
 
 
+def purge_stale_jars(dropins: Path | None, emit=log) -> int:
+    """Keep only the newest edt-bridge jar in dropins, deleting the rest. Two singletons of the
+    same bundle make Equinox resolve an arbitrary (often older) one, so a stale jar left next to a
+    freshly delivered one silently loads the wrong code. Returns how many were removed."""
+    if not dropins or not dropins.is_dir():
+        return 0
+    jars = sorted(dropins.glob(JAR_PREFIX + "*.jar"), key=lambda p: p.name)
+    removed = 0
+    for old in jars[:-1]:  # all but the lexically-newest (version+timestamp sort)
+        try:
+            old.unlink()
+            removed += 1
+        except OSError:
+            emit(f"stale jar is locked (a running EDT?): {old.name} — remove it after a restart")
+    if removed:
+        emit(f"purged {removed} stale jar(s) from dropins, kept {jars[-1].name}")
+    return removed
+
+
 def has_jar(dropins: Path | None) -> bool:
-    """Whether any edt-bridge plugin jar is already present in the dropins folder."""
-    return bool(dropins) and any(dropins.glob(JAR_PREFIX + "*.jar"))
+    """Whether an edt-bridge plugin jar is present. Also collapses dropins to a single newest jar,
+    so a stale copy next to the current one never gets loaded by mistake."""
+    if not dropins:
+        return False
+    purge_stale_jars(dropins)
+    return any(dropins.glob(JAR_PREFIX + "*.jar"))
 
 
 def install_latest_jar(dropins: Path, emit=log) -> bool:

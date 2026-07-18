@@ -65,10 +65,11 @@
   <text x="570" y="167" text-anchor="middle" class="edge-sub">никогда оба</text>
 
   <!-- model -->
-  <rect x="612" y="302" width="182" height="72" rx="10" class="box"/>
+  <rect x="612" y="302" width="182" height="92" rx="10" class="box"/>
   <circle cx="632" cy="328" r="4" fill="#ffd23f"/>
   <text x="644" y="333" class="box-title">живая модель EDT</text>
   <text x="628" y="356" class="box-body">проекты, BM, проверки</text>
+  <text x="628" y="374" class="box-body">+ Синтакс-помощник</text>
   <line x1="703" y1="262" x2="703" y2="298" class="edge" marker-end="url(#ah)"/>
 
   <!-- releases -->

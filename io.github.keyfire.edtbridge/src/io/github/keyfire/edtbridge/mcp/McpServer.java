@@ -22,6 +22,9 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
 import io.github.keyfire.edtbridge.edt.EdtModelGateway;
@@ -35,6 +38,7 @@ import io.github.keyfire.edtbridge.tools.CreateExternalObjectTool;
 import io.github.keyfire.edtbridge.tools.CreateObjectTool;
 import io.github.keyfire.edtbridge.tools.DumpExternalObjectTool;
 import io.github.keyfire.edtbridge.tools.InfobasesTool;
+import io.github.keyfire.edtbridge.tools.PlatformHelpTool;
 import io.github.keyfire.edtbridge.tools.UpdateInfobaseTool;
 import io.github.keyfire.edtbridge.tools.DeleteMethodTool;
 import io.github.keyfire.edtbridge.tools.DeleteObjectTool;
@@ -247,6 +251,7 @@ applyI18n();loadStatus();loadTools();
     private final DumpExternalObjectTool dumpExternalObject = new DumpExternalObjectTool();
     private final InfobasesTool infobases = new InfobasesTool();
     private final UpdateInfobaseTool updateInfobase = new UpdateInfobaseTool();
+    private final PlatformHelpTool platformHelp = new PlatformHelpTool();
     private final DeleteObjectTool deleteObject = new DeleteObjectTool();
     private final DebugAttachTool debugAttach = new DebugAttachTool();
     private final DebugDetachTool debugDetach = new DebugDetachTool();
@@ -276,15 +281,52 @@ applyI18n();loadStatus();loadTools();
             return;
         }
         enableNativeFormRender();
-        port = resolvePort();
-        http = HttpServer.create(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), port), 0);
+        InetAddress loopback = InetAddress.getByName("127.0.0.1");
+        int wanted = resolvePort();
+        // Bind to the wanted port, or the next free one within a small range — so a second EDT
+        // instance (its 8770 already taken) still comes up instead of failing to start. The actual
+        // port is reported in /status and in the log so a client can discover it.
+        IOException lastError = null;
+        for (int candidate = wanted; candidate <= wanted + PORT_SCAN_RANGE; candidate++) {
+            try {
+                http = HttpServer.create(new InetSocketAddress(loopback, candidate), 0);
+                port = candidate;
+                break;
+            } catch (IOException bindFailed) {
+                lastError = bindFailed;
+            }
+        }
+        if (http == null) {
+            throw (lastError != null) ? lastError
+                    : new IOException("no free port in [" + wanted + ", " + (wanted + PORT_SCAN_RANGE) + "]");
+        }
         http.createContext("/mcp", this::handle);
         http.createContext("/status", this::handleStatus);
         http.createContext("/", this::handleRoot);
-        http.setExecutor(Executors.newSingleThreadExecutor());
+        // A bounded thread pool (not a single thread): a long operation — a rename or a project
+        // create can run for many seconds — no longer blocks every other request. EDT's BM model does
+        // its own read/write locking, so concurrent handlers are serialized only where the model needs.
+        http.setExecutor(new ThreadPoolExecutor(2, MAX_WORKER_THREADS, 60L, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(), namedDaemonThreadFactory()));
         http.start();
+        if (port != wanted) {
+            LOG.info("edt-bridge: port " + wanted + " was busy, using " + port);
+        }
         LOG.info("edt-bridge MCP listening on http://127.0.0.1:" + port + "/mcp  (dashboard at /)  token="
                 + (token() == null ? "(NONE - dev/localhost only!)" : "set"));
+    }
+
+    private static final int PORT_SCAN_RANGE = 20;
+    private static final int MAX_WORKER_THREADS = 8;
+
+    /** Daemon threads with a clear name, so a stuck worker is identifiable and never blocks JVM exit. */
+    private static java.util.concurrent.ThreadFactory namedDaemonThreadFactory() {
+        java.util.concurrent.atomic.AtomicInteger counter = new java.util.concurrent.atomic.AtomicInteger();
+        return runnable -> {
+            Thread thread = new Thread(runnable, "edt-bridge-mcp-" + counter.incrementAndGet());
+            thread.setDaemon(true);
+            return thread;
+        };
     }
 
     public synchronized void stop() {
@@ -469,6 +511,7 @@ applyI18n();loadStatus();loadTools();
         tools.add(dumpExternalObject.descriptor());
         tools.add(infobases.descriptor());
         tools.add(updateInfobase.descriptor());
+        tools.add(platformHelp.descriptor());
         tools.add(deleteObject.descriptor());
         tools.add(debugAttach.descriptor());
         tools.add(debugDetach.descriptor());
@@ -569,6 +612,9 @@ applyI18n();loadStatus();loadTools();
         }
         if (infobases.name().equals(name)) {
             return infobases.call(args);
+        }
+        if (platformHelp.name().equals(name)) {
+            return platformHelp.call(args);
         }
         if (updateInfobase.name().equals(name)) {
             JsonObject denied = writeTokenGate(updateInfobase.isWrite(), name);

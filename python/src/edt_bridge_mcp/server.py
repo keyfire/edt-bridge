@@ -58,20 +58,39 @@ class Backend:
         self.start_timeout = int(os.environ.get("EDT_BRIDGE_START_TIMEOUT", "360"))
         autostart = (os.environ.get("EDT_BRIDGE_AUTOSTART") or "1").strip().lower()
         self.autostart = autostart not in ("0", "false", "no")
+        self.scan_range = int(os.environ.get("EDT_BRIDGE_PORT_SCAN", "20"))
+        self._active_port = self.port  # the port the live bridge was last found on
         self._start_lock = threading.Lock()
         self._starting = False
 
     # -- probing ---------------------------------------------------------
 
-    def status(self) -> dict | None:
-        """The bridge /status payload, or None when the port is dead."""
+    def _status_on(self, port: int) -> dict | None:
         try:
             with urllib.request.urlopen(
-                f"http://127.0.0.1:{self.port}/status", timeout=3
+                f"http://127.0.0.1:{port}/status", timeout=3
             ) as resp:
                 return json.loads(resp.read().decode("utf-8"))
         except (OSError, ValueError):
             return None
+
+    def status(self) -> dict | None:
+        """The bridge /status payload, or None when no bridge is up in the scan range.
+
+        The Java server binds the configured port or the next free one (a second EDT instance),
+        so probe the configured port, then scan upward; the port that answers is remembered and
+        used for forwarding."""
+        s = self._status_on(self._active_port)
+        if s is not None:
+            return s
+        for port in range(self.port, self.port + self.scan_range + 1):
+            if port == self._active_port:
+                continue
+            s = self._status_on(port)
+            if s is not None:
+                self._active_port = port
+                return s
+        return None
 
     def is_ready(self) -> bool:
         """Ready = server up AND the model serves at least one open project."""
@@ -84,13 +103,13 @@ class Backend:
     # -- forwarding ------------------------------------------------------
 
     def forward(self, payload: dict) -> dict:
-        """POST one JSON-RPC message to the bridge and return its parsed reply."""
+        """POST one JSON-RPC message to the live bridge (the port status() found)."""
         data = json.dumps(payload).encode("utf-8")
         headers = {"Content-Type": "application/json"}
         if self.token:
             headers["Authorization"] = "Bearer " + self.token
         req = urllib.request.Request(
-            f"http://127.0.0.1:{self.port}/mcp", data=data, headers=headers, method="POST"
+            f"http://127.0.0.1:{self._active_port}/mcp", data=data, headers=headers, method="POST"
         )
         with urllib.request.urlopen(req, timeout=600) as resp:
             return json.loads(resp.read().decode("utf-8"))

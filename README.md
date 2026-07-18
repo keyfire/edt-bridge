@@ -1,26 +1,66 @@
 # edt-bridge
 
 A small **1C:EDT plugin** that exposes EDT's **live semantic model** to AI agents and other
-tools over the **Model Context Protocol (MCP)** — on `http://127.0.0.1:8770/mcp`.
+tools over the **Model Context Protocol (MCP)**.
 
 Static parsers read source files; edt-bridge instead asks the running IDE. It answers things
 that need the *live* model: EDT's own validation problems, real metadata structure and types,
-semantic cross-references, and **query validation against the project's actual metadata**.
+semantic cross-references, **query validation against the project's actual metadata**, and the
+**platform Syntax Helper** bundled with EDT — plus write tools that create, refactor, build and
+deliver, all through EDT's own engine.
 
 > Read **and** write. Localhost only; writes are token-gated and dry-run by default. The plugin
-> runs inside EDT, so EDT must be open with the project.
+> runs inside EDT, so an EDT (GUI or headless) must be up with your project.
 
-**English** · [Русский](#русский)
+**English** · [Русский](README.ru.md)
 
 Development notes and updates (in Russian): the [1C × AI: engineering workshop](https://t.me/ceh_1c_ai) Telegram channel.
 
 ![How the bridge is wired](https://raw.githubusercontent.com/keyfire/edt-bridge/main/docs/architecture.png)
 
-> The recommended client entry point is the **[edt-bridge-mcp](python/README.md)** stdio wrapper
-> (`pipx install edt-bridge-mcp`): it forwards to a running EDT, auto-starts a headless one when
-> EDT is closed, and delivers the plugin jar into `dropins/` when it is missing.
+## Install (recommended: pipx)
+
+One command sets up everything — the client wrapper AND the plugin. The
+[**edt-bridge-mcp**](python/README.md) wrapper is a stdio MCP server that your client talks to; it
+forwards to a running EDT, **auto-starts a headless EDT** when none is open, and **delivers the
+plugin jar** into EDT's `dropins/` when it is missing. You do not copy any jar by hand.
+
+```bash
+pipx install edt-bridge-mcp
+```
+
+Then register it with your MCP client (Claude Code shown; `--workspace` is the EDT workspace to
+serve when auto-starting headless):
+
+```bash
+claude mcp add edt-bridge -- edt-bridge-mcp --workspace "D:\\path\\to\\edt-workspace"
+```
+
+That is the whole setup. Wrapper flags, the write-tools token and `self-update` are documented in
+[python/README.md](python/README.md). Prefer to run the plugin yourself, without the wrapper? See
+[Manual install](#manual-install-without-the-wrapper) below.
+
+<details>
+<summary>Don't have <code>pipx</code>?</summary>
+
+`pipx` installs Python CLI apps into isolated environments. Install it once:
+
+```bash
+python -m pip install --user pipx
+python -m pipx ensurepath      # then reopen the terminal
+```
+
+macOS: `brew install pipx && pipx ensurepath`. More: <https://pipx.pypa.io>.
+</details>
 
 ## Tools
+
+Tools are `edt_*` (snake_case); parameters are camelCase (`projectName`, `fqn`, `queryText`);
+Cyrillic FQNs are supported (`Справочник.Контрагенты`). The `edt_` prefix is deliberate: an MCP
+host presents every server's tools to the agent as one flat list, so a name must carry its context
+itself — `edt_rename` stays unambiguous where a bare `rename` is dangerously generic.
+
+### Read
 
 | Tool | What it returns |
 |------|-----------------|
@@ -28,363 +68,132 @@ Development notes and updates (in Russian): the [1C × AI: engineering workshop]
 | `edt_project_errors` | EDT validation problems (errors/warnings) for a project: message, severity, resource, line. |
 | `edt_metadata_details` | A metadata object's core properties **and structure** — attributes, tabular sections, forms, commands, templates, dimensions, resources, enum values — with each attribute's value type. |
 | `edt_metadata_objects` | Top-level metadata objects, optionally filtered by type (`Catalog`, `Document`, …) and a name substring. |
-| `edt_find_references` | Inbound references to a metadata object (metadata membership), from EDT's cross-reference index. With `method` given: the BSL call sites of `CommonModule.X.method` (module + line + call text), by scanning the project's BSL. |
+| `edt_find_references` | Inbound references to a metadata object, from EDT's cross-reference index. With `method` given: the BSL call sites of `CommonModule.X.method` (module + line + call text). |
 | `edt_outgoing_calls` | The reverse: methods CALLED BY a module / method / form (one level out), aggregated `qualifier.method` with call-site counts and an ExtAPI-layer flag. |
-| `edt_module_text` | BSL source of a module (or one method) + the module's procedure/function list with signatures, by FQN (CommonModule.X, a form FQN, object+moduleType) or modulePath. |
+| `edt_module_text` | BSL source of a module (or one method) + the module's procedure/function list with signatures, by FQN or modulePath. |
 | `edt_validate_query` | Validates a 1C query against the project's live metadata: syntax **and** semantics (unknown tables/fields, type errors), with positions. |
-| `edt_go_to_definition` | Resolve a BSL symbol's definition at a position (line+column or offset): the target's kind, name, owning object and location. |
-| `edt_symbol_info` | Type/symbol info at a position in a BSL module: the element under the cursor and the computed value type(s) of the expression (dynamic typing). |
-| `edt_form_structure` | A managed form's items tree (fields/groups/tables/buttons/decorations) with data bindings + static visible/enabled/readOnly, per-item event handlers + a cell-hyperlink flag, input-field password/choice-button props (passwordMode/choiceButton/choiceButtonPicture), button→command + representation/placement, and the form's declarative conditional appearance; plus its attributes, commands, parameters and event handlers. |
-| `edt_form_render` | Renders a managed form to a PNG via EDT's native offscreen renderer (the engine behind the form-editor preview); chooses the interface variant (Taxi / 8.5) and theme. |
-| `edt_picture_export` | A CommonPicture's content from its Picture.zip: the variant list (DPI / interface variant 8.2 vs 8.5 / theme / isTemplate) + a recommended pick, and a chosen variant's bytes as base64. |
-| `edt_outgoing_structures` | **Best-effort companion to `edt_outgoing_calls`:** for each outgoing (qualified) call, the top-level keys of the `Структура` passed as its argument — collects `<var>.Вставить("key", …)` and expands a same-module template helper one level. Optional `qualifier` prefix scopes to one layer (e.g. `ПрограммныйИнтерфейсСервиса`). |
+| `edt_go_to_definition` | Resolve a BSL symbol's definition at a position: the target's kind, name, owning object and location. |
+| `edt_symbol_info` | Type/symbol info at a position in a BSL module: the element under the cursor and the computed value type(s) of the expression. |
+| `edt_form_structure` | A managed form's items tree (fields/groups/tables/buttons/decorations) with data bindings, static visible/enabled/readOnly, per-item event handlers, input-field props, button→command, and the form's conditional appearance; plus its attributes, commands, parameters and handlers. |
+| `edt_form_render` | Renders a managed form to a PNG via EDT's native offscreen renderer; chooses the interface variant (Taxi / 8.5) and theme. |
+| `edt_picture_export` | A CommonPicture's content from its Picture.zip: the variant list + a recommended pick, and a chosen variant's bytes as base64. |
+| `edt_outgoing_structures` | **Best-effort companion to `edt_outgoing_calls`:** the top-level keys of the `Структура` passed to each qualified outgoing call. Optional `qualifier` prefix scopes to one layer. |
 | `edt_infobases` | EDT's registered infobases (name, uuid, connection string) and the open projects' infobase associations — discovery for `edt_update_infobase`. |
+| `edt_platform_help` | The 1C:Enterprise **platform Syntax Helper** bundled with EDT (real API reference — objects, methods, properties, events, Ru+En): search by name, or read a page as text. Consult the actual API instead of guessing signatures. |
 
-**Write tools** mutate the model through EDT's own engine (not text edits). All are **token-gated**
-and **dry-run by default** (`apply=false` returns a plan and changes nothing); `apply=true` performs
-the change and serializes the `.mdo`.
+### Write
+
+Write tools mutate the model through EDT's own engine (not text edits). All are **token-gated**
+and **dry-run by default** (`apply=false` returns a plan and changes nothing); `apply=true`
+performs the change and serializes the `.mdo`.
 
 | Write tool | What it does |
 |------------|--------------|
 | `edt_add_attribute` | Add an attribute to a metadata object (type / klass / synonym / comment), validated. |
-| `edt_add_method` | Add a procedure/function to a module's BSL — model-guided insert into a named `#Область` / server block / after the last method; dry-run by default, refuses any result that would not re-parse cleanly. |
-| `edt_delete_method` | Delete a procedure/function from a module's BSL — the inverse of `edt_add_method`: model-guided cut of the method plus its adjacent doc comments; dry-run returns the exact text that would be removed (`deletedText`, a one-paste recovery); refuses any result that would not re-parse cleanly or would lose more than this one method (`force` required — deleting code is destructive). |
+| `edt_add_method` | Add a procedure/function to a module's BSL — model-guided insert; refuses any result that would not re-parse cleanly. |
+| `edt_delete_method` | Delete a procedure/function from a module's BSL — model-guided cut plus adjacent doc comments; dry-run returns the exact removed text (`force` required — deleting code is destructive). |
 | `edt_modify_attribute` | Change an existing attribute's type, synonym or comment. |
 | `edt_remove_attribute` | Remove an attribute (reference-checked; refuses if referenced unless forced). |
-| `edt_rename` | Rename an object or member and **cascade every reference in metadata AND BSL** via EDT's native refactoring engine (`force` required — a rename is a breaking change). |
+| `edt_rename` | Rename an object or member and **cascade every reference in metadata AND BSL** via EDT's native refactoring engine (`force` required — a rename is breaking). |
 | `edt_create_object` | Create a new top object (Catalog/Document/Enum/InformationRegister/…) via EDT's factory + per-type initializer, registered in the Configuration. |
-| `edt_create_extension` | Validate and plan a new configuration-**extension project** against a base configuration project (name/prefix/purpose Customization·AddOn·Patch). Dry-run is functional; `apply` is gated — headless project creation via `IExtensionProjectManager` currently crashes the EDT project lifecycle, so create the project in EDT's New Configuration Extension wizard, then develop and deliver it via the `edt_*` tools. |
-| `edt_create_external_object` | Validate and plan a new **external data processor project** (optionally linked to a base configuration project). Dry-run is functional; `apply` is gated for the same lifecycle reason — create the project in EDT's New External Data Processor wizard, then compile it with `edt_dump_external_object`. |
-| `edt_dump_external_object` | Compile an external data processor / report into a binary **`.epf`/`.erf`** via EDT's own dumper (needs a locally installed 1C platform matching the project version). |
-| `edt_update_infobase` | Update an infobase's configuration **from an EDT project** (configuration or extension) via EDT's synchronization engine — the "Update infobase configuration" action; db-structure changes auto-confirmed, a conflict aborts. |
-| `edt_delete_object` | Delete an object or member and **cascade the removal of every reference in metadata AND BSL** via EDT's native refactoring engine; removes the object's `.mdo` and updates the Configuration (`force` required — a delete is irreversible and breaking). |
-| `edt_debug_attach` | Attach a debug session to a **running** infobase's debug server (dbgs); returns a `sessionId` for the other debug tools (token-gated; use a test stand, not production). |
-| `edt_debug_detach` | Detach (terminate) a debug session and free the infobase. |
-| `edt_debug_inspect` | List a session's threads and, for **suspended** ones, their BSL stack frames (signature/line/source) + the top frame's variables. Read-only. |
-| `edt_debug_control` | Control execution: `suspend`/`resume` the target, or `stepOver`/`stepInto`/`stepReturn` a suspended thread (token-gated). |
-| `edt_evaluate` | Evaluate an **arbitrary BSL expression** in a suspended frame — code execution against the live infobase. Heaviest gate: token **and** per-call `allowCodeExecution=true` **and** the server switch `EDT_BRIDGE_ALLOW_EVALUATE=1` (off by default). |
+| `edt_create_extension` | Create a new configuration-**extension project** against a base project via `IExtensionProjectManager`, stamping name prefix and purpose (Customization·AddOn·Patch). A fresh detached extension Configuration is built and attached. |
+| `edt_create_external_object` | Create a new **external data processor project** (optionally linked to a base project) — the start of the "processor → .epf" cycle. |
+| `edt_dump_external_object` | Compile an external data processor / report into a binary **`.epf`/`.erf`** via EDT's own dumper (**needs a locally installed 1C:Enterprise platform** matching the project version). |
+| `edt_update_infobase` | Update an infobase's configuration **from an EDT project** (configuration or extension) via EDT's synchronization engine; db-structure changes auto-confirmed, a conflict aborts. |
+| `edt_delete_object` | Delete an object or member and **cascade removal of every reference in metadata AND BSL**; removes the `.mdo` and updates the Configuration (`force` required). |
 
 Together the create / develop / build / deliver tools close the full cycle without leaving MCP:
 
 ![Full delivery cycle over MCP](https://raw.githubusercontent.com/keyfire/edt-bridge/main/docs/delivery.png)
 
-Naming convention: tools are `edt_*` (snake_case); parameters are camelCase (`projectName`,
-`fqn`, `queryText`); Cyrillic FQNs are supported (`Справочник.Контрагенты`). The `edt_` prefix
-is deliberate: an MCP host presents every server's tools to the agent as one flat list, so a
-name must carry its context itself — `edt_rename` stays unambiguous where a bare `rename` is
-dangerously generic.
+### Debug
+
+Attach to a **running** infobase's debug server (dbgs) and drive execution. Use a test stand, not
+production. All are token-gated; `edt_evaluate` is gated hardest.
+
+| Debug tool | What it does |
+|------------|--------------|
+| `edt_debug_attach` | Attach a debug session to a running infobase's debug server; returns a `sessionId` for the other debug tools. |
+| `edt_debug_detach` | Detach (terminate) a debug session and free the infobase. |
+| `edt_debug_inspect` | List a session's threads and, for **suspended** ones, their BSL stack frames + the top frame's variables. Read-only. |
+| `edt_debug_control` | Control execution: `suspend`/`resume`, or `stepOver`/`stepInto`/`stepReturn` a suspended thread. |
+| `edt_evaluate` | Evaluate an **arbitrary BSL expression** in a suspended frame — code execution against the live infobase. Needs the token **and** per-call `allowCodeExecution=true` **and** the server switch `EDT_BRIDGE_ALLOW_EVALUATE=1` (off by default). |
 
 ## Requirements
 
-- **1C:EDT** installed and running, with your project open in the workspace.
-- A **JDK 17+** to build (the bundle's bytecode targets Java 17, the EDT runtime).
-- The local **EDT bundle pool** (used as the offline build target). On **Windows** that is the
-  p2 pool `<your-home>\.p2\pool\plugins`; on **macOS** the self-contained pool lives inside the
-  installed component: `…/1C/1CE/components/1c-edt-<ver>-x86_64/1cedt (<ver>).app/Contents/Eclipse/plugins`
+**To use the bridge**
+
+- **1C:EDT** with your project open — or let `edt-bridge-mcp` auto-start a headless EDT.
+- For `edt_dump_external_object` (building `.epf`/`.erf`) and `edt_update_infobase`: a locally
+  installed **1C:Enterprise platform** matching the project's version — EDT drives it to compile
+  the binary and to update the infobase.
+
+**To build the plugin from source** (contributors — end users install via pipx)
+
+- A **JDK 17+** (the bundle targets Java 17, the EDT runtime).
+- The local **EDT bundle pool**. On **Windows** the p2 pool `%USERPROFILE%\.p2\pool\plugins`; on
+  **macOS** the pool inside the installed component
+  `…/1C/1CE/components/1c-edt-<ver>-x86_64/1cedt (<ver>).app/Contents/Eclipse/plugins`
   (the shell build auto-detects it).
 
-## Build
+## Manual install (without the wrapper)
 
-**Option A — no Maven** (quickest; pure local JDK + the EDT pool, no network):
+The pipx wrapper delivers the jar and starts EDT for you. To run the plugin yourself instead:
+
+1. Get the jar — from the [Releases page](https://github.com/keyfire/edt-bridge/releases) (with a
+   `SHA256SUMS.txt`), or build it (below).
+2. Copy it into EDT's `dropins/` — Windows `…/installations/<EDT>/1cedt/dropins/`, **macOS**
+   `…/1c-edt-<ver>-x86_64/1cedt (<ver>).app/Contents/Eclipse/dropins/` (create it if absent). Keep
+   only one edt-bridge jar there — two make Equinox load an arbitrary one.
+3. **Restart EDT.** The plugin starts the MCP server on `http://127.0.0.1:8770/mcp` (or the next
+   free port if 8770 is busy).
+
+To run EDT **headless** (no GUI): `run-headless.ps1 -Workspace <ws>` (Windows) or
+`run-headless.sh --workspace <ws>` (macOS / Linux); `toggle-headless.ps1` starts/stops it in one
+action. A running GUI EDT is never touched.
+
+An MCP client can also talk to the plugin over HTTP directly (no wrapper) — add
+`{ "edt-bridge": { "type": "http", "url": "http://127.0.0.1:8770/mcp" } }` to its `.mcp.json`. The
+server speaks plain JSON-RPC over HTTP (`initialize` / `tools/list` / `tools/call`).
+
+### Build from source
+
+No Maven (quickest — pure local JDK + the EDT pool, no network):
 
 ```powershell
 # Windows — defaults: -Pool %USERPROFILE%\.p2\pool\plugins, -JdkHome %JAVA_HOME%
 powershell -ExecutionPolicy Bypass -File build-nomaven.ps1
-# or override:
-powershell -File build-nomaven.ps1 -Pool "D:\path\.p2\pool\plugins" -JdkHome "C:\path\to\jdk"
 ```
 
 ```bash
-# macOS / Linux — same output. Defaults: --jdk-home from JAVA_HOME (or `/usr/libexec/java_home -v 17`
-# on macOS); --pool auto-detected from the installed 1C:EDT component pool.
+# macOS / Linux — --pool auto-detected from the installed 1C:EDT component pool
 ./build-nomaven.sh
-# or override:
-./build-nomaven.sh --pool "/path/to/Contents/Eclipse/plugins" --jdk-home "/path/to/jdk-17"
 ```
 
-Produces `build/io.github.keyfire.edtbridge_0.0.1.<timestamp>.jar`.
+Produces `build/io.github.keyfire.edtbridge_<version>.<timestamp>.jar`. Maven + Tycho
+(`mvn -f pom.xml clean verify`, edit `edt-bridge.target` first) is available for CI.
 
-**Option B — Maven + Tycho** (standard, for CI). Edit `edt-bridge.target` to point at your pool, then:
-
-```
-mvn -f pom.xml clean verify
-```
-
-## Releases
-
-Prebuilt jars are published on the [GitHub Releases page](https://github.com/keyfire/edt-bridge/releases)
-with a `SHA256SUMS.txt` checksum file.
-
-Why CI does not compile the jar: the build needs the 1C:EDT SDK bundles (`com._1c.*`), which are
-proprietary and cannot be redistributed or fetched anonymously — a hosted runner has no legal way
-to get the compile classpath. So a release is cut from a locally built jar: the maintainer runs
-`build-nomaven.ps1 -Dist` (or `./build-nomaven.sh --dist`), commits the jar under `dist/`, tags the
-commit `vX.Y.Z` and pushes the tag — `.github/workflows/release.yml` then creates the release and
-attaches the jar + checksum. You can always verify an asset by rebuilding from the tagged source
-against your own EDT install and comparing the class files.
-
-## Install & run
-
-1. Copy the built jar into EDT's `dropins/` folder — Windows: `…/installations/<EDT>/1cedt/dropins/`;
-   **macOS**: `…/1C/1CE/components/1c-edt-<ver>-x86_64/1cedt (<ver>).app/Contents/Eclipse/dropins/`
-   (create it if it does not exist).
-2. **Restart EDT.** On launch the plugin starts the MCP server on `http://127.0.0.1:8770/mcp`.
-
-To run EDT **headless** (no GUI window) so the server serves the live model, use
-`run-headless.ps1` (Windows) or `run-headless.sh --workspace <ws>` (macOS / Linux).
-On Windows, `toggle-headless.ps1` starts/stops the headless server with one action, and
-`make-shortcut.ps1 -Workspace <ws>` puts a desktop shortcut for it — handy when you want the
-bridge without launching the EDT GUI at all (a running GUI EDT is never touched).
-
-Smoke-test with curl:
-
-```bash
-# list tools
-curl -s -X POST http://127.0.0.1:8770/mcp -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
-
-# call a tool
-curl -s -X POST http://127.0.0.1:8770/mcp -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"edt_project_errors","arguments":{"projectName":"YourProject"}}}'
-```
-
-## MCP client wiring
-
-Add an HTTP MCP server entry (e.g. in your client's `.mcp.json`):
-
-```json
-{
-  "mcpServers": {
-    "edt-bridge": { "type": "http", "url": "http://127.0.0.1:8770/mcp" }
-  }
-}
-```
-
-The minimal server speaks plain JSON-RPC over HTTP (`initialize` / `tools/list` / `tools/call`) —
-no SSE or extra SDK required.
+Releases are cut from a locally built jar — CI cannot compile it (the 1C:EDT SDK bundles are
+proprietary and cannot be fetched anonymously). The maintainer runs `build-nomaven.ps1 -Dist`,
+commits the jar under `dist/`, tags `vX.Y.Z` and pushes the tag; `.github/workflows/release.yml`
+attaches the jar + checksum. Verify an asset by rebuilding from the tagged source and comparing.
 
 ## Dashboard
 
-Open `http://127.0.0.1:8770/` in a browser for a built-in dashboard: server status, the open
-EDT projects, and an interactive runner for every tool. Light/dark theme and an EN/RU language
-toggle (defaults to the browser locale).
+Open `http://127.0.0.1:8770/` in a browser for a built-in dashboard: server status, the open EDT
+projects, and an interactive runner for every tool. Light/dark theme and an EN/RU language toggle.
 
 ## Security
 
 - Binds **`127.0.0.1` only** — never a public interface.
 - **Writes are gated**: every write tool requires a configured token, defaults to a dry-run, and
-  operates only on your own local EDT model; `edt_rename`, `edt_delete_object` and `edt_delete_method`
-  additionally need an explicit `force`. No code execution: `edt_validate_query` only parses and validates.
+  operates only on your local EDT model; `edt_rename`, `edt_delete_object` and `edt_delete_method`
+  additionally need an explicit `force`.
 - Optional **shared-secret token** — set `EDT_BRIDGE_TOKEN` (or `-Dedt.bridge.token=`) and send
   `Authorization: Bearer <token>` (or `X-Edt-Bridge-Token: <token>`). Any local process can reach
-  the port, so set a token for shared machines.
-- Port override: `EDT_BRIDGE_PORT` / `-Dedt.bridge.port=`.
-
-## Status & roadmap
-
-- **Phase 1 (read) + Phase 2 (write) + Phase 3 (debug) — done.** 27 tools: 14 read + 8 write +
-  5 debug (above).
-- **`edt_outgoing_structures` is best-effort and general.** It reports the top-level keys of the
-  structure passed to any qualified outgoing call; pass the optional `qualifier` prefix to scope to one
-  layer — e.g. `ПрограммныйИнтерфейсСервиса` for a project that routes its service calls through an
-  "ExtAPI" wrapper. Heuristic: literal keys only, flow-insensitive; `partial` flags an incomplete result.
-- **Known limitation:** the server is currently single-threaded, so a long operation (e.g. a rename,
-  whose native refactoring can run for minutes) blocks other requests until it finishes — the server
-  appears unresponsive meanwhile. Making it multi-threaded / async is planned.
+  the port, so set a token on shared machines.
+- Port: `EDT_BRIDGE_PORT` / `-Dedt.bridge.port=` (default 8770; the next free port is used if busy).
 
 ## License
 
 [Apache License 2.0](LICENSE). See [NOTICE](NOTICE) and [ORIGIN.md](ORIGIN.md).
-
----
-
-# Русский
-
-Небольшой **плагин для 1C:EDT**, который отдаёт **живую семантическую модель** EDT
-AI-агентам и другим инструментам по протоколу **MCP** — на `http://127.0.0.1:8770/mcp`.
-
-Статические парсеры читают тексты; edt-bridge вместо этого спрашивает работающую IDE. Он
-отвечает на то, что требует *живой* модели: собственные диагностики EDT, реальную структуру и
-типы метаданных, семантические перекрёстные ссылки и **валидацию запроса против настоящих
-метаданных проекта**.
-
-> Чтение **и** запись. Только localhost; запись под токеном и по умолчанию dry-run. Плагин работает
-> внутри EDT — EDT должен быть запущен с открытым проектом.
-
-Заметки о разработке и новости – в Telegram-канале [1С × ИИ: инженерный цех](https://t.me/ceh_1c_ai).
-
-![Как устроен мост](https://raw.githubusercontent.com/keyfire/edt-bridge/main/docs/architecture.ru.png)
-
-> Рекомендуемая точка входа для клиента – stdio-обвязка **[edt-bridge-mcp](python/README.ru.md)**
-> (`pipx install edt-bridge-mcp`): она пробрасывает запросы в запущенную EDT, сама поднимает
-> headless-экземпляр, когда EDT закрыта, и сама доставляет jar плагина в `dropins/`, если его нет.
-
-## Инструменты
-
-| Инструмент | Что возвращает |
-|------------|----------------|
-| `edt_projects` | Открытые проекты рабочей области — имя, путь на диске, natures, является ли проектом 1C:EDT (понять, что адресовать). |
-| `edt_project_errors` | Проблемы валидации EDT (ошибки/предупреждения): сообщение, severity, ресурс, строка. |
-| `edt_metadata_details` | Свойства объекта метаданных **и его структуру** — реквизиты, табличные части, формы, команды, макеты, измерения, ресурсы, значения перечислений — с типом каждого реквизита. |
-| `edt_metadata_objects` | Объекты метаданных верхнего уровня; опц. фильтр по типу (`Catalog`, `Document`, …) и подстроке имени. |
-| `edt_find_references` | Входящие ссылки на объект метаданных (членство в метаданных) из индекса перекрёстных ссылок EDT. С параметром `method`: BSL-места вызова `CommonModule.X.method` (модуль + строка + текст вызова), обходом BSL проекта. |
-| `edt_outgoing_calls` | Обратное: какие методы ВЫЗЫВАЕТ модуль / метод / форма (на уровень наружу), агрегировано `квалификатор.метод` с числом мест вызова и флагом слоя ExtAPI. |
-| `edt_module_text` | Исходный BSL модуля (или одного метода) + список процедур/функций с сигнатурами; адресация по FQN (CommonModule.X, FQN формы, объект+moduleType) или modulePath. |
-| `edt_validate_query` | Валидирует запрос 1С против живых метаданных проекта: синтаксис **и** семантику (несуществующие таблицы/поля, ошибки типов) с позициями. |
-| `edt_go_to_definition` | Переход к определению символа BSL в позиции (строка+столбец или offset): вид цели, имя, объект-владелец, расположение. |
-| `edt_symbol_info` | Тип/инфо символа в позиции модуля BSL: элемент под курсором и вычисленные типы значения выражения (динамическая типизация). |
-| `edt_form_structure` | Дерево элементов управляемой формы (поля/группы/таблицы/кнопки/декорации) с привязками данных + статические visible/enabled/readOnly, обработчики уровня элемента + флаг cellHyperlink, design-свойства пароля/кнопки выбора у полей ввода (passwordMode/choiceButton/choiceButtonPicture), команда→кнопка + представление/размещение, и декларативное условное оформление формы; плюс реквизиты, команды, параметры и обработчики событий формы. |
-| `edt_form_render` | Рендерит управляемую форму в PNG штатным offscreen-рендером EDT (движок предпросмотра редактора форм); выбор варианта интерфейса (Такси / 8.5) и темы. |
-| `edt_picture_export` | Содержимое CommonPicture из Picture.zip: перечень вариантов (DPI / вариант интерфейса 8.2 или 8.5 / тема / isTemplate) + рекомендуемый, и байты выбранного варианта в base64. |
-| `edt_outgoing_structures` | **Best-effort, пара к `edt_outgoing_calls`:** для каждого исходящего (квалифицированного) вызова — ключи верхнего уровня `Структуры`, переданной аргументом; собирает `<Перем>.Вставить("ключ", …)` и раскрывает хелпер-шаблон того же модуля на один уровень. Необязательный префикс `qualifier` ограничивает одним слоем (напр. `ПрограммныйИнтерфейсСервиса`). |
-| `edt_infobases` | Зарегистрированные в EDT информационные базы (имя, uuid, строка соединения) и привязки открытых проектов к базам — выбор цели для `edt_update_infobase`. |
-
-**Инструменты записи** меняют модель через штатный движок EDT (не текстовой заменой). Все –
-**под токеном** и по умолчанию **dry-run** (`apply=false` возвращает план и ничего не меняет);
-`apply=true` применяет изменение и сериализует `.mdo`.
-
-| Инструмент записи | Что делает |
-|-------------------|------------|
-| `edt_add_attribute` | Добавляет реквизит объекту метаданных (тип / синоним / comment), с валидацией. |
-| `edt_add_method` | Добавляет процедуру/функцию в BSL модуля — вставка по модели в указанную `#Область` / серверный блок / после последнего метода; по умолчанию dry-run, отказ, если результат не парсится. |
-| `edt_delete_method` | Удаляет процедуру/функцию из BSL модуля — обратная операция к `edt_add_method`: вырезание по модели метода вместе с прилегающим комментарием-описанием; dry-run возвращает точный удаляемый текст (`deletedText` – восстановление одной вставкой); отказ, если результат не парсится или теряется что-то кроме этого одного метода (нужен `force` – удаление кода деструктивно). |
-| `edt_modify_attribute` | Меняет тип, синоним или comment существующего реквизита. |
-| `edt_remove_attribute` | Удаляет реквизит (проверка ссылок; отказ при наличии ссылок без force). |
-| `edt_rename` | Переименовывает объект или член с **каскадом всех ссылок в метаданных И в BSL** через штатный движок рефакторинга EDT (нужен `force` – переименование ломает совместимость). |
-| `edt_create_object` | Создаёт новый топ-объект (Справочник/Документ/Перечисление/РегистрСведений/…) через фабрику EDT + инициализатор типа, с регистрацией в Configuration. |
-| `edt_create_extension` | Проверяет и планирует новый проект **расширения конфигурации** к базовому проекту (имя/префикс/назначение Адаптация·Дополнение·Исправление). Dry-run работает; `apply` закрыт — создание проекта headless через `IExtensionProjectManager` роняет жизненный цикл проекта EDT, поэтому проект создаётся в мастере нового расширения EDT, а дальше разрабатывается и поставляется инструментами `edt_*`. |
-| `edt_create_external_object` | Проверяет и планирует новый проект **внешней обработки** (при необходимости привязанный к базовому проекту). Dry-run работает; `apply` закрыт по той же причине — проект создаётся в мастере новой внешней обработки EDT, а затем компилируется через `edt_dump_external_object`. |
-| `edt_dump_external_object` | Компилирует внешнюю обработку/отчёт в бинарный **`.epf`/`.erf`** штатным дампером EDT (нужна установленная платформа 1С, совместимая с версией проекта). |
-| `edt_update_infobase` | Обновляет конфигурацию информационной базы **из проекта EDT** (конфигурация или расширение) штатным механизмом синхронизации — действие "Обновить конфигурацию информационной базы"; изменения структуры БД подтверждаются автоматически, конфликт прерывает обновление. |
-| `edt_delete_object` | Удаляет объект или член с **каскадным удалением всех ссылок в метаданных И в BSL** через штатный движок рефакторинга EDT; удаляет `.mdo` объекта и правит Configuration (нужен `force` – удаление необратимо и ломает совместимость). |
-| `edt_debug_attach` | Подключает сессию отладки к debug-серверу (dbgs) **запущенной** ИБ; возвращает `sessionId` для остальных debug-инструментов (под токеном; использовать тестовый стенд, не продакшен). |
-| `edt_debug_detach` | Отключает (завершает) сессию отладки и освобождает ИБ. |
-| `edt_debug_inspect` | Список потоков сессии и, для **приостановленных**, кадры стека BSL (сигнатура/строка/источник) + переменные верхнего кадра. Только чтение. |
-| `edt_debug_control` | Управление выполнением: `suspend`/`resume` цели или `stepOver`/`stepInto`/`stepReturn` приостановленного потока (под токеном). |
-| `edt_evaluate` | Вычисляет **произвольное BSL-выражение** в приостановленном кадре — исполнение кода против живой ИБ. Самый жёсткий гейт: токен **и** per-call `allowCodeExecution=true` **и** серверный переключатель `EDT_BRIDGE_ALLOW_EVALUATE=1` (по умолчанию выключено). |
-
-Вместе инструменты создать / разработать / собрать / доставить замыкают полный цикл, не выходя из MCP:
-
-![Полный цикл поставки через MCP](https://raw.githubusercontent.com/keyfire/edt-bridge/main/docs/delivery.ru.png)
-
-Соглашение об именах: инструменты `edt_*` (snake_case); параметры camelCase (`projectName`,
-`fqn`, `queryText`); поддерживаются кириллические FQN (`Справочник.Контрагенты`). Префикс `edt_`
-сознательный: MCP-хост показывает агенту инструменты всех серверов одним списком, и имя должно
-нести контекст само — `edt_rename` однозначен там, где голый `rename` опасно многозначен.
-
-## Требования
-
-- Установленный и запущенный **1C:EDT** с открытым проектом.
-- **JDK 17+** для сборки (байт-код плагина — Java 17, рантайм EDT).
-- Локальный **пул бандлов EDT** (офлайн-цель сборки). На **Windows** это p2-пул
-  `<домашний-каталог>\.p2\pool\plugins`; на **macOS** самодостаточный пул лежит внутри установленного
-  компонента: `…/1C/1CE/components/1c-edt-<вер>-x86_64/1cedt (<вер>).app/Contents/Eclipse/plugins`
-  (shell-сборка находит его автоматически).
-
-## Сборка
-
-**Вариант A — без Maven** (быстрее всего; локальный JDK + пул EDT, без сети):
-
-```powershell
-# Windows
-powershell -ExecutionPolicy Bypass -File build-nomaven.ps1
-# или с переопределением путей:
-powershell -File build-nomaven.ps1 -Pool "D:\path\.p2\pool\plugins" -JdkHome "C:\path\to\jdk"
-```
-
-```bash
-# macOS / Linux — тот же результат. По умолчанию: --jdk-home из JAVA_HOME (или
-# `/usr/libexec/java_home -v 17` на macOS); --pool автоопределяется из пула установленного 1C:EDT.
-./build-nomaven.sh
-# или с переопределением путей:
-./build-nomaven.sh --pool "/path/to/Contents/Eclipse/plugins" --jdk-home "/path/to/jdk-17"
-```
-
-Результат: `build/io.github.keyfire.edtbridge_0.0.1.<timestamp>.jar`.
-
-**Вариант B — Maven + Tycho** (стандарт, для CI). Поправьте путь в `edt-bridge.target`, затем:
-
-```
-mvn -f pom.xml clean verify
-```
-
-## Релизы
-
-Готовые jar публикуются на [странице Releases](https://github.com/keyfire/edt-bridge/releases)
-вместе с файлом контрольных сумм `SHA256SUMS.txt`.
-
-Почему CI не компилирует jar: для сборки нужны SDK-бандлы 1C:EDT (`com._1c.*`) — они проприетарные,
-их нельзя ни распространять, ни скачать анонимно, поэтому у облачного раннера нет легального
-способа получить classpath. Релиз собирается локально: мейнтейнер выполняет
-`build-nomaven.ps1 -Dist` (или `./build-nomaven.sh --dist`), коммитит jar в `dist/`, ставит тег
-`vX.Y.Z` и пушит его — `.github/workflows/release.yml` создаёт релиз и прикладывает jar +
-контрольную сумму. Любой ассет можно проверить, пересобрав тегнутый исходник против своего EDT
-и сравнив class-файлы.
-
-## Установка и запуск
-
-1. Скопируйте собранный jar в папку `dropins/` вашего EDT — Windows: `…/installations/<EDT>/1cedt/dropins/`;
-   **macOS**: `…/1C/1CE/components/1c-edt-<вер>-x86_64/1cedt (<вер>).app/Contents/Eclipse/dropins/`
-   (создайте, если её нет).
-2. **Перезапустите EDT.** При старте плагин поднимет MCP-сервер на `http://127.0.0.1:8770/mcp`.
-
-Чтобы запустить EDT **headless** (без окна GUI), используйте `run-headless.ps1` (Windows) или
-`run-headless.sh --workspace <ws>` (macOS / Linux).
-На Windows `toggle-headless.ps1` запускает/останавливает headless-сервер одним действием, а
-`make-shortcut.ps1 -Workspace <ws>` создаёт для него ярлык на рабочем столе – удобно, когда
-bridge нужен без запуска GUI EDT вообще (запущенный GUI EDT скрипт никогда не трогает).
-
-Проверка через curl:
-
-```bash
-curl -s -X POST http://127.0.0.1:8770/mcp -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
-```
-
-## Подключение MCP-клиента
-
-Добавьте HTTP-сервер MCP (напр. в `.mcp.json` вашего клиента):
-
-```json
-{
-  "mcpServers": {
-    "edt-bridge": { "type": "http", "url": "http://127.0.0.1:8770/mcp" }
-  }
-}
-```
-
-Минимальный сервер говорит на обычном JSON-RPC по HTTP (`initialize` / `tools/list` /
-`tools/call`) — без SSE и дополнительных SDK.
-
-## Дашборд
-
-Откройте `http://127.0.0.1:8770/` в браузере - встроенная панель: статус сервера, открытые
-проекты EDT и интерактивный запуск любого инструмента. Переключение светлой/тёмной темы и
-языка EN/RU (по умолчанию - по локали браузера).
-
-## Безопасность
-
-- Слушает **только `127.0.0.1`** — никогда не публичный интерфейс.
-- **Запись под защитой**: каждый инструмент записи требует токен, по умолчанию dry-run и работает
-  только с вашей локальной моделью EDT; `edt_rename`, `edt_delete_object` и `edt_delete_method`
-  дополнительно требуют явный `force`. Выполнения
-  кода нет: `edt_validate_query` только разбирает и валидирует.
-- Опциональный **общий секрет-токен** — задайте `EDT_BRIDGE_TOKEN` (или `-Dedt.bridge.token=`) и
-  присылайте `Authorization: Bearer <token>` (или `X-Edt-Bridge-Token: <token>`).
-- Порт: `EDT_BRIDGE_PORT` / `-Dedt.bridge.port=`.
-
-## Статус и план
-
-- **Фаза 1 (чтение) + Фаза 2 (запись) + Фаза 3 (отладка) — готовы.** 27 инструментов: 14 read +
-  8 write + 5 debug (выше).
-- **`edt_outgoing_structures` — best-effort и общий.** Возвращает ключи верхнего уровня структуры,
-  передаваемой в любой квалифицированный исходящий вызов; необязательный префикс `qualifier`
-  ограничивает одним слоем — например `ПрограммныйИнтерфейсСервиса` для проекта, направляющего
-  сервисные вызовы через обвязку «ExtAPI». Эвристика: только литеральные ключи; `partial` — неполно.
-- **Известное ограничение:** сервер пока однопоточный, поэтому долгая операция (напр. переименование,
-  чей нативный рефакторинг может идти минутами) блокирует другие запросы до завершения — всё это время
-  сервер не отвечает. Многопоточность / async запланированы.
-
-## Лицензия
-
-[Apache License 2.0](LICENSE). См. [NOTICE](NOTICE) и [ORIGIN.md](ORIGIN.md).
