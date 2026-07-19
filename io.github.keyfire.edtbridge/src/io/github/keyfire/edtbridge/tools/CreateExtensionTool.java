@@ -52,9 +52,11 @@ public final class CreateExtensionTool {
                 + "(e.g. \"Расш_\"); required"));
         props.add("purpose", strProp("Extension purpose: Customization/Адаптация (default), "
                 + "AddOn/Дополнение, Patch/Исправление. Optional."));
+        props.add("synonym", strProp("Extension synonym – the human-readable name shown in the "
+                + "infobase, written for the language adopted from the base configuration. Optional."));
         props.add("apply", boolProp("false (default) = dry-run: validate (name free, base project has "
-                + "a Configuration) and return the plan, create nothing. true = create the project and "
-                + "stamp prefix/purpose on its Configuration."));
+                + "a Configuration) and return the plan, create nothing. true = create the project, "
+                + "then read its Configuration back and report what landed."));
 
         JsonArray req = new JsonArray();
         req.add("name");
@@ -71,16 +73,22 @@ public final class CreateExtensionTool {
         t.addProperty("description",
                 "WRITE (Phase 2): create a new configuration-EXTENSION project extending a base "
                 + "configuration project, via EDT's own IExtensionProjectManager (the New Configuration "
-                + "Extension wizard engine); stamps the extension's name prefix and purpose. Dry-run by "
-                + "default: validates and returns the plan WITHOUT creating. apply=true creates the "
-                + "project (model loads in background – poll edt_projects). Additive – no force needed – "
-                + "but requires a configured token.");
+                + "Extension wizard engine). The root Configuration is the base configuration ADOPTED, "
+                + "exactly as the wizard does it, so the project is a valid extension an infobase will "
+                + "load: objectBelonging=Adopted, the extension control block, the adopted default "
+                + "language, inherited compatibility modes, and uuid links from every object adopted "
+                + "later. Dry-run by default: validates and returns the plan WITHOUT creating. "
+                + "apply=true creates the project and reads the Configuration back into the result. "
+                + "Additive – no force needed – but requires a configured token.");
         t.addProperty("descriptionRu",
                 "ЗАПИСЬ (Phase 2): создать новый проект РАСШИРЕНИЯ конфигурации к базовому проекту "
-                + "через штатный IExtensionProjectManager (движок мастера нового расширения); "
-                + "проставляет префикс имён и назначение расширения. По умолчанию dry-run: проверяет и "
-                + "возвращает план БЕЗ создания. apply=true создаёт проект (модель загружается в фоне – "
-                + "опрашивать edt_projects). Аддитивно – force не нужен – но требует токен.");
+                + "через штатный IExtensionProjectManager (движок мастера нового расширения). Корневая "
+                + "Configuration – ЗАИМСТВОВАННАЯ базовая, как это делает мастер, поэтому проект – "
+                + "полноценное расширение, которое примет информационная база: objectBelonging=Adopted, "
+                + "блок расширения, заимствованный язык, унаследованные режимы совместимости и "
+                + "uuid-связи у всех объектов, заимствованных позже. По умолчанию dry-run: проверяет и "
+                + "возвращает план БЕЗ создания. apply=true создаёт проект и вычитывает Configuration "
+                + "обратно в результат. Аддитивно – force не нужен – но требует токен.");
         t.add("inputSchema", schema);
         return t;
     }
@@ -93,10 +101,11 @@ public final class CreateExtensionTool {
             return McpServer.toolError("name, baseProjectName and namePrefix are required");
         }
         String purpose = getStr(args, "purpose");
+        String synonym = getStr(args, "synonym");
         boolean apply = args.has("apply") && !args.get("apply").isJsonNull() && args.get("apply").getAsBoolean();
         try {
             MetadataWriteGateway.CreateExtensionResult res =
-                    gateway.createExtension(name, baseProjectName, namePrefix, purpose, apply);
+                    gateway.createExtension(name, baseProjectName, namePrefix, purpose, synonym, apply);
             JsonObject o = new JsonObject();
             o.addProperty("ok", res.ok);
             o.addProperty("applied", res.applied);
@@ -118,6 +127,20 @@ public final class CreateExtensionTool {
                 o.addProperty("location", res.location);
             }
             o.addProperty("stamped", res.stamped);
+            if (res.applied) {
+                o.addProperty("modelReady", res.modelReady);
+                if (res.objectBelonging != null) {
+                    o.addProperty("objectBelonging", res.objectBelonging);
+                }
+                if (res.extensionBlock != null) {
+                    o.addProperty("extensionBlock", res.extensionBlock);
+                }
+                o.addProperty("keepMappingByIds", res.keepMappingByIds);
+                if (res.adoptedLanguage != null) {
+                    o.addProperty("adoptedLanguage", res.adoptedLanguage);
+                    o.addProperty("languageLinked", res.languageLinked);
+                }
+            }
             if (res.plan != null) {
                 o.addProperty("plan", res.plan);
             }

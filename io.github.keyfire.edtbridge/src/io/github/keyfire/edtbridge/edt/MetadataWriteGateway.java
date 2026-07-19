@@ -1410,7 +1410,14 @@ public final class MetadataWriteGateway {
         public boolean baseFound;     // base project exists, is open and has a Configuration
         public String version;        // runtime version inherited from the base project
         public String location;       // created project's disk location
-        public boolean stamped;       // prefix/purpose written and serialized
+        public boolean stamped;       // prefix/purpose confirmed on the created Configuration
+        // Read back from the created project - the traits that make it a valid extension.
+        public boolean modelReady;    // the model loaded in time to be read back at all
+        public String objectBelonging;// Adopted - the platform rejects the project otherwise
+        public String extensionBlock; // ConfigurationExtension control block
+        public boolean keepMappingByIds; // adopted objects link to the base ones by uuid, not by name
+        public String adoptedLanguage;   // language adopted from the base configuration
+        public boolean languageLinked;   // that language carries the base language's uuid
         public String plan;
         public String message;
     }
@@ -1424,14 +1431,16 @@ public final class MetadataWriteGateway {
      *       free in the workspace; base project open and carrying a Configuration; purpose known) and
      *       return the plan, creating nothing.
      *   <li>{@code apply=true} – create the project in the default workspace location with the base
-     *       project's runtime version, then stamp the extension Configuration's {@code namePrefix} and
-     *       {@code configurationExtensionPurpose} and serialize it. The new project's model loads in
-     *       background jobs; the stamp step polls for it briefly and reports {@code stamped=false} if
-     *       the model is still not ready (re-run later – the create itself is done).
+     *       project's runtime version. Its root Configuration is the BASE configuration ADOPTED (see
+     *       the body): that is what carries {@code objectBelonging=Adopted}, the extension control
+     *       block, the adopted default language and the inherited compatibility modes, without which
+     *       an infobase refuses to load the extension. The new project's model loads in background
+     *       jobs; the result is read back from it and reports what actually landed, or
+     *       {@code modelReady=false} if the model was still loading (the create itself is done).
      * </ul>
      */
     public CreateExtensionResult createExtension(String name, String baseProjectName, String namePrefix,
-            String purposeName, boolean apply) {
+            String purposeName, String synonym, boolean apply) {
         CreateExtensionResult r = new CreateExtensionResult();
         r.name = name;
         r.baseProject = baseProjectName;
@@ -1488,34 +1497,70 @@ public final class MetadataWriteGateway {
             return r;
         }
         IExtensionProjectManager epm = ServiceAccess.get(IExtensionProjectManager.class);
-        IModelObjectFactory factory = modelObjectFactory();
-        if (epm == null || factory == null) {
-            r.message = "extension project services unavailable (IExtensionProjectManager / md factory)";
+        IModelObjectAdopter adopter = modelObjectAdopter();
+        if (epm == null || adopter == null) {
+            r.message = "extension project services unavailable (IExtensionProjectManager / adopter)";
             return r;
         }
         try {
-            // create() attaches the given Configuration object DIRECTLY to the new project's model
-            // (ExtensionProjectManager.attachConfiguration -> tx.attachTopObject, no copy). So it must
-            // be a FRESH, detached Configuration – the base project's live config fails "object is
-            // already attached", and null fails the lifecycle. Build one via the md factory (same
-            // factory create_object uses); create() names it after the project.
-            EObject freshConfig = factory.create(
-                    (EClass) MdClassPackage.eINSTANCE.getEClassifier("Configuration"), version);
-            if (!(freshConfig instanceof Configuration)) {
-                r.message = "md factory did not produce a Configuration (got "
-                        + (freshConfig == null ? "null" : freshConfig.eClass().getName()) + ")";
+            // The root Configuration of an extension is the BASE configuration ADOPTED - not a fresh
+            // Configuration from the md factory. That is what makes the project an extension at all:
+            // the adopter sets objectBelonging=Adopted, builds the <extension> control block, inherits
+            // scriptVariant / compatibility modes / defaultRunMode / usePurposes from the base, adopts
+            // the base's default language (languages are not top objects, so this is the only way they
+            // get in) and fills contained-object ids. A factory-made Configuration carries none of that
+            // and instead carries full-configuration properties an extension has no business with; an
+            // infobase refuses to load such a project ("the load must not change the ownership of the
+            // main configuration object"). This mirrors ExtensionWizard.adopt(), the New Configuration
+            // Extension wizard's own step. create() then attaches the object DIRECTLY to the new
+            // project's model (ExtensionProjectManager -> tx.attachTopObject, no copy), so what is
+            // handed over must be detached - which an adopted copy is.
+            Configuration adopted = adopter.adopt(baseConfig, version, new NullProgressMonitor());
+            if (adopted == null) {
+                r.message = "the adopter returned nothing for the base configuration of "
+                        + baseProjectName;
                 return r;
             }
-            IProject created = epm.create(name, version, (Configuration) freshConfig, base,
-                    new NullProgressMonitor());
+            // The adopted copy inherits the base configuration's name; the extension gets its own.
+            adopted.setName(name);
+            adopted.setNamePrefix(namePrefix);
+            adopted.setConfigurationExtensionPurpose(purpose);
+            if (synonym != null && !synonym.isBlank()) {
+                // Keyed by the language adopted from the base - the one the extension actually has.
+                for (Language lang : adopted.getLanguages()) {
+                    if (lang.getLanguageCode() != null && !lang.getLanguageCode().isBlank()) {
+                        adopted.getSynonym().put(lang.getLanguageCode(), synonym);
+                    }
+                    break;
+                }
+            }
+            // Without this flag every object adopted later binds to its base object BY NAME; with it
+            // EDT writes the base object's uuid (MdObjectAdopterParticipant reads the flag off the
+            // extension's Configuration when it builds an adopted copy). The wizard always sets it.
+            adopted.setKeepMappingToExtendedConfigurationObjectsByIDs(true);
+
+            IProject created = epm.create(name, version, adopted, base, new NullProgressMonitor());
             r.location = (created != null && created.getLocation() != null)
                     ? created.getLocation().toOSString() : null;
             r.applied = true;
-            r.stamped = stampExtensionConfiguration(created, namePrefix, purpose);
+            ExtensionCheck check = checkExtensionConfiguration(created, namePrefix, purpose);
+            r.modelReady = check.modelReady;
+            r.objectBelonging = check.objectBelonging;
+            r.extensionBlock = check.extensionBlock;
+            r.keepMappingByIds = check.keepMappingByIds;
+            r.adoptedLanguage = check.adoptedLanguage;
+            r.languageLinked = check.languageLinked;
+            r.stamped = check.modelReady && namePrefix.equals(check.namePrefix)
+                    && purpose.getName().equals(check.purpose);
             r.message = "created extension project " + name + " extending " + baseProjectName
-                    + (r.stamped ? " (prefix/purpose stamped and serialized)"
-                            : " – WARNING: created, but prefix/purpose stamping incomplete (the project"
-                              + " model is still loading; re-check later and stamp via the model)");
+                    + (check.modelReady
+                            ? " (root Configuration adopted from the base: belonging="
+                              + check.objectBelonging + ", keepMappingByIds=" + check.keepMappingByIds
+                              + (check.adoptedLanguage == null ? ", no adopted language"
+                                      : ", language " + check.adoptedLanguage)
+                              + (check.repaired ? "; prefix/purpose written after creation" : "") + ")"
+                            : " – WARNING: created, but its model was still loading, so nothing could be"
+                              + " read back. Re-check the Configuration before building the extension.");
         } catch (CoreException | RuntimeException ex) {
             r.applied = false;
             r.message = "create failed: " + GatewaySupport.describeCause(ex);
@@ -1523,41 +1568,83 @@ public final class MetadataWriteGateway {
         return r;
     }
 
+    /** What a freshly created extension project's Configuration actually carries, read back. */
+    private static final class ExtensionCheck {
+        boolean modelReady;      // the project's model loaded and its Configuration could be read
+        String objectBelonging;  // must be Adopted for the platform to accept the project
+        String extensionBlock;   // class of the <extension> control block (ConfigurationExtension)
+        boolean keepMappingByIds;
+        String adoptedLanguage;  // name of the language adopted from the base, null if none
+        boolean languageLinked;  // that language carries the base language's uuid
+        String namePrefix;
+        String purpose;
+        boolean repaired;        // prefix/purpose had to be written after creation
+    }
+
     /**
-     * Stamp {@code namePrefix} + {@code purpose} on a freshly created extension project's
-     * Configuration and serialize it. The project's BM model loads asynchronously after
-     * {@link IExtensionProjectManager#create}, so poll briefly (up to ~30 s) for the model and its
-     * Configuration top object before giving up. Returns whether the stamp + export happened.
+     * Read back a freshly created extension project's Configuration and report the traits that make
+     * it a valid extension - the ones whose absence an infobase only reveals on load. Repairs
+     * {@code namePrefix} / {@code purpose} if they did not survive creation, and serializes only
+     * then. The project's BM model loads asynchronously after {@link IExtensionProjectManager#create},
+     * so poll briefly (up to ~30 s) for the model and its Configuration before giving up.
      */
-    private boolean stampExtensionConfiguration(IProject created, String namePrefix,
+    private ExtensionCheck checkExtensionConfiguration(IProject created, String namePrefix,
             ConfigurationExtensionPurpose purpose) {
+        ExtensionCheck c = new ExtensionCheck();
         if (created == null) {
-            return false;
+            return c;
         }
         IBmModelManager mm = ServiceAccess.get(IBmModelManager.class);
         if (mm == null) {
-            return false;
+            return c;
         }
         for (int attempt = 0; attempt < 15; attempt++) {
             IBmModel model = mm.getModel(created);
             if (model != null) {
                 try {
                     Boolean done = model.execute(
-                            new AbstractBmTask<Boolean>("edt-bridge.createExtension.stamp") {
+                            new AbstractBmTask<Boolean>("edt-bridge.createExtension.check") {
                                 @Override
                                 public Boolean execute(IBmTransaction tx, IProgressMonitor monitor) {
                                     EObject cfg = tx.getTopObjectByFqn("Configuration");
                                     if (!(cfg instanceof Configuration)) {
                                         return Boolean.FALSE;
                                     }
-                                    ((Configuration) cfg).setNamePrefix(namePrefix);
-                                    ((Configuration) cfg).setConfigurationExtensionPurpose(purpose);
+                                    Configuration conf = (Configuration) cfg;
+                                    c.objectBelonging = (conf.getObjectBelonging() == null) ? null
+                                            : conf.getObjectBelonging().getName();
+                                    c.extensionBlock = (conf.getExtension() == null) ? null
+                                            : conf.getExtension().eClass().getName();
+                                    c.keepMappingByIds =
+                                            conf.isKeepMappingToExtendedConfigurationObjectsByIDs();
+                                    for (Language lang : conf.getLanguages()) {
+                                        c.adoptedLanguage = lang.getName();
+                                        c.languageLinked = lang.getExtendedConfigurationObject() != null;
+                                        break;
+                                    }
+                                    if (!namePrefix.equals(conf.getNamePrefix())) {
+                                        conf.setNamePrefix(namePrefix);
+                                        c.repaired = true;
+                                    }
+                                    if (conf.getConfigurationExtensionPurpose() != purpose) {
+                                        conf.setConfigurationExtensionPurpose(purpose);
+                                        c.repaired = true;
+                                    }
+                                    c.namePrefix = conf.getNamePrefix();
+                                    c.purpose = (conf.getConfigurationExtensionPurpose() == null) ? null
+                                            : conf.getConfigurationExtensionPurpose().getName();
                                     return Boolean.TRUE;
                                 }
                             });
                     if (Boolean.TRUE.equals(done)) {
-                        IDtProject dt = mm.getDtProject(model);
-                        return dt != null && mm.forceExport(dt, "Configuration");
+                        c.modelReady = true;
+                        if (c.repaired) {
+                            IDtProject dt = mm.getDtProject(model);
+                            if (dt != null) {
+                                mm.forceExport(dt, "Configuration");
+                            }
+                        }
+                        return c;
                     }
                 } catch (RuntimeException ignored) {
                     // model not ready for writes yet – keep polling
@@ -1567,10 +1654,10 @@ public final class MetadataWriteGateway {
                 Thread.sleep(2000L);
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
-                return false;
+                return c;
             }
         }
-        return false;
+        return c;
     }
 
     /** Result of {@link #createExternalObject}. */

@@ -8,6 +8,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
+## [Unreleased]
+
+### Fixed
+- `edt_create_extension` produced a project no infobase would load – it failed with *"the load must
+  not change the ownership of the main configuration object"*, on an empty extension as much as on a
+  filled one. The root `Configuration` was built by the md factory, which yields a plain **full**
+  configuration: no `objectBelonging=Adopted`, no `ConfigurationExtension` control block, no
+  `keepMappingToExtendedConfigurationObjectsByIDs`, no adopted language, no inherited script variant
+  or compatibility modes – and, instead, full-configuration properties an extension has no business
+  with. The extension's root is now the **base configuration adopted**, the same step EDT's own New
+  Configuration Extension wizard performs (`ExtensionWizard.adopt`), so the engine writes all of it.
+
+  Two further gaps closed themselves with it, because both were consequences rather than causes:
+  - objects adopted by `edt_adopt_object` now carry `extendedConfigurationObject` – the uuid link to
+    the base object – instead of binding by name. EDT writes that link only when the extension's
+    `Configuration` has `keepMappingToExtendedConfigurationObjectsByIDs`, which nothing used to set.
+  - the base configuration's default language now comes along, adopted properly, with its
+    `languageCode` and the uuid link. Languages are not top-level objects, so nothing could adopt one
+    on its own; adopting the configuration is what brings it in.
+- `edt_create_extension` now reads the created `Configuration` back and reports what actually landed
+  (`objectBelonging`, `extensionBlock`, `keepMappingByIds`, `adoptedLanguage`, `languageLinked`).
+  The previous failure was invisible until an infobase rejected the build, which is late.
+
+### Added
+- `edt_create_extension` takes an optional `synonym` – the extension's human-readable name, written
+  for the language adopted from the base configuration, as the wizard's own field does.
+
 ## [0.4.1] – 2026-07-19
 
 ### Added
