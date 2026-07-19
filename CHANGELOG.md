@@ -14,13 +14,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugi
 - `self-update` could not update the wrapper on a current pipx. It ran `pip install --upgrade`
   inside its own environment – but pipx 1.15 builds its venvs through uv, and a uv-built venv has
   no pip at all, so the step died on "No module named pip" and the wrapper never updated itself.
-  It now tries pip, then uv, then `ensurepip` followed by pip, and says why it passed over each.
-  Note that running `self-update` from the installed `edt-bridge-mcp.exe` rules uv out: uv removes
-  the console script before rewriting it, and Windows will not delete a running exe – so that case
-  lands on ensurepip, which pays a one-time cost of adding pip to the venv.
-- Installer output is decoded as UTF-8 rather than the console code page, so a Windows "access
-  denied" reads as itself instead of mojibake – and a successful install reports what it installed
-  instead of pip's "[notice] To update, run: ..." sign-off.
+
+  It no longer uses an installer. The wheel is downloaded from PyPI and unpacked over the package
+  in `site-packages` with the standard library alone, the exes in `Scripts` are left alone – they
+  are what a running client holds open, and the stub picks up the new code by itself – and
+  `pipx_metadata.json` is corrected so `pipx list` stops reporting the old version. An editable
+  install is refused rather than overwritten. This is the shape the sibling tools already used;
+  the wrapper was the one doing it the hard way.
 - The wrapper reported a stale version – `--version` and the MCP `serverInfo` said 0.3.1 through
   two releases, because `__init__.py` carried a literal that `pyproject.toml` did not use. The
   package version is now derived from that one attribute, so the two cannot drift again.

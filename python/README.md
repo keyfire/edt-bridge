@@ -68,13 +68,15 @@ restarts its own headless instance on the next auto-start.
 released yet, without a full `pipx install --force` (which rebuilds the venv and replaces the exe the
 running client holds).
 
-The wrapper is installed into its own environment, never through `pipx upgrade`, so the exe stays
-put. Three routes are tried in order, because pip is not a given: **pip** (classic venvs), then
-**uv** (a venv built by pipx 1.15 goes through uv and contains no pip at all – `python -m pip` there
-says "No module named pip"), then **ensurepip** followed by pip. Running `self-update` from the
-installed `edt-bridge-mcp.exe` rules uv out – it removes the console script before rewriting it and
-Windows will not delete a running exe – so that case lands on ensurepip, which adds pip to the venv
-once; every later update then takes the first route. Each skipped route says why.
+The wrapper updates itself by unpacking, not through an installer: it downloads the wheel from PyPI
+(or copies the package out of the checkout given to `--from`) and replaces the package inside
+`site-packages` using the standard library alone. No pip, no pipx, no build backend – which matters,
+because pipx 1.15 builds its venvs through uv and a uv-built venv contains no pip at all.
+
+The exes in `Scripts` are never touched: they are what a running client holds open, Windows will not
+let them be replaced, and they do not need to be – the stub launches whatever code is in
+site-packages the next time it starts. `pipx_metadata.json` is corrected so `pipx list` does not go
+on reporting the old version. An editable install is refused rather than overwritten.
 
 ## Configuration
 

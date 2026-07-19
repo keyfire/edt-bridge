@@ -13,12 +13,14 @@ Jar update:
   restarts it automatically on the next auto-start.
 
 Wrapper update:
-- installs ``edt-bridge-mcp`` into this very environment (the pipx venv), or a local checkout
-  given with ``--from``. Python files are replaceable while running; the pipx-managed exe is not
-  touched, which is why this never shells out to ``pipx upgrade``.
-- pip, then uv, then ensurepip: a venv built by pipx 1.15 goes through uv and has no pip in it at
-  all, so ``python -m pip`` answers "No module named pip" - uv installs into a target interpreter
-  without needing pip inside it.
+- downloads the wheel from PyPI (or copies the package out of a checkout given with ``--from``)
+  and replaces the package inside ``site-packages`` with the standard library alone - no pip, no
+  pipx, no build backend.
+- the exes in ``Scripts`` are never touched. They are what a running client holds open, and
+  Windows will not let them be replaced; they do not need to be, since the stub launches whatever
+  code is in site-packages next time. Installers are no use here anyway: pipx 1.15 builds its
+  venvs through uv and a uv-built venv has no pip in it at all.
+- ``pipx_metadata.json`` is corrected, so ``pipx list`` does not go on reporting the old version.
 """
 
 from __future__ import annotations
@@ -26,11 +28,16 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import subprocess
-import sys
+import re
+import shutil
 import tempfile
+import urllib.error
 import urllib.request
+import zipfile
+from io import BytesIO
 from pathlib import Path
+
+from . import __version__
 
 RELEASES_LATEST = "https://api.github.com/repos/keyfire/edt-bridge/releases/latest"
 JAR_PREFIX = "io.github.keyfire.edtbridge_"
@@ -192,92 +199,145 @@ def update_jar() -> bool:
     return ok
 
 
-def _installers(source: str) -> list[tuple[str, list[str]]]:
-    """Ways to install into THIS environment, best first.
+PYPI_VERSION = "https://pypi.org/pypi/edt-bridge-mcp/{version}/json"
+PYPI_LATEST = "https://pypi.org/pypi/edt-bridge-mcp/json"
 
-    pip is not a given. pipx 1.15 builds its venvs with uv, and a uv-built venv carries no pip at
-    all - ``python -m pip`` there answers "No module named pip", which is where this used to stop.
-    uv installs into a target interpreter without needing pip inside it, so it covers exactly the
-    case pip cannot; ensurepip is the last resort, and the only one that adds anything to the venv.
-    """
-    return [
-        ("pip", [sys.executable, "-m", "pip", "install", "--upgrade", source]),
-        ("uv", ["uv", "pip", "install", "--python", sys.executable, "--upgrade", source]),
-        ("ensurepip+pip", None),  # handled in update_wrapper - it needs two steps
-    ]
+# What belongs to this wheel inside site-packages. The exes in Scripts are deliberately absent:
+# they are what a running client holds, and they do not need replacing - the stub launches whatever
+# code is in site-packages next time.
+_OWNED_PATTERNS = ("edt_bridge_mcp", "edt_bridge_mcp-*.dist-info")
 
 
-def _run(cmd: list[str]) -> tuple[int, str]:
-    """Run an installer, decoding its output as UTF-8 rather than the console code page.
+def _site_packages() -> Path:
+    """Directory this package is installed into (site-packages in a real install)."""
+    return Path(__file__).resolve().parent.parent
 
-    These tools report OS errors in the system language and emit them as UTF-8; letting Python
-    decode by locale turns a Windows "access denied" into mojibake, which is exactly the message
-    worth reading.
+
+def _ensure_regular_install(site: Path) -> None:
+    """Refuse an editable install - unpacking a wheel over a checkout would wreck the repository."""
+    if site.name.lower() not in ("site-packages", "dist-packages"):
+        raise _UpdateError(
+            f"the package is imported from {site} - that is an editable install from a checkout; "
+            "update it with git instead"
+        )
+
+
+class _UpdateError(RuntimeError):
+    """Wrapper-update failure; the text is shown to the user as it is."""
+
+
+def _wheel_url(version: str | None) -> tuple[str, str]:
+    """URL and exact version of the py3-none-any wheel on PyPI (latest, or the one asked for)."""
+    url = PYPI_VERSION.format(version=version) if version else PYPI_LATEST
+    try:
+        data = _fetch_json(url)
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            raise _UpdateError("no such version on PyPI" if version
+                               else "edt-bridge-mcp is not on PyPI yet") from error
+        raise _UpdateError(f"PyPI answered {error.code}") from error
+    except OSError as error:
+        raise _UpdateError(f"could not reach PyPI: {error}") from error
+    resolved = data["info"]["version"]
+    for entry in data["urls"]:
+        if entry["filename"].endswith("-py3-none-any.whl"):
+            return entry["url"], resolved
+    raise _UpdateError(f"PyPI has no wheel for edt-bridge-mcp {resolved}")
+
+
+def _clear_owned(site: Path) -> None:
+    for pattern in _OWNED_PATTERNS:
+        for path in site.glob(pattern):
+            if path.is_dir():
+                shutil.rmtree(path, ignore_errors=True)
+
+
+def _checkout_version(package_dir: Path) -> str:
+    """The __version__ literal of a checkout, without importing it."""
+    match = re.search(r'__version__\s*=\s*"([^"]+)"',
+                      (package_dir / "__init__.py").read_text(encoding="utf-8"))
+    return match.group(1) if match else "unknown"
+
+
+def _install_from_checkout(site: Path, checkout: str) -> str:
+    """Copy the package straight out of a checkout - no build backend needed to try a local build."""
+    source = Path(checkout).expanduser().resolve()
+    package = source / "src" / "edt_bridge_mcp"
+    if not package.is_dir():
+        package = source / "edt_bridge_mcp"
+    if not package.is_dir():
+        raise _UpdateError(f"no edt_bridge_mcp package under {source} (expected src/edt_bridge_mcp)")
+    version = _checkout_version(package)
+    # Only the package tree is replaced; the dist-info stays as installed, so pip metadata will
+    # report the released version until a real install happens. __version__ lives in the code, so
+    # what the wrapper reports about itself is right either way.
+    shutil.rmtree(site / "edt_bridge_mcp", ignore_errors=True)
+    shutil.copytree(package, site / "edt_bridge_mcp",
+                    ignore=shutil.ignore_patterns("__pycache__"))
+    return version
+
+
+def update_wrapper(source: str | None = None, version: str | None = None) -> bool:
+    """Replace the wrapper inside its own environment by unpacking, never through pip.
+
+    pip is not usable for this: pipx 1.15 builds its venvs through uv and a uv-built venv has no pip
+    in it at all, and any installer that does have pip wants to rewrite the console script - which a
+    running client holds open on Windows. Only files under site-packages are touched; the stub in
+    Scripts picks up the new code next time it starts. This is the same shape the sibling tools use.
     """
     try:
-        proc = subprocess.run(cmd, capture_output=True, check=False)
-    except FileNotFoundError:
-        return 127, f"{cmd[0]} is not installed"
-    raw = (proc.stdout or b"") + (proc.stderr or b"")
-    try:
-        text = raw.decode("utf-8")
-    except UnicodeDecodeError:
-        text = raw.decode(sys.getfilesystemencoding() or "utf-8", errors="replace")
-    return proc.returncode, text.strip()
-
-
-def _missing_pip(output: str) -> bool:
-    return "No module named pip" in output
-
-
-def update_wrapper(source: str = "edt-bridge-mcp") -> bool:
-    """Upgrade the wrapper in place. ``source`` may be a local checkout path instead of the name."""
-    from_pypi = source == "edt-bridge-mcp"
-    log(f"upgrading the python wrapper from {'PyPI (if published)' if from_pypi else source}...")
-    notes = []
-    for name, cmd in _installers(source):
-        if cmd is None:
-            code, out = _run([sys.executable, "-m", "ensurepip", "--upgrade"])
-            if code != 0:
-                notes.append(f"{name}: {_last_line(out)}")
-                continue
-            code, out = _run([sys.executable, "-m", "pip", "install", "--upgrade", source])
+        site = _site_packages()
+        _ensure_regular_install(site)
+        if source:
+            installed = _install_from_checkout(site, source)
+            log(f"installed edt-bridge-mcp {installed} from {source}")
         else:
-            code, out = _run(cmd)
-        if code == 0:
-            log(f"{name}: {_last_line(out) or 'done'}")
-            return True
-        if from_pypi and ("No matching distribution" in out or "Could not find a version" in out):
-            log("the package is not on PyPI yet - install from a checkout instead: "
-                "edt-bridge-mcp self-update --pip-only --from <repo>/python")
-            return False
-        # Say why each route was passed over: the last one adds pip to the environment, which is
-        # worth knowing was not the first choice.
-        why = "no pip in this environment" if _missing_pip(out) else _last_line(out)
-        log(f"{name} did not work ({why}) - trying the next route")
-        notes.append(f"{name}: {why}")
-    log("could not upgrade the wrapper - " + "; ".join(notes))
-    return False
+            url, target = _wheel_url(version)
+            if version is None and target == __version__:
+                log(f"already current: edt-bridge-mcp {__version__}")
+                return True
+            log(f"downloading edt-bridge-mcp {target} from PyPI...")
+            try:
+                with urllib.request.urlopen(url, timeout=600) as resp:
+                    blob = resp.read()
+            except OSError as error:
+                raise _UpdateError(f"could not download the wheel: {error}") from error
+            _clear_owned(site)
+            with zipfile.ZipFile(BytesIO(blob)) as archive:
+                archive.extractall(site)
+            installed = target
+            log(f"unpacked into {site}: edt-bridge-mcp {__version__} -> {target}")
+        _update_pipx_metadata(site, installed)
+        log("restart the MCP client (or any running edt-bridge-mcp) to pick up the new code")
+        return True
+    except _UpdateError as failure:
+        log(str(failure))
+        return False
+    except OSError as failure:
+        log(f"could not replace the installed package: {failure}")
+        return False
 
 
-def _last_line(output: str) -> str:
-    """The line worth showing: what got installed, not the installer's own housekeeping.
-
-    pip signs off with "[notice] To update, run: ... --upgrade pip", which as the last line of a
-    successful install reads like the result and is not.
-    """
-    lines = [line.strip() for line in output.splitlines() if line.strip()]
-    lines = [line for line in lines if not line.startswith(("[notice]", "WARNING:"))]
-    for line in reversed(lines):
-        if "Successfully installed" in line or "edt-bridge-mcp" in line:
-            return line
-    return lines[-1] if lines else ""
+def _update_pipx_metadata(site: Path, version: str) -> None:
+    """Keep `pipx list` honest - it reads a version this update would otherwise leave behind."""
+    meta = site.parent.parent / "pipx_metadata.json"   # <venv>/Lib/site-packages -> <venv>
+    if not meta.is_file():
+        return
+    try:
+        data = json.loads(meta.read_text(encoding="utf-8"))
+        main = data.get("main_package") or {}
+        if main.get("package") == "edt-bridge-mcp":
+            main["package_version"] = version
+            meta.write_text(json.dumps(data, indent=4), encoding="utf-8")
+            log("updated pipx_metadata.json")
+    except (OSError, ValueError):
+        pass
 
 
 def run(argv: list[str]) -> int:
     jar_only = "--jar-only" in argv
     pip_only = "--pip-only" in argv
-    source = "edt-bridge-mcp"
+    source = None
     if "--from" in argv:
         index = argv.index("--from")
         if index + 1 >= len(argv):
