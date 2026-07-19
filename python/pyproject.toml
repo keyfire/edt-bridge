@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "edt-bridge-mcp"
-version = "0.4.1"
+dynamic = ["version"]
 description = "stdio MCP front-end for the edt-bridge 1C:EDT plugin: proxies to a running EDT, or auto-starts a headless one"
 readme = "README.md"
 license = "Apache-2.0"
@@ -22,6 +22,9 @@ Homepage = "https://github.com/keyfire/edt-bridge"
 
 [project.scripts]
 edt-bridge-mcp = "edt_bridge_mcp.server:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "edt_bridge_mcp.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]

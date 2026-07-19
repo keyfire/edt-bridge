@@ -31,6 +31,27 @@ pipx install edt-bridge-mcp        # or: pipx install ./python  from a checkout
 claude mcp add edt-bridge -- edt-bridge-mcp --workspace "D:\\path\\to\\edt-workspace"
 ```
 
+## From a shell
+
+The default mode speaks JSON-RPC over stdin/stdout, for an MCP client to drive. To reach the same
+bridge by hand or from a script, use the sub-commands – same port scan, same token, same headless
+auto-start:
+
+```bash
+edt-bridge-mcp tools                    # what the running bridge serves
+edt-bridge-mcp call edt_projects        # call a tool, print what it returned
+edt-bridge-mcp call edt_metadata_details --json '{"projectName": "SM", "fqn": "CommonModule.Foo"}'
+edt-bridge-mcp call edt_create_extension --json-file args.json   # arguments from a UTF-8 file
+edt-bridge-mcp status                   # is a bridge up? (never starts one)
+```
+
+`--raw` prints the JSON result instead of the text a tool returned. Arguments come from `--json`,
+`--json-file` or `--stdin`; a file is the dependable route for non-ASCII arguments on Windows.
+
+Exit codes: `0` fine, `1` the call could not be made (no bridge, bad usage, transport error), `2`
+the bridge ran the tool and the tool reported an error – so a script can tell "it failed" from "it
+never ran".
+
 ## Self-update
 
 ```bash

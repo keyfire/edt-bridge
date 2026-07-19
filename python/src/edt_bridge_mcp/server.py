@@ -38,6 +38,7 @@ import urllib.request
 from pathlib import Path
 
 from . import __version__
+from . import cli
 
 PROTOCOL_FALLBACK = "2024-11-05"
 
@@ -442,16 +443,34 @@ class StdioServer:
         return 0
 
 
+def apply_connection_options(args) -> None:
+    """Move the shared connection flags into the environment Backend reads at construction."""
+    if getattr(args, "workspace", None):
+        os.environ["EDT_BRIDGE_WORKSPACE"] = args.workspace
+    if getattr(args, "edt_dir", None):
+        os.environ["EDT_BRIDGE_EDT_DIR"] = args.edt_dir
+    if getattr(args, "port", None):
+        os.environ["EDT_BRIDGE_PORT"] = str(args.port)
+    if getattr(args, "start_timeout", None):
+        os.environ["EDT_BRIDGE_START_TIMEOUT"] = str(args.start_timeout)
+    if getattr(args, "no_autostart", False):
+        os.environ["EDT_BRIDGE_AUTOSTART"] = "0"
+
+
 def main() -> int:
     force_utf8_streams()
     if len(sys.argv) > 1 and sys.argv[1] == "self-update":
         from . import update
         return update.run(sys.argv[2:])
+    if len(sys.argv) > 1 and sys.argv[1] in cli.COMMANDS:
+        return cli.run(sys.argv[1], sys.argv[2:])
     parser = argparse.ArgumentParser(
         prog="edt-bridge-mcp",
         description="stdio MCP front-end for the edt-bridge 1C:EDT plugin "
-                    "(proxies to a running EDT or auto-starts a headless one); "
-                    "'edt-bridge-mcp self-update' refreshes the plugin jar and the wrapper",
+                    "(proxies to a running EDT or auto-starts a headless one). "
+                    "Sub-commands: 'call <tool>' runs one tool from a shell, 'tools' lists them, "
+                    "'status' reports the running bridge, 'self-update' refreshes the plugin jar "
+                    "and the wrapper",
     )
     parser.add_argument("--workspace", help="EDT workspace path for the headless auto-start")
     parser.add_argument("--edt-dir", help="EDT install dir (.../1cedt); auto-detected when omitted")
@@ -460,17 +479,7 @@ def main() -> int:
     parser.add_argument("--no-autostart", action="store_true", help="never launch a headless EDT")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     args = parser.parse_args()
-
-    if args.workspace:
-        os.environ["EDT_BRIDGE_WORKSPACE"] = args.workspace
-    if args.edt_dir:
-        os.environ["EDT_BRIDGE_EDT_DIR"] = args.edt_dir
-    if args.port:
-        os.environ["EDT_BRIDGE_PORT"] = str(args.port)
-    if args.start_timeout:
-        os.environ["EDT_BRIDGE_START_TIMEOUT"] = str(args.start_timeout)
-    if args.no_autostart:
-        os.environ["EDT_BRIDGE_AUTOSTART"] = "0"
+    apply_connection_options(args)
 
     backend = Backend()
     log(f"port {backend.port}, autostart {'on' if backend.autostart else 'off'}, "

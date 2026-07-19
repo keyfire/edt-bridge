@@ -32,6 +32,27 @@ pipx install edt-bridge-mcp        # или из чекаута: pipx install ./
 claude mcp add edt-bridge -- edt-bridge-mcp --workspace "D:\\путь\\к\\workspace-EDT"
 ```
 
+## Из командной строки
+
+Режим по умолчанию говорит по JSON-RPC через stdin/stdout – его ведёт MCP-клиент. Чтобы достучаться
+до того же моста руками или из скрипта, есть подкоманды: тот же перебор портов, тот же токен, тот же
+автозапуск headless.
+
+```bash
+edt-bridge-mcp tools                    # что отдаёт запущенный мост
+edt-bridge-mcp call edt_projects        # вызвать инструмент и напечатать результат
+edt-bridge-mcp call edt_metadata_details --json '{"projectName": "SM", "fqn": "CommonModule.Foo"}'
+edt-bridge-mcp call edt_create_extension --json-file args.json   # аргументы из файла UTF-8
+edt-bridge-mcp status                   # поднят ли мост (сам ничего не запускает)
+```
+
+`--raw` печатает JSON-результат вместо текста, который вернул инструмент. Аргументы берутся из
+`--json`, `--json-file` или `--stdin`; для аргументов с не-ASCII текстом на Windows надёжнее файл.
+
+Коды возврата: `0` – порядок, `1` – вызов не состоялся (моста нет, ошибка использования или
+транспорта), `2` – мост выполнил инструмент, и тот сообщил об ошибке. Так скрипт отличает "упало"
+от "не запускалось".
+
 ## Самообновление
 
 ```bash

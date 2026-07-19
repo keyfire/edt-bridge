@@ -11,6 +11,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugi
 ## [Unreleased]
 
 ### Fixed
+- The wrapper reported a stale version – `--version` and the MCP `serverInfo` said 0.3.1 through
+  two releases, because `__init__.py` carried a literal that `pyproject.toml` did not use. The
+  package version is now derived from that one attribute, so the two cannot drift again.
 - `edt_create_extension` produced a project no infobase would load – it failed with *"the load must
   not change the ownership of the main configuration object"*, on an empty extension as much as on a
   filled one. The root `Configuration` was built by the md factory, which yields a plain **full**
@@ -32,6 +35,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugi
   The previous failure was invisible until an infobase rejected the build, which is late.
 
 ### Added
+- `edt-bridge-mcp` can be driven from a shell: `call <tool>` runs one tool and prints what it
+  returned, `tools` lists what the bridge serves, `status` reports whether one is up. Until now the
+  wrapper only spoke JSON-RPC over stdin/stdout, so anything outside an MCP client meant
+  hand-writing a client against port 8770 – including checking a tool you had just built, since a
+  new tool stays invisible to an MCP client until the client restarts. Arguments come from
+  `--json`, `--json-file` or `--stdin`; `--raw` prints the JSON result. Exit codes separate "the
+  call could not be made" (1) from "the tool ran and failed" (2).
 - `edt_extension_properties` – read and set the properties an extension carries **inside an
   infobase** (safe mode, protection from dangerous actions, active, scope) through
   `ibcmd extension info|list|update`. These belong to the infobase registration, and nothing that
