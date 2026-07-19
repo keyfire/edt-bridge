@@ -79,6 +79,7 @@ itself – `edt_rename` stays unambiguous where a bare `rename` is dangerously g
 | `edt_picture_export` | A CommonPicture's content from its Picture.zip: the variant list + a recommended pick, and a chosen variant's bytes as base64. |
 | `edt_outgoing_structures` | **Best-effort companion to `edt_outgoing_calls`:** the top-level keys of the `Структура` passed to each qualified outgoing call. Optional `qualifier` prefix scopes to one layer. |
 | `edt_infobases` | EDT's registered infobases (name, uuid, connection string) and the open projects' infobase associations – discovery for `edt_update_infobase`. |
+| `edt_platform_installations` | The 1C:Enterprise platform installations EDT resolves from when dumping an `.epf`/`.erf` or creating an infobase – each registered entry resolved to a concrete install carrying a thick client (name, version mask, resolved version+build, path, arch, training flag), plus the full installs found on disk. |
 | `edt_platform_help` | The 1C:Enterprise **platform Syntax Helper** bundled with EDT (real API reference – objects, methods, properties, events, Ru+En): search by name, or read a page as text. Consult the actual API instead of guessing signatures. |
 
 ### Write
@@ -99,6 +100,9 @@ performs the change and serializes the `.mdo`.
 | `edt_create_extension` | Create a new configuration-**extension project** against a base project via `IExtensionProjectManager`, stamping name prefix and purpose (Customization·AddOn·Patch). A fresh detached extension Configuration is built and attached. |
 | `edt_create_external_object` | Create a new **external data processor project** (optionally linked to a base project) – the start of the "processor → .epf" cycle. |
 | `edt_dump_external_object` | Compile an external data processor / report into a binary **`.epf`/`.erf`** via EDT's own dumper (**needs a locally installed 1C:Enterprise platform** matching the project version). |
+| `edt_build_extension` | Build a configuration extension (**`.cfe`**) from an extension project, bypassing EDT's platform resolver: exports designer XML in-process (no thick client), then packages it with a full on-disk 1C install via `ibcmd`, in a throwaway temp infobase that is deleted afterwards. |
+| `edt_create_infobase` | Create an **empty file infobase** and register it in EDT's infobases list – falling back to a full install found on disk when EDT has none registered for the version; `platform` pins a version, `cf` loads an initial `.cf`. |
+| `edt_register_platform` | Register a full 1C:Enterprise platform install into EDT so its own engine (`edt_dump_external_object`, `edt_update_infobase`) can use it – for when only thin-client installs are registered. |
 | `edt_update_infobase` | Update an infobase's configuration **from an EDT project** (configuration or extension) via EDT's synchronization engine; db-structure changes auto-confirmed, a conflict aborts. |
 | `edt_delete_object` | Delete an object or member and **cascade removal of every reference in metadata AND BSL**; removes the `.mdo` and updates the Configuration (`force` required). |
 

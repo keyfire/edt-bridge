@@ -42,6 +42,25 @@ from . import __version__
 PROTOCOL_FALLBACK = "2024-11-05"
 
 
+def force_utf8_streams() -> None:
+    """Pin the standard streams to UTF-8 – MCP stdio frames are UTF-8 by spec.
+
+    Without this, Windows opens them with the ANSI code page and a single character the
+    code page cannot represent (e.g. the "→" in a tool description, under cp1251) aborts
+    the whole frame – `tools/list` then fails and the client registers no tools at all.
+    Input and diagnostics replace undecodable bytes rather than raise: a mangled request
+    line is already handled as non-JSON, and a log message must never kill the process.
+    """
+    for stream, errors in ((sys.stdin, "replace"), (sys.stdout, None), (sys.stderr, "replace")):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:  # not a TextIOWrapper (redirected in tests, embedded host)
+            continue
+        if errors is None:
+            reconfigure(encoding="utf-8")
+        else:
+            reconfigure(encoding="utf-8", errors=errors)
+
+
 def log(message: str) -> None:
     """Diagnostics go to stderr – stdout carries only JSON-RPC frames."""
     print(f"[edt-bridge-mcp] {message}", file=sys.stderr, flush=True)
@@ -424,6 +443,7 @@ class StdioServer:
 
 
 def main() -> int:
+    force_utf8_streams()
     if len(sys.argv) > 1 and sys.argv[1] == "self-update":
         from . import update
         return update.run(sys.argv[2:])

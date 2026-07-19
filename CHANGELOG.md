@@ -10,6 +10,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugi
 
 ## [Unreleased]
 
+## [0.3.1] – 2026-07-19
+
+### Fixed
+- The stdio wrapper now pins its standard streams to UTF-8. On Windows they defaulted to the ANSI
+  code page, so the "→" in the `edt_modify_attribute` description aborted `tools/list` with a
+  `charmap` encoding error and the client ended up registering no tools at all. Cyrillic arguments
+  on the way in were exposed to the same defect.
+- The README tool tables were missing the four tools added in 0.3.0 (`edt_platform_installations`,
+  `edt_register_platform`, `edt_create_infobase`, `edt_build_extension`); they are listed now.
+
 ## [0.3.0] – 2026-07-19
 
 ### Added
