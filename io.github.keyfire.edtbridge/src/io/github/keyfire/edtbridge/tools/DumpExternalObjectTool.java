@@ -46,6 +46,9 @@ public final class DumpExternalObjectTool {
                 + "project (usually equals the project name)"));
         props.add("kind", strProp("processor (default) or report"));
         props.add("targetPath", strProp("Absolute path of the .epf/.erf file to write"));
+        props.add("logPath", strProp("Where to write the platform build log. Optional - defaults to "
+                + "<targetPath>.log, next to the artefact. Only the on-disk build route produces a log; "
+                + "read it when a build fails, that is where the platform reports why."));
         props.add("apply", boolProp("false (default) = dry-run: resolve the object and validate that "
                 + "dump generation is available (local 1C platform). true = write the file."));
 
@@ -86,7 +89,8 @@ public final class DumpExternalObjectTool {
         boolean apply = args.has("apply") && !args.get("apply").isJsonNull() && args.get("apply").getAsBoolean();
         try {
             MetadataWriteGateway.DumpExternalObjectResult res =
-                    gateway.dumpExternalObject(projectName, objectName, kind, targetPath, apply);
+                    gateway.dumpExternalObject(projectName, objectName, kind, targetPath,
+                            getStr(args, "logPath"), apply);
             JsonObject o = new JsonObject();
             o.addProperty("ok", res.ok);
             o.addProperty("applied", res.applied);
@@ -95,6 +99,12 @@ public final class DumpExternalObjectTool {
                 o.addProperty("fqn", res.fqn);
             }
             o.addProperty("targetPath", res.targetPath);
+            if (res.logPath != null) {
+                o.addProperty("logPath", res.logPath);
+            }
+            if (res.method != null) {
+                o.addProperty("method", res.method);
+            }
             if (res.validation != null && !res.validation.isEmpty()) {
                 o.addProperty("validation", res.validation);
             }

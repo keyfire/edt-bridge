@@ -217,4 +217,263 @@ public final class ProjectGateway {
         }
         return out;
     }
+
+    /** Outcome of {@link #cleanProject}. */
+    public static final class CleanProjectResult {
+        public boolean ok;
+        public boolean applied;
+        public String name;
+        public boolean exists;
+        public boolean open;
+        public boolean rebuild;
+        public boolean autoBuilding;
+        public int problemsBefore = -1;
+        public int problemsAfter = -1;
+        public boolean settled;
+        public long elapsedMs;
+        public String plan;
+        public String warning;
+        public String message;
+    }
+
+    /**
+     * Discard a project's build results and let them be recomputed - the programmatic equivalent of
+     * EDT's "Clean" dialog. EDT hangs its checks off the build, so this is what makes validation run
+     * again: a marker can otherwise survive long after the code that caused it was fixed, and reading
+     * a stale marker is worse than reading none.
+     *
+     * <p>After building, marker counts are polled until they stop changing, so the caller gets numbers
+     * that have settled rather than a snapshot taken mid-validation.
+     *
+     * @param projectName  project to clean
+     * @param rebuild      also run a full build afterwards (what the Clean dialog does when auto-build
+     *                     is off); {@code false} cleans only
+     * @param waitSeconds  how long to wait for validation to settle (default 120)
+     * @param apply        {@code false} reports the plan and the current problem count; {@code true}
+     *                     performs the clean
+     */
+    public CleanProjectResult cleanProject(String projectName, boolean rebuild, int waitSeconds,
+            boolean apply) {
+        CleanProjectResult r = new CleanProjectResult();
+        r.name = projectName;
+        r.rebuild = rebuild;
+        if (projectName == null || projectName.isBlank()) {
+            r.message = "projectName is required";
+            return r;
+        }
+        IProject p = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+        r.exists = p.exists();
+        r.open = r.exists && p.isOpen();
+        if (!r.exists) {
+            r.message = "project not found in the workspace: " + projectName;
+            return r;
+        }
+        if (!r.open) {
+            r.message = "project is closed: " + projectName;
+            return r;
+        }
+        r.autoBuilding = ResourcesPlugin.getWorkspace().isAutoBuilding();
+        r.problemsBefore = countProblems(projectName);
+        r.ok = true;
+        r.plan = "Clean project \"" + projectName + "\""
+                + (rebuild ? " and run a full build" : "")
+                + " (auto-build is " + (r.autoBuilding ? "on" : "off")
+                + "; " + r.problemsBefore + " problem(s) reported now)";
+        if (!rebuild && !r.autoBuilding) {
+            r.warning = "auto-build is off and rebuild=false - the project would be left unbuilt, so "
+                    + "validation would report nothing at all. Pass rebuild=true.";
+        }
+        if (!apply) {
+            return r;
+        }
+
+        long started = System.currentTimeMillis();
+        org.eclipse.core.runtime.IProgressMonitor monitor =
+                new org.eclipse.core.runtime.NullProgressMonitor();
+        try {
+            p.build(org.eclipse.core.resources.IncrementalProjectBuilder.CLEAN_BUILD, monitor);
+            if (rebuild) {
+                p.build(org.eclipse.core.resources.IncrementalProjectBuilder.FULL_BUILD, monitor);
+            }
+            org.eclipse.core.runtime.jobs.Job.getJobManager()
+                    .join(ResourcesPlugin.FAMILY_MANUAL_BUILD, monitor);
+            org.eclipse.core.runtime.jobs.Job.getJobManager()
+                    .join(ResourcesPlugin.FAMILY_AUTO_BUILD, monitor);
+        } catch (CoreException | InterruptedException | RuntimeException e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            r.message = "clean failed: " + GatewaySupport.describeCause(e);
+            r.elapsedMs = System.currentTimeMillis() - started;
+            return r;
+        }
+
+        // Validation keeps running after the build returns, so wait for the count to stop moving
+        // rather than reporting a number caught mid-flight.
+        int limit = (waitSeconds > 0 ? waitSeconds : 120) * 1000;
+        int previous = Integer.MIN_VALUE;
+        int stable = 0;
+        while (System.currentTimeMillis() - started < limit) {
+            int now = countProblems(projectName);
+            stable = (now == previous) ? stable + 1 : 0;
+            previous = now;
+            if (stable >= 3) {
+                r.settled = true;
+                break;
+            }
+            try {
+                Thread.sleep(2000L);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        r.problemsAfter = previous;
+        r.elapsedMs = System.currentTimeMillis() - started;
+        r.applied = true;
+        r.message = "cleaned " + projectName + (rebuild ? " and rebuilt" : "")
+                + "; problems " + r.problemsBefore + " -> " + r.problemsAfter
+                + (r.settled ? " (settled)" : " - WARNING: still changing when the wait ran out, "
+                        + "re-read edt_project_errors in a moment");
+        return r;
+    }
+
+    /** Problem count for a project, or -1 when it cannot be read. */
+    private int countProblems(String projectName) {
+        try {
+            return getProjectErrors(projectName).size();
+        } catch (CoreException | RuntimeException e) {
+            return -1;
+        }
+    }
+
+    /** Outcome of {@link #deleteProject}. */
+    public static final class DeleteProjectResult {
+        public boolean ok;
+        public boolean applied;
+        public String name;
+        public boolean exists;
+        public boolean open;
+        public boolean contentOnDisk;
+        public boolean deleteContent;
+        public String location;
+        public int fileCount = -1;
+        public String plan;
+        public String warning;
+        public String message;
+    }
+
+    /**
+     * Remove a project from the workspace, completing the create/work/delete cycle that
+     * {@code edt_create_extension} and {@code edt_create_external_object} start.
+     *
+     * <p>Deletion goes through the Eclipse workspace rather than the file system on purpose: the
+     * workspace updates its own resource tree, so the project does not come back from the tree
+     * snapshot on the next start. Removing a project's folder by hand leaves exactly that ghost -
+     * a registered, contentless project whose name stays taken.
+     *
+     * <p>Destructive, so it follows the same rule as the other breaking tools: dry-run by default and
+     * {@code force} required for the actual delete.
+     *
+     * @param projectName   project to remove
+     * @param deleteContent also erase its files from disk; {@code false} unregisters and leaves them
+     * @param force         explicit override, required for {@code apply}
+     * @param apply         {@code false} reports the plan; {@code true} performs the delete
+     */
+    public DeleteProjectResult deleteProject(String projectName, boolean deleteContent, boolean force,
+            boolean apply) {
+        DeleteProjectResult r = new DeleteProjectResult();
+        r.name = projectName;
+        r.deleteContent = deleteContent;
+        if (projectName == null || projectName.isBlank()) {
+            r.message = "projectName is required";
+            return r;
+        }
+        IProject p = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+        r.exists = p.exists();
+        if (!r.exists) {
+            r.message = "project not found in the workspace: " + projectName;
+            return r;
+        }
+        r.open = p.isOpen();
+        java.io.File dir = (p.getLocation() == null) ? null : p.getLocation().toFile();
+        r.location = (dir == null) ? null : dir.toString();
+        r.contentOnDisk = dir != null && dir.isDirectory();
+        if (r.contentOnDisk) {
+            r.fileCount = countFiles(dir);
+        }
+        r.ok = true;
+        r.plan = "Remove project \"" + projectName + "\" from the workspace"
+                + (deleteContent
+                        ? " AND delete its files from disk"
+                                + (r.fileCount >= 0 ? " (" + r.fileCount + " file(s))" : "")
+                        : " (files on disk are kept)")
+                + (r.location != null ? " [" + r.location + "]" : "");
+        if (!r.contentOnDisk) {
+            r.warning = "the project is registered but has no folder on disk - a ghost left by a manual "
+                    + "folder removal; deleting it here frees the name.";
+        } else if (deleteContent) {
+            r.warning = "deleting the content is irreversible - the files are erased, not moved to trash.";
+        }
+
+        if (!apply) {
+            return r;
+        }
+        if (!force) {
+            r.message = "deleting a project is irreversible - apply refused; pass force=true to perform it.";
+            return r;
+        }
+        try {
+            // force=true: delete even when the workspace is out of sync with disk, which is exactly
+            // the ghost case (registered project, missing folder).
+            p.delete(deleteContent, true, new org.eclipse.core.runtime.NullProgressMonitor());
+            // Persist the removal right away. The workspace keeps its resource tree in memory and only
+            // snapshots it periodically, so an EDT that is stopped hard before the next snapshot would
+            // replay the older tree on startup - and the project would come back as a ghost, which is
+            // exactly what this tool exists to avoid.
+            String persisted = snapshotWorkspace();
+            r.applied = true;
+            r.message = "removed project " + projectName
+                    + (deleteContent ? " and deleted its files" : " (files kept on disk)")
+                    + (persisted == null ? "" : " - WARNING: " + persisted);
+        } catch (CoreException e) {
+            r.applied = false;
+            r.message = "delete failed: " + GatewaySupport.describeCause(e);
+        }
+        return r;
+    }
+
+    /**
+     * Snapshot the workspace so structural changes survive a hard stop. Returns {@code null} on
+     * success, otherwise a short reason worth reporting alongside an otherwise successful delete.
+     */
+    private static String snapshotWorkspace() {
+        try {
+            ResourcesPlugin.getWorkspace().save(false, new org.eclipse.core.runtime.NullProgressMonitor());
+            return null;
+        } catch (CoreException | RuntimeException e) {
+            return "the workspace could not be snapshotted (" + GatewaySupport.describeCause(e)
+                    + "); the project may reappear if EDT is stopped hard before its next snapshot";
+        }
+    }
+
+    /** Files under a directory, counted recursively; -1 when it cannot be walked. */
+    private static int countFiles(java.io.File dir) {
+        java.io.File[] children = dir.listFiles();
+        if (children == null) {
+            return -1;
+        }
+        int total = 0;
+        for (java.io.File child : children) {
+            if (child.isDirectory()) {
+                int nested = countFiles(child);
+                if (nested > 0) {
+                    total += nested;
+                }
+            } else {
+                total++;
+            }
+        }
+        return total;
+    }
 }

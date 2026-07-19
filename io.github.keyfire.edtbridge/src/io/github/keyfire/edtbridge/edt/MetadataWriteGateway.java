@@ -51,7 +51,12 @@ import com._1c.g5.v8.dt.core.platform.IBmModelManager;
 import com._1c.g5.v8.dt.core.platform.IConfigurationProvider;
 import com._1c.g5.v8.dt.core.platform.IDtProject;
 import com._1c.g5.v8.dt.core.platform.IExtensionProjectManager;
+import com._1c.g5.v8.dt.core.platform.IExternalObjectProject;
 import com._1c.g5.v8.dt.core.platform.IExternalObjectProjectManager;
+import com._1c.g5.v8.dt.core.platform.IV8Project;
+import com._1c.g5.v8.dt.core.platform.IV8ProjectManager;
+import com._1c.g5.v8.dt.metadata.mdclass.Language;
+import com._1c.g5.v8.dt.metadata.mdclass.ScriptVariant;
 import com._1c.g5.v8.dt.platform.services.core.dump.IExternalObjectDumpSupport;
 import com._1c.g5.v8.dt.platform.services.core.dump.IExternalObjectDumper;
 import com._1c.g5.v8.dt.form.model.Form;
@@ -1576,7 +1581,9 @@ public final class MetadataWriteGateway {
         public Boolean nameAvailable;
         public String version;
         public String location;
+        public String scriptVariant;  // resolved built-in language variant (Russian / English)
         public String plan;
+        public String warning;
         public String message;
     }
 
@@ -1586,12 +1593,22 @@ public final class MetadataWriteGateway {
      * wizard). {@code baseProjectName} is optional: with it, the processor project is linked to that
      * configuration project (its runtime version and types context); without it, a standalone
      * processor project with the default runtime version. Dry-run by default.
+     *
+     * <p>{@code scriptVariantName} picks the built-in language ("Russian" / "English"). EDT defaults a
+     * standalone project to English, which names generated members {@code Object} instead of
+     * {@code Объект} – pass the variant explicitly for a Russian project.
      */
     public CreateExternalObjectResult createExternalObject(String name, String baseProjectName,
-            boolean apply) {
+            String scriptVariantName, boolean apply) {
         CreateExternalObjectResult r = new CreateExternalObjectResult();
         r.name = name;
         r.baseProject = (baseProjectName == null || baseProjectName.isBlank()) ? null : baseProjectName;
+        ScriptVariant variant = parseScriptVariant(scriptVariantName);
+        if (scriptVariantName != null && !scriptVariantName.isBlank() && variant == null) {
+            r.message = "unknown scriptVariant: \"" + scriptVariantName + "\" (use Russian or English)";
+            return r;
+        }
+        r.scriptVariant = (variant == null) ? null : variant.getName();
 
         if (name == null || name.isBlank() || !IDENT.matcher(name).matches()) {
             r.message = "name is not a valid identifier: \"" + name
@@ -1613,7 +1630,13 @@ public final class MetadataWriteGateway {
         r.ok = Boolean.TRUE.equals(r.nameAvailable);
         r.plan = "Create external data processor project \"" + name + "\""
                 + (r.baseProject != null ? " for configuration project " + r.baseProject : " (standalone)")
-                + " [" + r.version + "]";
+                + " [" + r.version + "]"
+                + (r.scriptVariant != null ? " script variant " + r.scriptVariant : "");
+        if (variant == null && r.baseProject == null) {
+            r.warning = "no scriptVariant given – EDT defaults a standalone project to English, so "
+                    + "generated members are named Object rather than Объект. Pass scriptVariant=Russian "
+                    + "for a Russian project.";
+        }
         if (Boolean.FALSE.equals(r.nameAvailable)) {
             r.message = "a project with this name already exists in the workspace: " + name;
         }
@@ -1648,13 +1671,86 @@ public final class MetadataWriteGateway {
             r.applied = true;
             r.location = (created != null && created.getLocation() != null)
                     ? created.getLocation().toOSString() : null;
+            String variantProblem = (variant == null) ? null
+                    : applyScriptVariant(created, factory, eom, version, variant);
+            if (variantProblem != null) {
+                r.warning = "project created, but the script variant stayed at EDT's default: "
+                        + variantProblem;
+            }
             r.message = "created external data processor project " + name
+                    + (variant != null && variantProblem == null ? " [" + variant.getName() + "]" : "")
                     + " (the project model loads in background – poll edt_projects)";
         } catch (CoreException | RuntimeException ex) {
             r.applied = false;
             r.message = "create failed: " + GatewaySupport.describeCause(ex);
         }
         return r;
+    }
+
+    /** {@code Russian} / {@code English} (case-insensitive), or {@code null} when unset or unknown. */
+    private static ScriptVariant parseScriptVariant(String name) {
+        if (name == null || name.isBlank()) {
+            return null;
+        }
+        String key = name.trim();
+        if (key.equalsIgnoreCase("Russian") || key.equalsIgnoreCase("Русский")
+                || key.equalsIgnoreCase("ru")) {
+            return ScriptVariant.RUSSIAN;
+        }
+        if (key.equalsIgnoreCase("English") || key.equalsIgnoreCase("Английский")
+                || key.equalsIgnoreCase("en")) {
+            return ScriptVariant.ENGLISH;
+        }
+        return null;
+    }
+
+    /**
+     * Switch a freshly created external-object project to the given built-in language variant and give
+     * it the matching interface language, through EDT's own project manager. Returns {@code null} on
+     * success, otherwise a short reason.
+     *
+     * <p>{@code create()} returns before the project model is loaded, so the {@link IV8Project} is
+     * polled for a bounded while rather than read once.
+     */
+    private String applyScriptVariant(IProject created, IModelObjectFactory factory,
+            IExternalObjectProjectManager eom, Version version, ScriptVariant variant) {
+        if (created == null) {
+            return "the created project handle is null";
+        }
+        IV8ProjectManager pm = ServiceAccess.get(IV8ProjectManager.class);
+        if (pm == null) {
+            return "IV8ProjectManager unavailable";
+        }
+        IExternalObjectProject target = null;
+        for (int attempt = 0; attempt < 60 && target == null; attempt++) {
+            IV8Project v8 = pm.getProject(created);
+            if (v8 instanceof IExternalObjectProject) {
+                target = (IExternalObjectProject) v8;
+                break;
+            }
+            try {
+                Thread.sleep(500L);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                return "interrupted while waiting for the project model";
+            }
+        }
+        if (target == null) {
+            return "the project model did not load within 30 s";
+        }
+        IProgressMonitor monitor = new NullProgressMonitor();
+        eom.setScriptVariant(target, variant, monitor);
+        EObject langObject = factory.create(
+                (EClass) MdClassPackage.eINSTANCE.getEClassifier("Language"), version);
+        if (langObject instanceof Language) {
+            boolean russian = variant == ScriptVariant.RUSSIAN;
+            Language language = (Language) langObject;
+            language.setName(russian ? "Русский" : "English");
+            language.setLanguageCode(russian ? "ru" : "en");
+            language.setUuid(UUID.randomUUID());
+            eom.setLanguages(target, List.of(language), monitor);
+        }
+        return null;
     }
 
     /** Result of {@link #dumpExternalObject}. */
@@ -1665,6 +1761,8 @@ public final class MetadataWriteGateway {
         public String fqn;            // resolved top-object FQN (ExternalDataProcessor.X / ExternalReport.X)
         public String targetPath;
         public String validation;     // validateDumpGeneration status message (empty = OK)
+        public String method;         // edt | disk:<version> - which route built the file
+        public String logPath;        // where the platform build log was written (disk route only)
         public String plan;
         public String message;
     }
@@ -1676,10 +1774,12 @@ public final class MetadataWriteGateway {
      * matching the project version ({@code validateDumpGeneration} reports that). Dry-run by default.
      */
     public DumpExternalObjectResult dumpExternalObject(String projectName, String objectName,
-            String kind, String targetPath, boolean apply) {
+            String kind, String targetPath, String logPath, boolean apply) {
         DumpExternalObjectResult r = new DumpExternalObjectResult();
         r.project = projectName;
         r.targetPath = targetPath;
+        // Default the build log to a sibling of the artefact, so it is always somewhere findable.
+        r.logPath = (logPath == null || logPath.isBlank()) ? targetPath + ".log" : logPath;
         IProject p = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName == null ? "" : projectName);
         if (projectName == null || !p.exists() || !p.isOpen()) {
             r.message = "project not found or closed: " + projectName;
@@ -1712,11 +1812,23 @@ public final class MetadataWriteGateway {
             IStatus st = support.validateDumpGeneration(p);
             r.validation = (st == null || st.isOK()) ? "" : st.getMessage();
         }
-        r.ok = (r.validation == null || r.validation.isEmpty());
-        r.plan = "Dump " + fqn + " to " + targetPath;
+        // validateDumpGeneration reports OK even when EDT resolves no thick client, and the native
+        // dumper then dies on apply - so check the platform ourselves and say which route will be
+        // taken, instead of promising a dump that cannot happen.
+        final Version version = GatewaySupport.projectVersion(p);
+        PlatformGateway platforms = new PlatformGateway();
+        boolean nativeAvailable = platforms.edtResolvesThickClient();
+        String diskPlatform = nativeAvailable ? null : platforms.diskPlatformFor(String.valueOf(version));
+        r.method = nativeAvailable ? "edt" : (diskPlatform != null ? "disk:" + diskPlatform : null);
+        r.ok = nativeAvailable || diskPlatform != null;
+        r.plan = "Dump " + fqn + " to " + targetPath
+                + (nativeAvailable ? " via EDT's dumper"
+                        : diskPlatform != null ? " via the on-disk platform " + diskPlatform
+                                + " (EDT resolves no thick client for " + version + ")" : "");
         if (!r.ok) {
-            r.message = "dump generation is not available: " + r.validation
-                    + " (a local 1C platform matching the project version is required)";
+            r.message = "no full (thick-client) 1C:Enterprise install is available for " + version
+                    + " - neither EDT's resolver nor a scan of the disk found one"
+                    + (r.validation == null || r.validation.isEmpty() ? "" : "; EDT reports: " + r.validation);
         }
         if (!apply) {
             return r;
@@ -1726,13 +1838,29 @@ public final class MetadataWriteGateway {
                     + " – apply refused (nothing dumped).";
             return r;
         }
+        java.nio.file.Path target = java.nio.file.Path.of(targetPath);
+        if (!nativeAvailable) {
+            // EDT cannot resolve a thick client for this line, so go straight to the disk platform
+            // rather than provoking the MatchingRuntimeNotFound we already know is coming.
+            StringBuilder method = new StringBuilder();
+            java.nio.file.Path log = java.nio.file.Path.of(r.logPath);
+            String problem = platforms.dumpExternalObjectViaDisk(found[0], target, version, log, method);
+            r.applied = problem == null && java.nio.file.Files.exists(target);
+            r.method = r.applied ? method.toString() : r.method;
+            r.message = r.applied
+                    ? "dumped " + fqn + " to " + target + " using the on-disk platform ("
+                            + method + "; EDT resolves no thick client for " + version
+                            + "); build log: " + r.logPath
+                    : "dump failed via the on-disk platform: " + problem
+                            + " - build log: " + r.logPath;
+            return r;
+        }
         IExternalObjectDumper dumper = ServiceAccess.get(IExternalObjectDumper.class);
         if (dumper == null) {
             r.message = "IExternalObjectDumper service unavailable";
             return r;
         }
         try {
-            java.nio.file.Path target = java.nio.file.Path.of(targetPath);
             if (target.getParent() != null) {
                 java.nio.file.Files.createDirectories(target.getParent());
             }
@@ -1796,6 +1924,26 @@ public final class MetadataWriteGateway {
      * target object's produced type via {@link MdProducedTypesUtil} (serializes as CatalogRef.X /
      * DefinedType.X / ...). Runs inside a BM transaction (it resolves reference targets by FQN).
      */
+    /**
+     * Parse a type spec ("Строка(150)", "Число(15, 2)", "СправочникСсылка.X", or a comma-separated
+     * composite) into a {@link TypeDescription}, or {@code null} when the spec does not parse. The
+     * single entry point other gateways in this package use, so the type grammar stays in one place.
+     */
+    TypeDescription typeDescriptionFor(IBmTransaction tx, String spec, Version version,
+            boolean allowPlatformTypes) {
+        ParsedType pt = parseType(spec);
+        if (!pt.valid && allowPlatformTypes && spec != null && IDENT.matcher(spec.trim()).matches()) {
+            // Form attributes accept platform types the metadata grammar has no business allowing -
+            // ТаблицаЗначений, СписокЗначений, ДеревоЗначений and friends. Hand the bare name to the
+            // platform type provider, which resolves it (or fails with a readable message).
+            pt = new ParsedType();
+            pt.valid = true;
+            pt.platformCode = spec.trim();
+            pt.display = spec.trim();
+        }
+        return pt.valid ? buildTypeDescription(tx, pt, version) : null;
+    }
+
     private TypeDescription buildTypeDescription(IBmTransaction tx, ParsedType pt, Version version) {
         TypeDescription td = McoreFactory.eINSTANCE.createTypeDescription();
         for (ParsedType part : partsOf(pt)) {
@@ -1853,6 +2001,11 @@ public final class MetadataWriteGateway {
             throw new IllegalStateException("createProxy returned null for '" + matched + "'");
         }
         td.getTypes().add(primitive);
+        if (part.kind == null) {
+            // A bare platform type resolved by name (ТаблицаЗначений, СписокЗначений, ...) - it has no
+            // qualifiers to apply, and switching on a null kind would blow up.
+            return;
+        }
         switch (part.kind) {
             case STRING:
                 if (part.length > 0) {

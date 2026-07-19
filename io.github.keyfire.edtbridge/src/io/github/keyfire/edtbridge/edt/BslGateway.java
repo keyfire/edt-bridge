@@ -405,7 +405,11 @@ public final class BslGateway {
             Map.entry("businessprocess", "BusinessProcesses"), Map.entry("task", "Tasks"),
             Map.entry("exchangeplan", "ExchangePlans"), Map.entry("constant", "Constants"),
             Map.entry("commonmodule", "CommonModules"), Map.entry("commonform", "CommonForms"),
-            Map.entry("commoncommand", "CommonCommands"));
+            Map.entry("commoncommand", "CommonCommands"),
+            // External objects live in their own project, but the layout under src/ is the same, so
+            // their modules and forms resolve by FQN like any other owner.
+            Map.entry("externaldataprocessor", "ExternalDataProcessors"),
+            Map.entry("externalreport", "ExternalReports"));
 
     /** A procedure/function in a module: signature parts. */
     public static final class BslMethod {

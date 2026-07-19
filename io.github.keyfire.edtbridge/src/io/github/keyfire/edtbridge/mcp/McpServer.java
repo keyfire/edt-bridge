@@ -27,8 +27,22 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
+import org.osgi.framework.Bundle;
+import org.osgi.framework.FrameworkUtil;
+import org.osgi.framework.Version;
+
 import io.github.keyfire.edtbridge.edt.ProjectGateway;
 import io.github.keyfire.edtbridge.tools.AddAttributeTool;
+import io.github.keyfire.edtbridge.tools.AddFormAttributeTool;
+import io.github.keyfire.edtbridge.tools.AddFormCommandTool;
+import io.github.keyfire.edtbridge.tools.AddFormItemTool;
+import io.github.keyfire.edtbridge.tools.ModifyFormItemTool;
+import io.github.keyfire.edtbridge.tools.RemoveFormItemTool;
+import io.github.keyfire.edtbridge.tools.AddFormTool;
+import io.github.keyfire.edtbridge.tools.ModifyFormAttributeTool;
+import io.github.keyfire.edtbridge.tools.ModifyFormCommandTool;
+import io.github.keyfire.edtbridge.tools.RemoveFormAttributeTool;
+import io.github.keyfire.edtbridge.tools.RemoveFormCommandTool;
 import io.github.keyfire.edtbridge.tools.AddMethodTool;
 import io.github.keyfire.edtbridge.tools.RemoveAttributeTool;
 import io.github.keyfire.edtbridge.tools.ModifyAttributeTool;
@@ -46,6 +60,8 @@ import io.github.keyfire.edtbridge.tools.BuildExtensionTool;
 import io.github.keyfire.edtbridge.tools.UpdateInfobaseTool;
 import io.github.keyfire.edtbridge.tools.DeleteMethodTool;
 import io.github.keyfire.edtbridge.tools.DeleteObjectTool;
+import io.github.keyfire.edtbridge.tools.CleanProjectTool;
+import io.github.keyfire.edtbridge.tools.DeleteProjectTool;
 import io.github.keyfire.edtbridge.tools.FindReferencesTool;
 import io.github.keyfire.edtbridge.tools.FormRenderTool;
 import io.github.keyfire.edtbridge.tools.FormStructureTool;
@@ -85,11 +101,29 @@ public final class McpServer {
     }
 
     static final String SERVER_NAME = "edt-bridge";
-    static final String SERVER_VERSION = "0.0.1";
+    static final String SERVER_VERSION = resolveVersion();
     // Default MCP protocol revision when the client doesn't send one. The server actually echoes the
     // client's requested protocolVersion (see initializeResult) – we implement the stable base
     // JSON-RPC tools subset, which is compatible across revisions. Latest revision as of 2025-11-25.
     static final String PROTOCOL_VERSION = "2025-06-18";
+
+    /**
+     * The plugin's own version, taken from the bundle manifest – so a release bumps it in one place and
+     * the dashboard and the MCP handshake cannot drift apart. The build qualifier is dropped
+     * (0.3.1.202607190323 -> 0.3.1). Outside OSGi there is no bundle, hence the fallback.
+     */
+    private static String resolveVersion() {
+        try {
+            Bundle self = FrameworkUtil.getBundle(McpServer.class);
+            if (self != null) {
+                Version v = self.getVersion();
+                return v.getMajor() + "." + v.getMinor() + "." + v.getMicro();
+            }
+        } catch (RuntimeException ignored) {
+            // no framework context – fall through to the placeholder
+        }
+        return "0.0.0";
+    }
 
     private static final String LANDING_PAGE = """
 <!doctype html>
@@ -210,7 +244,8 @@ function el(tag,cls,txt){var e=document.createElement(tag);if(cls){e.className=c
 function renderStatus(){var g=document.getElementById('status');g.textContent='';if(!STATUS){g.appendChild(el('div','kv',t('loading')));return;}var s=STATUS;function kv(k,v,wide){var d=el('div','kv'+(wide?' wide':''));d.appendChild(el('div','k',k));d.appendChild(el('div','v',v));g.appendChild(d);}kv(t('server'),s.name+' '+s.version);kv(t('protocol'),s.protocolVersion);kv(t('endpoint'),'127.0.0.1:'+s.port+'/mcp');kv(t('token'),s.tokenRequired?t('required'):t('none'));kv(t('projects'),(s.openProjects&&s.openProjects.length)?s.openProjects.join(', '):t('noproj'),true);}
 function loadStatus(){fetch('/status').then(function(r){return r.json();}).then(function(s){STATUS=s;renderStatus();if(s.tokenRequired){var bar=document.getElementById('tokbar');bar.className='panel';bar.textContent='';bar.appendChild(el('span',null,t('needtok')));var inp=el('input','tok');inp.oninput=function(){TOKEN=inp.value.trim();};bar.appendChild(inp);}}).catch(function(e){STATUS=null;document.getElementById('status').textContent='status error: '+e;});}
 function template(td){var req=(td.inputSchema&&td.inputSchema.required)||[];var o={};req.forEach(function(k){o[k]='';});return JSON.stringify(o,null,2);}
-var WRITE_TOOLS=['edt_add_attribute','edt_modify_attribute','edt_remove_attribute','edt_rename','edt_create_object','edt_delete_object','edt_add_method','edt_delete_method'];
+// Keep in sync with the token-gated write tools - anything missing here is shown as a read tool.
+var WRITE_TOOLS=['edt_add_attribute','edt_modify_attribute','edt_remove_attribute','edt_rename','edt_create_object','edt_delete_object','edt_add_method','edt_delete_method','edt_create_extension','edt_create_external_object','edt_dump_external_object','edt_build_extension','edt_create_infobase','edt_register_platform','edt_update_infobase','edt_add_form'];
 function groupOf(n){if(n.indexOf('edt_debug_')===0||n==='edt_evaluate'){return 'debug';}if(WRITE_TOOLS.indexOf(n)>=0){return 'write';}return 'read';}
 function grpCollapsed(id){try{var v=localStorage.getItem('edtbridge-grp-'+id);return v===null?true:v==='1';}catch(e){return true;}}
 function setGrpCollapsed(id,c){try{localStorage.setItem('edtbridge-grp-'+id,c?'1':'0');}catch(e){}}
@@ -244,6 +279,16 @@ applyI18n();loadStatus();loadTools();
     private final FormStructureTool formStructure = new FormStructureTool();
     private final FormRenderTool formRender = new FormRenderTool();
     private final AddAttributeTool addAttribute = new AddAttributeTool();
+    private final AddFormTool addForm = new AddFormTool();
+    private final AddFormAttributeTool addFormAttribute = new AddFormAttributeTool();
+    private final ModifyFormAttributeTool modifyFormAttribute = new ModifyFormAttributeTool();
+    private final RemoveFormAttributeTool removeFormAttribute = new RemoveFormAttributeTool();
+    private final AddFormCommandTool addFormCommand = new AddFormCommandTool();
+    private final ModifyFormCommandTool modifyFormCommand = new ModifyFormCommandTool();
+    private final RemoveFormCommandTool removeFormCommand = new RemoveFormCommandTool();
+    private final AddFormItemTool addFormItem = new AddFormItemTool();
+    private final ModifyFormItemTool modifyFormItem = new ModifyFormItemTool();
+    private final RemoveFormItemTool removeFormItem = new RemoveFormItemTool();
     private final AddMethodTool addMethod = new AddMethodTool();
     private final DeleteMethodTool deleteMethod = new DeleteMethodTool();
     private final RemoveAttributeTool removeAttribute = new RemoveAttributeTool();
@@ -261,6 +306,8 @@ applyI18n();loadStatus();loadTools();
     private final BuildExtensionTool buildExtension = new BuildExtensionTool();
     private final PlatformHelpTool platformHelp = new PlatformHelpTool();
     private final DeleteObjectTool deleteObject = new DeleteObjectTool();
+    private final DeleteProjectTool deleteProject = new DeleteProjectTool();
+    private final CleanProjectTool cleanProject = new CleanProjectTool();
     private final DebugAttachTool debugAttach = new DebugAttachTool();
     private final DebugDetachTool debugDetach = new DebugDetachTool();
     private final DebugInspectTool debugInspect = new DebugInspectTool();
@@ -515,6 +562,16 @@ applyI18n();loadStatus();loadTools();
         tools.add(formStructure.descriptor());
         tools.add(formRender.descriptor());
         tools.add(addAttribute.descriptor());
+        tools.add(addForm.descriptor());
+        tools.add(addFormAttribute.descriptor());
+        tools.add(modifyFormAttribute.descriptor());
+        tools.add(removeFormAttribute.descriptor());
+        tools.add(addFormCommand.descriptor());
+        tools.add(modifyFormCommand.descriptor());
+        tools.add(removeFormCommand.descriptor());
+        tools.add(addFormItem.descriptor());
+        tools.add(modifyFormItem.descriptor());
+        tools.add(removeFormItem.descriptor());
         tools.add(addMethod.descriptor());
         tools.add(deleteMethod.descriptor());
         tools.add(removeAttribute.descriptor());
@@ -532,6 +589,8 @@ applyI18n();loadStatus();loadTools();
         tools.add(buildExtension.descriptor());
         tools.add(platformHelp.descriptor());
         tools.add(deleteObject.descriptor());
+        tools.add(deleteProject.descriptor());
+        tools.add(cleanProject.descriptor());
         tools.add(debugAttach.descriptor());
         tools.add(debugDetach.descriptor());
         tools.add(debugInspect.descriptor());
@@ -592,6 +651,46 @@ applyI18n();loadStatus();loadTools();
         if (addAttribute.name().equals(name)) {
             JsonObject denied = writeTokenGate(addAttribute.isWrite(), name);
             return denied != null ? denied : addAttribute.call(args);
+        }
+        if (addForm.name().equals(name)) {
+            JsonObject denied = writeTokenGate(addForm.isWrite(), name);
+            return denied != null ? denied : addForm.call(args);
+        }
+        if (addFormAttribute.name().equals(name)) {
+            JsonObject denied = writeTokenGate(addFormAttribute.isWrite(), name);
+            return denied != null ? denied : addFormAttribute.call(args);
+        }
+        if (modifyFormAttribute.name().equals(name)) {
+            JsonObject denied = writeTokenGate(modifyFormAttribute.isWrite(), name);
+            return denied != null ? denied : modifyFormAttribute.call(args);
+        }
+        if (removeFormAttribute.name().equals(name)) {
+            JsonObject denied = writeTokenGate(removeFormAttribute.isWrite(), name);
+            return denied != null ? denied : removeFormAttribute.call(args);
+        }
+        if (addFormCommand.name().equals(name)) {
+            JsonObject denied = writeTokenGate(addFormCommand.isWrite(), name);
+            return denied != null ? denied : addFormCommand.call(args);
+        }
+        if (modifyFormCommand.name().equals(name)) {
+            JsonObject denied = writeTokenGate(modifyFormCommand.isWrite(), name);
+            return denied != null ? denied : modifyFormCommand.call(args);
+        }
+        if (removeFormCommand.name().equals(name)) {
+            JsonObject denied = writeTokenGate(removeFormCommand.isWrite(), name);
+            return denied != null ? denied : removeFormCommand.call(args);
+        }
+        if (addFormItem.name().equals(name)) {
+            JsonObject denied = writeTokenGate(addFormItem.isWrite(), name);
+            return denied != null ? denied : addFormItem.call(args);
+        }
+        if (modifyFormItem.name().equals(name)) {
+            JsonObject denied = writeTokenGate(modifyFormItem.isWrite(), name);
+            return denied != null ? denied : modifyFormItem.call(args);
+        }
+        if (removeFormItem.name().equals(name)) {
+            JsonObject denied = writeTokenGate(removeFormItem.isWrite(), name);
+            return denied != null ? denied : removeFormItem.call(args);
         }
         if (addMethod.name().equals(name)) {
             JsonObject denied = writeTokenGate(addMethod.isWrite(), name);
@@ -657,6 +756,14 @@ applyI18n();loadStatus();loadTools();
         if (deleteObject.name().equals(name)) {
             JsonObject denied = writeTokenGate(deleteObject.isWrite(), name);
             return denied != null ? denied : deleteObject.call(args);
+        }
+        if (deleteProject.name().equals(name)) {
+            JsonObject denied = writeTokenGate(deleteProject.isWrite(), name);
+            return denied != null ? denied : deleteProject.call(args);
+        }
+        if (cleanProject.name().equals(name)) {
+            JsonObject denied = writeTokenGate(cleanProject.isWrite(), name);
+            return denied != null ? denied : cleanProject.call(args);
         }
         if (debugAttach.name().equals(name)) {
             JsonObject denied = writeTokenGate(debugAttach.isWrite(), name);

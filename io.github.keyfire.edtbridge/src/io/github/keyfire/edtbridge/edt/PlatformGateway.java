@@ -766,6 +766,152 @@ public final class PlatformGateway {
         return r;
     }
 
+    /**
+     * Whether EDT itself can resolve an install carrying a thick client for this version line. EDT
+     * picks the NEWEST build in a line, so a line whose newest builds are thin clients resolves to
+     * one even when full installs of older builds are registered - which is exactly when the native
+     * dumper fails and the disk fallback has to take over.
+     */
+    boolean edtResolvesThickClient() {
+        try {
+            IResolvableRuntimeInstallationManager rm =
+                    ServiceAccess.get(IResolvableRuntimeInstallationManager.class);
+            if (rm == null) {
+                return false;
+            }
+            for (IResolvableRuntimeInstallation e : rm.getAll(RT_ENTERPRISE_PLATFORM)) {
+                if (e.resolve(java.util.List.of(COMP_THICK_CLIENT), AppArch.AUTO) != null) {
+                    return true;
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // treat an unreadable installation list as "no thick client"
+        }
+        return false;
+    }
+
+    /** The best full install on disk for a version line, or {@code null} when there is none. */
+    String diskPlatformFor(String versionLine) {
+        for (DiskPlatform dp : discoverFullPlatforms(platformLine(versionLine))) {
+            if (firstExisting(dp.binDir, "1cv8.exe", "1cv8") != null) {
+                return dp.version;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Build an {@code .epf}/{@code .erf} without EDT's dumper: export the object to designer XML
+     * in-process, then let a full on-disk platform assemble it. This exists because EDT resolves the
+     * NEWEST build of a version line, so a line topped by thin-client builds makes the native dumper
+     * fail with {@code MatchingRuntimeNotFound} even though full installs of that line are present.
+     *
+     * <p>The same shape as the infobase disk fallback: find a full install, do the work in a temp
+     * directory, clean up afterwards. An object created in EDT as external exports straight into the
+     * external-object XML layout, so no post-processing is needed.
+     *
+     * @return {@code null} on success, otherwise the reason it did not build
+     */
+    String dumpExternalObjectViaDisk(EObject root, java.nio.file.Path target, Version version,
+            java.nio.file.Path logPath, StringBuilder methodOut) {
+        String line = platformLine(String.valueOf(version));
+        List<DiskPlatform> candidates = discoverFullPlatforms(line);
+        if (candidates.isEmpty()) {
+            return "no full (thick-client) 1C:Enterprise install found on disk for line " + line;
+        }
+        IExportOperationFactory exportFactory;
+        try {
+            Injector inj = exportInjector();
+            exportFactory = (inj == null) ? null : inj.getInstance(IExportOperationFactory.class);
+        } catch (Exception ex) {
+            return "export service unavailable: " + GatewaySupport.describeCause(ex);
+        }
+        if (exportFactory == null) {
+            return "export injector unavailable (com._1c.g5.v8.dt.export not loaded)";
+        }
+
+        java.nio.file.Path tempRoot = null;
+        boolean keepTemp = false;
+        try {
+            tempRoot = java.nio.file.Files.createTempDirectory("edtbridge-epf-");
+            java.nio.file.Path xmlDir = tempRoot.resolve("xml");
+            java.nio.file.Files.createDirectories(xmlDir);
+
+            IExportOperation op = exportFactory.createExportOperation(xmlDir, version, root);
+            IStatus est = op.run(new NullProgressMonitor());
+            if (est != null && est.getSeverity() == IStatus.ERROR) {
+                return "export to designer files failed: " + est.getMessage();
+            }
+            // DESIGNER wants the object's ROOT .xml file, not the export directory, and refuses a
+            // directory outright. The export nests it one level down - xml/ExternalDataProcessors/
+            // <Name>.xml - so take the shallowest .xml in the tree.
+            java.nio.file.Path source = null;
+            try (java.util.stream.Stream<java.nio.file.Path> s = java.nio.file.Files.walk(xmlDir, 3)) {
+                source = s.filter(java.nio.file.Files::isRegularFile)
+                        .filter(f -> f.getFileName().toString().toLowerCase().endsWith(".xml"))
+                        .min(java.util.Comparator.comparingInt(java.nio.file.Path::getNameCount))
+                        .orElse(null);
+            }
+            if (source == null) {
+                keepTemp = true;
+                return "the export produced no root .xml (kept temp: " + tempRoot + ")";
+            }
+
+            if (target.getParent() != null) {
+                java.nio.file.Files.createDirectories(target.getParent());
+            }
+            java.nio.file.Files.deleteIfExists(target);
+
+            StringBuilder tried = new StringBuilder();
+            for (DiskPlatform dp : candidates) {
+                java.nio.file.Path exe = firstExisting(dp.binDir, "1cv8.exe", "1cv8");
+                if (exe == null) {
+                    continue;
+                }
+                // DESIGNER only runs against an infobase, so stand a throwaway one up in the temp root.
+                java.nio.file.Path ib = tempRoot.resolve("ib-" + dp.version);
+                java.nio.file.Files.createDirectories(ib);
+                // The log goes where the caller asked, next to the artefact - a build that failed is
+                // exactly when you want to read it, and a temp file would already be gone.
+                java.nio.file.Path log = (logPath != null) ? logPath
+                        : tempRoot.resolve("designer-" + dp.version + ".log");
+                java.nio.file.Files.deleteIfExists(ib);
+                String err = runCreateInfobase(exe, ib);
+                if (err != null && !java.nio.file.Files.exists(ib.resolve("1Cv8.1CD"))) {
+                    tried.append(dp.version).append(" (CREATEINFOBASE: ").append(err).append("); ");
+                    continue;
+                }
+                err = runIbcmd(exe, "DESIGNER", "/F", ib.toString(),
+                        "/DisableStartupDialogs", "/DisableStartupMessages",
+                        "/LoadExternalDataProcessorOrReportFromFiles", source.toString(),
+                        target.toString(), "/Out", log.toString());
+                if (java.nio.file.Files.exists(target)) {
+                    methodOut.append("disk:").append(dp.version);
+                    return null;
+                }
+                // 1cv8 says nothing on stdout - everything useful is in the /Out log, so always read it.
+                String logged = null;
+                if (java.nio.file.Files.exists(log)) {
+                    logged = java.nio.file.Files
+                            .readString(log, java.nio.charset.Charset.defaultCharset()).trim();
+                }
+                String detail = (logged != null && !logged.isEmpty()) ? logged
+                        : (err != null ? err : "no file produced");
+                keepTemp = true;
+                tried.append(dp.version).append(" (").append(detail).append("); ");
+            }
+            return "found full install(s) on disk but the build failed for: " + tried
+                    + "(kept temp: " + tempRoot + ")";
+        } catch (java.io.IOException | RuntimeException ex) {
+            keepTemp = true;
+            return GatewaySupport.describeCause(ex);
+        } finally {
+            if (tempRoot != null && !keepTemp) {
+                deleteRecursively(tempRoot);
+            }
+        }
+    }
+
     /** The major.minor.release line of a version (first three parts), or {@code null} if not given. */
     private static String platformLine(String version) {
         if (version == null || version.isBlank()) {

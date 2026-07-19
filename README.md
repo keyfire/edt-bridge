@@ -91,12 +91,18 @@ performs the change and serializes the `.mdo`.
 | Write tool | What it does |
 |------------|--------------|
 | `edt_add_attribute` | Add an attribute to a metadata object (type / klass / synonym / comment), validated. |
+| `edt_add_form` | Add a managed form to a metadata object through EDT's own form generator – the engine behind the "New form" wizard – so the form, its items and its module are generated rather than hand-written as XML. |
+| `edt_add_form_attribute` · `edt_modify_form_attribute` · `edt_remove_form_attribute` | Add, change and remove a form attribute – or, with `columnOf`, a column of a value-table attribute. Ids come from EDT's form identifier service; besides the metadata type grammar these accept platform types a form may hold (`ТаблицаЗначений`, `СписокЗначений`, ...). Removal lists the items bound to the attribute and needs `force`. |
+| `edt_add_form_command` · `edt_modify_form_command` · `edt_remove_form_command` | Add, change and remove a form command. Adding can also write the handler procedure's stub into the form module, creating that module when the form has none. Removal lists the buttons wired to the command and needs `force`. |
+| `edt_add_form_item` · `edt_modify_form_item` · `edt_remove_form_item` | Add, change and remove a form's visual items – field, table, button, group, decoration – through EDT's own `IFormItemManagementService`, the service the form editor calls. A table bound to a value-table attribute gets its columns auto-filled. Removal takes everything nested inside and needs `force`. |
 | `edt_add_method` | Add a procedure/function to a module's BSL – model-guided insert; refuses any result that would not re-parse cleanly. |
 | `edt_delete_method` | Delete a procedure/function from a module's BSL – model-guided cut plus adjacent doc comments; dry-run returns the exact removed text (`force` required – deleting code is destructive). |
 | `edt_modify_attribute` | Change an existing attribute's type, synonym or comment. |
 | `edt_remove_attribute` | Remove an attribute (reference-checked; refuses if referenced unless forced). |
 | `edt_rename` | Rename an object or member and **cascade every reference in metadata AND BSL** via EDT's native refactoring engine (`force` required – a rename is breaking). |
 | `edt_create_object` | Create a new top object (Catalog/Document/Enum/InformationRegister/...) via EDT's factory + per-type initializer, registered in the Configuration. |
+| `edt_clean_project` | Discard a project's build results so validation runs again – EDT's "Clean" dialog, programmatically. Reports the problem count before and after, waiting until it stops changing (a stale marker outliving its cause is worse than no marker). |
+| `edt_delete_project` | Remove a project from the workspace – the delete half of the create/work/delete cycle. Goes through the Eclipse workspace, so no ghost project is left behind (`force` required – deleting a project is irreversible). |
 | `edt_create_extension` | Create a new configuration-**extension project** against a base project via `IExtensionProjectManager`, stamping name prefix and purpose (Customization·AddOn·Patch). A fresh detached extension Configuration is built and attached. |
 | `edt_create_external_object` | Create a new **external data processor project** (optionally linked to a base project) – the start of the "processor → .epf" cycle. |
 | `edt_dump_external_object` | Compile an external data processor / report into a binary **`.epf`/`.erf`** via EDT's own dumper (**needs a locally installed 1C:Enterprise platform** matching the project version). |

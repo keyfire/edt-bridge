@@ -8,7 +8,71 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
-## [Unreleased]
+## [0.4.0] – 2026-07-19
+
+### Added
+- `edt_clean_project` – discard a project's build results so validation runs again, the programmatic
+  equivalent of EDT's "Clean" dialog. EDT hangs its checks off the build, so this is what makes them
+  re-run: a marker can otherwise outlive the code that caused it, and a stale marker is worse than
+  none. Reports the problem count before and after, waiting until it stops changing.
+- `edt_add_form` – create a managed form on an existing metadata object. It drives EDT's own
+  `IFormGenerator`, the engine behind the "New form" wizard, following the same sequence as
+  `FormNewWizardRelatedModelsFactory`: create the `BasicForm` entry, link it into the owner's
+  `forms` feature, generate the form content, bind the two via `setMdForm`, attach the form as a BM
+  top object under the FQN from `ITopObjectFqnGenerator`, then write the module from
+  `generateModuleContent`. Form kinds accept both `FormType` names and Russian aliases
+  (`ФормаЭлемента`, `ФормаСписка`, `ФормаЗаписи`, ...); omitting the kind picks the owner's usual
+  one. Dry-run by default, token-gated, additive – no force.
+- Form items: `edt_add_form_item`, `edt_modify_form_item`, `edt_remove_form_item`. Items are created
+  through EDT's own `IFormItemManagementService` - the service the form editor calls - so naming, ids,
+  a field's actual type and a table's auto-filled columns are decided by EDT rather than assembled by
+  hand. Kinds: field, table, button, group (usual group, page, pages, command bar, button group,
+  column group, popup) and decoration. The dry-run resolves the data path against the form's
+  attributes and the command against its commands, so a wrong binding fails the plan. Removal takes
+  everything nested inside and requires `force`.
+- Form members, the full set for both kinds: `edt_add_form_attribute`, `edt_modify_form_attribute`,
+  `edt_remove_form_attribute`, `edt_add_form_command`, `edt_modify_form_command`,
+  `edt_remove_form_command`. Ids come from EDT's own `FormIdentifierService`. Attribute types reuse
+  the `edt_add_attribute` grammar and additionally accept the platform types a form may hold
+  (`ТаблицаЗначений`, `СписокЗначений`, ...), resolved through the platform type provider; the type
+  is now built during the dry-run, so an unusable spec fails the plan rather than the apply.
+  `edt_add_form_command` can write the handler procedure's stub into the form module, creating that
+  module when the form has none. Removals list what still binds to the member - items for an
+  attribute, buttons for a command - and require `force`. The three attribute tools also take
+  `columnOf`, which addresses a COLUMN of a value-table attribute instead of a form attribute: a
+  column is the same `AbstractFormAttribute`, so it needs no separate tools. With columns defined, a
+  table's column fields follow from `edt_add_form_item` (`parent` = the table, `dataPath` =
+  `attribute.column`).
+- `edt_delete_project` – remove a project from the workspace, closing the cycle the project-creating
+  tools open. The delete runs through the Eclipse workspace so its resource tree is updated;
+  removing a project folder by hand leaves a ghost project that returns from the tree snapshot on
+  the next start and keeps the name taken. `deleteContent` chooses between unregistering and erasing
+  the files. Dry-run by default, `force` required to apply.
+- `edt_create_external_object` accepts `scriptVariant` (Russian / English) and applies it through
+  `IExternalObjectProjectManager.setScriptVariant` / `setLanguages`. EDT defaults a standalone
+  project to English, which made generated members come out as `Object` rather than `Объект`; the
+  dry-run now warns when the variant is left unset on a standalone project.
+
+### Fixed
+- `edt_dump_external_object` builds an `.epf`/`.erf` again where EDT cannot. EDT resolves the NEWEST
+  build of a version line, so a line topped by thin-client builds made the native dumper fail with
+  `MatchingRuntimeNotFound` even with full installs of that line present. There is now an on-disk
+  route - export to designer XML in-process, then a full platform found on disk assembles the file -
+  the same shape as the infobase disk fallback. Its dry-run also stopped lying: EDT's
+  `validateDumpGeneration` reports OK regardless of the thick client, so the platform is now checked
+  directly and the plan names the route it will take. A new `logPath` writes the platform build log
+  next to the artefact (default `<targetPath>.log`) - when a build fails, that log is where the
+  platform says why.
+- Modules of external objects resolve by FQN. The metadata-type-to-folder map had no entry for
+  external objects, so `ExternalDataProcessor.X.Form.Y` was rejected with "unsupported owner type for
+  a form" by `edt_add_method`, `edt_delete_method` and `edt_module_text` (passing `modulePath`
+  worked around it). `ExternalDataProcessor` and `ExternalReport` are mapped now. Configuration
+  extensions were never affected - their source layout matches a configuration's.
+
+### Changed
+- The MCP server reports the plugin's own version, taken from the bundle manifest, instead of a
+  hard-coded string - so a release bumps it in one place and the dashboard and the handshake cannot
+  drift apart.
 
 ## [0.3.1] – 2026-07-19
 

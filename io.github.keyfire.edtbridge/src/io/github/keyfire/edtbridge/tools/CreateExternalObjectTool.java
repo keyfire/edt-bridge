@@ -45,6 +45,9 @@ public final class CreateExternalObjectTool {
                 + "identifier, Cyrillic allowed"));
         props.add("baseProjectName", strProp("Configuration project the processor is developed for "
                 + "(links its runtime version and types context). Optional – omit for standalone."));
+        props.add("scriptVariant", strProp("Built-in language variant: Russian or English. Optional, but "
+                + "EDT defaults a standalone project to English – which names generated members Object "
+                + "instead of Объект – so pass Russian for a Russian project."));
         props.add("apply", boolProp("false (default) = dry-run: validate and return the plan. "
                 + "true = create the project."));
 
@@ -80,10 +83,11 @@ public final class CreateExternalObjectTool {
             return McpServer.toolError("name is required");
         }
         String baseProjectName = getStr(args, "baseProjectName");
+        String scriptVariant = getStr(args, "scriptVariant");
         boolean apply = args.has("apply") && !args.get("apply").isJsonNull() && args.get("apply").getAsBoolean();
         try {
             MetadataWriteGateway.CreateExternalObjectResult res =
-                    gateway.createExternalObject(name, baseProjectName, apply);
+                    gateway.createExternalObject(name, baseProjectName, scriptVariant, apply);
             JsonObject o = new JsonObject();
             o.addProperty("ok", res.ok);
             o.addProperty("applied", res.applied);
@@ -97,6 +101,12 @@ public final class CreateExternalObjectTool {
             }
             if (res.version != null) {
                 o.addProperty("version", res.version);
+            }
+            if (res.scriptVariant != null) {
+                o.addProperty("scriptVariant", res.scriptVariant);
+            }
+            if (res.warning != null) {
+                o.addProperty("warning", res.warning);
             }
             if (res.location != null) {
                 o.addProperty("location", res.location);
