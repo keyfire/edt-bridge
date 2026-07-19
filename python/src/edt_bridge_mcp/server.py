@@ -466,11 +466,21 @@ def main() -> int:
         return cli.run(sys.argv[1], sys.argv[2:])
     parser = argparse.ArgumentParser(
         prog="edt-bridge-mcp",
-        description="stdio MCP front-end for the edt-bridge 1C:EDT plugin "
-                    "(proxies to a running EDT or auto-starts a headless one). "
-                    "Sub-commands: 'call <tool>' runs one tool from a shell, 'tools' lists them, "
-                    "'status' reports the running bridge, 'self-update' refreshes the plugin jar "
-                    "and the wrapper",
+        usage="%(prog)s [options]           (no command: run as an MCP server)\n"
+              "       %(prog)s <command> [options]",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="stdio MCP front-end for the edt-bridge 1C:EDT plugin: proxies to a running\n"
+                    "EDT, or auto-starts a headless one.\n\n"
+                    "With no command it speaks JSON-RPC over stdin/stdout - that is how an MCP\n"
+                    "client launches it. The commands below drive the same bridge from a shell.",
+        epilog="commands:\n"
+               "  call <tool>   call one bridge tool and print what it returned\n"
+               "  tools         list the tools the running bridge serves\n"
+               "  status        report the running bridge (never starts one)\n"
+               "  self-update   refresh the plugin jar and this wrapper\n"
+               "\n"
+               "Run 'edt-bridge-mcp <command> --help' for a command's own options.\n"
+               "The options above apply to the MCP-server mode and to every command.",
     )
     parser.add_argument("--workspace", help="EDT workspace path for the headless auto-start")
     parser.add_argument("--edt-dir", help="EDT install dir (.../1cedt); auto-detected when omitted")

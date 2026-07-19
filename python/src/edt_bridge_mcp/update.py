@@ -334,7 +334,26 @@ def _update_pipx_metadata(site: Path, version: str) -> None:
         pass
 
 
+USAGE = """usage: edt-bridge-mcp self-update [options]
+
+Refresh the plugin jar in EDT's dropins and this wrapper in its own environment.
+
+options:
+  --jar-only        only the plugin jar (GitHub Releases)
+  --pip-only        only the wrapper (PyPI, or --from)
+  --from <path>     install the wrapper from a checkout instead of PyPI
+  -h, --help        show this message
+
+The jar applies on EDT's next restart. The wrapper is replaced inside site-packages;
+the exes in Scripts are left alone, so restart any running edt-bridge-mcp afterwards."""
+
+
 def run(argv: list[str]) -> int:
+    if "-h" in argv or "--help" in argv:
+        # Without this, asking for help would perform the update - the flags are parsed by
+        # presence, so an unrecognised one means "do everything".
+        print(USAGE)
+        return 0
     jar_only = "--jar-only" in argv
     pip_only = "--pip-only" in argv
     source = None
