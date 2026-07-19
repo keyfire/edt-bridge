@@ -1,7 +1,7 @@
 """self-update: refresh the plugin jar in EDT's dropins from GitHub Releases, and the
 python wrapper itself from PyPI (when published).
 
-    edt-bridge-mcp self-update [--jar-only | --pip-only]
+    edt-bridge-mcp self-update [--jar-only | --pip-only] [--from <checkout>]
 
 Jar update:
 - downloads the latest release asset ``io.github.keyfire.edtbridge_*.jar`` and verifies it
@@ -13,8 +13,12 @@ Jar update:
   restarts it automatically on the next auto-start.
 
 Wrapper update:
-- runs ``pip install --upgrade edt-bridge-mcp`` inside this very environment (the pipx venv).
-  Python files are replaceable while running; the pipx-managed exe is not touched.
+- installs ``edt-bridge-mcp`` into this very environment (the pipx venv), or a local checkout
+  given with ``--from``. Python files are replaceable while running; the pipx-managed exe is not
+  touched, which is why this never shells out to ``pipx upgrade``.
+- pip, then uv, then ensurepip: a venv built by pipx 1.15 goes through uv and has no pip in it at
+  all, so ``python -m pip`` answers "No module named pip" - uv installs into a target interpreter
+  without needing pip inside it.
 """
 
 from __future__ import annotations
@@ -188,31 +192,101 @@ def update_jar() -> bool:
     return ok
 
 
-def update_wrapper() -> bool:
-    log("upgrading the python wrapper from PyPI (if published)...")
-    proc = subprocess.run(
-        [sys.executable, "-m", "pip", "install", "--upgrade", "edt-bridge-mcp"],
-        capture_output=True, text=True, check=False,
-    )
-    tail = (proc.stdout or "") + (proc.stderr or "")
-    if proc.returncode != 0:
-        if "No matching distribution" in tail or "Could not find a version" in tail:
-            log("the package is not on PyPI yet – reinstall from a checkout instead "
-                "(pipx install --force <repo>/python)")
+def _installers(source: str) -> list[tuple[str, list[str]]]:
+    """Ways to install into THIS environment, best first.
+
+    pip is not a given. pipx 1.15 builds its venvs with uv, and a uv-built venv carries no pip at
+    all - ``python -m pip`` there answers "No module named pip", which is where this used to stop.
+    uv installs into a target interpreter without needing pip inside it, so it covers exactly the
+    case pip cannot; ensurepip is the last resort, and the only one that adds anything to the venv.
+    """
+    return [
+        ("pip", [sys.executable, "-m", "pip", "install", "--upgrade", source]),
+        ("uv", ["uv", "pip", "install", "--python", sys.executable, "--upgrade", source]),
+        ("ensurepip+pip", None),  # handled in update_wrapper - it needs two steps
+    ]
+
+
+def _run(cmd: list[str]) -> tuple[int, str]:
+    """Run an installer, decoding its output as UTF-8 rather than the console code page.
+
+    These tools report OS errors in the system language and emit them as UTF-8; letting Python
+    decode by locale turns a Windows "access denied" into mojibake, which is exactly the message
+    worth reading.
+    """
+    try:
+        proc = subprocess.run(cmd, capture_output=True, check=False)
+    except FileNotFoundError:
+        return 127, f"{cmd[0]} is not installed"
+    raw = (proc.stdout or b"") + (proc.stderr or b"")
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        text = raw.decode(sys.getfilesystemencoding() or "utf-8", errors="replace")
+    return proc.returncode, text.strip()
+
+
+def _missing_pip(output: str) -> bool:
+    return "No module named pip" in output
+
+
+def update_wrapper(source: str = "edt-bridge-mcp") -> bool:
+    """Upgrade the wrapper in place. ``source`` may be a local checkout path instead of the name."""
+    from_pypi = source == "edt-bridge-mcp"
+    log(f"upgrading the python wrapper from {'PyPI (if published)' if from_pypi else source}...")
+    notes = []
+    for name, cmd in _installers(source):
+        if cmd is None:
+            code, out = _run([sys.executable, "-m", "ensurepip", "--upgrade"])
+            if code != 0:
+                notes.append(f"{name}: {_last_line(out)}")
+                continue
+            code, out = _run([sys.executable, "-m", "pip", "install", "--upgrade", source])
         else:
-            log(f"pip upgrade failed: {tail.strip().splitlines()[-1] if tail.strip() else proc.returncode}")
-        return False
-    last = tail.strip().splitlines()[-1] if tail.strip() else "done"
-    log(last)
-    return True
+            code, out = _run(cmd)
+        if code == 0:
+            log(f"{name}: {_last_line(out) or 'done'}")
+            return True
+        if from_pypi and ("No matching distribution" in out or "Could not find a version" in out):
+            log("the package is not on PyPI yet - install from a checkout instead: "
+                "edt-bridge-mcp self-update --pip-only --from <repo>/python")
+            return False
+        # Say why each route was passed over: the last one adds pip to the environment, which is
+        # worth knowing was not the first choice.
+        why = "no pip in this environment" if _missing_pip(out) else _last_line(out)
+        log(f"{name} did not work ({why}) - trying the next route")
+        notes.append(f"{name}: {why}")
+    log("could not upgrade the wrapper - " + "; ".join(notes))
+    return False
+
+
+def _last_line(output: str) -> str:
+    """The line worth showing: what got installed, not the installer's own housekeeping.
+
+    pip signs off with "[notice] To update, run: ... --upgrade pip", which as the last line of a
+    successful install reads like the result and is not.
+    """
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    lines = [line for line in lines if not line.startswith(("[notice]", "WARNING:"))]
+    for line in reversed(lines):
+        if "Successfully installed" in line or "edt-bridge-mcp" in line:
+            return line
+    return lines[-1] if lines else ""
 
 
 def run(argv: list[str]) -> int:
     jar_only = "--jar-only" in argv
     pip_only = "--pip-only" in argv
+    source = "edt-bridge-mcp"
+    if "--from" in argv:
+        index = argv.index("--from")
+        if index + 1 >= len(argv):
+            log("--from needs a path to a checkout, e.g. --from <repo>/python")
+            return 1
+        source = argv[index + 1]
     ok = True
     if not pip_only:
         ok = update_jar() and ok
     if not jar_only:
-        ok = update_wrapper() and ok
+        ok = update_wrapper(source) and ok
     return 0 if ok else 1

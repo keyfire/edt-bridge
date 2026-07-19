@@ -43,7 +43,7 @@ function Get-CurrentWorkspace {
 if (-not $Workspace) {
   $current = Get-CurrentWorkspace
   Write-Host "Enter the 1C:EDT workspace this shortcut should manage."
-  Write-Host "  example: D:\1C\1cedtstart\projects\SM"
+  Write-Host "  example: C:\1cedtstart\projects\MyProject"
   if ($current) {
     Write-Host "  or press Enter to use the current one: $current"
   } else {

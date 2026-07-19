@@ -58,10 +58,23 @@ never ran".
 edt-bridge-mcp self-update             # refresh the plugin jar (GitHub Releases) + the wrapper (PyPI)
 edt-bridge-mcp self-update --jar-only  # only the jar
 edt-bridge-mcp self-update --pip-only  # only the wrapper
+edt-bridge-mcp self-update --pip-only --from <repo>/python   # from a checkout
 ```
 
 A running EDT (GUI or headless) keeps the old jar loaded until it restarts; the wrapper
 restarts its own headless instance on the next auto-start.
+
+`--from` installs the wrapper from a local checkout instead of PyPI – for trying a build that is not
+released yet, without a full `pipx install --force` (which rebuilds the venv and replaces the exe the
+running client holds).
+
+The wrapper is installed into its own environment, never through `pipx upgrade`, so the exe stays
+put. Three routes are tried in order, because pip is not a given: **pip** (classic venvs), then
+**uv** (a venv built by pipx 1.15 goes through uv and contains no pip at all – `python -m pip` there
+says "No module named pip"), then **ensurepip** followed by pip. Running `self-update` from the
+installed `edt-bridge-mcp.exe` rules uv out – it removes the console script before rewriting it and
+Windows will not delete a running exe – so that case lands on ensurepip, which adds pip to the venv
+once; every later update then takes the first route. Each skipped route says why.
 
 ## Configuration
 
