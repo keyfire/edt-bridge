@@ -140,7 +140,13 @@ The pipx wrapper delivers the jar and starts EDT for you. To run the plugin your
 
 To run EDT **headless** (no GUI): `scripts/run-headless.ps1 -Workspace <ws>` (Windows) or
 `scripts/run-headless.sh --workspace <ws>` (macOS / Linux); `scripts/toggle-headless.ps1` starts/stops it in one
-action. A running GUI EDT is never touched.
+action. A running GUI EDT is never touched. To start the **GUI** on a workspace:
+`scripts/run-gui.ps1 -Workspace <ws>`.
+
+Both launchers refuse to start a second EDT on a workspace that is already in use, and neither
+removes a lock that a live instance holds – the shared check lives in `scripts/edt-common.ps1`.
+Starting `1cedt.exe` by hand skips that check: the second instance dies with "workspace is already
+in use", and doing it twice leaves a pile of half-started windows.
 
 An MCP client can also talk to the plugin over HTTP directly (no wrapper) – add
 `{ "edt-bridge": { "type": "http", "url": "http://127.0.0.1:8770/mcp" } }` to its `.mcp.json`. The

@@ -18,17 +18,9 @@ param(
   [int]$WaitSec = 360
 )
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "edt-common.ps1")
 
-# Auto-detect the 1C:EDT installation if not given: newest under %LOCALAPPDATA%\1C\1cedtstart\installations\*\1cedt
-if (-not $EdtDir) {
-  $base = Join-Path $env:LOCALAPPDATA "1C\1cedtstart\installations"
-  $EdtDir = Get-ChildItem $base -Directory -ErrorAction SilentlyContinue |
-    Sort-Object Name -Descending |
-    ForEach-Object { Join-Path $_.FullName "1cedt" } |
-    Where-Object { Test-Path (Join-Path $_ "1cedtcli.exe") } |
-    Select-Object -First 1
-  if (-not $EdtDir) { throw "Could not auto-detect 1C:EDT under $base; pass -EdtDir <...\1cedt>." }
-}
+$EdtDir = Resolve-EdtDir -EdtDir $EdtDir -RequireExe "1cedtcli.exe"
 
 # 1) SAFETY: never touch a GUI 1C:EDT (1cedt.exe). If one is running, abort - the user may be
 #    working in it (and it holds the workspace lock). Only ever manage our own headless 1cedtcli.
@@ -43,14 +35,11 @@ Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
   ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop } catch {} }
 Get-Process -Name '1cedtcli' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 3
-$lock = Join-Path $Workspace ".metadata\.lock"
-if (Test-Path $lock) { try { Remove-Item $lock -Force -ErrorAction Stop } catch {} }
-# Keep only the newest edt-bridge jar in dropins: two singletons of the same bundle make Equinox
-# resolve an arbitrary (often older) one. Purge the rest so the freshly built jar is the one loaded.
-$drop = Join-Path $EdtDir "dropins"
-Get-ChildItem $drop -Filter "io.github.keyfire.edtbridge_*.jar" -ErrorAction SilentlyContinue |
-  Sort-Object Name -Descending | Select-Object -Skip 1 |
-  ForEach-Object { try { Remove-Item $_.FullName -Force -ErrorAction Stop } catch {} }
+# After clearing OUR headless, anything still holding the lock belongs to someone else - stomping it
+# would take a live instance down, so stop instead.
+if (-not (Assert-WorkspaceFree -Workspace $Workspace)) { exit 2 }
+Clear-StaleWorkspaceLock -Workspace $Workspace
+Set-SingleDropinJar -EdtDir $EdtDir
 
 # 2) launch headless via a hidden bat (cmd does the native pipe, clean ASCII stdin)
 $cli = Join-Path $EdtDir "1cedtcli.exe"
