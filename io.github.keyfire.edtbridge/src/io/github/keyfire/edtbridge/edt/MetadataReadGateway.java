@@ -19,7 +19,9 @@ package io.github.keyfire.edtbridge.edt;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.ResourcesPlugin;
@@ -37,6 +39,9 @@ import com._1c.g5.v8.bm.integration.AbstractBmTask;
 import com._1c.g5.v8.bm.integration.IBmModel;
 import com._1c.g5.v8.dt.core.platform.IBmModelManager;
 import com._1c.g5.v8.dt.metadata.mdclass.BasicFeature;
+import com._1c.g5.v8.dt.metadata.mdclass.CommonModule;
+import com._1c.g5.v8.dt.metadata.mdclass.ExchangePlan;
+import com._1c.g5.v8.dt.metadata.mdclass.ExchangePlanContentItem;
 import com._1c.g5.v8.dt.metadata.mdclass.MdClassPackage;
 import com._1c.g5.v8.dt.metadata.mdclass.MdObject;
 import com._1c.g5.wiring.ServiceAccess;
@@ -62,6 +67,18 @@ public final class MetadataReadGateway {
         /** Structural (MdObject-typed) containment features that EXIST for this type but are empty –
          *  so a caller can tell "this object has no attributes" from "attributes not reported". */
         public List<String> emptyStructuralFeatures = new ArrayList<>();
+        /** Type-specific scalar properties that are not child members – e.g. a common module's
+         *  compilation flags, which decide where its methods may run at all. */
+        public Map<String, String> properties = new LinkedHashMap<>();
+        /** An exchange plan's content: the metadata objects replicated between nodes. */
+        public List<ContentItem> content = new ArrayList<>();
+    }
+
+    /** One entry of an exchange plan's content. */
+    public static final class ContentItem {
+        public String fqn;
+        public String type;
+        public String autoRecord;
     }
 
     /** A group of child members sharing one containment feature (e.g. "attributes"). */
@@ -122,10 +139,49 @@ public final class MetadataReadGateway {
                     }
                     r.structure = childrenOf(md, 2);
                     r.emptyStructuralFeatures = emptyStructuralFeatures(md, r.structure);
+                    fillTypeSpecifics(md, r);
                 }
                 return r;
             }
         });
+    }
+
+    /**
+     * Properties that are neither core nor child members, but are the first thing asked about a type.
+     *
+     * <p>A common module's compilation flags decide where its methods may run and whether an extension
+     * can intercept them at all; an exchange plan's content answers "is this object replicated between
+     * nodes?". Both used to be invisible here, which sent callers to grep the {@code .mdo} on disk.
+     */
+    private static void fillTypeSpecifics(MdObject md, MdDetails r) {
+        if (md instanceof CommonModule) {
+            CommonModule cm = (CommonModule) md;
+            r.properties.put("global", String.valueOf(cm.isGlobal()));
+            r.properties.put("server", String.valueOf(cm.isServer()));
+            r.properties.put("serverCall", String.valueOf(cm.isServerCall()));
+            r.properties.put("clientManagedApplication", String.valueOf(cm.isClientManagedApplication()));
+            r.properties.put("clientOrdinaryApplication", String.valueOf(cm.isClientOrdinaryApplication()));
+            r.properties.put("externalConnection", String.valueOf(cm.isExternalConnection()));
+            r.properties.put("privileged", String.valueOf(cm.isPrivileged()));
+            r.properties.put("returnValuesReuse", String.valueOf(cm.getReturnValuesReuse()));
+        }
+        if (md instanceof ExchangePlan) {
+            for (ExchangePlanContentItem item : ((ExchangePlan) md).getContent()) {
+                ContentItem ci = new ContentItem();
+                try {
+                    MdObject target = item.getMdObject();
+                    if (target != null) {
+                        ci.type = target.eClass().getName();
+                        ci.fqn = (target instanceof IBmObject) ? ((IBmObject) target).bmGetFqn()
+                                : target.getName();
+                    }
+                    ci.autoRecord = String.valueOf(item.getAutoRecord());
+                } catch (RuntimeException ignored) {
+                    // an unresolved content reference is worth listing as such, not worth failing over
+                }
+                r.content.add(ci);
+            }
+        }
     }
 
     /**

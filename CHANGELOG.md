@@ -8,6 +8,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
+## [0.4.1] – 2026-07-19
+
+### Added
+- `edt_search_modules` – full-text search across a project's BSL modules (substring or regular
+  expression, optional path filter). Reading goes through Eclipse's `ITextFileBufferManager`, so a
+  module open in an editor is searched as it currently stands, unsaved edits included, and every hit
+  says which it came from. This was the one exploratory step that always fell back to disk tools:
+  `edt_find_references` answers "who calls this method", this answers "where does this text appear".
+- `edt_adopt_object` – adopt an object of the base configuration into an extension project through
+  EDT's own `IModelObjectAdopter`. Without it `edt_create_extension` stopped halfway: the project
+  existed but nothing could be extended, since intercepting a method requires the owning object to be
+  adopted first. The engine writes `objectBelonging`, the per-property control block and the entry in
+  the extension's `Configuration.mdo` – all of which is easy to get subtly wrong by hand.
+- `edt_metadata_details` now reports a `CommonModule`'s compilation flags (`server`, `serverCall`,
+  `clientManagedApplication`, `clientOrdinaryApplication`, `externalConnection`, `privileged`,
+  `global`, `returnValuesReuse`) and an `ExchangePlan`'s content – the objects replicated between
+  nodes, with their auto-record mode. Both previously sent callers to grep the `.mdo` on disk.
+
 ## [0.4.0] – 2026-07-19
 
 ### Added

@@ -50,6 +50,7 @@ import com._1c.g5.v8.dt.core.operations.ProjectPipelineJob;
 import com._1c.g5.v8.dt.core.platform.IBmModelManager;
 import com._1c.g5.v8.dt.core.platform.IConfigurationProvider;
 import com._1c.g5.v8.dt.core.platform.IDtProject;
+import com._1c.g5.v8.dt.core.platform.IExtensionProject;
 import com._1c.g5.v8.dt.core.platform.IExtensionProjectManager;
 import com._1c.g5.v8.dt.core.platform.IExternalObjectProject;
 import com._1c.g5.v8.dt.core.platform.IExternalObjectProjectManager;
@@ -60,6 +61,7 @@ import com._1c.g5.v8.dt.metadata.mdclass.ScriptVariant;
 import com._1c.g5.v8.dt.platform.services.core.dump.IExternalObjectDumpSupport;
 import com._1c.g5.v8.dt.platform.services.core.dump.IExternalObjectDumper;
 import com._1c.g5.v8.dt.form.model.Form;
+import com._1c.g5.v8.dt.md.extension.adopt.IModelObjectAdopter;
 import com._1c.g5.v8.dt.metadata.mdclass.Configuration;
 import com._1c.g5.v8.dt.metadata.mdclass.ConfigurationExtensionPurpose;
 import com._1c.g5.v8.dt.platform.version.Version;
@@ -1751,6 +1753,165 @@ public final class MetadataWriteGateway {
             eom.setLanguages(target, List.of(language), monitor);
         }
         return null;
+    }
+
+    /** Result of {@link #adoptObject}. */
+    public static final class AdoptResult {
+        public boolean ok;
+        public boolean applied;
+        public String project;        // the extension project
+        public String baseProject;    // the configuration it extends
+        public String fqn;            // object being adopted
+        public String type;
+        public boolean extensionFound;
+        public boolean objectFound;
+        public Boolean adoptable;
+        public Boolean alreadyAdopted;
+        public String plan;
+        public String warning;
+        public String message;
+    }
+
+    /**
+     * Adopt ("заимствовать") an object of the base configuration into an extension project - the step
+     * that has to happen before an extension can intercept anything on that object.
+     *
+     * <p>Goes through EDT's own {@link IModelObjectAdopter}: it produces the adopted copy with the
+     * right {@code objectBelonging}, the link back to the base object's uuid and the per-property
+     * control block, and attaches it to the extension. Hand-writing that {@code .mdo} is the thing
+     * this replaces - the control block alone is easy to get subtly wrong.
+     *
+     * @param projectName the EXTENSION project
+     * @param fqn         object of the base configuration, e.g. {@code Catalog.Контрагенты}
+     * @param apply       {@code false} validates and returns the plan; {@code true} performs the adopt
+     */
+    public AdoptResult adoptObject(String projectName, String fqn, boolean apply) {
+        AdoptResult r = new AdoptResult();
+        r.project = projectName;
+        r.fqn = fqn;
+        if (projectName == null || projectName.isBlank() || fqn == null || fqn.isBlank()) {
+            r.message = "projectName (the extension) and fqn (the base object) are required";
+            return r;
+        }
+        IProject p = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+        if (!p.exists() || !p.isOpen()) {
+            r.message = "project not found or closed: " + projectName;
+            return r;
+        }
+        IV8ProjectManager pm = ServiceAccess.get(IV8ProjectManager.class);
+        IV8Project v8 = (pm == null) ? null : pm.getProject(p);
+        if (!(v8 instanceof IExtensionProject)) {
+            r.message = "not an extension project: " + projectName
+                    + " - adopting only makes sense into a configuration extension";
+            return r;
+        }
+        IExtensionProject extension = (IExtensionProject) v8;
+        r.extensionFound = true;
+        IProject base = extension.getParentProject();
+        if (base == null) {
+            r.message = "the extension has no base configuration project attached";
+            return r;
+        }
+        r.baseProject = base.getName();
+
+        IModelObjectAdopter adopter = modelObjectAdopter();
+        if (adopter == null) {
+            r.message = "adopt service unavailable (EDT md.extension plugin not active)";
+            return r;
+        }
+        IBmModelManager mm = ServiceAccess.get(IBmModelManager.class);
+        IBmModel baseModel = (mm == null) ? null : mm.getModel(base);
+        if (baseModel == null) {
+            r.message = "no BM model for the base project: " + r.baseProject;
+            return r;
+        }
+
+        // Inspect in the BASE model - that is where the object to adopt lives.
+        baseModel.executeReadonlyTask(new AbstractBmTask<Object>("edt-bridge.adopt.inspect") {
+            @Override
+            public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
+                IBmObject o = tx.getTopObjectByFqn(fqn);
+                if (o == null) {
+                    return null;
+                }
+                r.objectFound = true;
+                r.type = o.eClass().getName();
+                try {
+                    r.adoptable = Boolean.valueOf(adopter.isAdoptable(o));
+                    r.alreadyAdopted = Boolean.valueOf(adopter.isAdopted(o, extension));
+                } catch (RuntimeException ignored) {
+                    // leave the flags unset - the plan below reports what is known
+                }
+                return null;
+            }
+        });
+
+        if (!r.objectFound) {
+            r.message = "object not found in the base configuration " + r.baseProject + ": " + fqn;
+            return r;
+        }
+        r.ok = !Boolean.FALSE.equals(r.adoptable) && !Boolean.TRUE.equals(r.alreadyAdopted);
+        r.plan = "Adopt " + fqn + " (" + r.type + ") from " + r.baseProject + " into " + projectName;
+        if (Boolean.TRUE.equals(r.alreadyAdopted)) {
+            r.message = fqn + " is already adopted into " + projectName;
+        } else if (Boolean.FALSE.equals(r.adoptable)) {
+            r.message = r.type + " cannot be adopted into an extension";
+        } else {
+            r.warning = "adopting brings the object under the extension's control - its own members stay "
+                    + "owned by the base configuration until they are adopted too.";
+        }
+
+        if (!apply) {
+            return r;
+        }
+        if (!r.ok) {
+            r.message = (r.message == null ? "validation failed" : r.message)
+                    + " - apply refused (nothing adopted).";
+            return r;
+        }
+        try {
+            final EObject[] adopted = {null};
+            baseModel.executeReadonlyTask(new AbstractBmTask<Object>("edt-bridge.adopt.read") {
+                @Override
+                public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
+                    adopted[0] = tx.getTopObjectByFqn(fqn);
+                    return null;
+                }
+            });
+            if (adopted[0] == null) {
+                r.message = "the object disappeared between validation and apply";
+                return r;
+            }
+            EObject result = adopter.adoptAndAttach(adopted[0], extension, new NullProgressMonitor());
+            r.applied = result != null;
+            r.message = r.applied
+                    ? "adopted " + fqn + " into " + projectName
+                            + " (attached to the extension's configuration)"
+                    : "the adopter returned nothing for " + fqn;
+        } catch (CoreException | RuntimeException ex) {
+            r.applied = false;
+            r.message = "adopt failed: " + GatewaySupport.describeCause(ex);
+        }
+        return r;
+    }
+
+    /** EDT's adopt engine, from the md.extension plugin's Guice injector. */
+    private IModelObjectAdopter modelObjectAdopter() {
+        try {
+            Bundle b = Platform.getBundle("com._1c.g5.v8.dt.md.extension");
+            if (b == null) {
+                return null;
+            }
+            Class<?> cls = b.loadClass("com._1c.g5.v8.dt.internal.md.extension.MdExtensionPlugin");
+            Object plugin = cls.getMethod("getDefault").invoke(null);
+            if (plugin == null) {
+                return null;
+            }
+            Injector inj = (Injector) cls.getMethod("getInjector").invoke(plugin);
+            return (inj == null) ? null : inj.getInstance(IModelObjectAdopter.class);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** Result of {@link #dumpExternalObject}. */

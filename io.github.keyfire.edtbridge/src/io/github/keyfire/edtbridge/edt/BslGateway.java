@@ -1974,4 +1974,179 @@ public final class BslGateway {
         return md.eClass().getName() + "." + md.getName();
     }
 
+    // ---- Full-text search across BSL modules -----------------------------------------------------
+
+    /** One matching line. */
+    public static final class SearchHit {
+        public String project;
+        public String modulePath;   // project-relative .bsl path
+        public int line;            // 1-based
+        public String text;         // the matching line, trimmed
+        public boolean unsaved;     // the text came from an open editor with unsaved changes
+    }
+
+    /** Outcome of {@link #searchModules}. */
+    public static final class SearchResult {
+        public boolean ok;
+        public String pattern;
+        public boolean regex;
+        public boolean caseSensitive;
+        public int modulesScanned;
+        public int filesWithUnsavedChanges;
+        public boolean truncated;
+        public String message;
+        public final List<SearchHit> hits = new ArrayList<>();
+    }
+
+    /**
+     * Search the text of every BSL module in a project (or in all open projects).
+     *
+     * <p>The one exploratory step that always fell back to disk tools: {@code edt_find_references}
+     * answers "who calls this method", but not "where does this substring appear". Reading goes
+     * through Eclipse's file buffers, so a module open in an editor is searched as it currently
+     * stands - unsaved edits included - rather than as last written to disk.
+     *
+     * @param projectName project to search; {@code null} searches every open project
+     * @param pattern     substring, or a regular expression when {@code regex} is set
+     * @param pathFilter  optional substring the module path must contain (e.g. {@code CommonModules})
+     * @param maxResults  hit cap; the result says whether it truncated
+     */
+    public SearchResult searchModules(String projectName, String pattern, boolean regex,
+            boolean caseSensitive, String pathFilter, int maxResults) {
+        SearchResult r = new SearchResult();
+        r.pattern = pattern;
+        r.regex = regex;
+        r.caseSensitive = caseSensitive;
+        if (pattern == null || pattern.isEmpty()) {
+            r.message = "pattern is required";
+            return r;
+        }
+        List<IProject> projects = new ArrayList<>();
+        if (projectName != null && !projectName.isBlank()) {
+            IProject p = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+            if (!p.exists() || !p.isOpen()) {
+                r.message = "project not found or closed: " + projectName;
+                return r;
+            }
+            projects.add(p);
+        } else {
+            for (IProject p : ResourcesPlugin.getWorkspace().getRoot().getProjects()) {
+                if (p.isOpen()) {
+                    projects.add(p);
+                }
+            }
+        }
+
+        Pattern compiled = null;
+        if (regex) {
+            try {
+                compiled = Pattern.compile(pattern, caseSensitive ? 0 : Pattern.CASE_INSENSITIVE);
+            } catch (RuntimeException ex) {
+                r.message = "pattern does not compile as a regular expression: " + ex.getMessage();
+                return r;
+            }
+        }
+        String needle = caseSensitive ? pattern : pattern.toLowerCase(java.util.Locale.ROOT);
+        int cap = (maxResults > 0) ? maxResults : 200;
+
+        for (IProject p : projects) {
+            List<org.eclipse.core.resources.IFile> modules = new ArrayList<>();
+            try {
+                collectBslFiles(p, modules);
+            } catch (CoreException ex) {
+                r.message = "could not enumerate modules of " + p.getName() + ": " + ex.getMessage();
+                continue;
+            }
+            for (org.eclipse.core.resources.IFile file : modules) {
+                String path = file.getProjectRelativePath().toString();
+                if (pathFilter != null && !pathFilter.isBlank() && !path.contains(pathFilter)) {
+                    continue;
+                }
+                String[] text = readModuleText(file);
+                if (text == null) {
+                    continue;
+                }
+                r.modulesScanned++;
+                if ("unsaved".equals(text[1])) {
+                    r.filesWithUnsavedChanges++;
+                }
+                int lineNo = 0;
+                for (String line : text[0].split("\r\n|\r|\n", -1)) {
+                    lineNo++;
+                    boolean hit = (compiled != null) ? compiled.matcher(line).find()
+                            : (caseSensitive ? line.contains(needle)
+                                    : line.toLowerCase(java.util.Locale.ROOT).contains(needle));
+                    if (!hit) {
+                        continue;
+                    }
+                    if (r.hits.size() >= cap) {
+                        r.truncated = true;
+                        break;
+                    }
+                    SearchHit h = new SearchHit();
+                    h.project = p.getName();
+                    h.modulePath = path;
+                    h.line = lineNo;
+                    h.text = line.trim();
+                    h.unsaved = "unsaved".equals(text[1]);
+                    r.hits.add(h);
+                }
+                if (r.truncated) {
+                    break;
+                }
+            }
+            if (r.truncated) {
+                break;
+            }
+        }
+        r.ok = true;
+        if (r.message == null) {
+            r.message = "scanned " + r.modulesScanned + " module(s), " + r.hits.size() + " hit(s)"
+                    + (r.truncated ? " (capped at " + cap + ")" : "")
+                    + (r.filesWithUnsavedChanges > 0
+                            ? "; " + r.filesWithUnsavedChanges + " read from unsaved editor buffers" : "");
+        }
+        return r;
+    }
+
+    /** Every {@code .bsl} under a project. */
+    private static void collectBslFiles(org.eclipse.core.resources.IContainer container,
+            List<org.eclipse.core.resources.IFile> out) throws CoreException {
+        for (org.eclipse.core.resources.IResource member : container.members()) {
+            if (member instanceof org.eclipse.core.resources.IContainer) {
+                collectBslFiles((org.eclipse.core.resources.IContainer) member, out);
+            } else if (member instanceof org.eclipse.core.resources.IFile
+                    && "bsl".equalsIgnoreCase(member.getFileExtension())) {
+                out.add((org.eclipse.core.resources.IFile) member);
+            }
+        }
+    }
+
+    /**
+     * A module's current text plus where it came from: {@code "unsaved"} when an editor holds
+     * modifications that are not on disk yet, {@code "file"} otherwise. Returns {@code null} when the
+     * module cannot be read at all.
+     */
+    private static String[] readModuleText(org.eclipse.core.resources.IFile file) {
+        try {
+            org.eclipse.core.filebuffers.ITextFileBufferManager mgr =
+                    org.eclipse.core.filebuffers.FileBuffers.getTextFileBufferManager();
+            if (mgr != null) {
+                org.eclipse.core.filebuffers.ITextFileBuffer buf = mgr.getTextFileBuffer(
+                        file.getFullPath(), org.eclipse.core.filebuffers.LocationKind.IFILE);
+                if (buf != null && buf.getDocument() != null) {
+                    return new String[] {buf.getDocument().get(), buf.isDirty() ? "unsaved" : "file"};
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // no buffer for this file - fall through to reading the resource
+        }
+        try (java.io.InputStream in = file.getContents()) {
+            return new String[] {new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8),
+                    "file"};
+        } catch (CoreException | java.io.IOException ex) {
+            return null;
+        }
+    }
+
 }

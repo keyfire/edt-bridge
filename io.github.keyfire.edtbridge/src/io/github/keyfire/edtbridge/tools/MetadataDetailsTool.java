@@ -87,6 +87,22 @@ public final class MetadataDetailsTool {
                 o.addProperty("uuid", d.uuid);
                 o.addProperty("comment", d.comment);
                 o.addProperty("synonymRu", d.synonymRu);
+                if (d.properties != null && !d.properties.isEmpty()) {
+                    JsonObject props = new JsonObject();
+                    d.properties.forEach(props::addProperty);
+                    o.add("properties", props);
+                }
+                if (d.content != null && !d.content.isEmpty()) {
+                    JsonArray content = new JsonArray();
+                    for (io.github.keyfire.edtbridge.edt.MetadataReadGateway.ContentItem ci : d.content) {
+                        JsonObject c = new JsonObject();
+                        c.addProperty("fqn", ci.fqn);
+                        c.addProperty("type", ci.type);
+                        c.addProperty("autoRecord", ci.autoRecord);
+                        content.add(c);
+                    }
+                    o.add("content", content);
+                }
                 o.add("structure", groupsToJson(d.structure));
                 if (d.emptyStructuralFeatures != null && !d.emptyStructuralFeatures.isEmpty()) {
                     JsonArray ef = new JsonArray();

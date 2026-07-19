@@ -33,6 +33,7 @@ import org.osgi.framework.Version;
 
 import io.github.keyfire.edtbridge.edt.ProjectGateway;
 import io.github.keyfire.edtbridge.tools.AddAttributeTool;
+import io.github.keyfire.edtbridge.tools.AdoptObjectTool;
 import io.github.keyfire.edtbridge.tools.AddFormAttributeTool;
 import io.github.keyfire.edtbridge.tools.AddFormCommandTool;
 import io.github.keyfire.edtbridge.tools.AddFormItemTool;
@@ -74,6 +75,7 @@ import io.github.keyfire.edtbridge.tools.OutgoingCallsTool;
 import io.github.keyfire.edtbridge.tools.PictureExportTool;
 import io.github.keyfire.edtbridge.tools.OutgoingStructuresTool;
 import io.github.keyfire.edtbridge.tools.GoToDefinitionTool;
+import io.github.keyfire.edtbridge.tools.SearchModulesTool;
 import io.github.keyfire.edtbridge.tools.SymbolInfoTool;
 import io.github.keyfire.edtbridge.tools.ValidateQueryTool;
 import io.github.keyfire.edtbridge.tools.DebugAttachTool;
@@ -311,6 +313,8 @@ applyI18n();loadStatus();loadTools();
     private final DeleteObjectTool deleteObject = new DeleteObjectTool();
     private final DeleteProjectTool deleteProject = new DeleteProjectTool();
     private final CleanProjectTool cleanProject = new CleanProjectTool();
+    private final SearchModulesTool searchModules = new SearchModulesTool();
+    private final AdoptObjectTool adoptObject = new AdoptObjectTool();
     private final DebugAttachTool debugAttach = new DebugAttachTool();
     private final DebugDetachTool debugDetach = new DebugDetachTool();
     private final DebugInspectTool debugInspect = new DebugInspectTool();
@@ -594,6 +598,8 @@ applyI18n();loadStatus();loadTools();
         tools.add(deleteObject.descriptor());
         tools.add(deleteProject.descriptor());
         tools.add(cleanProject.descriptor());
+        tools.add(searchModules.descriptor());
+        tools.add(adoptObject.descriptor());
         tools.add(debugAttach.descriptor());
         tools.add(debugDetach.descriptor());
         tools.add(debugInspect.descriptor());
@@ -767,6 +773,13 @@ applyI18n();loadStatus();loadTools();
         if (cleanProject.name().equals(name)) {
             JsonObject denied = writeTokenGate(cleanProject.isWrite(), name);
             return denied != null ? denied : cleanProject.call(args);
+        }
+        if (searchModules.name().equals(name)) {
+            return searchModules.call(args);
+        }
+        if (adoptObject.name().equals(name)) {
+            JsonObject denied = writeTokenGate(adoptObject.isWrite(), name);
+            return denied != null ? denied : adoptObject.call(args);
         }
         if (debugAttach.name().equals(name)) {
             JsonObject denied = writeTokenGate(debugAttach.isWrite(), name);
