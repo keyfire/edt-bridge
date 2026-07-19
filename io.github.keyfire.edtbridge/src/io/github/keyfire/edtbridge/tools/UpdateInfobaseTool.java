@@ -16,6 +16,7 @@
  */
 package io.github.keyfire.edtbridge.tools;
 
+import io.github.keyfire.edtbridge.edt.BslGateway;
 import io.github.keyfire.edtbridge.edt.PlatformGateway;
 import io.github.keyfire.edtbridge.mcp.McpServer;
 import com.google.gson.GsonBuilder;
@@ -32,6 +33,7 @@ import com.google.gson.JsonObject;
 public final class UpdateInfobaseTool {
 
     private final PlatformGateway gateway = new PlatformGateway();
+    private final BslGateway bsl = new BslGateway();
 
     public String name() {
         return "edt_update_infobase";
@@ -100,6 +102,16 @@ public final class UpdateInfobaseTool {
             }
             if (res.status != null) {
                 o.addProperty("status", res.status);
+            }
+            BslGateway.MethodChangesResult mc = bsl.methodChanges(res.project);
+            if (mc.changesMethods) {
+                o.addProperty("changesMethods", true);
+                o.addProperty("registrationWarning", "this extension changes methods of the base "
+                        + "configuration (" + mc.count + " interception(s)), so in the infobase it must "
+                        + "be registered with safe mode and dangerous-action protection OFF - both are "
+                        + "ON by default. Clear them with edt_extension_properties.");
+            } else if (mc.ok) {
+                o.addProperty("changesMethods", false);
             }
             if (res.plan != null) {
                 o.addProperty("plan", res.plan);

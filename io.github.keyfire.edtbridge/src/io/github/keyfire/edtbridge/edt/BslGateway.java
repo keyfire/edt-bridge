@@ -1974,6 +1974,55 @@ public final class BslGateway {
         return md.eClass().getName() + "." + md.getName();
     }
 
+    // ---- Method changes an extension makes to the base configuration -----------------------------
+
+    /** Outcome of {@link #methodChanges}. */
+    public static final class MethodChangesResult {
+        public boolean ok;
+        public String project;
+        public boolean changesMethods;   // the extension intercepts at least one base method
+        public int count;
+        public boolean truncated;
+        public String message;
+        public final List<SearchHit> hits = new ArrayList<>();
+    }
+
+    /**
+     * Report whether an extension project changes methods of the base configuration - that is,
+     * whether any of its modules carries an interception annotation ({@code &Вместо} / {@code &Перед}
+     * / {@code &После} / {@code &ИзменениеИКонтроль} and their English spellings).
+     *
+     * <p>This decides how the extension must be REGISTERED in an infobase, which is what makes it
+     * worth answering mechanically. Both {@code ibcmd} and an update from EDT register an extension
+     * with safe mode and dangerous-action protection ON by default; under those an intercepted method
+     * cannot do what the base method could, so for an extension that changes methods both have to be
+     * cleared - see {@code edt_extension_properties}.
+     */
+    public MethodChangesResult methodChanges(String projectName) {
+        MethodChangesResult r = new MethodChangesResult();
+        r.project = projectName;
+        SearchResult sr = searchModules(projectName, METHOD_CHANGE_ANNOTATIONS, true, false, null, 200);
+        r.ok = sr.ok;
+        if (!sr.ok) {
+            r.message = sr.message;
+            return r;
+        }
+        r.hits.addAll(sr.hits);
+        r.count = sr.hits.size();
+        r.truncated = sr.truncated;
+        r.changesMethods = r.count > 0;
+        r.message = r.changesMethods
+                ? (r.count + (r.truncated ? "+" : "") + " method change(s) across " + sr.modulesScanned
+                   + " module(s) - the extension must be registered with safe mode and dangerous-action"
+                   + " protection OFF")
+                : ("no method changes across " + sr.modulesScanned + " module(s)");
+        return r;
+    }
+
+    /** Annotations by which an extension takes over a method of the base configuration. */
+    private static final String METHOD_CHANGE_ANNOTATIONS =
+            "&\\s*(Вместо|Перед|После|ИзменениеИКонтроль|Instead|Before|After|ChangeAndValidate)\\s*\\(";
+
     // ---- Full-text search across BSL modules -----------------------------------------------------
 
     /** One matching line. */

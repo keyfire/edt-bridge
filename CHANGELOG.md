@@ -32,6 +32,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugi
   The previous failure was invisible until an infobase rejected the build, which is late.
 
 ### Added
+- `edt_extension_properties` – read and set the properties an extension carries **inside an
+  infobase** (safe mode, protection from dangerous actions, active, scope) through
+  `ibcmd extension info|list|update`. These belong to the infobase registration, and nothing that
+  puts an extension there decides them: a newly registered extension gets safe mode and
+  dangerous-action protection **on** – verified as ibcmd's own defaults, and an update from EDT
+  leaves them untouched. An extension that changes methods of the base configuration cannot run
+  under either, so both have to be cleared, and that was previously silent until the extension
+  misbehaved in the infobase.
+- `edt_build_extension` and `edt_update_infobase` now report `changesMethods` and, when it is true,
+  name the two flags that must be off. The check reads the project's modules for interception
+  annotations (`&Вместо` / `&Перед` / `&После` / `&ИзменениеИКонтроль` and their English spellings).
 - `edt_create_extension` takes an optional `synonym` – the extension's human-readable name, written
   for the language adopted from the base configuration, as the wizard's own field does.
 

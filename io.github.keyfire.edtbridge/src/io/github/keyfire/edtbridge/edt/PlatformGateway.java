@@ -1238,6 +1238,264 @@ public final class PlatformGateway {
         return r;
     }
 
+    /** Properties of one extension as registered in an infobase. */
+    public static final class ExtensionFlags {
+        public String name;
+        public String version;
+        public Boolean active;
+        public String purpose;
+        public Boolean safeMode;
+        public String securityProfileName;
+        public Boolean unsafeActionProtection;
+        public Boolean usedInDistributedInfobase;
+        public String scope;
+    }
+
+    /** Result of {@link #extensionProperties}. */
+    public static final class ExtensionPropertiesResult {
+        public boolean ok;
+        public boolean applied;
+        public String infobase;      // how the infobase was addressed
+        public String platform;      // ibcmd install used
+        public String name;          // extension asked about; null = every extension
+        public final List<ExtensionFlags> extensions = new ArrayList<>();
+        public final List<String> changed = new ArrayList<>();
+        public String plan;
+        public String warning;
+        public String message;
+    }
+
+    /**
+     * Read - and optionally set - the properties an extension carries INSIDE an infobase, through
+     * {@code ibcmd extension info|list|update}. These are registration properties of the infobase,
+     * not of the project: building a {@code .cfe} or updating from EDT does not decide them.
+     *
+     * <p>Why it matters: a newly registered extension gets {@code safe-mode} and
+     * {@code unsafe-action-protection} ON (verified - they are ibcmd's defaults, and an update from
+     * EDT leaves them alone). An extension that changes methods of the base configuration cannot run
+     * under them: the intercepted method loses what the original was allowed to do. So for such an
+     * extension both have to be cleared, and {@code edt_build_extension} / {@code edt_update_infobase}
+     * say so when they see interception annotations.
+     *
+     * <p>The infobase is addressed either by {@code databasePath} (a file infobase) or by the DBMS
+     * coordinates, exactly as ibcmd expects them.
+     *
+     * @param apply {@code false} reports the current properties and the planned change; {@code true}
+     *              performs the update and reads the properties back
+     */
+    public ExtensionPropertiesResult extensionProperties(String databasePath, String dbms,
+            String dbServer, String dbName, String dbUser, String dbPassword, String name,
+            Boolean safeMode, Boolean unsafeActionProtection, Boolean active, String platformVersion,
+            boolean apply) {
+        ExtensionPropertiesResult r = new ExtensionPropertiesResult();
+        r.name = (name == null || name.isBlank()) ? null : name.trim();
+
+        List<String> conn = new ArrayList<>();
+        if (databasePath != null && !databasePath.isBlank()) {
+            conn.add("--database-path=" + databasePath.trim());
+            r.infobase = "file: " + databasePath.trim();
+        } else if (dbms != null && !dbms.isBlank() && dbName != null && !dbName.isBlank()) {
+            conn.add("--dbms=" + dbms.trim());
+            if (dbServer != null && !dbServer.isBlank()) {
+                conn.add("--database-server=" + dbServer.trim());
+            }
+            conn.add("--database-name=" + dbName.trim());
+            if (dbUser != null && !dbUser.isBlank()) {
+                conn.add("--database-user=" + dbUser.trim());
+            }
+            if (dbPassword != null && !dbPassword.isBlank()) {
+                conn.add("--database-password=" + dbPassword);
+            }
+            r.infobase = dbms.trim() + ": " + (dbServer == null ? "" : dbServer.trim() + "/") + dbName.trim();
+        } else {
+            r.message = "the infobase is required: pass databasePath for a file infobase, or dbms +"
+                    + " dbName (+ dbServer / dbUser / dbPassword) for a DBMS-hosted one";
+            return r;
+        }
+
+        DiskPlatform ib = findIbcmdInstall(platformLine(platformVersion));
+        if (ib == null) {
+            r.message = "no on-disk full install carrying ibcmd was found"
+                    + (platformVersion == null ? "" : " for version line " + platformVersion)
+                    + " - a full 1C:Enterprise install (with ibcmd) is required.";
+            return r;
+        }
+        r.platform = ib.version;
+        java.nio.file.Path ibcmd = firstExisting(ib.binDir, "ibcmd.exe", "ibcmd");
+
+        List<String> sets = new ArrayList<>();
+        if (safeMode != null) {
+            sets.add("--safe-mode=" + yesNo(safeMode));
+        }
+        if (unsafeActionProtection != null) {
+            sets.add("--unsafe-action-protection=" + yesNo(unsafeActionProtection));
+        }
+        if (active != null) {
+            sets.add("--active=" + yesNo(active));
+        }
+        if (!sets.isEmpty() && r.name == null) {
+            r.message = "name is required to change properties - ibcmd updates one extension at a time";
+            return r;
+        }
+
+        List<String> read = new ArrayList<>();
+        read.add("extension");
+        read.add(r.name == null ? "list" : "info");
+        read.addAll(conn);
+        if (r.name != null) {
+            read.add("--name=" + r.name);
+        }
+        String[] readCmd = read.toArray(new String[0]);
+        String out = runIbcmdCapturing(ibcmd, readCmd);
+        if (out == null) {
+            r.message = "ibcmd " + (r.name == null ? "extension list" : "extension info") + " failed"
+                    + " - check the infobase coordinates and that the platform matches its version";
+            return r;
+        }
+        parseExtensionFlags(out, r.extensions);
+        r.ok = true;
+        if (r.name != null && r.extensions.isEmpty()) {
+            r.ok = false;
+            r.message = "no extension named " + r.name + " is registered in this infobase";
+            return r;
+        }
+        r.plan = sets.isEmpty()
+                ? ("Report the registration properties of "
+                   + (r.name == null ? "every extension" : r.name) + " in " + r.infobase)
+                : ("Set " + String.join(" ", sets) + " on " + r.name + " in " + r.infobase);
+        if (sets.isEmpty() || !apply) {
+            if (!sets.isEmpty()) {
+                r.message = "dry-run - nothing changed; re-run with apply to set " + String.join(" ", sets);
+            }
+            return r;
+        }
+
+        List<String> upd = new ArrayList<>();
+        upd.add("extension");
+        upd.add("update");
+        upd.addAll(conn);
+        upd.add("--name=" + r.name);
+        upd.addAll(sets);
+        String err = runIbcmd(ibcmd, upd.toArray(new String[0]));
+        if (err != null) {
+            r.ok = false;
+            r.message = "ibcmd extension update failed: " + err;
+            return r;
+        }
+        // Read back rather than trust the exit code - the point of the tool is the state, not the call.
+        r.extensions.clear();
+        String after = runIbcmdCapturing(ibcmd, readCmd);
+        if (after != null) {
+            parseExtensionFlags(after, r.extensions);
+        }
+        r.applied = true;
+        r.changed.addAll(sets);
+        ExtensionFlags now = r.extensions.isEmpty() ? null : r.extensions.get(0);
+        r.message = "updated " + r.name + " in " + r.infobase
+                + (now == null ? "" : " - now safeMode=" + now.safeMode
+                        + ", unsafeActionProtection=" + now.unsafeActionProtection
+                        + ", active=" + now.active);
+        return r;
+    }
+
+    private static String yesNo(Boolean b) {
+        return Boolean.TRUE.equals(b) ? "yes" : "no";
+    }
+
+    /** Parse ibcmd's {@code key : value} extension listing; blank line separates extensions. */
+    private static void parseExtensionFlags(String out, List<ExtensionFlags> into) {
+        ExtensionFlags cur = null;
+        for (String raw : out.split("\\R")) {
+            String line = raw.trim();
+            if (line.isEmpty() || line.startsWith("[")) {
+                continue;   // blank separator, or an [INFO] log line
+            }
+            int colon = line.indexOf(':');
+            if (colon < 0) {
+                continue;
+            }
+            String key = line.substring(0, colon).trim();
+            String value = unquote(line.substring(colon + 1).trim());
+            if ("name".equals(key)) {
+                cur = new ExtensionFlags();
+                cur.name = value;
+                into.add(cur);
+            }
+            if (cur == null) {
+                continue;
+            }
+            switch (key) {
+                case "version" -> cur.version = value.isEmpty() ? null : value;
+                case "active" -> cur.active = parseYesNo(value);
+                case "purpose" -> cur.purpose = value.isEmpty() ? null : value;
+                case "safe-mode" -> cur.safeMode = parseYesNo(value);
+                case "security-profile-name" -> cur.securityProfileName = value.isEmpty() ? null : value;
+                case "unsafe-action-protection" -> cur.unsafeActionProtection = parseYesNo(value);
+                case "used-in-distributed-infobase" -> cur.usedInDistributedInfobase = parseYesNo(value);
+                case "scope" -> cur.scope = value.isEmpty() ? null : value;
+                default -> { /* hash-sum and anything ibcmd adds later */ }
+            }
+        }
+    }
+
+    private static Boolean parseYesNo(String v) {
+        if ("yes".equalsIgnoreCase(v)) {
+            return Boolean.TRUE;
+        }
+        if ("no".equalsIgnoreCase(v)) {
+            return Boolean.FALSE;
+        }
+        return null;
+    }
+
+    private static String unquote(String v) {
+        return (v.length() >= 2 && v.startsWith("\"") && v.endsWith("\""))
+                ? v.substring(1, v.length() - 1) : v;
+    }
+
+    /** Like {@link #runIbcmd} but returns the output on success (null on failure). */
+    private static String runIbcmdCapturing(java.nio.file.Path exe, String... args) {
+        List<String> cmd = new ArrayList<>();
+        cmd.add(exe.toString());
+        for (String a : args) {
+            cmd.add(a);
+        }
+        try {
+            ProcessBuilder pb = new ProcessBuilder(cmd);
+            pb.redirectErrorStream(true);
+            Process proc = pb.start();
+            byte[] raw;
+            try (java.io.InputStream in = proc.getInputStream()) {
+                raw = in.readAllBytes();
+            }
+            if (!proc.waitFor(300, java.util.concurrent.TimeUnit.SECONDS)) {
+                proc.destroyForcibly();
+                return null;
+            }
+            return (proc.exitValue() == 0) ? decodeIbcmd(raw) : null;
+        } catch (java.io.IOException | InterruptedException ex) {
+            if (ex instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            return null;
+        }
+    }
+
+    /**
+     * ibcmd writes command output in UTF-8 but its built-in help in the OEM code page; decode
+     * strictly as UTF-8 and fall back to CP866 so a stray message cannot turn Cyrillic into noise.
+     */
+    private static String decodeIbcmd(byte[] raw) {
+        try {
+            return java.nio.charset.StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+                    .decode(java.nio.ByteBuffer.wrap(raw)).toString();
+        } catch (java.nio.charset.CharacterCodingException notUtf8) {
+            return new String(raw, java.nio.charset.Charset.forName("IBM866"));
+        }
+    }
+
     /** Best on-disk full install that carries {@code ibcmd}, preferring {@code line} then descending. */
     private DiskPlatform findIbcmdInstall(String preferredLine) {
         for (DiskPlatform dp : discoverFullPlatforms(preferredLine)) {

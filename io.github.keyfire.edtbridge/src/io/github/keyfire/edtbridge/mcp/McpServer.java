@@ -58,6 +58,7 @@ import io.github.keyfire.edtbridge.tools.PlatformInstallationsTool;
 import io.github.keyfire.edtbridge.tools.RegisterPlatformTool;
 import io.github.keyfire.edtbridge.tools.CreateInfobaseTool;
 import io.github.keyfire.edtbridge.tools.BuildExtensionTool;
+import io.github.keyfire.edtbridge.tools.ExtensionPropertiesTool;
 import io.github.keyfire.edtbridge.tools.UpdateInfobaseTool;
 import io.github.keyfire.edtbridge.tools.DeleteMethodTool;
 import io.github.keyfire.edtbridge.tools.DeleteObjectTool;
@@ -309,6 +310,7 @@ applyI18n();loadStatus();loadTools();
     private final RegisterPlatformTool registerPlatform = new RegisterPlatformTool();
     private final CreateInfobaseTool createInfobase = new CreateInfobaseTool();
     private final BuildExtensionTool buildExtension = new BuildExtensionTool();
+    private final ExtensionPropertiesTool extensionProperties = new ExtensionPropertiesTool();
     private final PlatformHelpTool platformHelp = new PlatformHelpTool();
     private final DeleteObjectTool deleteObject = new DeleteObjectTool();
     private final DeleteProjectTool deleteProject = new DeleteProjectTool();
@@ -594,6 +596,7 @@ applyI18n();loadStatus();loadTools();
         tools.add(registerPlatform.descriptor());
         tools.add(createInfobase.descriptor());
         tools.add(buildExtension.descriptor());
+        tools.add(extensionProperties.descriptor());
         tools.add(platformHelp.descriptor());
         tools.add(deleteObject.descriptor());
         tools.add(deleteProject.descriptor());
@@ -754,6 +757,10 @@ applyI18n();loadStatus();loadTools();
         if (buildExtension.name().equals(name)) {
             JsonObject denied = writeTokenGate(buildExtension.isWrite(), name);
             return denied != null ? denied : buildExtension.call(args);
+        }
+        if (extensionProperties.name().equals(name)) {
+            JsonObject denied = writeTokenGate(extensionProperties.isWrite(), name);
+            return denied != null ? denied : extensionProperties.call(args);
         }
         if (platformHelp.name().equals(name)) {
             return platformHelp.call(args);
