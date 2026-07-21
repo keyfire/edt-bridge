@@ -8,6 +8,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
+## [Unreleased]
+
+### Added
+- `edt_check_info` – what an EDT validation check MEANS: its description, the non-compliant and
+  compliant examples, and the links to the 1C development standards it enforces, in English or
+  Russian. It is the companion of `edt_project_errors`, which already reports which check fired: that
+  answers *what*, this answers *why*, and until now the reasoning stayed inside the IDE where an agent
+  could not read it. The text comes from the check bundles' own resources
+  (`check.descriptions/<id>.html`), read through OSGi like the platform Syntax Helper.
+
+  A problem does not always name its check by that id: some carry a short code (SU200) whose mapping
+  lives in the check engine, not in these resources. Pasting the problem message works anyway - the
+  message IS the check title - and every entry says whether it matched by id or by title.
+
+### Fixed
+- `self-update` left a stale jar in `dropins` when the release jar was already there: the purge only
+  ran on the path that downloads something, so a hand-built sibling stayed next to the release copy
+  for good - and two copies of the same bundle are exactly what makes Equinox resolve an arbitrary
+  one. Found right after 0.7.0 shipped, on the very installation that had both.
+
 ## [0.7.0] - 2026-07-21
 
 ### Added

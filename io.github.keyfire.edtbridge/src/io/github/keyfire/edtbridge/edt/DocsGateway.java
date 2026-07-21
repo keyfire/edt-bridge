@@ -190,6 +190,206 @@ public final class DocsGateway {
         }
     }
 
+    // ── check documentation (why a validation problem fired) ────────────────────────────────────
+
+    /** One EDT check and what its documentation says. */
+    public static final class CheckEntry {
+        public String id;                 // check id as the marker carries it, e.g. form-items-single-event-handler
+        public String bundle;             // bundle holding the description
+        public String title;
+        public String matchedBy;          // "id" or "title" - how the query found it
+        public String text;               // description as plain text (null when only listed)
+        public final List<String> standards = new ArrayList<>();  // links to the development standards
+    }
+
+    /** Result of looking a check up. */
+    public static final class CheckResult {
+        public boolean ok;
+        public String query;
+        public String language;
+        public int total;
+        public boolean truncated;
+        public final List<CheckEntry> checks = new ArrayList<>();
+        public String message;
+    }
+
+    /** Where the check bundles keep their documentation, and how the localized copy is nested. */
+    private static final String CHECK_DOCS = "check.descriptions";
+
+    /**
+     * The documentation EDT shows for a validation check: what it means, the non-compliant and
+     * compliant examples, and the LINKS TO THE DEVELOPMENT STANDARDS behind it.
+     *
+     * <p>This is the other half of {@code edt_project_errors}. That tool reports which check fired and
+     * carries its id; without the description the id is just a slug, and the reason the rule exists -
+     * the standard it enforces - stays in the IDE where an agent cannot read it.
+     *
+     * <p>The checks ship their descriptions as HTML resources inside their own bundles
+     * ({@code check.descriptions/<id>.html}, Russian under {@code check.descriptions/ru/}), so they are
+     * read the same way as the platform Syntax Helper - through OSGi, no compile-time dependency on
+     * the check framework.
+     *
+     * @param query    check id (with or without the {@code bundle:} prefix the markers use) or a
+     *                 substring of the id; empty lists every check that carries documentation
+     * @param language {@code ru} for the Russian text, anything else for English
+     * @param limit    cap on the number of entries
+     */
+    public CheckResult checkInfo(String query, String language, int limit) {
+        CheckResult r = new CheckResult();
+        r.query = query;
+        boolean russian = language != null && language.toLowerCase().startsWith("ru");
+        r.language = russian ? "ru" : "en";
+        int cap = limit > 0 ? limit : 50;
+
+        // A marker's check id looks like "com.e1c.v8codestyle.bsl:module-unused-local-variable" -
+        // the part before the colon names the bundle, so an id copied straight from a problem works.
+        String needle = query == null ? "" : query.trim();
+        String bundleHint = null;
+        int colon = needle.indexOf(':');
+        if (colon > 0) {
+            bundleHint = needle.substring(0, colon).trim();
+            needle = needle.substring(colon + 1).trim();
+        }
+        final String id = needle;
+        final String lower = id.toLowerCase();
+
+        BundleContext ctx = context();
+        if (ctx == null) {
+            r.message = "no OSGi context - the plugin is not running inside EDT";
+            return r;
+        }
+        String folder = russian ? CHECK_DOCS + "/ru" : CHECK_DOCS;
+        List<CheckEntry> found = new ArrayList<>();
+        for (Bundle b : ctx.getBundles()) {
+            if (bundleHint != null && !bundleHint.equalsIgnoreCase(b.getSymbolicName())) {
+                continue;
+            }
+            java.util.Enumeration<java.net.URL> entries = b.findEntries(folder, "*.html", false);
+            if (entries == null) {
+                continue;
+            }
+            while (entries.hasMoreElements()) {
+                java.net.URL url = entries.nextElement();
+                String path = url.getPath();
+                String name = path.substring(path.lastIndexOf('/') + 1);
+                String checkId = name.endsWith(".html") ? name.substring(0, name.length() - 5) : name;
+                String html = readUrl(url);
+                String title = html == null ? null : extractTitle(html);
+                boolean byId = lower.isEmpty() || checkId.toLowerCase().contains(lower);
+                // A problem does not always name the check by its slug: some carry a short code
+                // (SU200) whose mapping lives in the check engine, not in these resources. The
+                // message, though, is the check's own title - so matching titles answers "why did
+                // this fire" from the text of the problem itself.
+                boolean byTitle = !lower.isEmpty() && title != null
+                        && title.toLowerCase().contains(lower);
+                if (!byId && !byTitle) {
+                    continue;
+                }
+                CheckEntry entry = new CheckEntry();
+                entry.id = checkId;
+                entry.bundle = b.getSymbolicName();
+                entry.matchedBy = byId ? "id" : "title";
+                if (html != null) {
+                    entry.title = title;
+                    entry.text = withoutRepeatedTitle(htmlToText(html), title);
+                    entry.standards.addAll(links(html));
+                }
+                found.add(entry);
+            }
+        }
+        found.sort((a, c) -> a.id.compareToIgnoreCase(c.id));
+        r.total = found.size();
+        // An exact id match is what a caller coming from a problem wants - never bury it in a list.
+        for (CheckEntry entry : found) {
+            if (entry.id.equalsIgnoreCase(id)) {
+                r.checks.add(entry);
+                r.ok = true;
+                r.total = 1;
+                r.message = "check " + entry.id + " (" + entry.bundle + ")";
+                return r;
+            }
+        }
+        for (CheckEntry entry : found) {
+            if (r.checks.size() >= cap) {
+                r.truncated = true;
+                break;
+            }
+            if (found.size() > 1) {
+                entry.text = null;   // a list stays a list; ask by id for the full text
+                entry.standards.clear();
+            }
+            r.checks.add(entry);
+        }
+        r.ok = true;
+        r.message = found.isEmpty()
+                ? "no check documentation matches \"" + (query == null ? "" : query) + "\""
+                : r.checks.size() + " of " + r.total + " check(s)"
+                  + (r.checks.size() == 1 ? "" : " - ask by exact id for the full description");
+        return r;
+    }
+
+    /**
+     * The generated descriptions open with the title three times over - the {@code <title>}, an
+     * {@code <h1>} anchor and a restating paragraph. Keep one.
+     */
+    private static String withoutRepeatedTitle(String text, String title) {
+        if (text == null || title == null || title.isBlank()) {
+            return text;
+        }
+        String[] lines = text.split("\\R");
+        StringBuilder out = new StringBuilder();
+        boolean kept = false;
+        for (String line : lines) {
+            String plain = line.strip();
+            boolean isTitle = plain.equalsIgnoreCase(title.strip())
+                    || plain.equalsIgnoreCase(title.strip() + ".");
+            if (isTitle) {
+                if (kept) {
+                    continue;
+                }
+                kept = true;
+            }
+            out.append(line).append('\n');
+        }
+        return out.toString().strip();
+    }
+
+    /** Links out of a description: these are the development-standard pages the check enforces. */
+    private static List<String> links(String html) {
+        List<String> out = new ArrayList<>();
+        java.util.regex.Matcher m = LINK_RE.matcher(html);
+        while (m.find()) {
+            String href = m.group(1);
+            if (href.startsWith("http") && !out.contains(href)) {
+                out.add(href);
+            }
+        }
+        return out;
+    }
+
+    private static final Pattern LINK_RE =
+            Pattern.compile("<a\\s+[^>]*href=\"([^\"]+)\"", Pattern.CASE_INSENSITIVE);
+
+    private static String readUrl(java.net.URL url) {
+        try (java.io.InputStream in = url.openStream()) {
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                out.write(buf, 0, n);
+            }
+            return out.toString(java.nio.charset.StandardCharsets.UTF_8);
+        } catch (java.io.IOException unreadable) {
+            return null;
+        }
+    }
+
+    /** The OSGi context of this plugin - the way to every other bundle's resources. */
+    private static BundleContext context() {
+        Bundle self = FrameworkUtil.getBundle(DocsGateway.class);
+        return (self == null) ? null : self.getBundleContext();
+    }
+
     private String readBundleEntry(String symbolicName, String path) {
         Bundle b = Platform.getBundle(symbolicName);
         if (b == null) {

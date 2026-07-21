@@ -34,6 +34,7 @@ import org.osgi.framework.Version;
 import io.github.keyfire.edtbridge.edt.ProjectGateway;
 import io.github.keyfire.edtbridge.tools.AddAttributeTool;
 import io.github.keyfire.edtbridge.tools.AddRouteTool;
+import io.github.keyfire.edtbridge.tools.CheckInfoTool;
 import io.github.keyfire.edtbridge.tools.DeleteExtensionTool;
 import io.github.keyfire.edtbridge.tools.DesignerAgentTool;
 import io.github.keyfire.edtbridge.tools.InfobaseSessionsTool;
@@ -316,6 +317,7 @@ applyI18n();loadStatus();loadTools();
     private final InfobaseConfigStateTool infobaseConfigState = new InfobaseConfigStateTool();
     private final InfobaseDumpTool infobaseDump = new InfobaseDumpTool();
     private final DesignerAgentTool designerAgent = new DesignerAgentTool();
+    private final CheckInfoTool checkInfo = new CheckInfoTool();
     private final DeleteExtensionTool deleteExtension = new DeleteExtensionTool();
     private final InfobaseSessionsTool infobaseSessions = new InfobaseSessionsTool();
     private final UpdateDatabaseConfigTool updateDatabaseConfig = new UpdateDatabaseConfigTool();
@@ -589,6 +591,7 @@ applyI18n();loadStatus();loadTools();
         tools.add(infobaseConfigState.descriptor());
         tools.add(infobaseDump.descriptor());
         tools.add(designerAgent.descriptor());
+        tools.add(checkInfo.descriptor());
         tools.add(deleteExtension.descriptor());
         tools.add(infobaseSessions.descriptor());
         tools.add(updateDatabaseConfig.descriptor());
@@ -695,6 +698,9 @@ applyI18n();loadStatus();loadTools();
         if (designerAgent.name().equals(name)) {
             JsonObject denied = writeTokenGate(designerAgent.isWrite(), name);
             return denied != null ? denied : designerAgent.call(args);
+        }
+        if (checkInfo.name().equals(name)) {
+            return checkInfo.call(args);
         }
         if (deleteExtension.name().equals(name)) {
             JsonObject denied = writeTokenGate(deleteExtension.isWrite(), name);
