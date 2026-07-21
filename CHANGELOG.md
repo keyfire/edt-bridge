@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
-## [Unreleased]
+## [0.7.1] - 2026-07-21
 
 ### Fixed
 - The diagrams lost their transparent corners: re-rendered from the svg, they came back with the
