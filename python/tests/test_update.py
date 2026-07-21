@@ -37,6 +37,20 @@ def test_purge_leaves_a_single_jar_alone(tmp_path):
     assert [p.name for p in dropins.glob("*.jar")] == [_JARS[-1]]
 
 
+def test_install_purges_even_when_the_release_jar_is_already_there(tmp_path, monkeypatch):
+    """The early return used to skip the purge, so a hand-built jar stayed next to the release one
+    for good - and two copies of the same bundle are what makes Equinox load an arbitrary one."""
+    release = _JARS[-1]
+    dropins = _dropins(tmp_path, (_JARS[0], release))
+    monkeypatch.setattr(update, "_fetch_json", lambda _url: {
+        "tag_name": "v9.9.9",
+        "assets": [{"name": release, "browser_download_url": "https://example.invalid/jar", "size": 3}],
+    })
+
+    assert update.install_latest_jar(dropins, emit=lambda _msg: None) is True
+    assert [p.name for p in dropins.glob("*.jar")] == [release]
+
+
 def test_purge_ignores_foreign_jars(tmp_path):
     """Other plugins live in dropins too - only our own bundle may be touched."""
     dropins = _dropins(tmp_path, (_JARS[0], _JARS[-1], "com.example.other_1.0.0.jar"))

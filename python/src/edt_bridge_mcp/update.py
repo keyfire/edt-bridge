@@ -134,6 +134,10 @@ def install_latest_jar(dropins: Path, emit=log) -> bool:
     name = jar_asset["name"]
     existing = dropins / name
     if existing.exists():
+        # Still collapse dropins to one jar: a hand-built sibling next to the release jar is the
+        # exact situation Equinox resolves arbitrarily, and returning early used to leave it there
+        # for good - the purge only ran on the path that downloads something.
+        purge_stale_jars(dropins, emit)
         emit(f"already at the latest release jar: {name}")
         return True
 
