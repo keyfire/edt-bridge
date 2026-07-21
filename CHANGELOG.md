@@ -10,6 +10,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugi
 
 ## [Unreleased]
 
+### Fixed
+- The diagrams lost their transparent corners: re-rendered from the svg, they came back with the
+  browser's white page baked into the rounded frame, which reads as white notches on GitHub. Both PNGs
+  are transparent again, and `scripts/render-diagrams.sh` now pins the flags that decide it - the
+  recipe had lived nowhere, which is why the same white corners had already been fixed once.
+
 ### Added
 - `edt_check_info` – what an EDT validation check MEANS: its description, the non-compliant and
   compliant examples, and the links to the 1C development standards it enforces, in English or
