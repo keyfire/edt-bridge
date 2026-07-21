@@ -15,7 +15,12 @@ on:
     tags: ["v[0-9]*"]
 
 jobs:
+  # A red suite must stop the release: once a version is on PyPI its number is spent forever.
+  test:
+    uses: ./.github/workflows/ci.yml
+
   build:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

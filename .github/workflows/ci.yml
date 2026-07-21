@@ -1,0 +1,53 @@
+# Tests for the edt-bridge-mcp wrapper (python/).
+#
+# Why only the wrapper is tested here: building the plugin jar needs the 1C:EDT SDK bundles
+# (com._1c.g5.v8.*), which are proprietary and cannot be obtained by a hosted runner - see the note
+# in release.yml. The wrapper carries no such dependency; it is a plain stdio proxy. And it is where
+# every shipped regression so far actually lived: a cp1251 stdout aborting the tools/list frame (so
+# the client registered no tools at all), a version that drifted for two releases, and a
+# BrokenPipeError traceback when a result was piped into `head`. Those failures are the suite.
+#
+# Windows is in the matrix on purpose - the encoding bug only ever appeared there.
+#
+# This workflow is also called by release.yml and pypi-publish.yml, so a red suite blocks a release
+# instead of shipping past it.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install the wrapper with its test extra
+        run: python -m pip install .[test]
+        working-directory: python
+      - name: Run the suite
+        run: python -m pytest -q
+        working-directory: python
+
+  package:
+    # Catches a broken sdist/wheel before a tag does - the publish workflow builds the same way.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install build
+      - run: python -m build
+        working-directory: python

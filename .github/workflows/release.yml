@@ -24,7 +24,13 @@ permissions:
   contents: write
 
 jobs:
+  # The jar itself cannot be tested here (no EDT SDK on a hosted runner), but a release is one
+  # event: if the wrapper's suite is red, the tag should not turn into a release at all.
+  test:
+    uses: ./.github/workflows/ci.yml
+
   publish:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

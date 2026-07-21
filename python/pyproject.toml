@@ -23,8 +23,16 @@ Homepage = "https://github.com/keyfire/edt-bridge"
 [project.scripts]
 edt-bridge-mcp = "edt_bridge_mcp.server:main"
 
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
 [tool.setuptools.dynamic]
 version = { attr = "edt_bridge_mcp.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Import the package from the checkout, so the suite runs without installing it first.
+pythonpath = ["src"]

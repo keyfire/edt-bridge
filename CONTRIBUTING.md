@@ -46,8 +46,25 @@ See [Manual install](README.md#manual-install-without-the-wrapper).
 
 There is no offline unit suite for the Java plugin – it is verified against a **live EDT**: build,
 deploy to `dropins/`, restart EDT, and exercise the affected tools (via the dashboard or an MCP
-client). For write tools, check the dry-run plan (`apply=false`) before running `apply=true`. The
-Python wrapper's tests live under [`python/`](python/).
+client). For write tools, check the dry-run plan (`apply=false`) before running `apply=true`. A
+hosted runner cannot do any of this: compiling the bundle needs the proprietary 1C:EDT SDK bundles,
+which is also why the jar is built locally and committed under `dist/`.
+
+The Python wrapper is a different matter – it has no EDT dependency, so it carries a pytest suite:
+
+```sh
+cd python
+python -m pip install .[test]
+python -m pytest -q
+```
+
+The `ci` workflow runs it on every push and pull request (Linux and Windows, 3.10 and 3.12), and both
+release workflows call `ci` first – so a red suite stops a release instead of shipping past it.
+Windows in the matrix is not decoration: the one release that shipped broken did so because of an
+encoding fault that only appears there.
+
+New wrapper behaviour is expected to arrive with a test, and a fixed bug with the test that
+reproduces it – the current suite is largely made of exactly those.
 
 ## Code style
 
