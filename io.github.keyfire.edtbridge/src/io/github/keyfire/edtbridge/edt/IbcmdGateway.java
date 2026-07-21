@@ -69,18 +69,6 @@ public final class IbcmdGateway {
         public String error;          // null when ok
     }
 
-    /** How the dumped main and database configurations compare. */
-    public static final class ConfigStateResult {
-        public boolean ok;
-        public String infobase;                 // label, never carries the password
-        public String platform;                 // ibcmd install used
-        public Boolean configFilesIdentical;    // null when it could not be established
-        public String mainConfigHash;
-        public String databaseConfigHash;
-        public String plan;
-        public String message;
-    }
-
     /**
      * Find an on-disk full install carrying ibcmd, preferring the line of {@code platformVersion}
      * (ibcmd ships in 8.5.1.1302 but is absent from 8.5.1.1317, so the newest install is not always
@@ -186,92 +174,6 @@ public final class IbcmdGateway {
         return r;
     }
 
-    /**
-     * Compare the infobase's main configuration with its DATABASE configuration, by dumping both
-     * ({@code config save} and {@code config save --db}) and hashing them.
-     *
-     * <p><b>Read the outcome asymmetrically.</b> Identical files mean the database configuration is
-     * the main one, i.e. it has been applied. DIFFERING files do NOT mean it was not applied: a
-     * DYNAMIC update leaves the two containers different even when the platform itself reports
-     * "обновление конфигурации базы данных не требуется". Measured on a file infobase with no sessions
-     * at all, with byte-identical file SIZES - what differs is container bookkeeping, not content. So
-     * a difference means "not applied OR applied dynamically", and this cannot tell the two apart.
-     *
-     * <p>Why there is no better handle: {@code --db} exists only on {@code config save|sign};
-     * {@code config export info|status} need an XML dump directory rather than a {@code .cf}; and
-     * {@code config generation-id} tracks the MAIN configuration (it moves when the main config is
-     * edited and stays put on apply), so there is no second value to compare it against.
-     *
-     * @param target          the infobase, already addressed
-     * @param platformVersion version line to prefer when picking the ibcmd install (optional)
-     */
-    public ConfigStateResult configState(IbcmdArgs.Target target, String platformVersion) {
-        ConfigStateResult r = new ConfigStateResult();
-        if (target == null || !target.usable()) {
-            r.message = (target == null) ? "no infobase given" : target.problem;
-            return r;
-        }
-        r.infobase = target.label;
-        Tool tool = resolve(platformVersion);
-        if (tool.problem != null) {
-            r.message = tool.problem;
-            return r;
-        }
-        r.platform = tool.version;
-        r.plan = "Dump the main and the database configuration of " + target.label
-                + " with ibcmd " + tool.version + " and compare them";
-
-        Path work = null;
-        try {
-            work = Files.createTempDirectory("edtbridge-configstate-");
-            Path mainCf = work.resolve("main.cf");
-            Path dbCf = work.resolve("db.cf");
-            // Without --data ibcmd locks ONE shared working directory for every invocation, so a
-            // second call anywhere fails with "рабочий каталог заблокирован процессом". Give each
-            // run its own throwaway one.
-            String dataDir = "--data=" + Files.createDirectories(work.resolve("data"));
-
-            List<String> save = new ArrayList<>(List.of("config", "save", dataDir));
-            save.addAll(target.args);
-            save.add(mainCf.toString());
-            Run mainRun = run(tool.exe, save);
-            if (!mainRun.ok) {
-                r.message = "could not dump the main configuration: " + mainRun.error;
-                return r;
-            }
-
-            List<String> saveDb = new ArrayList<>(List.of("config", "save", "--db", dataDir));
-            saveDb.addAll(target.args);
-            saveDb.add(dbCf.toString());
-            Run dbRun = run(tool.exe, saveDb);
-            if (!dbRun.ok) {
-                r.message = "could not dump the database configuration: " + dbRun.error;
-                return r;
-            }
-
-            r.mainConfigHash = sha256(mainCf);
-            r.databaseConfigHash = sha256(dbCf);
-            if (r.mainConfigHash == null || r.databaseConfigHash == null) {
-                r.message = "the configurations were dumped but could not be read back for comparison";
-                return r;
-            }
-            r.configFilesIdentical = r.mainConfigHash.equals(r.databaseConfigHash);
-            r.ok = true;
-            r.message = Boolean.TRUE.equals(r.configFilesIdentical)
-                    ? "the database configuration is identical to the main one - it has been applied"
-                    : "the two configurations are NOT identical, which is inconclusive: either the "
-                      + "changes were never applied to the database, or they were applied DYNAMICALLY "
-                      + "- a dynamic update leaves the containers different even when the platform "
-                      + "reports that no database update is required. This comparison cannot tell the "
-                      + "two apart; confirm from the Designer.";
-        } catch (IOException ex) {
-            r.message = "could not prepare a working directory: " + GatewaySupport.describeCause(ex);
-        } finally {
-            deleteRecursively(work);
-        }
-        return r;
-    }
-
     /** Outcome of {@link #dumpInfobase}. */
     public static final class DumpResult {
         public boolean ok;
@@ -332,7 +234,7 @@ public final class IbcmdGateway {
         Path work = null;
         Run run;
         try {
-            // Own working directory per run - see configState: the shared one is locked exclusively.
+            // Own working directory per run: without --data they all lock the same one.
             work = Files.createTempDirectory("edtbridge-dump-");
             List<String> dump = new ArrayList<>(List.of("infobase", "dump",
                     "--data=" + Files.createDirectories(work.resolve("data"))));
@@ -373,21 +275,6 @@ public final class IbcmdGateway {
                     .decode(ByteBuffer.wrap(raw)).toString();
         } catch (CharacterCodingException notUtf8) {
             return new String(raw, Charset.forName("IBM866"));
-        }
-    }
-
-    /** SHA-256 of a file as hex, or null when it cannot be read. */
-    static String sha256(Path file) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] sum = digest.digest(Files.readAllBytes(file));
-            StringBuilder hex = new StringBuilder(sum.length * 2);
-            for (byte b : sum) {
-                hex.append(Character.forDigit((b >> 4) & 0xF, 16)).append(Character.forDigit(b & 0xF, 16));
-            }
-            return hex.toString();
-        } catch (IOException | NoSuchAlgorithmException ex) {
-            return null;
         }
     }
 

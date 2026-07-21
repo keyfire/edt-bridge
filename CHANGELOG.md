@@ -8,21 +8,65 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
-## [Unreleased]
+## [0.7.0] - 2026-07-21
 
 ### Added
-- `edt_infobase_config_state` – compares an infobase's main configuration with its *database* one, the
-  code sessions actually execute, by dumping both through `ibcmd`. It addresses the infobase by file
-  path or DBMS coordinates, so a clustered infobase needs neither cluster access nor an EDT session.
+- **The configurator agent as a third transport to an infobase.** A configurator started with
+  `/AgentMode` holds an open infobase session and takes commands over SSH – and it authenticates AS
+  THE INFOBASE USER, which is exactly what the other two transports cannot do: EDT's own
+  synchronization has no way to supply infobase credentials from outside its UI, and ibcmd's
+  `extension` mode has no `--user` at all. A server infobase that authenticates its users is therefore
+  reachable now, extensions included. The client is the platform's own
+  (`com._1c.g5.designer.ssh.client`, shipped with EDT), so this costs no third-party dependency.
 
-  The result is deliberately asymmetric, and the description says so: identical files mean the
-  configuration HAS been applied, while differing files are INCONCLUSIVE. A dynamic update leaves the
-  two containers different even when the platform itself reports that no database update is required –
-  reproduced on a file infobase with no sessions and byte-identical file sizes, so the difference is
-  container bookkeeping rather than content. Distinguishing "not applied" from "applied dynamically"
-  needs an indicator this does not have: `--db` exists only on `config save|sign`, `config export
-  info|status` want an XML dump directory rather than a `.cf`, and `config generation-id` tracks the
-  MAIN configuration, leaving nothing to compare it with.
+  Agents are expensive to start and cheap to keep, so the bridge starts one per infobase on demand and
+  reuses it; `edt_designer_agent` lists them and stops them.
+- `edt_infobase_config_state` – is the DATABASE configuration, the one sessions actually execute, up
+  to date, or is an update still pending? The answer comes from the platform itself: the update is
+  started and its confirmation REFUSED, so nothing is applied and a pending update arrives as the full
+  list of structure changes that are waiting.
+
+  An earlier version of this tool compared the two configurations by dumping and hashing them, and was
+  withdrawn before release because the verdict was wrong: after a successful *dynamic* update the two
+  containers still differ – reproduced on a file infobase with no sessions, byte-identical file sizes,
+  and the platform itself answering that no database update is required. Container bookkeeping, not
+  content. Refusing the platform's own confirmation has no such ambiguity, and it was verified in both
+  directions – on an infobase with nothing pending it reports nothing, and on one with a configuration
+  loaded but not applied it lists every change and leaves the infobase untouched (the same list is
+  offered again on the next call).
+- `edt_update_database_config` – applies the database configuration: the step that makes running
+  sessions execute the configuration the infobase holds. Loading a project into an infobase does not
+  do this, and until it happens every session keeps running the previous code – which is what a
+  freshly added HTTP route answering 404 looks like. Dry-run by default, and the dry-run is the same
+  operation with its confirmation refused. `sessionTermination=force` ends the sessions holding the
+  base when an exclusive lock is needed, i.e. the whole deny-sessions / terminate / apply procedure in
+  one call.
+- `edt_designer_agent` – lifecycle of those agents: list, start, stop. Stopping one frees the infobase
+  session it holds on the server.
+- The agent-backed tools address an infobase EDT does NOT know as well: `srv\base` for a server one, or
+  the directory of a file one, instead of a registered name or uuid. EDT's list is preferred because it
+  carries the human name, but it is not a gate - a base no project is bound to is simply absent from it
+  and still perfectly reachable.
+- `edt_delete_extension` – removes an extension from an infobase, the last step of a lifecycle the
+  bridge could otherwise only walk one way: it could create a project, load it as an extension and set
+  its properties, but taking the extension off needed a hand-written client. Dry-run reads the
+  extension's current properties first, so an unknown name is answered plainly instead of by the
+  platform's reply about an extension named ''. Needs `force` on top of `apply`: an extension's
+  configuration lives in the infobase, and nothing here puts it back.
+- `edt_infobase_sessions` – the cluster's sessions through `rac`: list them, optionally for one infobase
+  or one application, and end them. This is the one thing neither the agent nor `ibcmd` can do, since
+  sessions live in the cluster manager. It exists because of a specific dead end: a designer session
+  holds the infobase's configuration lock, and a designer that was killed rather than closed keeps it -
+  every later operation then fails with "Ошибка блокировки информационной базы для конфигурирования" as
+  though somebody else were configuring the base. The orphan shows up here as a `Designer` session.
+  Terminating is dry-run by default and needs `force` on top of `apply`.
+- `edt_update_infobase` takes `transport=agent`: instead of EDT's synchronization engine, the project is
+  exported to designer XML in-process and loaded through the agent (`config load-config-from-files`),
+  which authenticates as the infobase user. That is the only way into a server infobase that has users,
+  and the XML goes straight into the base – no throwaway infobase and no `.cf` in between, which is what
+  makes it usable for a configuration with a million objects. The database configuration is applied
+  afterwards unless `updateDatabaseConfig=false`, because a load alone leaves the infobase holding the
+  new code and running the old.
 - `edt_infobase_dump` – dump an infobase to a `.dt` through `ibcmd`: the backup that belongs before
   applying a configuration to the database, and which the bridge had no way to take. Dry-run by
   default and refuses to overwrite an existing file.
@@ -43,13 +87,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugi
 - `edt_update_infobase` now returns an `equalityNote` next to `equality`, saying plainly that the
   comparison covers the MAIN configuration and does not mean the database configuration was applied.
 - `edt_extension_properties` takes `infobase` – the name or uuid of an infobase registered in EDT –
-  instead of spelling the address out, and the 1C credentials as well. This works for a FILE infobase,
-  whose path EDT stores. It does NOT work for a server one, and that is not an omission: EDT registers
-  a server infobase by its 1C CLUSTER coordinate (server + reference), which carries no DBMS
-  coordinates for ibcmd to use. The tool now says exactly that instead of failing obscurely, so the
-  DBMS coordinates remain the way to reach a server infobase.
+  instead of spelling the address out, and routes it through the configurator agent. That is what makes
+  the extensions of a SERVER infobase with users reachable at all, `active` included: ibcmd's
+  `extension` mode rejects `--user` outright, so the tool used to answer that this case was out of
+  reach. Explicit addresses (`databasePath`, DBMS coordinates) still go through ibcmd.
 
 ### Changed
+- The tool tables in the README gained a section of their own for everything that talks to a RUNNING
+  infobase, with the transports spelled out - EDT's own synchronization, `ibcmd`, the configurator agent,
+  and `rac` for the cluster - because which one reaches what is the first thing a reader needs and the
+  list had grown past the point where it could be inferred. Both diagrams were redrawn for the same reason:
+  delivery now shows its second step (applying the database configuration) and the architecture shows the
+  running infobase as a node of its own, reached out of process.
 - A test suite for the wrapper plus a `ci` workflow (Linux and Windows, 3.10 and 3.12) that both
   release workflows now call first, so a red suite stops a release instead of shipping past it. Its
   core is the three regressions that actually shipped: a cp1251 stdout aborting the `tools/list` frame

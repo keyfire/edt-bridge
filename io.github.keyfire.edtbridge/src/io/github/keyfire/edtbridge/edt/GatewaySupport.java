@@ -120,4 +120,23 @@ final class GatewaySupport {
         return base;
     }
 
+
+    /**
+     * The export bundle's Guice injector, via its plugin's own class loader. Its export services are
+     * bound in a plain (non-service-aware) Guice module, so {@code ServiceAccess} cannot reach them;
+     * the injector on {@code ExportPlugin.getDefault()} can. The plugin sits in an internal package,
+     * so this stays reflection-only (no compile-time dependency on it).
+     */
+    static com.google.inject.Injector exportInjector() throws Exception {
+        org.osgi.framework.Bundle bundle = org.eclipse.core.runtime.Platform.getBundle("com._1c.g5.v8.dt.export");
+        if (bundle == null) {
+            return null;
+        }
+        Class<?> pluginClass = bundle.loadClass("com._1c.g5.v8.dt.internal.export.ExportPlugin");
+        Object plugin = pluginClass.getMethod("getDefault").invoke(null);
+        if (plugin == null) {
+            return null;
+        }
+        return (com.google.inject.Injector) pluginClass.getMethod("getInjector").invoke(plugin);
+    }
 }

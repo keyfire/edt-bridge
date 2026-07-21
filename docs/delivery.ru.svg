@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="820" height="452" viewBox="0 0 820 452">
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="492" viewBox="0 0 840 492">
   <style>
     text { font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; }
     .mono { font-family: Consolas, 'Cascadia Mono', Menlo, monospace; font-size: 10.2px; }
@@ -16,8 +16,8 @@
     </marker>
   </defs>
 
-  <rect x="0.5" y="0.5" width="819" height="451" rx="12" fill="#14171e" stroke="#262c38"/>
-  <text x="410" y="36" text-anchor="middle" class="title">Полный цикл поставки через MCP</text>
+  <rect x="0.5" y="0.5" width="839" height="491" rx="12" fill="#14171e" stroke="#262c38"/>
+  <text x="420" y="36" text-anchor="middle" class="title">Полный цикл поставки через MCP</text>
 
   <!-- 1 create -->
   <rect x="26" y="72" width="176" height="120" rx="10" class="box"/>
@@ -46,25 +46,27 @@
   <text x="436" y="182" class="box-body">платформа 1С)</text>
 
   <!-- 4 deliver -->
-  <rect x="620" y="72" width="174" height="120" rx="10" class="box"/>
+  <rect x="620" y="72" width="194" height="120" rx="10" class="box"/>
   <circle cx="638" cy="98" r="4" fill="#f0883e"/>
   <text x="650" y="103" class="box-title">4. Доставить</text>
-  <text x="634" y="127" class="mono" fill="#aab3c7">edt_infobases</text>
-  <text x="634" y="145" class="mono" fill="#aab3c7">edt_update_infobase</text>
+  <text x="634" y="127" class="mono" fill="#aab3c7">edt_update_infobase</text>
+  <text x="634" y="145" class="mono" fill="#aab3c7">edt_update_database_config</text>
+  <text x="634" y="163" class="mono" fill="#aab3c7">edt_extension_properties</text>
+  <text x="634" y="182" class="box-body">два шага, не один</text>
 
   <line x1="202" y1="132" x2="220" y2="132" class="edge" marker-end="url(#ah2)"/>
   <line x1="400" y1="132" x2="418" y2="132" class="edge" marker-end="url(#ah2)"/>
   <line x1="598" y1="132" x2="616" y2="132" class="edge" marker-end="url(#ah2)"/>
 
   <!-- target infobase (running) -->
-  <rect x="572" y="252" width="222" height="80" rx="10" class="box"/>
+  <rect x="572" y="252" width="242" height="80" rx="10" class="box"/>
   <circle cx="590" cy="278" r="4" fill="#39c5cf"/>
   <text x="602" y="283" class="box-title">запущенная ИБ</text>
   <text x="586" y="306" class="box-body">тестовый стенд:</text>
   <text x="586" y="323" class="box-body">конфигурация + расширения</text>
-  <line x1="712" y1="192" x2="700" y2="248" class="edge" marker-end="url(#ah2)"/>
-  <text x="792" y="216" text-anchor="end" class="edge-sub">изменения структуры БД</text>
-  <text x="792" y="231" text-anchor="end" class="edge-sub">подтверждаются сами</text>
+  <line x1="722" y1="192" x2="710" y2="248" class="edge" marker-end="url(#ah2)"/>
+  <text x="700" y="214" text-anchor="end" class="edge-sub">через агент конфигуратора</text>
+  <text x="700" y="229" text-anchor="end" class="edge-sub">как пользователь базы</text>
 
   <!-- 5 debug -->
   <rect x="26" y="252" width="300" height="80" rx="10" class="box"/>
@@ -81,5 +83,7 @@
   <line x1="92" y1="252" x2="92" y2="196" class="edge" stroke-dasharray="6 4" marker-end="url(#ah2)"/>
   <text x="102" y="228" class="edge-sub">итерация: правка, пересборка, передеплой</text>
 
-  <text x="26" y="424" class="note">Проекты расширений уходят в ИБ прямо из workspace (шаг 4); внешние обработки сначала собираются в .epf (шаг 3).</text>
+  <text x="26" y="418" class="note">Проекты расширений уходят в ИБ прямо из workspace (шаг 4); внешние обработки сначала собираются в .epf (шаг 3).</text>
+  <text x="26" y="440" class="note">Поставка – это два шага: загрузить конфигурацию в базу, затем применить КОНФИГУРАЦИЮ БАЗЫ ДАННЫХ.</text>
+  <text x="26" y="462" class="note">До второго шага каждый сеанс исполняет прежний код – именно так выглядит только что добавленный маршрут, отвечающий 404.</text>
 </svg>

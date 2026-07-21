@@ -17,6 +17,7 @@
 package io.github.keyfire.edtbridge.tools;
 
 import io.github.keyfire.edtbridge.edt.BslGateway;
+import io.github.keyfire.edtbridge.edt.DesignerAgentGateway;
 import io.github.keyfire.edtbridge.edt.PlatformGateway;
 import io.github.keyfire.edtbridge.mcp.McpServer;
 import com.google.gson.GsonBuilder;
@@ -34,6 +35,7 @@ public final class ExtensionPropertiesTool {
 
     private final PlatformGateway gateway = new PlatformGateway();
     private final BslGateway bsl = new BslGateway();
+    private final DesignerAgentGateway agent = new DesignerAgentGateway();
 
     public String name() {
         return "edt_extension_properties";
@@ -55,9 +57,9 @@ public final class ExtensionPropertiesTool {
         props.add("dbUser", strProp("DBMS user"));
         props.add("dbPassword", strProp("DBMS password"));
         props.add("infobase", strProp("Name or uuid of an infobase REGISTERED IN EDT (as edt_infobases "
-                + "lists them), instead of spelling the address out. Works for a FILE infobase, whose "
-                + "path EDT knows. A server infobase is registered by its 1C cluster coordinate, which "
-                + "does not carry the DBMS coordinates ibcmd needs - for those pass dbms + dbName."));
+                + "lists them), instead of spelling the address out. This routes through a configurator "
+                + "agent, which authenticates as the INFOBASE user - so a server infobase with users "
+                + "works too, and it is the way to reach one."));
         props.add("infobaseUser", strProp("1C infobase user, e.g. Администратор. Required when the "
                 + "infobase authenticates its users - this is the 1C account, not the DBMS one."));
         props.add("infobasePassword", strProp("1C infobase password (optional). Never echoed back."));
@@ -85,24 +87,28 @@ public final class ExtensionPropertiesTool {
         t.addProperty("name", name());
         t.addProperty("description",
                 "Read and set the properties an extension carries INSIDE an infobase - safe mode, "
-                + "protection from dangerous actions, active, scope - via ibcmd extension info|list|"
-                + "update. These belong to the infobase registration, not to the project: neither "
+                + "protection from dangerous actions, active, scope. These belong to the infobase "
+                + "registration, not to the project: neither "
                 + "edt_build_extension nor edt_update_infobase decides them, and a freshly registered "
                 + "extension gets safe mode and dangerous-action protection ON. An extension that "
                 + "CHANGES METHODS of the base configuration cannot run under those, so both must be "
                 + "cleared - pass projectName and the result tells you whether that applies. Address "
-                + "the infobase by databasePath (file) or by the DBMS coordinates. Dry-run by default; "
-                + "changing requires a configured token.");
+                + "the infobase by its EDT-registered name or uuid (infobase) - that goes through a "
+                + "configurator agent and reaches a SERVER infobase that authenticates its users - or "
+                + "by databasePath / DBMS coordinates, which go through ibcmd and cannot. Dry-run by "
+                + "default; changing requires a configured token.");
         t.addProperty("descriptionRu",
                 "Чтение и установка свойств, с которыми расширение зарегистрировано В ИНФОРМАЦИОННОЙ "
-                + "БАЗЕ – безопасный режим, защита от опасных действий, активность, область действия – "
-                + "через ibcmd extension info|list|update. Это свойства регистрации в базе, а не "
+                + "БАЗЕ – безопасный режим, защита от опасных действий, активность, область действия. "
+                + "Это свойства регистрации в базе, а не "
                 + "проекта: их не задают ни edt_build_extension, ни edt_update_infobase, а только что "
                 + "зарегистрированное расширение получает безопасный режим и защиту от опасных "
                 + "действий ВКЛЮЧЁННЫМИ. Расширение, которое МЕНЯЕТ МЕТОДЫ базовой конфигурации, под "
                 + "ними не работает, поэтому оба флага нужно снять – передайте projectName, и результат "
-                + "скажет, тот ли это случай. База адресуется databasePath (файловая) либо реквизитами "
-                + "СУБД. По умолчанию dry-run; изменение требует токен.");
+                + "скажет, тот ли это случай. База адресуется именем или uuid из EDT (infobase) – это "
+                + "путь через агент конфигуратора, доступный и СЕРВЕРНОЙ базе с аутентификацией 1С, – "
+                + "либо databasePath / реквизитами СУБД, а это путь через ibcmd, которому такая база "
+                + "недоступна. По умолчанию dry-run; изменение требует токен.");
         t.add("inputSchema", schema);
         return t;
     }
@@ -110,6 +116,13 @@ public final class ExtensionPropertiesTool {
     public JsonObject call(JsonObject args) {
         String projectName = getStr(args, "projectName");
         boolean apply = getBool(args, "apply") != null && Boolean.TRUE.equals(getBool(args, "apply"));
+        String infobase = getStr(args, "infobase");
+        // An infobase EDT knows goes through the configurator agent: it authenticates as the INFOBASE
+        // user, so a server infobase with users is reachable - which ibcmd's extension mode never is,
+        // having no --user at all. Explicit addresses (databasePath / DBMS coordinates) stay on ibcmd.
+        if (infobase != null && !infobase.isBlank()) {
+            return viaAgent(args, infobase, projectName, apply);
+        }
         try {
             PlatformGateway.ExtensionPropertiesResult res = gateway.extensionProperties(
                     getStr(args, "infobase"),
@@ -179,6 +192,78 @@ public final class ExtensionPropertiesTool {
             }
             if (res.warning != null) {
                 o.addProperty("warning", res.warning);
+            }
+            if (res.message != null) {
+                o.addProperty("message", res.message);
+            }
+            return McpServer.textResult(new GsonBuilder().setPrettyPrinting().create().toJson(o));
+        } catch (Exception e) {
+            return McpServer.toolError("edt_extension_properties failed: " + e.getMessage());
+        }
+    }
+
+    /** The same question asked through the configurator agent, which reaches an authenticating base. */
+    private JsonObject viaAgent(JsonObject args, String infobase, String projectName, boolean apply) {
+        String name = getStr(args, "name");
+        Boolean active = getBool(args, "active");
+        Boolean safeMode = getBool(args, "safeMode");
+        Boolean unsafeActionProtection = getBool(args, "unsafeActionProtection");
+        boolean setting = active != null || safeMode != null || unsafeActionProtection != null;
+        try {
+            DesignerAgentGateway.ExtensionsResult res = setting
+                    ? agent.setExtensionProperties(infobase, name, active, safeMode,
+                            unsafeActionProtection, null, null, null, getStr(args, "infobaseUser"),
+                            getStr(args, "infobasePassword"), getStr(args, "platform"), apply)
+                    : agent.extensionProperties(infobase, name, getStr(args, "infobaseUser"),
+                            getStr(args, "infobasePassword"), getStr(args, "platform"));
+
+            JsonObject o = new JsonObject();
+            o.addProperty("ok", res.ok);
+            o.addProperty("applied", res.applied);
+            o.addProperty("transport", "designer agent");
+            if (res.infobase != null) {
+                o.addProperty("infobase", res.infobase);
+            }
+            if (res.platform != null) {
+                o.addProperty("platform", res.platform);
+            }
+            if (res.name != null) {
+                o.addProperty("name", res.name);
+            }
+            JsonArray exts = new JsonArray();
+            for (java.util.Map<String, Object> ext : res.extensions) {
+                JsonObject e = new JsonObject();
+                ext.forEach((key, value) -> {
+                    if (value instanceof Boolean) {
+                        e.addProperty(key, (Boolean) value);
+                    } else if (value != null) {
+                        e.addProperty(key, String.valueOf(value));
+                    }
+                });
+                exts.add(e);
+            }
+            o.add("extensions", exts);
+            if (!res.changed.isEmpty()) {
+                JsonArray ch = new JsonArray();
+                res.changed.forEach(ch::add);
+                o.add("changed", ch);
+            }
+            if (projectName != null && !projectName.isBlank()) {
+                BslGateway.MethodChangesResult mc = bsl.methodChanges(projectName);
+                JsonObject m = new JsonObject();
+                m.addProperty("project", projectName);
+                m.addProperty("changesMethods", mc.changesMethods);
+                m.addProperty("count", mc.count);
+                if (mc.message != null) {
+                    m.addProperty("message", mc.message);
+                }
+                o.add("methodChanges", m);
+                if (mc.changesMethods) {
+                    o.addProperty("required", "safeMode=false, unsafeActionProtection=false");
+                }
+            }
+            if (res.plan != null) {
+                o.addProperty("plan", res.plan);
             }
             if (res.message != null) {
                 o.addProperty("message", res.message);

@@ -75,24 +75,6 @@ import com.google.inject.Injector;
  * keep that file focused; behaviour is unchanged.
  */
 public final class PlatformGateway {
-    /**
-     * The export bundle's Guice injector, via its plugin's own class loader. Its export services are
-     * bound in a plain (non-service-aware) Guice module, so {@code ServiceAccess} cannot reach them;
-     * the injector on {@code ExportPlugin.getDefault()} can. The plugin sits in an internal package,
-     * so this stays reflection-only (no compile-time dependency on it).
-     */
-    private Injector exportInjector() throws Exception {
-        Bundle bundle = Platform.getBundle("com._1c.g5.v8.dt.export");
-        if (bundle == null) {
-            return null;
-        }
-        Class<?> pluginClass = bundle.loadClass("com._1c.g5.v8.dt.internal.export.ExportPlugin");
-        Object plugin = pluginClass.getMethod("getDefault").invoke(null);
-        if (plugin == null) {
-            return null;
-        }
-        return (Injector) pluginClass.getMethod("getInjector").invoke(plugin);
-    }
 
 
     /** One registered infobase for {@link #listInfobases}. */
@@ -825,7 +807,7 @@ public final class PlatformGateway {
         }
         IExportOperationFactory exportFactory;
         try {
-            Injector inj = exportInjector();
+            Injector inj = GatewaySupport.exportInjector();
             exportFactory = (inj == null) ? null : inj.getInstance(IExportOperationFactory.class);
         } catch (Exception ex) {
             return "export service unavailable: " + GatewaySupport.describeCause(ex);
@@ -1183,7 +1165,7 @@ public final class PlatformGateway {
 
         IExportOperationFactory exportFactory;
         try {
-            Injector inj = exportInjector();
+            Injector inj = GatewaySupport.exportInjector();
             exportFactory = (inj == null) ? null : inj.getInstance(IExportOperationFactory.class);
         } catch (Exception ex) {
             r.message = "export service unavailable: " + GatewaySupport.describeCause(ex);

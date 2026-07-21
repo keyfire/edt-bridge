@@ -53,12 +53,32 @@ python -m pipx ensurepath      # then reopen the terminal
 macOS: `brew install pipx && pipx ensurepath`. More: <https://pipx.pypa.io>.
 </details>
 
+### Settings inside EDT
+
+The plugin has its own preference page – **Window ▸ Preferences ▸ EDT-Bridge** – and that is where the
+token comes from when the bridge runs inside a GUI EDT:
+
+| Setting | What it is |
+|---------|------------|
+| **Token for write tools** | The shared secret every write tool requires. Empty means writes are refused, not unguarded. The same value goes to the client as `EDT_BRIDGE_TOKEN`. |
+| **MCP server port** | Default 8770. **Takes effect after EDT restarts**, so the running server keeps the old port until then. |
+| **Allow arbitrary BSL evaluation while debugging** | Off by default. It gates `edt_evaluate`, which executes code against a live infobase – test stands only. |
+
+**A launch parameter wins over this page.** `-Dedt.bridge.*` system properties and `EDT_BRIDGE_*`
+environment variables given at startup take precedence over the stored values – which is how the
+wrapper drives a headless EDT, and why a token set here can look ignored when one was also passed on
+the command line.
+
 ## Tools
 
 Tools are `edt_*` (snake_case); parameters are camelCase (`projectName`, `fqn`, `queryText`);
 Cyrillic FQNs are supported (`Справочник.Контрагенты`). The `edt_` prefix is deliberate: an MCP
 host presents every server's tools to the agent as one flat list, so a name must carry its context
 itself – `edt_rename` stays unambiguous where a bare `rename` is dangerously generic.
+
+Together they close the full cycle without leaving MCP – create, develop, build, deliver, debug:
+
+![Full delivery cycle over MCP](https://raw.githubusercontent.com/keyfire/edt-bridge/main/docs/delivery.png)
 
 ### Read
 
@@ -71,8 +91,6 @@ itself – `edt_rename` stays unambiguous where a bare `rename` is dangerously g
 | `edt_search_modules` | Full-text search across a project's BSL modules – substring or regular expression, optional path filter. Reads through Eclipse's file buffers, so a module open in an editor is searched as it currently stands, unsaved edits included. Where `edt_find_references` answers "who calls this method", this answers "where does this text appear". |
 | `edt_validate_query` | Validates a 1C query against the project's live metadata: syntax **and** semantics (unknown tables/fields, type errors), with positions. |
 | `edt_form_structure` · `edt_form_render` · `edt_picture_export` | Forms and images: a managed form's items tree (fields/groups/tables/buttons/decorations) with data bindings, static visible/enabled/readOnly, per-item event handlers, input-field props, button→command and the form's conditional appearance, plus its attributes, commands, parameters and handlers; the same form rendered to a PNG by EDT's native offscreen renderer (interface variant and theme selectable); and a CommonPicture's content from its Picture.zip. |
-| `edt_infobases` · `edt_platform_installations` | What the platform side has to work with: EDT's registered infobases (name, uuid, connection string) with the open projects' associations, and the 1C:Enterprise installations EDT resolves from when dumping an `.epf`/`.erf` or creating an infobase – each resolved to a concrete install carrying a thick client, plus the full installs found on disk. |
-| `edt_infobase_config_state` | Compares an infobase's **main** configuration with its **database** one – the code sessions actually execute – by dumping both with `ibcmd`. Addressed by file path or DBMS coordinates, so a clustered infobase needs no cluster access. **Read it asymmetrically:** identical files mean the configuration *has* been applied; differing files are *inconclusive* – either it was never applied, or it was applied **dynamically**, which leaves the containers different even when the platform reports that no update is required. |
 | `edt_platform_help` | The 1C:Enterprise **platform Syntax Helper** bundled with EDT (real API reference – objects, methods, properties, events, Ru+En): search by name, or read a page as text. Consult the actual API instead of guessing signatures. |
 
 ### Write
@@ -96,13 +114,35 @@ performs the change and serializes the `.mdo`.
 | `edt_create_extension` · `edt_create_external_object` | Start a project. A configuration **extension** against a base project via `IExtensionProjectManager`, its root Configuration being the base configuration *adopted* – as the wizard does it, which is what makes the project loadable into an infobase – plus name prefix, purpose (Customization·AddOn·Patch) and synonym; or an **external data processor** project, the start of the "processor → .epf" cycle. |
 | `edt_clean_project` · `edt_delete_project` | Finish with a project. Discard its build results so validation runs again (EDT's "Clean" dialog, programmatically – reports the problem count before and after, waiting until it stops changing, because a stale marker outliving its cause is worse than no marker), or remove it from the workspace through the Eclipse workspace so no ghost project is left behind (`force` required – deleting a project is irreversible). |
 | `edt_build_extension` · `edt_dump_external_object` | Build the binaries: a **`.cfe`** from an extension project, or an **`.epf`/`.erf`** from an external data processor/report. Both can bypass EDT's platform resolver when it serves no thick client – exporting designer XML in-process, then assembling with a full on-disk 1C install in a throwaway temp infobase that is deleted afterwards. `logPath` keeps the platform's build log next to the artefact. |
-| `edt_extension_properties` | Read and set how an extension is REGISTERED in an infobase – safe mode, protection from dangerous actions, active, scope – via `ibcmd extension`. Neither building a `.cfe` nor updating from EDT decides these, and a freshly registered extension gets safe mode and dangerous-action protection **on**; an extension that changes methods of the base configuration cannot run under them. Pass the extension project and the result says whether that is the case. |
-| `edt_infobase_dump` | Dump an infobase to a `.dt` through `ibcmd` – the backup to take **before** applying a configuration to the database, which the bridge previously had no way to make. Addresses the infobase by file path or DBMS coordinates, refuses to overwrite an existing file, and is dry-run by default. Nothing in the infobase changes, but the dump reads all of its data, so it is token-gated. |
-| `edt_create_infobase` · `edt_update_infobase` · `edt_register_platform` | Infobases and the platform behind them: create an **empty file infobase** and register it in EDT's list (falling back to a full install found on disk when EDT has none for the version); update an infobase's configuration **from an EDT project** via EDT's synchronization engine (db-structure changes auto-confirmed, a conflict aborts); or register a full install into EDT so its own engine can use it. |
 
-Together the create / develop / build / deliver tools close the full cycle without leaving MCP:
+### Infobases, the cluster and the platform
 
-![Full delivery cycle over MCP](https://raw.githubusercontent.com/keyfire/edt-bridge/main/docs/delivery.png)
+Everything that talks to a RUNNING infobase rather than to the model in EDT. Four places to reach, and
+they are not interchangeable - the **Through** column says which one a tool uses:
+
+- **EDT's own synchronization** – what the IDE uses. It opens its own infobase connection and has no way
+  to take credentials from outside the UI, so it stops at an infobase that authenticates its users.
+- **`ibcmd`** – straight at the database, by file path or DBMS coordinates, so a clustered infobase needs
+  no cluster access. Its `extension` mode has no 1C credentials at all.
+- **the configurator agent** – a designer started with `/AgentMode`, taking commands over SSH and
+  authenticating AS THE INFOBASE USER. It reaches what the other two cannot, and the bridge keeps one
+  running per infobase because starting one is slow and holding one is cheap.
+- **`rac`** – the cluster itself, which is where sessions live. Neither the agent nor `ibcmd` sees them.
+
+Tools that change an infobase are token-gated and dry-run by default, exactly like the write tools above.
+
+| Tool | Through | What it does |
+|------|---------|--------------|
+| `edt_infobases` · `edt_platform_installations` | EDT | What the platform side has to work with: EDT's registered infobases (name, uuid, connection string) with the open projects' associations, and the 1C:Enterprise installations EDT resolves from when dumping an `.epf`/`.erf` or creating an infobase – each resolved to a concrete install carrying a thick client, plus the full installs found on disk. |
+| `edt_designer_agent` | agent | Lifecycle of the **configurator agents** the bridge drives: list, start, stop. An agent is a configurator in `/AgentMode` holding an open infobase session, authenticating **as the infobase user** – which is how the bridge reaches an infobase the other transports cannot. Started on demand and kept between calls; stopping one frees the session it holds on the server. |
+| `edt_infobase_config_state` | agent | Is the infobase's **database** configuration – the code sessions actually execute – up to date, or is an update still pending? The platform itself answers: the update is started and its confirmation **refused**, so nothing is applied and a pending update comes back as the full list of structure changes that are waiting. Driven through a configurator agent, so a server infobase that authenticates its users is reachable. |
+| `edt_update_database_config` | agent | **Applies** the database configuration – the step that makes running sessions execute the configuration the infobase holds. Loading a project into an infobase does not do this, and until it happens every session keeps running the previous code (a freshly added HTTP route answering 404 is what that looks like). Dry-run by default; `sessionTermination=force` ends the sessions holding the base when an exclusive lock is needed. |
+| `edt_update_infobase` | EDT · agent | Update an infobase's configuration **from an EDT project**. Through EDT's synchronization engine by default (db-structure changes auto-confirmed, a conflict aborts), which cannot authenticate to an infobase that has users; with `transport=agent` the project is exported to designer XML and loaded through the agent instead – the only route into a server infobase with users – and the database configuration is applied afterwards. |
+| `edt_create_infobase` · `edt_register_platform` | EDT · disk install | Create an **empty file infobase** and register it in EDT's list, falling back to a full install found on disk when EDT resolves none for the version; or register a full install into EDT so its own engine can use it. |
+| `edt_extension_properties` | agent · ibcmd | Read and set how an extension is REGISTERED in an infobase – safe mode, protection from dangerous actions, active, scope. Neither building a `.cfe` nor updating from EDT decides these, and a freshly registered extension gets safe mode and dangerous-action protection **on**; an extension that changes methods of the base configuration cannot run under them. Pass the extension project and the result says whether that is the case. Addressed by an EDT-registered name it goes through the agent, which reaches a server infobase with users; by explicit DBMS coordinates it goes through `ibcmd`, which cannot. |
+| `edt_delete_extension` | agent | Removes an extension from an infobase – the step that closes the lifecycle (create · load · configure · **delete**). The dry-run reads its current properties first, so a wrong name is answered plainly. Needs **force** on top of apply: an extension's configuration lives in the infobase, and nothing here puts it back. |
+| `edt_infobase_sessions` | rac | The 1C **cluster's sessions** through `rac`: list them (for one infobase or one application) and end them. Neither the agent nor `ibcmd` can – sessions live in the cluster manager. Reach for it when an infobase refuses to be configured: a designer session that was killed rather than closed still holds the **configuration lock**, and shows up here as a `Designer` session. Terminating is dry-run by default and needs force. |
+| `edt_infobase_dump` | ibcmd | Dump an infobase to a `.dt` through `ibcmd` – the backup to take **before** applying a configuration to the database, which the bridge previously had no way to make. Addresses the infobase by file path or DBMS coordinates, refuses to overwrite an existing file, and is dry-run by default. Nothing in the infobase changes, but the dump reads all of its data, so it is token-gated. |
 
 ### Debug
 

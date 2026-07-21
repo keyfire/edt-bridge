@@ -4,4 +4,4 @@
 # from this attribute, so the two cannot drift. They did once - the wrapper went on reporting 0.3.1
 # for two releases, in --version and in the MCP serverInfo alike. Bump it with the plugin jar; the
 # two share one version number.
-__version__ = "0.6.0"
+__version__ = "0.7.0"

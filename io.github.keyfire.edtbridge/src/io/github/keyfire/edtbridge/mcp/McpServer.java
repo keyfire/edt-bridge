@@ -34,7 +34,11 @@ import org.osgi.framework.Version;
 import io.github.keyfire.edtbridge.edt.ProjectGateway;
 import io.github.keyfire.edtbridge.tools.AddAttributeTool;
 import io.github.keyfire.edtbridge.tools.AddRouteTool;
+import io.github.keyfire.edtbridge.tools.DeleteExtensionTool;
+import io.github.keyfire.edtbridge.tools.DesignerAgentTool;
+import io.github.keyfire.edtbridge.tools.InfobaseSessionsTool;
 import io.github.keyfire.edtbridge.tools.InfobaseConfigStateTool;
+import io.github.keyfire.edtbridge.tools.UpdateDatabaseConfigTool;
 import io.github.keyfire.edtbridge.tools.InfobaseDumpTool;
 import io.github.keyfire.edtbridge.tools.AdoptObjectTool;
 import io.github.keyfire.edtbridge.tools.AddFormAttributeTool;
@@ -311,6 +315,10 @@ applyI18n();loadStatus();loadTools();
     private final InfobasesTool infobases = new InfobasesTool();
     private final InfobaseConfigStateTool infobaseConfigState = new InfobaseConfigStateTool();
     private final InfobaseDumpTool infobaseDump = new InfobaseDumpTool();
+    private final DesignerAgentTool designerAgent = new DesignerAgentTool();
+    private final DeleteExtensionTool deleteExtension = new DeleteExtensionTool();
+    private final InfobaseSessionsTool infobaseSessions = new InfobaseSessionsTool();
+    private final UpdateDatabaseConfigTool updateDatabaseConfig = new UpdateDatabaseConfigTool();
     private final UpdateInfobaseTool updateInfobase = new UpdateInfobaseTool();
     private final PlatformInstallationsTool platformInstallations = new PlatformInstallationsTool();
     private final RegisterPlatformTool registerPlatform = new RegisterPlatformTool();
@@ -580,6 +588,10 @@ applyI18n();loadStatus();loadTools();
         tools.add(addRoute.descriptor());
         tools.add(infobaseConfigState.descriptor());
         tools.add(infobaseDump.descriptor());
+        tools.add(designerAgent.descriptor());
+        tools.add(deleteExtension.descriptor());
+        tools.add(infobaseSessions.descriptor());
+        tools.add(updateDatabaseConfig.descriptor());
         tools.add(addForm.descriptor());
         tools.add(addFormAttribute.descriptor());
         tools.add(modifyFormAttribute.descriptor());
@@ -679,6 +691,22 @@ applyI18n();loadStatus();loadTools();
         }
         if (infobaseConfigState.name().equals(name)) {
             return infobaseConfigState.call(args);
+        }
+        if (designerAgent.name().equals(name)) {
+            JsonObject denied = writeTokenGate(designerAgent.isWrite(), name);
+            return denied != null ? denied : designerAgent.call(args);
+        }
+        if (deleteExtension.name().equals(name)) {
+            JsonObject denied = writeTokenGate(deleteExtension.isWrite(), name);
+            return denied != null ? denied : deleteExtension.call(args);
+        }
+        if (infobaseSessions.name().equals(name)) {
+            JsonObject denied = writeTokenGate(infobaseSessions.isWrite(), name);
+            return denied != null ? denied : infobaseSessions.call(args);
+        }
+        if (updateDatabaseConfig.name().equals(name)) {
+            JsonObject denied = writeTokenGate(updateDatabaseConfig.isWrite(), name);
+            return denied != null ? denied : updateDatabaseConfig.call(args);
         }
         if (infobaseDump.name().equals(name)) {
             JsonObject denied = writeTokenGate(infobaseDump.isWrite(), name);
