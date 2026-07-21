@@ -8,6 +8,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
+## [0.6.0] – 2026-07-21
+
+### Added
+- `edt_add_route` – add a route (a URL template plus one HTTP method) to an `HTTPService`. The bridge
+  covered attributes, forms and module code, but a new route meant editing the service `.mdo` by hand
+  and generating the `uuid` of both the `urlTemplates` block and its nested `methods` block – exactly
+  the hand-editing the bridge exists to avoid. Dry-run by default: resolves the service, checks the
+  template name is free and the HTTP method resolves to a `httpMethod` enum literal, and returns the
+  plan. `apply=true` creates both through the model and serialises the `.mdo`; `createHandler` splices
+  a `Функция <handler>(Запрос)` stub into the service module.
+
+### Changed
+- `edt_project_errors` can now answer "what is wrong with the module I just edited". It took a project
+  name and returned everything: on a large configuration that is 13 850 problems, ~5 MB, 152 000 lines
+  – past any tool-result limit, so every call spilled to a file that an external script then filtered.
+  New optional `fqn` / `modulePath` (narrow to one object or module), `severity` (ERROR/WARNING/INFO)
+  and `countOnly` (the counts, no list – what a before/after baseline needs). The result also carries
+  `total`, `totalBeforeFilter`, `bySeverity` and `bySource`, and the returned list is capped at `limit`
+  (default 1000, `truncated` flag) so an unfiltered call stays bounded.
+- `edt_module_text` takes `includeMethods` (default true). Every call returned the module's entire
+  procedure/function catalogue with signatures even when a single `method` was requested – 147 methods
+  on one production module, re-sent on every read. `false` returns just the requested text.
+- `edt_module_text`, `edt_add_method` and `edt_delete_method` resolve `HTTPService.X` and `WebService.X`
+  FQNs. `edt_delete_method` refused with "unsupported object type: HTTPService (pass modulePath
+  directly)", leaving the caller to reconstruct `src/HTTPServices/<name>/Module.bsl` by hand; both
+  service kinds were simply absent from the module resolver's folder map, so all three tools were
+  affected by one gap.
+
 ## [0.5.0] – 2026-07-19
 
 ### Fixed
