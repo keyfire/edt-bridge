@@ -34,6 +34,7 @@ import org.osgi.framework.Version;
 import io.github.keyfire.edtbridge.edt.ProjectGateway;
 import io.github.keyfire.edtbridge.tools.AddAttributeTool;
 import io.github.keyfire.edtbridge.tools.AddRouteTool;
+import io.github.keyfire.edtbridge.tools.InfobaseConfigStateTool;
 import io.github.keyfire.edtbridge.tools.AdoptObjectTool;
 import io.github.keyfire.edtbridge.tools.AddFormAttributeTool;
 import io.github.keyfire.edtbridge.tools.AddFormCommandTool;
@@ -307,6 +308,7 @@ applyI18n();loadStatus();loadTools();
     private final CreateExternalObjectTool createExternalObject = new CreateExternalObjectTool();
     private final DumpExternalObjectTool dumpExternalObject = new DumpExternalObjectTool();
     private final InfobasesTool infobases = new InfobasesTool();
+    private final InfobaseConfigStateTool infobaseConfigState = new InfobaseConfigStateTool();
     private final UpdateInfobaseTool updateInfobase = new UpdateInfobaseTool();
     private final PlatformInstallationsTool platformInstallations = new PlatformInstallationsTool();
     private final RegisterPlatformTool registerPlatform = new RegisterPlatformTool();
@@ -574,6 +576,7 @@ applyI18n();loadStatus();loadTools();
         tools.add(formRender.descriptor());
         tools.add(addAttribute.descriptor());
         tools.add(addRoute.descriptor());
+        tools.add(infobaseConfigState.descriptor());
         tools.add(addForm.descriptor());
         tools.add(addFormAttribute.descriptor());
         tools.add(modifyFormAttribute.descriptor());
@@ -670,6 +673,9 @@ applyI18n();loadStatus();loadTools();
         if (addRoute.name().equals(name)) {
             JsonObject denied = writeTokenGate(addRoute.isWrite(), name);
             return denied != null ? denied : addRoute.call(args);
+        }
+        if (infobaseConfigState.name().equals(name)) {
+            return infobaseConfigState.call(args);
         }
         if (addForm.name().equals(name)) {
             JsonObject denied = writeTokenGate(addForm.isWrite(), name);

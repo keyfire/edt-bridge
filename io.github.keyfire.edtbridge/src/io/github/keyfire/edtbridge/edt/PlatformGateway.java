@@ -703,7 +703,7 @@ public final class PlatformGateway {
     }
 
     /** A full (thick-client) platform install found on disk: its {@code bin} directory and version. */
-    private static final class DiskPlatform {
+    static final class DiskPlatform {
         final java.nio.file.Path binDir;
         final String version;         // e.g. 8.5.1.1317
         DiskPlatform(java.nio.file.Path binDir, String version) {
@@ -913,7 +913,7 @@ public final class PlatformGateway {
     }
 
     /** The major.minor.release line of a version (first three parts), or {@code null} if not given. */
-    private static String platformLine(String version) {
+    static String platformLine(String version) {
         if (version == null || version.isBlank()) {
             return null;
         }
@@ -931,7 +931,7 @@ public final class PlatformGateway {
      * derived from installs EDT already resolved (so it works wherever the distributions live, incl.
      * macOS) plus the standard Windows locations.
      */
-    private List<DiskPlatform> discoverFullPlatforms(String preferredLine) {
+    List<DiskPlatform> discoverFullPlatforms(String preferredLine) {
         java.util.LinkedHashSet<java.nio.file.Path> roots = new java.util.LinkedHashSet<>();
         try {
             IResolvableRuntimeInstallationManager rm =
@@ -1017,7 +1017,7 @@ public final class PlatformGateway {
         }
     }
 
-    private static java.nio.file.Path firstExisting(java.nio.file.Path dir, String... names) {
+    static java.nio.file.Path firstExisting(java.nio.file.Path dir, String... names) {
         for (String n : names) {
             java.nio.file.Path p = dir.resolve(n);
             if (java.nio.file.Files.isRegularFile(p)) {
@@ -1497,7 +1497,7 @@ public final class PlatformGateway {
     }
 
     /** Best on-disk full install that carries {@code ibcmd}, preferring {@code line} then descending. */
-    private DiskPlatform findIbcmdInstall(String preferredLine) {
+    DiskPlatform findIbcmdInstall(String preferredLine) {
         for (DiskPlatform dp : discoverFullPlatforms(preferredLine)) {
             if (firstExisting(dp.binDir, "ibcmd.exe", "ibcmd") != null) {
                 return dp;

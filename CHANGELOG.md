@@ -8,6 +8,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
+## [Unreleased]
+
+### Added
+- `edt_infobase_config_state` – whether an infobase actually RUNS the configuration it holds. In 1C
+  the code a session executes is the *database* configuration, a separate thing from the one being
+  edited, so changes that are loaded but not applied leave every session on the previous code – the
+  exact failure `edt_update_infobase` hid behind `equality: EQUAL`. Established through `ibcmd`, which
+  dumps both configurations for comparison and addresses the infobase by file path or DBMS
+  coordinates: a clustered infobase needs neither cluster access nor an EDT session. Verified against
+  a live file infobase in both directions – matching, then diverging once a change was loaded without
+  being applied, then matching again after `config apply`.
+- A test suite for the wrapper plus a `ci` workflow (Linux and Windows, 3.10 and 3.12) that both
+  release workflows now call first, so a red suite stops a release instead of shipping past it. Its
+  core is the three regressions that actually shipped: a cp1251 stdout aborting the `tools/list` frame
+  (the client then registered no tools at all), a wrapper version that drifted for two releases, and a
+  `BrokenPipeError` when a result was piped into `head`.
+- JUnit coverage for the EDT-independent part of the plugin. Resolving an object's sources from its
+  FQN and deciding whether a validation problem is in scope moved to `...edtbridge.core`, which
+  carries no EDT or Eclipse types, so a plain JDK compiles and tests it – `scripts/test-java.sh` puts
+  nothing but JUnit on the classpath, so a dependency on the SDK creeping in fails the build. The move
+  also removed a duplicated copy of the folder map that the module resolver and the problem filter had
+  been keeping separately.
+
 ## [0.6.0] – 2026-07-21
 
 ### Added
