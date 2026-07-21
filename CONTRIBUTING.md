@@ -66,6 +66,18 @@ encoding fault that only appears there.
 New wrapper behaviour is expected to arrive with a test, and a fixed bug with the test that
 reproduces it – the current suite is largely made of exactly those.
 
+Part of the plugin is testable as well. Everything under `...edtbridge.core` is pure string work –
+where an object's sources live, whether a validation problem belongs to what was asked about – and is
+kept free of EDT and Eclipse types on purpose, so a plain JDK compiles it:
+
+```sh
+scripts/test-java.sh
+```
+
+That script puts nothing but JUnit on the classpath, so a dependency on the SDK creeping into `core`
+fails the build instead of quietly making the suite unrunnable. Logic that needs the live model
+belongs in the gateways under `...edtbridge.edt` and is verified against a real EDT, as above.
+
 ## Code style
 
 - **Java 17**, standard Eclipse / OSGi conventions. Keep all IDE-model access inside the gateway

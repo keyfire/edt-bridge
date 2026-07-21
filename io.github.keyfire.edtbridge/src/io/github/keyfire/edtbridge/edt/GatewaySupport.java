@@ -120,40 +120,4 @@ final class GatewaySupport {
         return base;
     }
 
-    /**
-     * Folder-prefix of an object's sources, for matching against a project-relative resource path:
-     * "Catalog.Y" -> "src/Catalogs/Y", "CommonModule.X" -> "src/CommonModules/X",
-     * "HTTPService.S" -> "src/HTTPServices/S", "Type.Obj.Form.F" -> "src/<folder>/Obj/Forms/F".
-     * Null when the type prefix is not recognised. Uses the same folder map as the module resolver.
-     */
-    static String objectFolderPrefix(String fqn) {
-        if (fqn == null || fqn.isBlank()) {
-            return null;
-        }
-        String[] s = fqn.split("\\.");
-        if (s.length >= 4 && "Form".equalsIgnoreCase(s[s.length - 2])) {
-            String fld = BslGateway.MD_FOLDER.get(s[0].toLowerCase());
-            return (fld == null) ? null : "src/" + fld + "/" + s[1] + "/Forms/" + s[s.length - 1];
-        }
-        if (s.length == 2) {
-            if ("CommonForm".equalsIgnoreCase(s[0])) {
-                return "src/CommonForms/" + s[1];
-            }
-            String fld = BslGateway.MD_FOLDER.get(s[0].toLowerCase());
-            return (fld == null) ? null : "src/" + fld + "/" + s[1];
-        }
-        return null;
-    }
-
-    /**
-     * The object-name token of an FQN (the segment after the type), for a loose match against an
-     * EDT-check marker's object presentation; null when the FQN has no name segment.
-     */
-    static String fqnNameToken(String fqn) {
-        if (fqn == null || fqn.isBlank()) {
-            return null;
-        }
-        String[] s = fqn.split("\\.");
-        return (s.length >= 2 && !s[1].isBlank()) ? s[1] : null;
-    }
 }

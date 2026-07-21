@@ -32,6 +32,7 @@ import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import io.github.keyfire.edtbridge.core.MetadataPaths;
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IFolder;
 import org.eclipse.core.resources.IMarker;
@@ -389,29 +390,6 @@ public final class BslGateway {
     }
 
     // ---- BSL module text + methods ---------------------------------------------------
-
-    /** Type (eClass name, lower-case) → EDT src folder name (English plural). */
-    static final Map<String, String> MD_FOLDER = Map.ofEntries(
-            Map.entry("catalog", "Catalogs"), Map.entry("document", "Documents"),
-            Map.entry("documentjournal", "DocumentJournals"), Map.entry("enum", "Enums"),
-            Map.entry("report", "Reports"), Map.entry("dataprocessor", "DataProcessors"),
-            Map.entry("chartofcharacteristictypes", "ChartsOfCharacteristicTypes"),
-            Map.entry("chartofaccounts", "ChartsOfAccounts"),
-            Map.entry("chartofcalculationtypes", "ChartsOfCalculationTypes"),
-            Map.entry("informationregister", "InformationRegisters"),
-            Map.entry("accumulationregister", "AccumulationRegisters"),
-            Map.entry("accountingregister", "AccountingRegisters"),
-            Map.entry("calculationregister", "CalculationRegisters"),
-            Map.entry("businessprocess", "BusinessProcesses"), Map.entry("task", "Tasks"),
-            Map.entry("exchangeplan", "ExchangePlans"), Map.entry("constant", "Constants"),
-            Map.entry("commonmodule", "CommonModules"), Map.entry("commonform", "CommonForms"),
-            Map.entry("commoncommand", "CommonCommands"),
-            // External objects live in their own project, but the layout under src/ is the same, so
-            // their modules and forms resolve by FQN like any other owner.
-            Map.entry("externaldataprocessor", "ExternalDataProcessors"),
-            Map.entry("externalreport", "ExternalReports"),
-            // Service objects: one Module.bsl each, resolved by FQN like the module owners above.
-            Map.entry("httpservice", "HTTPServices"), Map.entry("webservice", "WebServices"));
 
     /** A procedure/function in a module: signature parts. */
     public static final class BslMethod {
@@ -1103,38 +1081,24 @@ public final class BslGateway {
             r.message = "provide fqn or modulePath";
             return null;
         }
-        String[] s = fqn.split("\\.");
-        // src root: EDT projects keep sources under "src/"; fall back to project root.
-        String src = p.getFolder("src").exists() ? "src/" : "";
-        String folder;
-        boolean isForm = false;
-        if (s.length >= 4 && "Form".equals(s[s.length - 2])) {
-            // <Type>.<Obj>.Form.<FormName>
-            String fld = MD_FOLDER.get(s[0].toLowerCase());
-            if (fld == null) {
+        // Where the sources sit follows from the FQN alone – that part lives in MetadataPaths and is
+        // unit-tested without EDT. Only what needs the workspace stays here.
+        String relative = MetadataPaths.objectFolder(fqn);
+        if (relative == null) {
+            String[] s = fqn.trim().split("\\.");
+            if (s.length >= 4 && "Form".equalsIgnoreCase(s[s.length - 2])) {
                 r.message = "unsupported owner type for a form: " + s[0];
-                return null;
-            }
-            folder = src + fld + "/" + s[1] + "/Forms/" + s[s.length - 1];
-            isForm = true;
-        } else if (s.length == 2 && "CommonForm".equalsIgnoreCase(s[0])) {
-            folder = src + "CommonForms/" + s[1];
-            isForm = true;
-        } else if (s.length == 2 && "CommonModule".equalsIgnoreCase(s[0])) {
-            folder = src + "CommonModules/" + s[1];
-        } else if (s.length == 2) {
-            String fld = MD_FOLDER.get(s[0].toLowerCase());
-            if (fld == null) {
+            } else if (s.length == 2) {
                 r.message = "unsupported object type: " + s[0] + " (pass modulePath directly)";
-                return null;
+            } else {
+                r.message = "cannot parse fqn: " + fqn + " (pass modulePath directly)";
             }
-            folder = src + fld + "/" + s[1];
-        } else {
-            r.message = "cannot parse fqn: " + fqn + " (pass modulePath directly)";
             return null;
         }
-        if (isForm || s.length == 2 && ("CommonModule".equalsIgnoreCase(s[0]))) {
-            return folder + "/Module.bsl";
+        // src root: EDT projects keep sources under "src/"; fall back to project root.
+        String folder = (p.getFolder("src").exists() ? "src/" : "") + relative;
+        if (MetadataPaths.hasSingleModule(fqn)) {
+            return folder + "/" + MetadataPaths.SINGLE_MODULE_FILE;
         }
         // A top object can have several module files. Pick by moduleType, else list candidates.
         if (moduleType != null && !moduleType.isBlank()) {
@@ -1301,24 +1265,6 @@ public final class BslGateway {
     }
 
     // ---- Method-level find references ------------------------------------------------------------
-
-    /** Folder name -> FQN type prefix – the inverse of {@link #MD_FOLDER}, for a readable caller label. */
-    private static final Map<String, String> MD_FOLDER_INV = Map.ofEntries(
-            Map.entry("Catalogs", "Catalog"), Map.entry("Documents", "Document"),
-            Map.entry("DocumentJournals", "DocumentJournal"), Map.entry("Enums", "Enum"),
-            Map.entry("Reports", "Report"), Map.entry("DataProcessors", "DataProcessor"),
-            Map.entry("ChartsOfCharacteristicTypes", "ChartOfCharacteristicTypes"),
-            Map.entry("ChartsOfAccounts", "ChartOfAccounts"),
-            Map.entry("ChartsOfCalculationTypes", "ChartOfCalculationTypes"),
-            Map.entry("InformationRegisters", "InformationRegister"),
-            Map.entry("AccumulationRegisters", "AccumulationRegister"),
-            Map.entry("AccountingRegisters", "AccountingRegister"),
-            Map.entry("CalculationRegisters", "CalculationRegister"),
-            Map.entry("BusinessProcesses", "BusinessProcess"), Map.entry("Tasks", "Task"),
-            Map.entry("ExchangePlans", "ExchangePlan"), Map.entry("Constants", "Constant"),
-            Map.entry("CommonModules", "CommonModule"), Map.entry("CommonForms", "CommonForm"),
-            Map.entry("CommonCommands", "CommonCommand"),
-            Map.entry("HTTPServices", "HTTPService"), Map.entry("WebServices", "WebService"));
 
     /** Max modules PARSED (having passed the cheap text prefilter) before the scan gives up. */
     private static final int METHODREF_PARSE_CAP = 800;
@@ -1498,7 +1444,7 @@ public final class BslGateway {
             if (parts.length < 2) {
                 return null;
             }
-            String type = MD_FOLDER_INV.get(parts[0]);
+            String type = MetadataPaths.TYPE_BY_FOLDER.get(parts[0]);
             if (type == null) {
                 return null;
             }

@@ -51,3 +51,16 @@ jobs:
       - run: python -m pip install build
       - run: python -m build
         working-directory: python
+
+  java-core:
+    # The bundle needs the proprietary EDT SDK and cannot be built here - but the core package is
+    # deliberately free of EDT and Eclipse types, so it compiles and tests on a plain JDK. The script
+    # puts nothing but JUnit on the classpath, so an SDK dependency creeping into core fails here.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - run: scripts/test-java.sh

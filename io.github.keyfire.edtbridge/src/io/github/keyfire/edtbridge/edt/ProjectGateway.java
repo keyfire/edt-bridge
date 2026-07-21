@@ -19,6 +19,8 @@ package io.github.keyfire.edtbridge.edt;
 import java.util.ArrayList;
 import java.util.List;
 
+import io.github.keyfire.edtbridge.core.MetadataPaths;
+import io.github.keyfire.edtbridge.core.ProblemFilter;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IMarker;
 import org.eclipse.core.resources.IResource;
@@ -137,8 +139,9 @@ public final class ProjectGateway {
         if (modulePath != null && !modulePath.isBlank()) {
             pathPrefix = modulePath.replace('\\', '/').trim();
         } else if (fqn != null && !fqn.isBlank()) {
-            pathPrefix = GatewaySupport.objectFolderPrefix(fqn);
-            nameToken = GatewaySupport.fqnNameToken(fqn);
+            String folder = MetadataPaths.objectFolder(fqn);
+            pathPrefix = (folder == null) ? null : "src/" + folder;
+            nameToken = MetadataPaths.nameToken(fqn);
         }
         String sevFilter = (severity != null && !severity.isBlank()) ? severity.trim().toUpperCase() : null;
         int cap = (limit > 0) ? limit : 1000;
@@ -152,7 +155,7 @@ public final class ProjectGateway {
             if (sevFilter != null && !sevFilter.equalsIgnoreCase(p.severity)) {
                 continue;
             }
-            if (locationFilter && !locationMatches(p, pathPrefix, nameToken)) {
+            if (locationFilter && !ProblemFilter.matchesLocation(p.resource, pathPrefix, nameToken)) {
                 continue;
             }
             r.total++;
@@ -178,31 +181,6 @@ public final class ProjectGateway {
         return r;
     }
 
-    /** True when a problem's resource sits under the path prefix, or (for EDT-check markers named by
-     *  object presentation rather than by path) names the object as a whole segment. */
-    private static boolean locationMatches(Problem p, String pathPrefix, String nameToken) {
-        String res = (p.resource == null) ? "" : p.resource.replace('\\', '/').toLowerCase();
-        if (pathPrefix != null && !res.isEmpty() && res.startsWith(pathPrefix.toLowerCase())) {
-            return true;
-        }
-        return nameToken != null && !nameToken.isBlank()
-                && namesSegment(res, nameToken.toLowerCase());
-    }
-
-    /**
-     * True when {@code name} appears in {@code res} as a WHOLE identifier segment, not as a substring.
-     * An EDT-check marker names its object by presentation ("HTTPСервис.Payments.Модуль"), so the
-     * match has to respect identifier boundaries: asking for Payments must not drag in the problems
-     * of Payments_v2, which a plain "contains" did.
-     */
-    private static boolean namesSegment(String res, String name) {
-        for (String segment : res.split("[^\\p{L}\\p{N}_]+")) {
-            if (segment.equals(name)) {
-                return true;
-            }
-        }
-        return false;
-    }
 
     /**
      * Read EDT check markers from EDT's marker store (IMarkerManager) for one project. Returns empty
