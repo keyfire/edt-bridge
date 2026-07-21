@@ -44,10 +44,13 @@ public final class ModuleTextTool {
                 + "modulePath is given."));
         props.add("moduleType", strProp("For object FQNs: which module – ObjectModule / ManagerModule / "
                 + "RecordSetModule / ValueManagerModule / CommandModule. Optional."));
-        props.add("method", strProp("Return only this procedure/function's source (the method list is "
-                + "always returned). Optional."));
+        props.add("method", strProp("Return only this procedure/function's source. Optional (the method "
+                + "list is still returned unless includeMethods=false)."));
         props.add("modulePath", strProp("Workspace-relative .bsl path (e.g. src/CommonModules/X/Module.bsl) "
                 + "– an alternative to fqn. Optional."));
+        props.add("includeMethods", boolProp("true (default) = also return the module's procedure/function "
+                + "catalogue with signatures. false = skip it and return only the requested text – a targeted "
+                + "method read on a large module then avoids re-sending the whole list (147 methods on some)."));
 
         JsonArray req = new JsonArray();
         req.add("projectName");
@@ -61,14 +64,16 @@ public final class ModuleTextTool {
         t.addProperty("name", name());
         t.addProperty("description",
                 "READ: BSL source of a module (or a single method) + the module's procedure/function list "
-                + "with signatures, from the live workspace. Resolve by fqn (CommonModule.X, a form FQN, or "
-                + "an object + moduleType) or by modulePath. If a top object has several modules and none is "
-                + "chosen, returns the candidates in availableModules.");
+                + "with signatures, from the live workspace. Resolve by fqn (CommonModule.X, HTTPService.X, a "
+                + "form FQN, or an object + moduleType) or by modulePath. Pass includeMethods=false to skip the "
+                + "catalogue on a targeted read. If a top object has several modules and none is chosen, "
+                + "returns the candidates in availableModules.");
         t.addProperty("descriptionRu",
                 "ЧТЕНИЕ: исходный BSL модуля (или одного метода) + список процедур/функций модуля с "
-                + "сигнатурами, из живой рабочей области. Адресация по fqn (CommonModule.X, FQN формы или "
-                + "объект + moduleType) либо по modulePath. Если у объекта несколько модулей и не выбран "
-                + "moduleType – вернёт варианты в availableModules.");
+                + "сигнатурами, из живой рабочей области. Адресация по fqn (CommonModule.X, HTTPService.X, FQN "
+                + "формы или объект + moduleType) либо по modulePath. includeMethods=false пропускает каталог "
+                + "при точечном чтении. Если у объекта несколько модулей и не выбран moduleType – вернёт "
+                + "варианты в availableModules.");
         t.add("inputSchema", schema);
         return t;
     }
@@ -85,8 +90,11 @@ public final class ModuleTextTool {
         if (fqn == null && modulePath == null) {
             return McpServer.toolError("provide fqn or modulePath");
         }
+        boolean includeMethods = !args.has("includeMethods") || args.get("includeMethods").isJsonNull()
+                || args.get("includeMethods").getAsBoolean();
         try {
-            BslGateway.ModuleTextResult res = gateway.moduleText(project, fqn, moduleType, method, modulePath);
+            BslGateway.ModuleTextResult res =
+                    gateway.moduleText(project, fqn, moduleType, method, modulePath, includeMethods);
             JsonObject o = new JsonObject();
             o.addProperty("found", res.found);
             if (res.fqn != null) {
@@ -102,22 +110,26 @@ public final class ModuleTextTool {
                 }
                 o.add("availableModules", am);
             }
-            JsonArray methods = new JsonArray();
-            for (BslGateway.BslMethod m : res.methods) {
-                JsonObject mo = new JsonObject();
-                mo.addProperty("name", m.name);
-                mo.addProperty("kind", m.kind);
-                mo.addProperty("export", m.export);
-                mo.addProperty("line", m.line);
-                JsonArray ps = new JsonArray();
-                for (String pr : m.params) {
-                    ps.add(pr);
+            if (res.includeMethods) {
+                JsonArray methods = new JsonArray();
+                for (BslGateway.BslMethod m : res.methods) {
+                    JsonObject mo = new JsonObject();
+                    mo.addProperty("name", m.name);
+                    mo.addProperty("kind", m.kind);
+                    mo.addProperty("export", m.export);
+                    mo.addProperty("line", m.line);
+                    JsonArray ps = new JsonArray();
+                    for (String pr : m.params) {
+                        ps.add(pr);
+                    }
+                    mo.add("params", ps);
+                    methods.add(mo);
                 }
-                mo.add("params", ps);
-                methods.add(mo);
+                o.add("methods", methods);
+                o.addProperty("methodCount", res.methods.size());
+            } else {
+                o.addProperty("methodsIncluded", false);
             }
-            o.add("methods", methods);
-            o.addProperty("methodCount", res.methods.size());
             if (res.text != null) {
                 o.addProperty("text", res.text);
                 o.addProperty("textTruncated", res.textTruncated);
@@ -134,6 +146,13 @@ public final class ModuleTextTool {
     private static JsonObject strProp(String desc) {
         JsonObject o = new JsonObject();
         o.addProperty("type", "string");
+        o.addProperty("description", desc);
+        return o;
+    }
+
+    private static JsonObject boolProp(String desc) {
+        JsonObject o = new JsonObject();
+        o.addProperty("type", "boolean");
         o.addProperty("description", desc);
         return o;
     }

@@ -391,7 +391,7 @@ public final class BslGateway {
     // ---- BSL module text + methods ---------------------------------------------------
 
     /** Type (eClass name, lower-case) → EDT src folder name (English plural). */
-    private static final Map<String, String> MD_FOLDER = Map.ofEntries(
+    static final Map<String, String> MD_FOLDER = Map.ofEntries(
             Map.entry("catalog", "Catalogs"), Map.entry("document", "Documents"),
             Map.entry("documentjournal", "DocumentJournals"), Map.entry("enum", "Enums"),
             Map.entry("report", "Reports"), Map.entry("dataprocessor", "DataProcessors"),
@@ -409,7 +409,9 @@ public final class BslGateway {
             // External objects live in their own project, but the layout under src/ is the same, so
             // their modules and forms resolve by FQN like any other owner.
             Map.entry("externaldataprocessor", "ExternalDataProcessors"),
-            Map.entry("externalreport", "ExternalReports"));
+            Map.entry("externalreport", "ExternalReports"),
+            // Service objects: one Module.bsl each, resolved by FQN like the module owners above.
+            Map.entry("httpservice", "HTTPServices"), Map.entry("webservice", "WebServices"));
 
     /** A procedure/function in a module: signature parts. */
     public static final class BslMethod {
@@ -429,6 +431,7 @@ public final class BslGateway {
         public List<BslMethod> methods = new ArrayList<>();
         public String text;                       // whole module, or one method's text when 'method' is given
         public boolean textTruncated;
+        public boolean includeMethods = true;     // echo: false = the procedure/function catalogue was skipped
         public String message;
     }
 
@@ -443,9 +446,10 @@ public final class BslGateway {
      * returns the candidates in {@code availableModules}.
      */
     public ModuleTextResult moduleText(String projectName, String fqn, String moduleType,
-            String method, String modulePath) {
+            String method, String modulePath, boolean includeMethods) {
         ModuleTextResult r = new ModuleTextResult();
         r.fqn = fqn;
+        r.includeMethods = includeMethods;
         IProject p = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
         if (!p.exists() || !p.isOpen()) {
             r.message = "project not found or closed: " + projectName;
@@ -485,20 +489,22 @@ public final class BslGateway {
             EObject methodEObj = null;
             if (module != null) {
                 for (com._1c.g5.v8.dt.bsl.model.Method m : module.allMethods()) {
-                    BslMethod bm = new BslMethod();
-                    bm.name = m.getName();
-                    bm.kind = (m instanceof com._1c.g5.v8.dt.bsl.model.Function) ? "Function" : "Procedure";
-                    bm.export = m.isExport();
-                    for (com._1c.g5.v8.dt.bsl.model.FormalParam fp : m.getFormalParams()) {
-                        String ps = (fp.isByValue() ? "Знач " : "") + fp.getName()
-                                + (fp.getDefaultValue() != null ? " = ..." : "");
-                        bm.params.add(ps);
+                    if (includeMethods) {
+                        BslMethod bm = new BslMethod();
+                        bm.name = m.getName();
+                        bm.kind = (m instanceof com._1c.g5.v8.dt.bsl.model.Function) ? "Function" : "Procedure";
+                        bm.export = m.isExport();
+                        for (com._1c.g5.v8.dt.bsl.model.FormalParam fp : m.getFormalParams()) {
+                            String ps = (fp.isByValue() ? "Знач " : "") + fp.getName()
+                                    + (fp.getDefaultValue() != null ? " = ..." : "");
+                            bm.params.add(ps);
+                        }
+                        ICompositeNode mn = NodeModelUtils.getNode(m);
+                        if (mn != null) {
+                            bm.line = mn.getStartLine();
+                        }
+                        r.methods.add(bm);
                     }
-                    ICompositeNode mn = NodeModelUtils.getNode(m);
-                    if (mn != null) {
-                        bm.line = mn.getStartLine();
-                    }
-                    r.methods.add(bm);
                     if (method != null && method.equalsIgnoreCase(m.getName())) {
                         methodEObj = m;
                     }
@@ -1311,7 +1317,8 @@ public final class BslGateway {
             Map.entry("BusinessProcesses", "BusinessProcess"), Map.entry("Tasks", "Task"),
             Map.entry("ExchangePlans", "ExchangePlan"), Map.entry("Constants", "Constant"),
             Map.entry("CommonModules", "CommonModule"), Map.entry("CommonForms", "CommonForm"),
-            Map.entry("CommonCommands", "CommonCommand"));
+            Map.entry("CommonCommands", "CommonCommand"),
+            Map.entry("HTTPServices", "HTTPService"), Map.entry("WebServices", "WebService"));
 
     /** Max modules PARSED (having passed the cheap text prefilter) before the scan gives up. */
     private static final int METHODREF_PARSE_CAP = 800;

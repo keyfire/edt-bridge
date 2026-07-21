@@ -102,6 +102,108 @@ public final class ProjectGateway {
         return out;
     }
 
+    /** A filtered, counted view of the validation problems: the answer to "what is wrong with the
+     *  module/object I just edited", without serialising the other thousands. */
+    public static final class ProblemReport {
+        public String project;          // echo of projectName (null = all open projects)
+        public int total;               // problems matching the filters
+        public int totalBeforeFilter;   // all problems collected (baseline for a before/after compare)
+        public int errors;
+        public int warnings;
+        public int infos;
+        public int eclipse;             // by source: standard Eclipse markers
+        public int edtCheck;            // by source: EDT check markers
+        public boolean countOnly;
+        public boolean truncated;       // the returned list was capped at limit
+        public int limit;
+        public List<Problem> problems = new ArrayList<>();
+    }
+
+    /**
+     * Filtered problems for a project. Additive over {@link #getProjectErrors}: narrow to one object
+     * ({@code fqn}) or module ({@code modulePath}), to a {@code severity} (ERROR/WARNING/INFO), and/or
+     * ask for {@code countOnly} (the counts, no list). The location filter matches a problem's
+     * project-relative resource path, so it targets the Eclipse syntax/build markers precisely; an EDT
+     * check marker is addressed by object presentation, so an {@code fqn} filter also matches its name
+     * loosely, while {@code modulePath} (a file path) does not reach it. Everything is optional; with no
+     * filter and {@code countOnly=false} the behaviour matches the old tool, but the list is capped at
+     * {@code limit} to keep a large configuration's output bounded.
+     */
+    public ProblemReport reportProblems(String projectName, String fqn, String modulePath,
+            String severity, boolean countOnly, int limit) throws CoreException {
+        List<Problem> all = getProjectErrors(projectName);
+        String pathPrefix = null;
+        String nameToken = null;
+        if (modulePath != null && !modulePath.isBlank()) {
+            pathPrefix = modulePath.replace('\\', '/').trim();
+        } else if (fqn != null && !fqn.isBlank()) {
+            pathPrefix = GatewaySupport.objectFolderPrefix(fqn);
+            nameToken = GatewaySupport.fqnNameToken(fqn);
+        }
+        String sevFilter = (severity != null && !severity.isBlank()) ? severity.trim().toUpperCase() : null;
+        int cap = (limit > 0) ? limit : 1000;
+        ProblemReport r = new ProblemReport();
+        r.project = projectName;
+        r.countOnly = countOnly;
+        r.limit = cap;
+        r.totalBeforeFilter = all.size();
+        boolean locationFilter = pathPrefix != null || nameToken != null;
+        for (Problem p : all) {
+            if (sevFilter != null && !sevFilter.equalsIgnoreCase(p.severity)) {
+                continue;
+            }
+            if (locationFilter && !locationMatches(p, pathPrefix, nameToken)) {
+                continue;
+            }
+            r.total++;
+            if ("ERROR".equalsIgnoreCase(p.severity)) {
+                r.errors++;
+            } else if ("WARNING".equalsIgnoreCase(p.severity)) {
+                r.warnings++;
+            } else {
+                r.infos++;
+            }
+            if ("eclipse".equals(p.source)) {
+                r.eclipse++;
+            } else {
+                r.edtCheck++;
+            }
+            if (!countOnly && r.problems.size() < cap) {
+                r.problems.add(p);
+            }
+        }
+        if (!countOnly && r.total > r.problems.size()) {
+            r.truncated = true;
+        }
+        return r;
+    }
+
+    /** True when a problem's resource sits under the path prefix, or (for EDT-check markers named by
+     *  object presentation rather than by path) names the object as a whole segment. */
+    private static boolean locationMatches(Problem p, String pathPrefix, String nameToken) {
+        String res = (p.resource == null) ? "" : p.resource.replace('\\', '/').toLowerCase();
+        if (pathPrefix != null && !res.isEmpty() && res.startsWith(pathPrefix.toLowerCase())) {
+            return true;
+        }
+        return nameToken != null && !nameToken.isBlank()
+                && namesSegment(res, nameToken.toLowerCase());
+    }
+
+    /**
+     * True when {@code name} appears in {@code res} as a WHOLE identifier segment, not as a substring.
+     * An EDT-check marker names its object by presentation ("HTTPСервис.Payments.Модуль"), so the
+     * match has to respect identifier boundaries: asking for Payments must not drag in the problems
+     * of Payments_v2, which a plain "contains" did.
+     */
+    private static boolean namesSegment(String res, String name) {
+        for (String segment : res.split("[^\\p{L}\\p{N}_]+")) {
+            if (segment.equals(name)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * Read EDT check markers from EDT's marker store (IMarkerManager) for one project. Returns empty
      * on any failure (headless CLI without the service, API mismatch) so Eclipse markers still work.

@@ -33,6 +33,8 @@ import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.core.runtime.Platform;
 import org.eclipse.emf.ecore.EClass;
 import org.eclipse.emf.ecore.EClassifier;
+import org.eclipse.emf.ecore.EEnum;
+import org.eclipse.emf.ecore.EEnumLiteral;
 import org.eclipse.emf.ecore.EObject;
 import org.eclipse.emf.ecore.EReference;
 import org.eclipse.emf.ecore.EStructuralFeature;
@@ -284,6 +286,259 @@ public final class MetadataWriteGateway {
             }
         }
         return r;
+    }
+
+    // ---- Metadata write: add an HTTP service route (url template + method) -------------------------
+
+    /** Result of {@link #addRoute}. */
+    public static final class AddRouteResult {
+        public boolean ok;               // validation passed -> an apply would be valid
+        public boolean applied;          // a real write happened
+        public String serviceFqn;
+        public boolean serviceFound;
+        public String serviceType;       // resolved eClass name (HTTPService)
+        public String name;              // url-template name
+        public String template;          // normalized URL template
+        public String httpMethod;        // requested HTTP method (upper-cased)
+        public String handler;           // handler procedure name
+        public Boolean nameAvailable;    // url-template name not already used on the service
+        public boolean templateInUse;    // another url-template already uses this template (warning only)
+        public boolean httpMethodValid;  // the method resolves to an enum literal
+        public String templateUuid;      // generated on apply
+        public String methodUuid;        // generated on apply
+        public boolean handlerWritten;   // the stub was spliced into the service module
+        public String modulePath;        // service module (when the stub was written)
+        public String plan;
+        public String warning;
+        public String message;
+    }
+
+    /**
+     * Add a route (a URL template plus one HTTP method) to an {@code HTTPService}. Fills the gap where a
+     * new route otherwise meant editing the service {@code .mdo} by hand and generating the uuid of both
+     * the {@code urlTemplates} block and its nested {@code methods} block. Dry-run by default: resolves
+     * the service, checks the template name is free and the HTTP method is a known literal, and returns
+     * the plan without writing. {@code apply=true} creates the url template and its method through the
+     * model (uuids from {@link UUID#randomUUID}, the same source the other writers use) and serialises the
+     * {@code .mdo}; {@code createHandler} additionally splices a handler stub into the service module via
+     * {@link BslGateway#addMethod}, addressing it by the service FQN. The {@code bsl_support_status =
+     * EDITABLE} gate before an apply is the caller's responsibility, as with the other write tools.
+     */
+    public AddRouteResult addRoute(String projectName, String serviceFqnRaw, String name, String template,
+            String httpMethodArg, String handlerArg, String synonymRu, boolean createHandler, boolean apply) {
+        AddRouteResult r = new AddRouteResult();
+        final String serviceFqn = (serviceFqnRaw == null) ? null : serviceFqnRaw.trim();
+        r.serviceFqn = serviceFqn;
+        r.name = name;
+        IProject p = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+        if (!p.exists() || !p.isOpen()) {
+            r.message = "project not found or closed: " + projectName;
+            return r;
+        }
+        if (serviceFqn == null || serviceFqn.isBlank()) {
+            r.message = "serviceFqn is required, e.g. HTTPService.Payments";
+            return r;
+        }
+        if (name == null || name.isBlank() || !IDENT.matcher(name).matches()) {
+            r.message = "url template name is required and must be a valid 1C identifier: \"" + name + "\"";
+            return r;
+        }
+        if (template == null || template.isBlank()) {
+            r.message = "template is required, e.g. /subscribers/{id}";
+            return r;
+        }
+        final String tmpl = template.trim().startsWith("/") ? template.trim() : "/" + template.trim();
+        r.template = tmpl;
+        final String httpMethod = (httpMethodArg == null || httpMethodArg.isBlank())
+                ? "GET" : httpMethodArg.trim().toUpperCase();
+        r.httpMethod = httpMethod;
+        final String handler = (handlerArg == null || handlerArg.isBlank()) ? name + httpMethod : handlerArg.trim();
+        if (!IDENT.matcher(handler).matches()) {
+            r.message = "handler is not a valid 1C identifier: \"" + handler + "\"";
+            return r;
+        }
+        r.handler = handler;
+        IBmModelManager mm = ServiceAccess.get(IBmModelManager.class);
+        IBmModel model = (mm == null) ? null : mm.getModel(p);
+        if (model == null) {
+            r.message = "no BM model for project: " + projectName;
+            return r;
+        }
+
+        // Stage 1 – resolve the service, check the name is free and the HTTP method is a known literal.
+        model.executeReadonlyTask(new AbstractBmTask<Object>("edt-bridge.addRoute.validate") {
+            @Override
+            public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
+                IBmObject svc = tx.getTopObjectByFqn(serviceFqn);
+                if (svc == null) {
+                    r.message = "HTTP service not found: " + serviceFqn;
+                    return null;
+                }
+                r.serviceFound = true;
+                r.serviceType = svc.eClass().getName();
+                EStructuralFeature templatesF = svc.eClass().getEStructuralFeature("urlTemplates");
+                if (!(templatesF instanceof EReference)) {
+                    r.message = "object is not an HTTP service (no urlTemplates): " + r.serviceType;
+                    return null;
+                }
+                boolean used = false;
+                Object val = svc.eGet(templatesF);
+                if (val instanceof List) {
+                    for (Object x : (List<?>) val) {
+                        if (x instanceof MdObject && name.equalsIgnoreCase(((MdObject) x).getName())) {
+                            used = true;
+                        }
+                        if (x instanceof EObject) {
+                            EStructuralFeature tf = ((EObject) x).eClass().getEStructuralFeature("template");
+                            if (tf != null) {
+                                Object tv = ((EObject) x).eGet(tf);
+                                if (tv != null && tmpl.equalsIgnoreCase(tv.toString())) {
+                                    r.templateInUse = true;
+                                }
+                            }
+                        }
+                    }
+                }
+                r.nameAvailable = !used;
+                EEnumLiteral lit = resolveHttpMethod((EReference) templatesF, httpMethod);
+                r.httpMethodValid = lit != null;
+                return null;
+            }
+        });
+
+        if (r.message != null) {
+            return r;
+        }
+        if (!r.httpMethodValid) {
+            r.message = "unsupported httpMethod: \"" + httpMethod + "\" (expected GET, POST, PUT, DELETE, "
+                    + "PATCH, HEAD, OPTIONS, ...)";
+            return r;
+        }
+        r.ok = r.serviceFound && Boolean.TRUE.equals(r.nameAvailable) && r.httpMethodValid;
+        r.plan = "Add route " + httpMethod + " " + tmpl + " (url template \"" + name + "\") to " + serviceFqn
+                + " -> handler " + handler + "()"
+                + (createHandler ? " and write its stub into the service module" : "");
+        if (Boolean.FALSE.equals(r.nameAvailable)) {
+            r.message = "the service already has a url template named \"" + name + "\"";
+        } else if (r.templateInUse) {
+            r.warning = "another url template already uses the template \"" + tmpl + "\"";
+        }
+
+        if (!apply) {
+            return r;
+        }
+        if (!r.ok) {
+            r.message = (r.message == null ? "validation failed" : r.message)
+                    + " - apply refused (nothing written).";
+            return r;
+        }
+        final String[] failure = {null};
+        try {
+            model.execute(new AbstractBmTask<Object>("edt-bridge.addRoute.apply") {
+                @Override
+                public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
+                    IBmObject svc = tx.getTopObjectByFqn(serviceFqn);
+                    if (svc == null) {
+                        failure[0] = "the service disappeared between validation and apply";
+                        return null;
+                    }
+                    EReference templatesF = (EReference) svc.eClass().getEStructuralFeature("urlTemplates");
+                    EClass tmplClass = templatesF.getEReferenceType();
+                    EObject urlTemplate = tmplClass.getEPackage().getEFactoryInstance().create(tmplClass);
+                    MdObject tmd = (MdObject) urlTemplate;
+                    tmd.setName(name);
+                    UUID templateUuid = UUID.randomUUID();
+                    tmd.setUuid(templateUuid);
+                    tmd.getSynonym().put("ru", (synonymRu != null && !synonymRu.isBlank()) ? synonymRu : name);
+                    urlTemplate.eSet(tmplClass.getEStructuralFeature("template"), tmpl);
+
+                    EReference methodsF = (EReference) tmplClass.getEStructuralFeature("methods");
+                    EClass methodClass = methodsF.getEReferenceType();
+                    EObject method = methodClass.getEPackage().getEFactoryInstance().create(methodClass);
+                    MdObject mmd = (MdObject) method;
+                    mmd.setName(httpMethod);
+                    UUID methodUuid = UUID.randomUUID();
+                    mmd.setUuid(methodUuid);
+                    mmd.getSynonym().put("ru", httpMethod);
+                    method.eSet(methodClass.getEStructuralFeature("handler"), handler);
+                    EStructuralFeature hmF = methodClass.getEStructuralFeature("httpMethod");
+                    EEnumLiteral lit = resolveHttpMethod(templatesF, httpMethod);
+                    method.eSet(hmF, (lit.getInstance() != null) ? lit.getInstance() : lit);
+
+                    @SuppressWarnings("unchecked")
+                    List<EObject> methods = (List<EObject>) urlTemplate.eGet(methodsF);
+                    methods.add(method);
+                    @SuppressWarnings("unchecked")
+                    List<EObject> templates = (List<EObject>) svc.eGet(templatesF);
+                    templates.add(urlTemplate);
+
+                    r.templateUuid = templateUuid.toString();
+                    r.methodUuid = methodUuid.toString();
+                    return null;
+                }
+            });
+        } catch (RuntimeException ex) {
+            r.applied = false;
+            r.message = "apply failed (nothing committed): " + GatewaySupport.describeCause(ex);
+            return r;
+        }
+        if (failure[0] != null) {
+            r.message = "apply failed (nothing committed): " + failure[0];
+            return r;
+        }
+        // BM commit mutates the in-memory model only; force the DT export so the change reaches the .mdo.
+        IDtProject dtProject = mm.getDtProject(model);
+        boolean exported = dtProject != null && mm.forceExport(dtProject, serviceFqn);
+        r.applied = true;
+        r.message = "written: added route " + httpMethod + " " + tmpl + " to " + serviceFqn
+                + (exported ? " (serialized to .mdo)"
+                        : " - WARNING: committed in-memory but forceExport did not persist (.mdo unchanged)");
+
+        if (createHandler) {
+            try {
+                String methodText = "Функция " + handler + "(Запрос)\n"
+                        + "\t// TODO: реализовать обработчик; вернуть HTTPСервисОтвет.\n"
+                        + "\tОтвет = Новый HTTPСервисОтвет(200);\n"
+                        + "\tВозврат Ответ;\n"
+                        + "КонецФункции";
+                BslGateway.AddMethodResult am = new BslGateway().addMethod(projectName, serviceFqn, null, null,
+                        methodText, "ОбработчикиСобытий", Boolean.FALSE, true);
+                if (am.applied) {
+                    r.handlerWritten = true;
+                    r.modulePath = am.modulePath;
+                } else {
+                    r.warning = appendWarning(r.warning, "route created, but the handler stub was not written: "
+                            + (am.message == null ? "unknown reason" : am.message));
+                }
+            } catch (RuntimeException ex) {
+                r.warning = appendWarning(r.warning, "route created, but the handler stub could not be written: "
+                        + GatewaySupport.describeCause(ex));
+            }
+        }
+        return r;
+    }
+
+    /** Resolve an HTTP method name to the {@code httpMethod} enum literal of a service's method class,
+     *  by literal then by name; null when the enum has no such member. */
+    private static EEnumLiteral resolveHttpMethod(EReference urlTemplatesRef, String httpMethod) {
+        EClass tmplClass = urlTemplatesRef.getEReferenceType();
+        EStructuralFeature methodsF = tmplClass.getEStructuralFeature("methods");
+        if (!(methodsF instanceof EReference)) {
+            return null;
+        }
+        EClass methodClass = ((EReference) methodsF).getEReferenceType();
+        EStructuralFeature hmF = methodClass.getEStructuralFeature("httpMethod");
+        if (hmF == null || !(hmF.getEType() instanceof EEnum)) {
+            return null;
+        }
+        EEnum en = (EEnum) hmF.getEType();
+        EEnumLiteral lit = en.getEEnumLiteralByLiteral(httpMethod);
+        return (lit != null) ? lit : en.getEEnumLiteral(httpMethod);
+    }
+
+    /** Join a second warning onto an existing one (null-safe), separated by "; ". */
+    private static String appendWarning(String existing, String more) {
+        return (existing == null || existing.isBlank()) ? more : existing + "; " + more;
     }
 
     // ---- Metadata write, Phase 2: remove attribute (DESTRUCTIVE; reference-checked) -----------------
