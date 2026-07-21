@@ -35,6 +35,7 @@ import io.github.keyfire.edtbridge.edt.ProjectGateway;
 import io.github.keyfire.edtbridge.tools.AddAttributeTool;
 import io.github.keyfire.edtbridge.tools.AddRouteTool;
 import io.github.keyfire.edtbridge.tools.InfobaseConfigStateTool;
+import io.github.keyfire.edtbridge.tools.InfobaseDumpTool;
 import io.github.keyfire.edtbridge.tools.AdoptObjectTool;
 import io.github.keyfire.edtbridge.tools.AddFormAttributeTool;
 import io.github.keyfire.edtbridge.tools.AddFormCommandTool;
@@ -250,7 +251,7 @@ function renderStatus(){var g=document.getElementById('status');g.textContent=''
 function loadStatus(){fetch('/status').then(function(r){return r.json();}).then(function(s){STATUS=s;renderStatus();if(s.tokenRequired){var bar=document.getElementById('tokbar');bar.className='panel';bar.textContent='';bar.appendChild(el('span',null,t('needtok')));var inp=el('input','tok');inp.oninput=function(){TOKEN=inp.value.trim();};bar.appendChild(inp);}}).catch(function(e){STATUS=null;document.getElementById('status').textContent='status error: '+e;});}
 function template(td){var req=(td.inputSchema&&td.inputSchema.required)||[];var o={};req.forEach(function(k){o[k]='';});return JSON.stringify(o,null,2);}
 // Keep in sync with the token-gated write tools - anything missing here is shown as a read tool.
-var WRITE_TOOLS=['edt_add_attribute','edt_add_form','edt_add_form_attribute','edt_add_form_command','edt_add_form_item','edt_add_method','edt_add_route','edt_build_extension','edt_clean_project','edt_create_extension','edt_create_external_object','edt_create_infobase','edt_create_object','edt_delete_method','edt_delete_object','edt_delete_project','edt_dump_external_object','edt_modify_attribute','edt_modify_form_attribute','edt_modify_form_command','edt_modify_form_item','edt_register_platform','edt_remove_attribute','edt_remove_form_attribute','edt_remove_form_command','edt_remove_form_item','edt_rename','edt_update_infobase'];
+var WRITE_TOOLS=['edt_add_attribute','edt_add_form','edt_add_form_attribute','edt_add_form_command','edt_add_form_item','edt_add_method','edt_add_route','edt_build_extension','edt_infobase_dump','edt_clean_project','edt_create_extension','edt_create_external_object','edt_create_infobase','edt_create_object','edt_delete_method','edt_delete_object','edt_delete_project','edt_dump_external_object','edt_modify_attribute','edt_modify_form_attribute','edt_modify_form_command','edt_modify_form_item','edt_register_platform','edt_remove_attribute','edt_remove_form_attribute','edt_remove_form_command','edt_remove_form_item','edt_rename','edt_update_infobase'];
 function groupOf(n,tl){if(n.indexOf('edt_debug_')===0||n==='edt_evaluate'){return 'debug';}if(WRITE_TOOLS.indexOf(n)>=0){return 'write';}
 // Fallback so a write tool nobody remembered to list still lands in the right group: every write
 // tool is dry-run by default, so it takes an "apply". Only edt_register_platform does not, hence the list.
@@ -309,6 +310,7 @@ applyI18n();loadStatus();loadTools();
     private final DumpExternalObjectTool dumpExternalObject = new DumpExternalObjectTool();
     private final InfobasesTool infobases = new InfobasesTool();
     private final InfobaseConfigStateTool infobaseConfigState = new InfobaseConfigStateTool();
+    private final InfobaseDumpTool infobaseDump = new InfobaseDumpTool();
     private final UpdateInfobaseTool updateInfobase = new UpdateInfobaseTool();
     private final PlatformInstallationsTool platformInstallations = new PlatformInstallationsTool();
     private final RegisterPlatformTool registerPlatform = new RegisterPlatformTool();
@@ -577,6 +579,7 @@ applyI18n();loadStatus();loadTools();
         tools.add(addAttribute.descriptor());
         tools.add(addRoute.descriptor());
         tools.add(infobaseConfigState.descriptor());
+        tools.add(infobaseDump.descriptor());
         tools.add(addForm.descriptor());
         tools.add(addFormAttribute.descriptor());
         tools.add(modifyFormAttribute.descriptor());
@@ -676,6 +679,10 @@ applyI18n();loadStatus();loadTools();
         }
         if (infobaseConfigState.name().equals(name)) {
             return infobaseConfigState.call(args);
+        }
+        if (infobaseDump.name().equals(name)) {
+            JsonObject denied = writeTokenGate(infobaseDump.isWrite(), name);
+            return denied != null ? denied : infobaseDump.call(args);
         }
         if (addForm.name().equals(name)) {
             JsonObject denied = writeTokenGate(addForm.isWrite(), name);

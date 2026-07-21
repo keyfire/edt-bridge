@@ -54,6 +54,13 @@ public final class ExtensionPropertiesTool {
         props.add("dbName", strProp("Database name for a server infobase"));
         props.add("dbUser", strProp("DBMS user"));
         props.add("dbPassword", strProp("DBMS password"));
+        props.add("infobase", strProp("Name or uuid of an infobase REGISTERED IN EDT (as edt_infobases "
+                + "lists them), instead of spelling the address out. Works for a FILE infobase, whose "
+                + "path EDT knows. A server infobase is registered by its 1C cluster coordinate, which "
+                + "does not carry the DBMS coordinates ibcmd needs - for those pass dbms + dbName."));
+        props.add("infobaseUser", strProp("1C infobase user, e.g. Администратор. Required when the "
+                + "infobase authenticates its users - this is the 1C account, not the DBMS one."));
+        props.add("infobasePassword", strProp("1C infobase password (optional). Never echoed back."));
         props.add("name", strProp("Extension name as registered in the infobase; omit to list every "
                 + "extension. Required to change anything."));
         props.add("safeMode", boolProp("Set safe mode. false for an extension that changes methods of "
@@ -105,8 +112,10 @@ public final class ExtensionPropertiesTool {
         boolean apply = getBool(args, "apply") != null && Boolean.TRUE.equals(getBool(args, "apply"));
         try {
             PlatformGateway.ExtensionPropertiesResult res = gateway.extensionProperties(
+                    getStr(args, "infobase"),
                     getStr(args, "databasePath"), getStr(args, "dbms"), getStr(args, "dbServer"),
                     getStr(args, "dbName"), getStr(args, "dbUser"), getStr(args, "dbPassword"),
+                    getStr(args, "infobaseUser"), getStr(args, "infobasePassword"),
                     getStr(args, "name"), getBool(args, "safeMode"),
                     getBool(args, "unsafeActionProtection"), getBool(args, "active"),
                     getStr(args, "platform"), apply);

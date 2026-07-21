@@ -45,8 +45,11 @@ public final class InfobaseConfigStateTool {
                 + "IBMDB2, OracleDatabase."));
         props.add("dbServer", strProp("DBMS host (optional for a local instance)."));
         props.add("dbName", strProp("Database name (required with dbms)."));
-        props.add("dbUser", strProp("Database user (optional)."));
-        props.add("dbPassword", strProp("Database password (optional). Never echoed back."));
+        props.add("dbUser", strProp("DBMS user (optional). This is the DATABASE account, not the 1C one."));
+        props.add("dbPassword", strProp("DBMS password (optional). Never echoed back."));
+        props.add("infobaseUser", strProp("1C infobase user, e.g. Администратор. Required when the "
+                + "infobase authenticates its users - without it ibcmd refuses the operation."));
+        props.add("infobasePassword", strProp("1C infobase password (optional). Never echoed back."));
         props.add("platformVersion", strProp("Platform version line to prefer when picking the ibcmd "
                 + "install, e.g. 8.5.1.1302. ibcmd is absent from some builds, so the newest install "
                 + "is not always the right one. Optional."));
@@ -59,21 +62,22 @@ public final class InfobaseConfigStateTool {
         JsonObject t = new JsonObject();
         t.addProperty("name", name());
         t.addProperty("description",
-                "READ: whether an infobase RUNS the configuration it holds - does its database "
-                + "configuration match the main one. Sessions execute the DATABASE configuration, so "
-                + "loaded-but-not-applied changes mean every session still serves the previous code, "
-                + "while a project-to-infobase comparison happily reports them as equal. Established "
-                + "with ibcmd (dumps both configurations and compares), addressing the infobase by file "
-                + "path or DBMS coordinates - works for a clustered infobase without cluster access. "
-                + "Returns databaseConfigMatches plus both hashes.");
+                "READ: compare an infobase's MAIN configuration with its DATABASE configuration - the "
+                + "one sessions actually execute - by dumping both with ibcmd and hashing them. "
+                + "Addresses the infobase by file path or DBMS coordinates, so a clustered infobase "
+                + "needs no cluster access. READ THE RESULT ASYMMETRICALLY: identical files mean the "
+                + "configuration HAS been applied; differing files are INCONCLUSIVE - either it was "
+                + "never applied, or it was applied DYNAMICALLY, which leaves the containers different "
+                + "even when the platform reports no update is required. This cannot tell those apart.");
         t.addProperty("descriptionRu",
-                "ЧТЕНИЕ: работает ли информационная база на той конфигурации, которую хранит – совпадает "
-                + "ли конфигурация базы данных с основной. Сеансы исполняют КОНФИГУРАЦИЮ БАЗЫ ДАННЫХ, "
-                + "поэтому загруженные, но не применённые изменения означают, что все сеансы по-прежнему "
-                + "работают на старом коде, хотя сравнение проекта с базой покажет равенство. "
-                + "Определяется через ibcmd (выгружает обе конфигурации и сравнивает); база адресуется "
-                + "путём к файловой базе или координатами СУБД – для кластерной базы доступ к кластеру "
-                + "не нужен. Возвращает databaseConfigMatches и обе хеш-суммы.");
+                "ЧТЕНИЕ: сравнивает ОСНОВНУЮ конфигурацию информационной базы с КОНФИГУРАЦИЕЙ БАЗЫ "
+                + "ДАННЫХ – той, которую исполняют сеансы, – выгружая обе через ibcmd и сравнивая "
+                + "хеш-суммы. База адресуется путём или координатами СУБД, поэтому для кластерной базы "
+                + "доступ к кластеру не нужен. ЧИТАТЬ РЕЗУЛЬТАТ НЕСИММЕТРИЧНО: одинаковые файлы "
+                + "означают, что конфигурация ПРИМЕНЕНА; различие НЕОДНОЗНАЧНО – либо не применяли, либо "
+                + "применили ДИНАМИЧЕСКИ, а динамическое обновление оставляет контейнеры разными даже "
+                + "когда платформа сообщает, что обновление не требуется. Различить эти случаи "
+                + "сравнение не может.");
         t.add("inputSchema", schema);
         return t;
     }
@@ -85,7 +89,9 @@ public final class InfobaseConfigStateTool {
                 getStr(args, "dbServer"),
                 getStr(args, "dbName"),
                 getStr(args, "dbUser"),
-                getStr(args, "dbPassword"));
+                getStr(args, "dbPassword"),
+                getStr(args, "infobaseUser"),
+                getStr(args, "infobasePassword"));
         try {
             IbcmdGateway.ConfigStateResult res =
                     gateway.configState(target, getStr(args, "platformVersion"));
@@ -97,8 +103,11 @@ public final class InfobaseConfigStateTool {
             if (res.platform != null) {
                 o.addProperty("platform", res.platform);
             }
-            if (res.databaseConfigMatches != null) {
-                o.addProperty("databaseConfigMatches", res.databaseConfigMatches.booleanValue());
+            if (res.configFilesIdentical != null) {
+                o.addProperty("configFilesIdentical", res.configFilesIdentical.booleanValue());
+                o.addProperty("verdict", res.configFilesIdentical.booleanValue()
+                        ? "applied"
+                        : "inconclusive: not applied OR applied dynamically");
             }
             if (res.mainConfigHash != null) {
                 o.addProperty("mainConfigHash", res.mainConfigHash);

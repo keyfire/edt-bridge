@@ -127,4 +127,93 @@ class IbcmdArgsTest {
         assertEquals(List.of("--database-path=D:/Bases/Demo"),
                 IbcmdArgs.redact(List.of("--database-path=D:/Bases/Demo")));
     }
+
+    // -- the two credential sets are not the same thing ------------------------------------------
+
+    @Test
+    @DisplayName("the 1C infobase user is a separate credential from the DBMS one")
+    void infobaseCredentialsAreDistinct() {
+        IbcmdArgs.Target target = IbcmdArgs.target(null, "PostgreSQL", "db-host", "app_db",
+                "db_role", "db_secret", "Администратор", "ib_secret");
+
+        assertEquals(List.of(
+                "--dbms=PostgreSQL",
+                "--database-server=db-host",
+                "--database-name=app_db",
+                "--database-user=db_role",
+                "--database-password=db_secret",
+                "--user=Администратор",
+                "--password=ib_secret"), target.args);
+    }
+
+    @Test
+    @DisplayName("an infobase user without a password is normal - many test bases have exactly that")
+    void infobaseUserWithoutPassword() {
+        IbcmdArgs.Target target = IbcmdArgs.target(null, "PostgreSQL", "db-host", "app_db",
+                "db_role", null, "Администратор", null);
+
+        assertTrue(target.args.contains("--user=Администратор"));
+        assertFalse(String.join(" ", target.args).contains("--password="));
+    }
+
+    @Test
+    void aFileInfobaseTakesInfobaseCredentialsToo() {
+        IbcmdArgs.Target target = IbcmdArgs.target("D:/Bases/Demo", null, null, null, null, null,
+                "Администратор", null);
+
+        assertEquals(List.of("--database-path=D:/Bases/Demo", "--user=Администратор"), target.args);
+    }
+
+    @Test
+    @DisplayName("the label names who we connect as, but never the passwords")
+    void labelNamesTheUserNotTheSecrets() {
+        IbcmdArgs.Target target = IbcmdArgs.target(null, "PostgreSQL", "db-host", "app_db",
+                "db_role", "db_secret", "Администратор", "ib_secret");
+
+        assertEquals("PostgreSQL: db-host/app_db as Администратор", target.label);
+        assertFalse(target.label.contains("db_secret"));
+        assertFalse(target.label.contains("ib_secret"));
+    }
+
+    @Test
+    @DisplayName("redact covers BOTH passwords - the 1C one leaks just as easily")
+    void redactCoversBothPasswords() {
+        List<String> args = IbcmdArgs.target(null, "PostgreSQL", "db-host", "app_db",
+                "db_role", "db_secret", "Администратор", "ib_secret").args;
+
+        String safe = String.join(" ", IbcmdArgs.redact(args));
+
+        assertFalse(safe.contains("db_secret"));
+        assertFalse(safe.contains("ib_secret"));
+        assertTrue(safe.contains("--password=" + IbcmdArgs.REDACTED));
+        assertTrue(safe.contains("--database-password=" + IbcmdArgs.REDACTED));
+        assertTrue(safe.contains("--user=Администратор"), "the user name is not a secret");
+    }
+
+    @Test
+    void theSixArgumentFormStillWorks() {
+        IbcmdArgs.Target target = IbcmdArgs.target("D:/Bases/Demo", null, null, null, null, null);
+        assertEquals(List.of("--database-path=D:/Bases/Demo"), target.args);
+    }
+
+    @Test
+    @DisplayName("dbArgs leaves the 1C credentials out - the extension mode rejects --user outright")
+    void dbArgsExcludeInfobaseCredentials() {
+        IbcmdArgs.Target target = IbcmdArgs.target(null, "PostgreSQL", "db-host", "app_db",
+                "db_role", "db_secret", "Администратор", "ib_secret");
+
+        assertTrue(target.hasInfobaseCredentials);
+        assertTrue(String.join(" ", target.args).contains("--user="));
+        assertFalse(String.join(" ", target.dbArgs).contains("--user="));
+        assertFalse(String.join(" ", target.dbArgs).contains("--password="));
+        assertTrue(target.dbArgs.contains("--database-user=db_role"));
+    }
+
+    @Test
+    void withoutInfobaseCredentialsBothListsMatch() {
+        IbcmdArgs.Target target = IbcmdArgs.target("D:/Bases/Demo", null, null, null, null, null);
+
+        assertFalse(target.hasInfobaseCredentials);
+        assertEquals(target.args, target.dbArgs);
+    }
 }

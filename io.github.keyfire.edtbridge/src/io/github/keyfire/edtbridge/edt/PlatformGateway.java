@@ -44,7 +44,11 @@ import com._1c.g5.v8.dt.platform.services.core.infobases.sync.IInfobaseSynchroni
 import com._1c.g5.v8.dt.platform.services.core.infobases.sync.IInfobaseUpdateCallback;
 import com._1c.g5.v8.dt.platform.services.core.infobases.sync.IInfobaseUpdateConflictResolver;
 import com._1c.g5.v8.dt.platform.services.core.infobases.sync.InfobaseConflictResolution;
+import io.github.keyfire.edtbridge.core.IbcmdArgs;
+import com._1c.g5.v8.dt.platform.services.model.FileConnectionString;
 import com._1c.g5.v8.dt.platform.services.model.InfobaseReference;
+import com._1c.g5.v8.dt.platform.services.model.ServerConnectionString;
+import com._1c.g5.v8.dt.platform.services.model.WebServerConnectionString;
 import com._1c.g5.v8.dt.platform.services.core.operations.CompoundOperationException;
 import com._1c.g5.v8.dt.platform.services.core.operations.IInfobaseCreationOperation;
 import com._1c.g5.v8.dt.platform.services.core.runtimes.IRuntimeInstallationManager;
@@ -1251,6 +1255,76 @@ public final class PlatformGateway {
         public String scope;
     }
 
+    /**
+     * A registered infobase as EDT knows it.
+     *
+     * <p>Enough to address a FILE infobase for ibcmd - EDT stores its path. NOT enough for a server
+     * one: what EDT holds there is the 1C CLUSTER coordinate (server + reference), and the DBMS
+     * coordinates ibcmd needs live in the cluster, not in the client connection string. Verified
+     * against the registered list rather than assumed.
+     */
+    public static final class RegisteredInfobase {
+        public boolean found;
+        public String name;
+        public String uuid;
+        public String kind;          // file | server | web | unknown
+        public String filePath;      // file infobase only
+        public String server;        // server infobase: the 1C cluster host
+        public String reference;     // server infobase: the infobase name in that cluster
+        public String problem;       // why it cannot address ibcmd on its own
+    }
+
+    /** Look a registered infobase up by name or uuid, as {@code edt_infobases} lists them. */
+    public RegisteredInfobase findRegisteredInfobase(String nameOrUuid) {
+        RegisteredInfobase r = new RegisteredInfobase();
+        if (nameOrUuid == null || nameOrUuid.isBlank()) {
+            r.problem = "an infobase name or uuid is required";
+            return r;
+        }
+        IInfobaseManager im = ServiceAccess.get(IInfobaseManager.class);
+        if (im == null) {
+            r.problem = "the EDT infobase manager is unavailable";
+            return r;
+        }
+        String needle = nameOrUuid.trim();
+        for (InfobaseReference ib : InfobaseReferences.asPlainList(im.getAll())) {
+            if (!needle.equalsIgnoreCase(ib.getName())
+                    && !needle.equalsIgnoreCase(String.valueOf(ib.getUuid()))) {
+                continue;
+            }
+            r.found = true;
+            r.name = ib.getName();
+            r.uuid = String.valueOf(ib.getUuid());
+            Object connection = ib.getConnectionString();
+            if (connection instanceof FileConnectionString) {
+                r.kind = "file";
+                r.filePath = ((FileConnectionString) connection).getFile();
+                if (r.filePath == null || r.filePath.isBlank()) {
+                    r.problem = "EDT knows this file infobase but not its path";
+                }
+            } else if (connection instanceof ServerConnectionString) {
+                ServerConnectionString server = (ServerConnectionString) connection;
+                r.kind = "server";
+                r.server = server.getServer();
+                r.reference = server.getReference();
+                r.problem = "EDT knows this infobase through the 1C cluster (server " + r.server
+                        + ", reference " + r.reference + "), and a cluster coordinate does not carry the"
+                        + " DBMS coordinates ibcmd needs. Pass dbms + dbName (+ dbServer / dbUser /"
+                        + " dbPassword) explicitly.";
+            } else if (connection instanceof WebServerConnectionString) {
+                r.kind = "web";
+                r.problem = "this infobase is published over a web server, which ibcmd cannot address."
+                        + " Pass the DBMS coordinates of the database behind it.";
+            } else {
+                r.kind = "unknown";
+                r.problem = "unrecognised connection kind: " + String.valueOf(connection);
+            }
+            return r;
+        }
+        r.problem = "no infobase registered in EDT under \"" + needle + "\" - edt_infobases lists them";
+        return r;
+    }
+
     /** Result of {@link #extensionProperties}. */
     public static final class ExtensionPropertiesResult {
         public boolean ok;
@@ -1283,35 +1357,43 @@ public final class PlatformGateway {
      * @param apply {@code false} reports the current properties and the planned change; {@code true}
      *              performs the update and reads the properties back
      */
-    public ExtensionPropertiesResult extensionProperties(String databasePath, String dbms,
-            String dbServer, String dbName, String dbUser, String dbPassword, String name,
-            Boolean safeMode, Boolean unsafeActionProtection, Boolean active, String platformVersion,
-            boolean apply) {
+    public ExtensionPropertiesResult extensionProperties(String infobase, String databasePath,
+            String dbms, String dbServer, String dbName, String dbUser, String dbPassword,
+            String infobaseUser, String infobasePassword, String name, Boolean safeMode,
+            Boolean unsafeActionProtection, Boolean active, String platformVersion, boolean apply) {
         ExtensionPropertiesResult r = new ExtensionPropertiesResult();
         r.name = (name == null || name.isBlank()) ? null : name.trim();
 
-        List<String> conn = new ArrayList<>();
-        if (databasePath != null && !databasePath.isBlank()) {
-            conn.add("--database-path=" + databasePath.trim());
-            r.infobase = "file: " + databasePath.trim();
-        } else if (dbms != null && !dbms.isBlank() && dbName != null && !dbName.isBlank()) {
-            conn.add("--dbms=" + dbms.trim());
-            if (dbServer != null && !dbServer.isBlank()) {
-                conn.add("--database-server=" + dbServer.trim());
+        // An infobase EDT has registered can be named instead of spelled out - but only a FILE one
+        // resolves to something ibcmd can use. For a server infobase EDT holds the cluster
+        // coordinate, which does not carry the DBMS one; say so instead of failing obscurely.
+        String path = databasePath;
+        if (infobase != null && !infobase.isBlank()) {
+            RegisteredInfobase found = findRegisteredInfobase(infobase);
+            if (!found.found) {
+                r.message = found.problem;
+                return r;
             }
-            conn.add("--database-name=" + dbName.trim());
-            if (dbUser != null && !dbUser.isBlank()) {
-                conn.add("--database-user=" + dbUser.trim());
+            if (!"file".equals(found.kind)) {
+                r.message = "\"" + found.name + "\": " + found.problem;
+                return r;
             }
-            if (dbPassword != null && !dbPassword.isBlank()) {
-                conn.add("--database-password=" + dbPassword);
+            if (path == null || path.isBlank()) {
+                path = found.filePath;
             }
-            r.infobase = dbms.trim() + ": " + (dbServer == null ? "" : dbServer.trim() + "/") + dbName.trim();
-        } else {
-            r.message = "the infobase is required: pass databasePath for a file infobase, or dbms +"
-                    + " dbName (+ dbServer / dbUser / dbPassword) for a DBMS-hosted one";
+        }
+
+        IbcmdArgs.Target target = IbcmdArgs.target(path, dbms, dbServer, dbName, dbUser, dbPassword,
+                infobaseUser, infobasePassword);
+        if (!target.usable()) {
+            r.message = target.problem;
             return r;
         }
+        // The extension mode knows only the DBMS credentials - handed --user it stops at "Ошибка
+        // разбора параметра". So address it with dbArgs, and if the infobase turns out to want 1C
+        // authentication, say that ibcmd cannot supply it here rather than blaming the coordinates.
+        List<String> conn = new ArrayList<>(target.dbArgs);
+        r.infobase = target.label;
 
         DiskPlatform ib = findIbcmdInstall(platformLine(platformVersion));
         if (ib == null) {
@@ -1346,10 +1428,20 @@ public final class PlatformGateway {
             read.add("--name=" + r.name);
         }
         String[] readCmd = read.toArray(new String[0]);
-        String out = runIbcmdCapturing(ibcmd, readCmd);
+        // Run through the gateway directly rather than the capturing helper: its error text carries
+        // WHY it failed - notably "pass infobaseUser" - and a caller staring at a generic message has
+        // no way to guess that a 1C credential is what is missing.
+        IbcmdGateway.Run reading = IbcmdGateway.run(ibcmd, List.of(readCmd));
+        String out = reading.ok ? reading.output : null;
         if (out == null) {
-            r.message = "ibcmd " + (r.name == null ? "extension list" : "extension info") + " failed"
-                    + " - check the infobase coordinates and that the platform matches its version";
+            boolean wantsUser = reading.error != null && reading.error.contains("requires authentication");
+            r.message = "ibcmd " + (r.name == null ? "extension list" : "extension info") + " failed: "
+                    + (wantsUser
+                        ? "this infobase authenticates its users, and ibcmd's extension mode accepts "
+                          + "only DBMS credentials - it has no --user to pass a 1C account. The "
+                          + "extensions of such an infobase cannot be read this way; use the Designer."
+                        : reading.error == null ? "check the infobase coordinates and that the platform "
+                            + "matches its version" : reading.error);
             return r;
         }
         parseExtensionFlags(out, r.extensions);
@@ -1455,45 +1547,8 @@ public final class PlatformGateway {
 
     /** Like {@link #runIbcmd} but returns the output on success (null on failure). */
     private static String runIbcmdCapturing(java.nio.file.Path exe, String... args) {
-        List<String> cmd = new ArrayList<>();
-        cmd.add(exe.toString());
-        for (String a : args) {
-            cmd.add(a);
-        }
-        try {
-            ProcessBuilder pb = new ProcessBuilder(cmd);
-            pb.redirectErrorStream(true);
-            Process proc = pb.start();
-            byte[] raw;
-            try (java.io.InputStream in = proc.getInputStream()) {
-                raw = in.readAllBytes();
-            }
-            if (!proc.waitFor(300, java.util.concurrent.TimeUnit.SECONDS)) {
-                proc.destroyForcibly();
-                return null;
-            }
-            return (proc.exitValue() == 0) ? decodeIbcmd(raw) : null;
-        } catch (java.io.IOException | InterruptedException ex) {
-            if (ex instanceof InterruptedException) {
-                Thread.currentThread().interrupt();
-            }
-            return null;
-        }
-    }
-
-    /**
-     * ibcmd writes command output in UTF-8 but its built-in help in the OEM code page; decode
-     * strictly as UTF-8 and fall back to CP866 so a stray message cannot turn Cyrillic into noise.
-     */
-    private static String decodeIbcmd(byte[] raw) {
-        try {
-            return java.nio.charset.StandardCharsets.UTF_8.newDecoder()
-                    .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
-                    .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
-                    .decode(java.nio.ByteBuffer.wrap(raw)).toString();
-        } catch (java.nio.charset.CharacterCodingException notUtf8) {
-            return new String(raw, java.nio.charset.Charset.forName("IBM866"));
-        }
+        IbcmdGateway.Run run = IbcmdGateway.run(exe, List.of(args));
+        return run.ok ? run.output : null;
     }
 
     /** Best on-disk full install that carries {@code ibcmd}, preferring {@code line} then descending. */
@@ -1506,38 +1561,16 @@ public final class PlatformGateway {
         return null;
     }
 
-    /** Run an {@code ibcmd} sub-command in batch mode; null on success (exit 0), else an error string. */
+    /**
+     * Run an {@code ibcmd} sub-command in batch mode; null on success, else an error string.
+     *
+     * <p>Delegates to {@link IbcmdGateway#run}, which is the single place that knows how to launch
+     * the utility - notably that its stdin must go to the null device, or an infobase asking for
+     * credentials leaves the call waiting on a prompt nobody will answer.
+     */
     private static String runIbcmd(java.nio.file.Path exe, String... args) {
-        List<String> cmd = new ArrayList<>();
-        cmd.add(exe.toString());
-        for (String a : args) {
-            cmd.add(a);
-        }
-        try {
-            ProcessBuilder pb = new ProcessBuilder(cmd);
-            pb.redirectErrorStream(true);
-            Process proc = pb.start();
-            String out;
-            try (java.io.InputStream in = proc.getInputStream()) {
-                out = new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
-            }
-            boolean done = proc.waitFor(300, java.util.concurrent.TimeUnit.SECONDS);
-            if (!done) {
-                proc.destroyForcibly();
-                return "timed out: " + args[0] + " " + args[1];
-            }
-            int code = proc.exitValue();
-            if (code != 0) {
-                String tail = out.length() > 3000 ? out.substring(out.length() - 3000) : out;
-                return args[0] + " " + args[1] + " exit " + code + (tail.isBlank() ? "" : ": " + tail.trim());
-            }
-            return null;
-        } catch (java.io.IOException | InterruptedException ex) {
-            if (ex instanceof InterruptedException) {
-                Thread.currentThread().interrupt();
-            }
-            return ex.getClass().getSimpleName() + (ex.getMessage() != null ? ": " + ex.getMessage() : "");
-        }
+        IbcmdGateway.Run run = IbcmdGateway.run(exe, List.of(args));
+        return run.ok ? null : run.error;
     }
 
     /** Recursively delete a directory tree, best-effort (used to remove throwaway temp bases). */

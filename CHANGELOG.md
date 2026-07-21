@@ -11,14 +11,45 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugi
 ## [Unreleased]
 
 ### Added
-- `edt_infobase_config_state` – whether an infobase actually RUNS the configuration it holds. In 1C
-  the code a session executes is the *database* configuration, a separate thing from the one being
-  edited, so changes that are loaded but not applied leave every session on the previous code – the
-  exact failure `edt_update_infobase` hid behind `equality: EQUAL`. Established through `ibcmd`, which
-  dumps both configurations for comparison and addresses the infobase by file path or DBMS
-  coordinates: a clustered infobase needs neither cluster access nor an EDT session. Verified against
-  a live file infobase in both directions – matching, then diverging once a change was loaded without
-  being applied, then matching again after `config apply`.
+- `edt_infobase_config_state` – compares an infobase's main configuration with its *database* one, the
+  code sessions actually execute, by dumping both through `ibcmd`. It addresses the infobase by file
+  path or DBMS coordinates, so a clustered infobase needs neither cluster access nor an EDT session.
+
+  The result is deliberately asymmetric, and the description says so: identical files mean the
+  configuration HAS been applied, while differing files are INCONCLUSIVE. A dynamic update leaves the
+  two containers different even when the platform itself reports that no database update is required –
+  reproduced on a file infobase with no sessions and byte-identical file sizes, so the difference is
+  container bookkeeping rather than content. Distinguishing "not applied" from "applied dynamically"
+  needs an indicator this does not have: `--db` exists only on `config save|sign`, `config export
+  info|status` want an XML dump directory rather than a `.cf`, and `config generation-id` tracks the
+  MAIN configuration, leaving nothing to compare it with.
+- `edt_infobase_dump` – dump an infobase to a `.dt` through `ibcmd`: the backup that belongs before
+  applying a configuration to the database, and which the bridge had no way to take. Dry-run by
+  default and refuses to overwrite an existing file.
+- The ibcmd-backed tools take the 1C infobase credentials (`infobaseUser` / `infobasePassword`)
+  alongside the DBMS ones. These are easy to confuse and the difference is not cosmetic: an infobase
+  that authenticates its users refuses the operation without the 1C credentials, and ibcmd then
+  *prompts for a user name on stdin* – which for a non-interactive caller is a hang rather than an
+  error. Redirecting stdin to the null device is not enough: ibcmd ignores EOF and reprints the prompt
+  indefinitely (134 MB in 60 seconds, measured). Output is therefore read incrementally and the
+  process is killed the moment the prompt or a runaway size appears, so the call now fails in two
+  seconds with a message naming the missing credential.
+- Each ibcmd invocation gets its own working directory. Without `--data` they all lock the same
+  stand-alone-server directory, and the next invocation anywhere fails with "рабочий каталог
+  заблокирован процессом".
+- Where ibcmd cannot do what was asked, the tools now say why instead of blaming the coordinates: its
+  `extension` mode has no `--user` at all, so the extensions of an infobase that authenticates its
+  users are unreachable this way and the answer says so.
+- `edt_update_infobase` now returns an `equalityNote` next to `equality`, saying plainly that the
+  comparison covers the MAIN configuration and does not mean the database configuration was applied.
+- `edt_extension_properties` takes `infobase` – the name or uuid of an infobase registered in EDT –
+  instead of spelling the address out, and the 1C credentials as well. This works for a FILE infobase,
+  whose path EDT stores. It does NOT work for a server one, and that is not an omission: EDT registers
+  a server infobase by its 1C CLUSTER coordinate (server + reference), which carries no DBMS
+  coordinates for ibcmd to use. The tool now says exactly that instead of failing obscurely, so the
+  DBMS coordinates remain the way to reach a server infobase.
+
+### Changed
 - A test suite for the wrapper plus a `ci` workflow (Linux and Windows, 3.10 and 3.12) that both
   release workflows now call first, so a red suite stops a release instead of shipping past it. Its
   core is the three regressions that actually shipped: a cp1251 stdout aborting the `tools/list` frame

@@ -99,6 +99,13 @@ public final class UpdateInfobaseTool {
             }
             if (res.equality != null) {
                 o.addProperty("equality", res.equality);
+                // equality compares the project with the infobase's MAIN configuration. Sessions run
+                // the DATABASE configuration, which is a separate thing: loaded-but-not-applied
+                // changes leave every session on the old code while this still reports EQUAL. That
+                // exact reading once cost a debugging session, so say it here rather than in a doc.
+                o.addProperty("equalityNote", "equality compares the project with the infobase's MAIN "
+                        + "configuration - it does NOT mean the database configuration was applied, and "
+                        + "sessions execute the database one. Check with edt_infobase_config_state.");
             }
             if (res.status != null) {
                 o.addProperty("status", res.status);

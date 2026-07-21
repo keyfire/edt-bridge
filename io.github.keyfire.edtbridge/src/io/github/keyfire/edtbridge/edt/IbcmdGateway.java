@@ -69,12 +69,12 @@ public final class IbcmdGateway {
         public String error;          // null when ok
     }
 
-    /** Whether the infobase runs the configuration the caller thinks it runs. */
+    /** How the dumped main and database configurations compare. */
     public static final class ConfigStateResult {
         public boolean ok;
         public String infobase;                 // label, never carries the password
         public String platform;                 // ibcmd install used
-        public Boolean databaseConfigMatches;   // null when it could not be established
+        public Boolean configFilesIdentical;    // null when it could not be established
         public String mainConfigHash;
         public String databaseConfigHash;
         public String plan;
@@ -104,26 +104,69 @@ public final class IbcmdGateway {
         return tool;
     }
 
-    /** Run ibcmd once, capturing its combined output. Never throws; failures land in {@link Run#error}. */
+    /** Hard cap on captured output. ibcmd can emit hundreds of megabytes of a repeated prompt. */
+    private static final int MAX_OUTPUT_BYTES = 1 << 20;
+
+    /**
+     * Run ibcmd once, capturing its combined output. Never throws; failures land in {@link Run#error}.
+     *
+     * <p>The output is read incrementally rather than with {@code readAllBytes}, and that is not a
+     * refinement - it is the difference between an error and a hang. When an infobase authenticates
+     * its users and no {@code --user} was given, ibcmd asks for a name and KEEPS ASKING: it ignores a
+     * closed stdin and reprints the prompt forever (measured: 134 MB in 60 seconds). Waiting for the
+     * stream to end therefore never returns. So the loop watches for that prompt and for a runaway
+     * output size, and kills the process the moment either shows up.
+     */
     public static Run run(Path exe, List<String> args) {
         Run r = new Run();
         List<String> cmd = new ArrayList<>();
         cmd.add(exe.toString());
         cmd.addAll(args);
+        Process proc = null;
         try {
             ProcessBuilder pb = new ProcessBuilder(cmd);
             pb.redirectErrorStream(true);
-            Process proc = pb.start();
-            byte[] raw;
+            // Nothing will answer a prompt here, so do not pretend otherwise. (ibcmd asks anyway -
+            // see above - but an inherited stdin would be worse still.)
+            pb.redirectInput(ProcessBuilder.Redirect.from(nullDevice()));
+            proc = pb.start();
+
+            java.io.ByteArrayOutputStream captured = new java.io.ByteArrayOutputStream();
+            long deadline = System.currentTimeMillis() + TIMEOUT_SECONDS * 1000L;
+            String abort = null;
+            byte[] chunk = new byte[8192];
             try (InputStream in = proc.getInputStream()) {
-                raw = in.readAllBytes();
+                int read;
+                while ((read = in.read(chunk)) >= 0) {
+                    captured.write(chunk, 0, read);
+                    if (needsInfobaseUser(decode(captured.toByteArray()))) {
+                        abort = "the infobase requires authentication - pass infobaseUser (and "
+                                + "infobasePassword). Note this is the 1C user, not the DBMS one.";
+                        break;
+                    }
+                    if (captured.size() > MAX_OUTPUT_BYTES) {
+                        abort = "ibcmd produced more than " + MAX_OUTPUT_BYTES
+                                + " bytes of output and was stopped";
+                        break;
+                    }
+                    if (System.currentTimeMillis() > deadline) {
+                        abort = "ibcmd timed out after " + TIMEOUT_SECONDS + "s";
+                        break;
+                    }
+                }
+            }
+            r.output = decode(captured.toByteArray());
+            if (abort != null) {
+                proc.destroyForcibly();
+                proc.waitFor(10, TimeUnit.SECONDS);
+                r.error = describe(args) + ": " + abort;
+                return r;
             }
             if (!proc.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
                 proc.destroyForcibly();
                 r.error = "ibcmd timed out after " + TIMEOUT_SECONDS + "s: " + describe(args);
                 return r;
             }
-            r.output = decode(raw);
             r.exitCode = proc.exitValue();
             r.ok = r.exitCode == 0 && !looksLikeFailure(r.output);
             if (!r.ok) {
@@ -131,6 +174,9 @@ public final class IbcmdGateway {
                         + ": " + tail(r.output);
             }
         } catch (IOException | InterruptedException ex) {
+            if (proc != null) {
+                proc.destroyForcibly();
+            }
             if (ex instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
@@ -141,15 +187,20 @@ public final class IbcmdGateway {
     }
 
     /**
-     * Whether the infobase's DATABASE configuration matches its main one - the question
-     * {@code equality: EQUAL} could not answer.
+     * Compare the infobase's main configuration with its DATABASE configuration, by dumping both
+     * ({@code config save} and {@code config save --db}) and hashing them.
      *
-     * <p>In 1C the code a session executes is the database configuration, a separate thing from the
-     * configuration being edited. They diverge whenever changes are loaded but not applied, and every
-     * running session keeps serving the old code until they are. Established by dumping both
-     * ({@code config save} and {@code config save --db}) and comparing them: there is no cheaper
-     * handle, since {@code --db} exists only on {@code save}, and {@code config export info|status}
-     * work against an XML dump directory rather than a configuration file.
+     * <p><b>Read the outcome asymmetrically.</b> Identical files mean the database configuration is
+     * the main one, i.e. it has been applied. DIFFERING files do NOT mean it was not applied: a
+     * DYNAMIC update leaves the two containers different even when the platform itself reports
+     * "обновление конфигурации базы данных не требуется". Measured on a file infobase with no sessions
+     * at all, with byte-identical file SIZES - what differs is container bookkeeping, not content. So
+     * a difference means "not applied OR applied dynamically", and this cannot tell the two apart.
+     *
+     * <p>Why there is no better handle: {@code --db} exists only on {@code config save|sign};
+     * {@code config export info|status} need an XML dump directory rather than a {@code .cf}; and
+     * {@code config generation-id} tracks the MAIN configuration (it moves when the main config is
+     * edited and stays put on apply), so there is no second value to compare it against.
      *
      * @param target          the infobase, already addressed
      * @param platformVersion version line to prefer when picking the ibcmd install (optional)
@@ -175,8 +226,12 @@ public final class IbcmdGateway {
             work = Files.createTempDirectory("edtbridge-configstate-");
             Path mainCf = work.resolve("main.cf");
             Path dbCf = work.resolve("db.cf");
+            // Without --data ibcmd locks ONE shared working directory for every invocation, so a
+            // second call anywhere fails with "рабочий каталог заблокирован процессом". Give each
+            // run its own throwaway one.
+            String dataDir = "--data=" + Files.createDirectories(work.resolve("data"));
 
-            List<String> save = new ArrayList<>(List.of("config", "save"));
+            List<String> save = new ArrayList<>(List.of("config", "save", dataDir));
             save.addAll(target.args);
             save.add(mainCf.toString());
             Run mainRun = run(tool.exe, save);
@@ -185,7 +240,7 @@ public final class IbcmdGateway {
                 return r;
             }
 
-            List<String> saveDb = new ArrayList<>(List.of("config", "save", "--db"));
+            List<String> saveDb = new ArrayList<>(List.of("config", "save", "--db", dataDir));
             saveDb.addAll(target.args);
             saveDb.add(dbCf.toString());
             Run dbRun = run(tool.exe, saveDb);
@@ -200,18 +255,109 @@ public final class IbcmdGateway {
                 r.message = "the configurations were dumped but could not be read back for comparison";
                 return r;
             }
-            r.databaseConfigMatches = r.mainConfigHash.equals(r.databaseConfigHash);
+            r.configFilesIdentical = r.mainConfigHash.equals(r.databaseConfigHash);
             r.ok = true;
-            r.message = Boolean.TRUE.equals(r.databaseConfigMatches)
-                    ? "the database configuration matches the main one - sessions run this code"
-                    : "the database configuration DIFFERS from the main one - the changes are loaded "
-                      + "but not applied, so every running session still executes the previous code "
-                      + "(apply them with config apply / from the Designer)";
+            r.message = Boolean.TRUE.equals(r.configFilesIdentical)
+                    ? "the database configuration is identical to the main one - it has been applied"
+                    : "the two configurations are NOT identical, which is inconclusive: either the "
+                      + "changes were never applied to the database, or they were applied DYNAMICALLY "
+                      + "- a dynamic update leaves the containers different even when the platform "
+                      + "reports that no database update is required. This comparison cannot tell the "
+                      + "two apart; confirm from the Designer.";
         } catch (IOException ex) {
             r.message = "could not prepare a working directory: " + GatewaySupport.describeCause(ex);
         } finally {
             deleteRecursively(work);
         }
+        return r;
+    }
+
+    /** Outcome of {@link #dumpInfobase}. */
+    public static final class DumpResult {
+        public boolean ok;
+        public boolean applied;
+        public String infobase;
+        public String platform;
+        public String outputPath;
+        public long sizeBytes = -1;
+        public String plan;
+        public String message;
+    }
+
+    /**
+     * Dump an infobase to a {@code .dt} file - the backup that belongs BEFORE any configuration
+     * apply, and which the bridge had no way to take.
+     *
+     * <p>Dry-run by default: resolves ibcmd, checks the destination is writable and does not already
+     * hold a file, and reports the plan. A dump reads everything in the base, so it is token-gated
+     * like the write tools even though it changes nothing in the infobase itself.
+     */
+    public DumpResult dumpInfobase(IbcmdArgs.Target target, String outputPath, String platformVersion,
+            boolean apply) {
+        DumpResult r = new DumpResult();
+        if (target == null || !target.usable()) {
+            r.message = (target == null) ? "no infobase given" : target.problem;
+            return r;
+        }
+        if (outputPath == null || outputPath.isBlank()) {
+            r.message = "outputPath is required - the .dt file to write";
+            return r;
+        }
+        r.infobase = target.label;
+        r.outputPath = outputPath.trim();
+        Tool tool = resolve(platformVersion);
+        if (tool.problem != null) {
+            r.message = tool.problem;
+            return r;
+        }
+        r.platform = tool.version;
+
+        Path out = Path.of(r.outputPath);
+        Path parent = out.getParent();
+        if (parent != null && !Files.isDirectory(parent)) {
+            r.message = "the destination directory does not exist: " + parent;
+            return r;
+        }
+        if (Files.exists(out)) {
+            r.message = "refusing to overwrite an existing file: " + out;
+            return r;
+        }
+        r.ok = true;
+        r.plan = "Dump " + target.label + " to " + out + " with ibcmd " + tool.version;
+        if (!apply) {
+            r.message = "dry-run: nothing written. Re-call with apply=true to take the dump.";
+            return r;
+        }
+
+        Path work = null;
+        Run run;
+        try {
+            // Own working directory per run - see configState: the shared one is locked exclusively.
+            work = Files.createTempDirectory("edtbridge-dump-");
+            List<String> dump = new ArrayList<>(List.of("infobase", "dump",
+                    "--data=" + Files.createDirectories(work.resolve("data"))));
+            dump.addAll(target.args);
+            dump.add(out.toString());
+            run = run(tool.exe, dump);
+        } catch (IOException ex) {
+            r.ok = false;
+            r.message = "could not prepare a working directory: " + GatewaySupport.describeCause(ex);
+            return r;
+        } finally {
+            deleteRecursively(work);
+        }
+        if (!run.ok) {
+            r.ok = false;
+            r.message = "dump failed: " + run.error;
+            return r;
+        }
+        r.applied = true;
+        try {
+            r.sizeBytes = Files.size(out);
+        } catch (IOException ignored) {
+            r.sizeBytes = -1;
+        }
+        r.message = "written: " + out + (r.sizeBytes >= 0 ? " (" + r.sizeBytes + " bytes)" : "");
         return r;
     }
 
@@ -250,7 +396,28 @@ public final class IbcmdGateway {
      * exit code alone as success is how a broken call gets read as a good one.
      */
     private static boolean looksLikeFailure(String output) {
-        return output != null && output.contains("[ERROR]");
+        return output != null && (output.contains("[ERROR]") || needsInfobaseUser(output));
+    }
+
+    /**
+     * ibcmd asking who we are: the infobase authenticates its users and no {@code --user} was given.
+     * Recognised in both languages the utility speaks, since the prompt itself is what it emits after
+     * the message - and with stdin at EOF the two arrive together.
+     */
+    private static boolean needsInfobaseUser(String output) {
+        if (output == null) {
+            return false;
+        }
+        return output.contains("требуется аутентификация в информационной базе")
+                || output.contains("Имя пользователя:")
+                || output.contains("authentication is required")
+                || output.contains("User name:");
+    }
+
+    /** The platform's bit bucket, so a child process reading stdin gets EOF instead of waiting. */
+    private static java.io.File nullDevice() {
+        boolean windows = System.getProperty("os.name", "").toLowerCase().contains("win");
+        return new java.io.File(windows ? "NUL" : "/dev/null");
     }
 
     /** The command being run, for messages - the arguments never include the password. */
