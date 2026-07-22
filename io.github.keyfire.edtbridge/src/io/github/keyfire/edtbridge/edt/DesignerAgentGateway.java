@@ -329,37 +329,40 @@ public final class DesignerAgentGateway {
 
         agent.lock.lock();
         try {
-            IDesignerSession s = session(agent);
-            List<String> collected = new ArrayList<>();
-            boolean[] refused = {false};
-            var step = s.configure().updateDatabaseConfiguration();
-            if (extension != null && !extension.isBlank()) {
-                step = step.extension(extension.trim());
-            }
-            try {
-                step.onConfirm(changes -> {
-                    for (IDbStructureChange c : changes) {
-                        collected.add("[" + c.getType() + "] " + c.getMessage());
-                    }
-                    refused[0] = true;
-                    return false; // read-only: never apply from a state query
-                }).exec(Duration.ofHours(1));
-            } catch (Exception cancelled) {
-                // Refusing the confirmation IS how this question gets asked, and the client reports
-                // that refusal by throwing. Only an exception we did not cause is a failure.
-                if (!refused[0]) {
-                    throw cancelled;
+            return withSession(agent, s -> {
+                List<String> collected = new ArrayList<>();
+                boolean[] refused = {false};
+                var step = s.configure().updateDatabaseConfiguration();
+                if (extension != null && !extension.isBlank()) {
+                    step = step.extension(extension.trim());
                 }
-            }
+                try {
+                    step.onConfirm(changes -> {
+                        for (IDbStructureChange c : changes) {
+                            collected.add("[" + c.getType() + "] " + c.getMessage());
+                        }
+                        refused[0] = true;
+                        return false; // read-only: never apply from a state query
+                    }).exec(Duration.ofHours(1));
+                } catch (Exception cancelled) {
+                    // Refusing the confirmation IS how this question gets asked, and the client
+                    // reports that refusal by throwing. Only an exception we did not cause is a
+                    // failure.
+                    if (!refused[0]) {
+                        throw cancelled;
+                    }
+                }
 
-            r.pendingChanges.addAll(collected);
-            r.pendingChangeCount = collected.size();
-            r.databaseConfigUpToDate = collected.isEmpty();
-            r.ok = true;
-            r.message = collected.isEmpty()
-                    ? "the database configuration is up to date - the platform reports nothing to apply"
-                    : "an update is PENDING: " + collected.size() + " structure change(s) are waiting, so "
-                      + "sessions still execute the previous configuration. Nothing was applied.";
+                r.pendingChanges.addAll(collected);
+                r.pendingChangeCount = collected.size();
+                r.databaseConfigUpToDate = collected.isEmpty();
+                r.ok = true;
+                r.message = collected.isEmpty()
+                        ? "the database configuration is up to date - the platform reports nothing to apply"
+                        : "an update is PENDING: " + collected.size() + " structure change(s) are waiting, so "
+                          + "sessions still execute the previous configuration. Nothing was applied.";
+                return r;
+            });
         } catch (Exception ex) {
             dropSession(agent, ex);
             r.message = "the agent could not report the state: " + describe(ex);
@@ -386,16 +389,19 @@ public final class DesignerAgentGateway {
 
         agent.lock.lock();
         try {
-            IDesignerSession s = session(agent);
-            var get = s.extensions().properties().get();
-            List<IExtensionProperties> props = (name == null || name.isBlank())
-                    ? get.allExtensions().exec(Duration.ofMinutes(10))
-                    : get.extension(name.trim()).exec(Duration.ofMinutes(10));
-            for (IExtensionProperties p : props) {
-                r.extensions.add(describe(p));
-            }
-            r.ok = true;
-            r.message = r.extensions.size() + " extension(s)";
+            return withSession(agent, s -> {
+                var get = s.extensions().properties().get();
+                List<IExtensionProperties> props = (name == null || name.isBlank())
+                        ? get.allExtensions().exec(Duration.ofMinutes(10))
+                        : get.extension(name.trim()).exec(Duration.ofMinutes(10));
+                r.extensions.clear();  // a retried first attempt must not double the list
+                for (IExtensionProperties p : props) {
+                    r.extensions.add(describe(p));
+                }
+                r.ok = true;
+                r.message = r.extensions.size() + " extension(s)";
+                return r;
+            });
         } catch (Exception ex) {
             dropSession(agent, ex);
             r.message = "the agent could not read extension properties: " + describe(ex);
@@ -455,47 +461,52 @@ public final class DesignerAgentGateway {
 
         agent.lock.lock();
         try {
-            IDesignerSession s = session(agent);
-            var before = s.extensions().properties().get().extension(name.trim())
-                    .exec(Duration.ofMinutes(10));
-            for (IExtensionProperties p : before) {
-                r.extensions.add(describe(p));
-            }
-            r.ok = true;
-            if (!apply) {
-                r.message = "dry-run: nothing changed. Re-call with apply=true to set "
-                        + String.join(", ", wanted) + ".";
+            return withSession(agent, s -> {
+                // a retried first attempt must not double the accumulated lists
+                r.extensions.clear();
+                r.changed.clear();
+                var before = s.extensions().properties().get().extension(name.trim())
+                        .exec(Duration.ofMinutes(10));
+                for (IExtensionProperties p : before) {
+                    r.extensions.add(describe(p));
+                }
+                r.ok = true;
+                if (!apply) {
+                    r.message = "dry-run: nothing changed. Re-call with apply=true to set "
+                            + String.join(", ", wanted) + ".";
+                    return r;
+                }
+                var set = s.extensions().properties().set().extension(name.trim());
+                if (active != null) {
+                    set = set.active(active);
+                }
+                if (safeMode != null) {
+                    set = set.safeMode(safeMode);
+                }
+                if (unsafeActionProtection != null) {
+                    set = set.unsafeActionProtection(unsafeActionProtection);
+                }
+                if (usedInDistributedInfobase != null) {
+                    set = set.usedInDistributedInfobase(usedInDistributedInfobase);
+                }
+                if (securityProfile != null) {
+                    set = set.securityProfile(securityProfile);
+                }
+                if (scope != null) {
+                    set = set.scope("data-separation".equalsIgnoreCase(scope)
+                            ? ExtensionScope.DATA_SEPARATION : ExtensionScope.INFOBASE);
+                }
+                set.exec(Duration.ofMinutes(10));
+                r.applied = true;
+                r.changed.addAll(wanted);
+                r.extensions.clear();
+                for (IExtensionProperties p : s.extensions().properties().get()
+                        .extension(name.trim()).exec(Duration.ofMinutes(10))) {
+                    r.extensions.add(describe(p));
+                }
+                r.message = "set " + String.join(", ", wanted) + " on " + name;
                 return r;
-            }
-            var set = s.extensions().properties().set().extension(name.trim());
-            if (active != null) {
-                set = set.active(active);
-            }
-            if (safeMode != null) {
-                set = set.safeMode(safeMode);
-            }
-            if (unsafeActionProtection != null) {
-                set = set.unsafeActionProtection(unsafeActionProtection);
-            }
-            if (usedInDistributedInfobase != null) {
-                set = set.usedInDistributedInfobase(usedInDistributedInfobase);
-            }
-            if (securityProfile != null) {
-                set = set.securityProfile(securityProfile);
-            }
-            if (scope != null) {
-                set = set.scope("data-separation".equalsIgnoreCase(scope)
-                        ? ExtensionScope.DATA_SEPARATION : ExtensionScope.INFOBASE);
-            }
-            set.exec(Duration.ofMinutes(10));
-            r.applied = true;
-            r.changed.addAll(wanted);
-            r.extensions.clear();
-            for (IExtensionProperties p : s.extensions().properties().get()
-                    .extension(name.trim()).exec(Duration.ofMinutes(10))) {
-                r.extensions.add(describe(p));
-            }
-            r.message = "set " + String.join(", ", wanted) + " on " + name;
+            });
         } catch (Exception ex) {
             dropSession(agent, ex);
             r.ok = false;
@@ -539,51 +550,54 @@ public final class DesignerAgentGateway {
 
         agent.lock.lock();
         try {
-            IDesignerSession s = session(agent);
-            List<String> collected = new ArrayList<>();
-            boolean[] refused = {false};
-            var step = s.configure().updateDatabaseConfiguration();
-            if (extension != null && !extension.isBlank()) {
-                step = step.extension(extension.trim());
-            }
-            step = step.onInfobaseLockError(termination(r.sessionTermination));
-            List<IDbStructureChange> result = null;
-            try {
-                result = step.onConfirm(changes -> {
-                    for (IDbStructureChange c : changes) {
-                        collected.add("[" + c.getType() + "] " + c.getMessage());
-                    }
-                    refused[0] = !apply;
-                    return apply;
-                }).exec(Duration.ofHours(2));
-            } catch (Exception cancelled) {
-                // A dry-run ends by refusing the confirmation, and the client reports that by
-                // throwing - expected here, and only here.
-                if (!refused[0]) {
-                    throw cancelled;
+            return withSession(agent, s -> {
+                List<String> collected = new ArrayList<>();
+                boolean[] refused = {false};
+                var step = s.configure().updateDatabaseConfiguration();
+                if (extension != null && !extension.isBlank()) {
+                    step = step.extension(extension.trim());
                 }
-            }
-            if (result != null) {
-                for (IDbStructureChange c : result) {
-                    String line = "[" + c.getType() + "] " + c.getMessage();
-                    if (!collected.contains(line)) {
-                        collected.add(line);
+                step = step.onInfobaseLockError(termination(r.sessionTermination));
+                List<IDbStructureChange> result = null;
+                try {
+                    result = step.onConfirm(changes -> {
+                        for (IDbStructureChange c : changes) {
+                            collected.add("[" + c.getType() + "] " + c.getMessage());
+                        }
+                        refused[0] = !apply;
+                        return apply;
+                    }).exec(Duration.ofHours(2));
+                } catch (Exception cancelled) {
+                    // A dry-run ends by refusing the confirmation, and the client reports that by
+                    // throwing - expected here, and only here.
+                    if (!refused[0]) {
+                        throw cancelled;
                     }
                 }
-            }
-            r.changes.addAll(collected);
-            r.ok = true;
-            r.applied = apply;
-            if (!apply) {
-                r.message = collected.isEmpty()
-                        ? "dry-run: nothing to apply - the database configuration is already up to date"
-                        : "dry-run: " + collected.size() + " structure change(s) would be applied. "
-                          + "Re-call with apply=true.";
-            } else {
-                r.message = collected.isEmpty()
-                        ? "nothing to apply - the database configuration was already up to date"
-                        : "applied " + collected.size() + " structure change(s)";
-            }
+                if (result != null) {
+                    for (IDbStructureChange c : result) {
+                        String line = "[" + c.getType() + "] " + c.getMessage();
+                        if (!collected.contains(line)) {
+                            collected.add(line);
+                        }
+                    }
+                }
+                r.changes.clear();  // a retried first attempt must not double the list
+                r.changes.addAll(collected);
+                r.ok = true;
+                r.applied = apply;
+                if (!apply) {
+                    r.message = collected.isEmpty()
+                            ? "dry-run: nothing to apply - the database configuration is already up to date"
+                            : "dry-run: " + collected.size() + " structure change(s) would be applied. "
+                              + "Re-call with apply=true.";
+                } else {
+                    r.message = collected.isEmpty()
+                            ? "nothing to apply - the database configuration was already up to date"
+                            : "applied " + collected.size() + " structure change(s)";
+                }
+                return r;
+            });
         } catch (Exception ex) {
             dropSession(agent, ex);
             r.ok = false;
@@ -626,43 +640,49 @@ public final class DesignerAgentGateway {
 
         agent.lock.lock();
         try {
-            IDesignerSession s = session(agent);
-            List<IExtensionProperties> before;
-            try {
-                before = s.extensions().properties().get()
-                        .extension(name.trim()).exec(Duration.ofMinutes(10));
-            } catch (Exception notThere) {
-                if (!GatewaySupport.describeCause(notThere).contains("не найдено")) {
-                    throw notThere;
+            ExtensionsResult done = withSession(agent, s -> {
+                r.extensions.clear();  // a retried first attempt must not double the list
+                List<IExtensionProperties> before;
+                try {
+                    before = s.extensions().properties().get()
+                            .extension(name.trim()).exec(Duration.ofMinutes(10));
+                } catch (Exception notThere) {
+                    if (!GatewaySupport.describeCause(notThere).contains("не найдено")) {
+                        throw notThere;
+                    }
+                    r.message = "no extension named " + name.trim() + " in " + agent.infobase
+                            + " - edt_extension_properties lists what is there";
+                    return r;
                 }
-                r.message = "no extension named " + name.trim() + " in " + agent.infobase
-                        + " - edt_extension_properties lists what is there";
-                return r;
-            }
-            for (IExtensionProperties p : before) {
-                // Match the name rather than trust a non-empty answer: asking about an extension that
-                // is not there comes back as a record with an EMPTY name, and taking that for a hit
-                // turns a clear "no such extension" into the platform's own confusing reply about an
-                // extension named ''.
-                if (name.trim().equalsIgnoreCase(p.getName())) {
-                    r.extensions.add(describe(p));
+                for (IExtensionProperties p : before) {
+                    // Match the name rather than trust a non-empty answer: asking about an extension
+                    // that is not there comes back as a record with an EMPTY name, and taking that
+                    // for a hit turns a clear "no such extension" into the platform's own confusing
+                    // reply about an extension named ''.
+                    if (name.trim().equalsIgnoreCase(p.getName())) {
+                        r.extensions.add(describe(p));
+                    }
                 }
-            }
-            if (r.extensions.isEmpty()) {
-                r.message = "no extension named " + name.trim() + " in " + agent.infobase
-                        + " - edt_extension_properties lists what is there";
+                if (r.extensions.isEmpty()) {
+                    r.message = "no extension named " + name.trim() + " in " + agent.infobase
+                            + " - edt_extension_properties lists what is there";
+                    return r;
+                }
+                r.ok = true;
+                if (!apply || !force) {
+                    r.message = "dry-run: nothing deleted. Deleting an extension cannot be undone "
+                            + "from here - re-call with apply=true AND force=true.";
+                    return r;
+                }
+                s.extensions().delete().extension(name.trim()).exec(Duration.ofMinutes(30));
+                r.applied = true;
+                r.changed.add("deleted");
+                r.message = "extension " + name.trim() + " deleted from " + agent.infobase;
                 return r;
+            });
+            if (!done.applied) {
+                return done;
             }
-            r.ok = true;
-            if (!apply || !force) {
-                r.message = "dry-run: nothing deleted. Deleting an extension cannot be undone from "
-                        + "here - re-call with apply=true AND force=true.";
-                return r;
-            }
-            s.extensions().delete().extension(name.trim()).exec(Duration.ofMinutes(30));
-            r.applied = true;
-            r.changed.add("deleted");
-            r.message = "extension " + name.trim() + " deleted from " + agent.infobase;
         } catch (Exception ex) {
             dropSession(agent, ex);
             r.ok = false;
@@ -752,55 +772,64 @@ public final class DesignerAgentGateway {
         }
 
         agent.lock.lock();
-        Path exportDir = null;
         try {
-            IDesignerSession session = session(agent);
-            // The agent gives each SSH user a subdirectory of its own inside /AgentBaseDir, and only
-            // the platform knows the layout - it asks the agent for its version and reads
-            // agentbasedir.json. Note the overload: the first argument of the two-argument form is the
-            // VERSION, not the user, and passing a user name there dies in version parsing.
-            Path userDir = com._1c.g5.designer.ssh.client.integration.UserDirectoryProvider
-                    .get(session, Path.of(agent.baseDir), agent.user);
-            String name = "edtbridge-load-" + java.util.UUID.randomUUID();
-            exportDir = userDir.resolve(name);
-            Files.createDirectories(exportDir);
+            ExtensionLoadOutcome outcome = withSession(agent, session -> {
+                // The agent gives each SSH user a subdirectory of its own inside /AgentBaseDir, and
+                // only the platform knows the layout - it asks the agent for its version and reads
+                // agentbasedir.json. Note the overload: the first argument of the two-argument form
+                // is the VERSION, not the user, and passing a user name there dies in version
+                // parsing.
+                Path userDir = com._1c.g5.designer.ssh.client.integration.UserDirectoryProvider
+                        .get(session, Path.of(agent.baseDir), agent.user);
+                String name = "edtbridge-load-" + java.util.UUID.randomUUID();
+                Path exportDir = userDir.resolve(name);
+                Files.createDirectories(exportDir);
+                try {
+                    com.google.inject.Injector injector = GatewaySupport.exportInjector();
+                    if (injector == null) {
+                        r.message = "export injector unavailable (com._1c.g5.v8.dt.export not loaded)";
+                        return ExtensionLoadOutcome.FAILED;
+                    }
+                    com._1c.g5.v8.dt.export.IExportOperationFactory factory =
+                            injector.getInstance(com._1c.g5.v8.dt.export.IExportOperationFactory.class);
+                    org.eclipse.core.runtime.IStatus exported = factory
+                            .createExportOperation(exportDir, GatewaySupport.projectVersion(p), root.object)
+                            .run(new org.eclipse.core.runtime.NullProgressMonitor());
+                    if (exported != null
+                            && exported.getSeverity() == org.eclipse.core.runtime.IStatus.ERROR) {
+                        r.message = "export to designer XML failed: " + exported.getMessage();
+                        return ExtensionLoadOutcome.FAILED;
+                    }
 
-            com.google.inject.Injector injector = GatewaySupport.exportInjector();
-            if (injector == null) {
-                r.message = "export injector unavailable (com._1c.g5.v8.dt.export not loaded)";
-                return r;
-            }
-            com._1c.g5.v8.dt.export.IExportOperationFactory factory =
-                    injector.getInstance(com._1c.g5.v8.dt.export.IExportOperationFactory.class);
-            org.eclipse.core.runtime.IStatus exported = factory
-                    .createExportOperation(exportDir, GatewaySupport.projectVersion(p), root.object)
-                    .run(new org.eclipse.core.runtime.NullProgressMonitor());
-            if (exported != null && exported.getSeverity() == org.eclipse.core.runtime.IStatus.ERROR) {
-                r.message = "export to designer XML failed: " + exported.getMessage();
-                return r;
-            }
-
-            var load = session.configure().importXmlToInfobase(Path.of(name));
-            if (r.extension != null) {
-                load = load.extension(r.extension);
-            }
-            List<com._1c.g5.designer.ssh.client.operation.ILoadIssue> issues =
-                    load.exec(Duration.ofHours(4));
-            if (issues != null) {
-                for (com._1c.g5.designer.ssh.client.operation.ILoadIssue issue : issues) {
-                    r.issues.add("[" + issue.getLevel() + "] " + issue.getMessage());
+                    var load = session.configure().importXmlToInfobase(Path.of(name));
+                    if (r.extension != null) {
+                        load = load.extension(r.extension);
+                    }
+                    List<com._1c.g5.designer.ssh.client.operation.ILoadIssue> issues =
+                            load.exec(Duration.ofHours(4));
+                    r.issues.clear();  // a retried first attempt must not double the list
+                    if (issues != null) {
+                        for (com._1c.g5.designer.ssh.client.operation.ILoadIssue issue : issues) {
+                            r.issues.add("[" + issue.getLevel() + "] " + issue.getMessage());
+                        }
+                    }
+                    r.ok = true;
+                    r.applied = true;
+                    r.message = "loaded into " + agent.infobase
+                            + (r.issues.isEmpty() ? "" : " with " + r.issues.size() + " issue(s)");
+                    return ExtensionLoadOutcome.LOADED;
+                } finally {
+                    IbcmdGateway.deleteRecursively(exportDir);
                 }
+            });
+            if (outcome == ExtensionLoadOutcome.FAILED) {
+                return r;
             }
-            r.ok = true;
-            r.applied = true;
-            r.message = "loaded into " + agent.infobase
-                    + (r.issues.isEmpty() ? "" : " with " + r.issues.size() + " issue(s)");
         } catch (Exception ex) {
             dropSession(agent, ex);
             r.message = "the load failed: " + describe(ex);
             return r;
         } finally {
-            IbcmdGateway.deleteRecursively(exportDir);
             agent.lock.unlock();
         }
 
@@ -968,6 +997,39 @@ public final class DesignerAgentGateway {
         String base = GatewaySupport.describeCause(ex);
         StackTraceElement[] frames = ex.getStackTrace();
         return frames.length == 0 ? base : base + " at " + frames[0];
+    }
+
+    /** One operation against the agent's session. */
+    private interface SessionAction<T> {
+        T run(IDesignerSession session) throws Exception;
+    }
+
+    /** How a project load into the infobase ended (the load body reports via the result object). */
+    private enum ExtensionLoadOutcome { LOADED, FAILED }
+
+    /**
+     * Run the action; when the agent answers "Соединение с информационной базой не установлено",
+     * reconnect ONCE and re-run it. A database restructure drops the process's infobase connection
+     * as a matter of course (measured: five times in one evening), and that reply is a gate BEFORE
+     * the command runs - so the retry repeats nothing. Failing the call instead just moved this
+     * very retry to the caller.
+     */
+    private static <T> T withSession(Agent agent, SessionAction<T> action) throws Exception {
+        try {
+            return action.run(session(agent));
+        } catch (Exception first) {
+            if (!connectionLost(first)) {
+                throw first;
+            }
+            dropSession(agent, first);
+            return action.run(session(agent));
+        }
+    }
+
+    /** The agent's gate reply for a dropped infobase connection. */
+    private static boolean connectionLost(Exception ex) {
+        return GatewaySupport.describeCause(ex)
+                .contains("Соединение с информационной базой не установлено");
     }
 
     /** An agent, or why there is none. */
