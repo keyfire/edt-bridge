@@ -8,9 +8,13 @@ that day are named in the heading. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
-## Unreleased
+## 2026-07-22 – 0.8.0
 
 ### Added
+- The wrapper's CLI help is bilingual. An i18n catalogue (`ru`/`en`, picked by `EDT_BRIDGE_LANG`,
+  otherwise the locale) covers flag and command descriptions, usage, the epilogue, the built-in
+  argparse strings and the hand-written `self-update` help. What the tools answer to the agent
+  stays English – that is the plugin's protocol surface, not text for a human.
 - `edt_project_errors` reports a marker's `sourceType` and `extraInfo` – what tells the two
   validation families apart: documented checks come from the standards framework, a short code
   like `SU200` comes from EDT's own metadata validation.
