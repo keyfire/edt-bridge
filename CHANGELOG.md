@@ -28,6 +28,11 @@ that day are named in the heading. The format follows
   the missing timeout – a command that does not parse `--help` starts the server and hangs.
 
 ### Fixed
+- The agent reconnects by itself when a database restructure drops the process's infobase
+  connection: "Соединение с информационной базой не установлено" is a gate BEFORE a command
+  runs, so every agent-backed operation now reconnects once and re-runs instead of failing –
+  the reply used to cost a manual retry after every heavy step (measured: five times in one
+  evening). Other errors pass through unchanged.
 - `edt_infobase_sessions` died with "Ошибка разбора параметра: --infobase-user" whenever the
   infobase credentials were passed: `rac session list` takes only `--infobase` and
   `--licenses`, no infobase authentication at all. The credentials are no longer sent there
