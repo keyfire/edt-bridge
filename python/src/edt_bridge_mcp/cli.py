@@ -22,7 +22,7 @@ import json
 import sys
 import urllib.error
 
-from . import __version__
+from . import __version__, i18n
 
 COMMANDS = ("call", "tools", "status")
 
@@ -32,38 +32,32 @@ _TOKEN_HINT = (
 )
 
 
-def _add_connection_flags(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--workspace", help="EDT workspace path for the headless auto-start")
-    parser.add_argument("--edt-dir", help="EDT install dir (.../1cedt); auto-detected when omitted")
-    parser.add_argument("--port", type=int, help="bridge port (default 8770)")
-    parser.add_argument("--start-timeout", type=int, help="seconds to wait for a starting backend")
-    parser.add_argument("--no-autostart", action="store_true", help="never launch a headless EDT")
+def add_connection_flags(parser: argparse.ArgumentParser) -> None:
+    """Bridge connection flags - the same set for the server mode and for every command."""
+    parser.add_argument("--workspace", help=i18n.t("conn.workspace"))
+    parser.add_argument("--edt-dir", help=i18n.t("conn.edt-dir"))
+    parser.add_argument("--port", type=int, help=i18n.t("conn.port"))
+    parser.add_argument("--start-timeout", type=int, help=i18n.t("conn.start-timeout"))
+    parser.add_argument("--no-autostart", action="store_true", help=i18n.t("conn.no-autostart"))
 
 
 def _parse(command: str, argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
+    parser = i18n.ArgumentParser(
         prog=f"edt-bridge-mcp {command}",
-        description={
-            "call": "Call one bridge tool and print its result.",
-            "tools": "List the tools the running bridge serves.",
-            "status": "Report the running bridge (does not start one).",
-        }[command],
+        description=i18n.t(f"{command}.description"),
     )
     if command == "call":
-        parser.add_argument("tool", help="tool name, e.g. edt_projects (see: edt-bridge-mcp tools)")
+        parser.add_argument("tool", help=i18n.t("call.tool"))
         source = parser.add_mutually_exclusive_group()
         source.add_argument("--json", dest="json_text", metavar="JSON",
-                            help="tool arguments as a JSON object")
-        source.add_argument("--json-file", metavar="PATH",
-                            help="read the JSON object from a UTF-8 file - the reliable route for "
-                                 "arguments with non-ASCII text on Windows")
-        source.add_argument("--stdin", action="store_true",
-                            help="read the JSON object from standard input")
+                            help=i18n.t("call.json"))
+        source.add_argument("--json-file", metavar="PATH", help=i18n.t("call.json-file"))
+        source.add_argument("--stdin", action="store_true", help=i18n.t("call.stdin"))
     if command in ("call", "tools"):
-        parser.add_argument("--raw", action="store_true",
-                            help="print the raw JSON result instead of the text the tool returned")
-    _add_connection_flags(parser)
-    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+        parser.add_argument("--raw", action="store_true", help=i18n.t("call.raw"))
+    add_connection_flags(parser)
+    parser.add_argument("--version", action="version", help=i18n.t("version"),
+                        version=f"%(prog)s {__version__}")
     return parser.parse_args(argv)
 
 

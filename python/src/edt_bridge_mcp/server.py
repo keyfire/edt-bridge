@@ -38,7 +38,7 @@ import urllib.request
 from pathlib import Path
 
 from . import __version__
-from . import cli
+from . import cli, i18n
 
 PROTOCOL_FALLBACK = "2024-11-05"
 
@@ -464,30 +464,16 @@ def main() -> int:
         return update.run(sys.argv[2:])
     if len(sys.argv) > 1 and sys.argv[1] in cli.COMMANDS:
         return cli.run(sys.argv[1], sys.argv[2:])
-    parser = argparse.ArgumentParser(
+    parser = i18n.ArgumentParser(
         prog="edt-bridge-mcp",
-        usage="%(prog)s [options]           (no command: run as an MCP server)\n"
-              "       %(prog)s <command> [options]",
+        usage=i18n.t("server.usage"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        description="stdio MCP front-end for the edt-bridge 1C:EDT plugin: proxies to a running\n"
-                    "EDT, or auto-starts a headless one.\n\n"
-                    "With no command it speaks JSON-RPC over stdin/stdout - that is how an MCP\n"
-                    "client launches it. The commands below drive the same bridge from a shell.",
-        epilog="commands:\n"
-               "  call <tool>   call one bridge tool and print what it returned\n"
-               "  tools         list the tools the running bridge serves\n"
-               "  status        report the running bridge (never starts one)\n"
-               "  self-update   refresh the plugin jar and this wrapper\n"
-               "\n"
-               "Run 'edt-bridge-mcp <command> --help' for a command's own options.\n"
-               "The options above apply to the MCP-server mode and to every command.",
+        description=i18n.t("server.description"),
+        epilog=i18n.t("server.epilog"),
     )
-    parser.add_argument("--workspace", help="EDT workspace path for the headless auto-start")
-    parser.add_argument("--edt-dir", help="EDT install dir (.../1cedt); auto-detected when omitted")
-    parser.add_argument("--port", type=int, help="bridge port (default 8770)")
-    parser.add_argument("--start-timeout", type=int, help="seconds to wait for a starting backend")
-    parser.add_argument("--no-autostart", action="store_true", help="never launch a headless EDT")
-    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    cli.add_connection_flags(parser)
+    parser.add_argument("--version", action="version", help=i18n.t("version"),
+                        version=f"%(prog)s {__version__}")
     args = parser.parse_args()
     apply_connection_options(args)
 

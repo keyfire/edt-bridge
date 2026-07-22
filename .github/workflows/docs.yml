@@ -1,0 +1,67 @@
+# Публикация сайта документации (blume.config.ts) на GitHub Pages. Источник Pages в
+# настройках репозитория должен быть "GitHub Actions" (Settings -> Pages -> Source).
+# Сайт живёт отдельным подпроектом в site/ (свой package.json): корневой dist/ занят
+# релизным jar, а blume собирает в dist рядом со своим конфигом – так они не спорят.
+# Сборка проверяется тем же `npx blume build`, что и локально; вывод — в site/dist/.
+name: Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "site/**"
+      - ".github/workflows/docs.yml"
+      # Страница истории изменений — зеркало этих файлов (см. scripts/sync-docs.mjs).
+      - "CHANGELOG.md"
+      - "scripts/sync-docs.mjs"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Одновременно публикуется одна версия; новый push не отменяет уже идущий деплой.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Полная история нужна для дат "последнее изменение" (lastModified в blume.config.ts).
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - name: Install
+        run: npm ci
+        working-directory: site
+      # Зеркалим CHANGELOG в страницы сайта перед сборкой, чтобы задеплоенный сайт
+      # всегда совпадал с актуальным файлом в корне репозитория.
+      - name: Sync mirrored docs
+        run: npm run sync:docs
+        working-directory: site
+      - name: Build
+        run: npx blume build
+        working-directory: site
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@v4
+        id: deployment

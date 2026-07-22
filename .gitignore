@@ -12,3 +12,11 @@ __pycache__/
 *.egg-info/
 python/dist/
 python/build/
+
+# Сайт документации (подпроект site/): зависимости, промежуточный рантайм Blume и сборка.
+site/node_modules/
+site/dist/
+site/.blume/
+# Страницы-зеркала CHANGELOG собираются скриптом scripts/sync-docs.mjs перед сборкой.
+docs/changelog.md
+docs/changelog.ru.md

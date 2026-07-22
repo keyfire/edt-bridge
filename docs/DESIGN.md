@@ -1,4 +1,4 @@
-# edt-bridge – design (Phase 1, read-only)
+# EDT-Bridge – design (Phase 1, read-only)
 
 > Historical Phase 1 design note. Phase 2 (write: attribute CRUD, rename-with-cascade,
 > create-object) is now implemented – see the [README](../README.md) for the current tool set.

@@ -1,13 +1,13 @@
-# Contributing to edt-bridge
+# Contributing to EDT-Bridge
 
 **English** · [Русский](docs/ru/CONTRIBUTING.ru.md)
 
-Thanks for your interest. edt-bridge is a 1C:EDT plugin plus a small Python wrapper; this guide
+Thanks for your interest. EDT-Bridge is a 1C:EDT plugin plus a small Python wrapper; this guide
 covers building it, the conventions, and how to propose changes.
 
 ## Ground rules
 
-- **Clean-room.** edt-bridge is an independent, from-scratch implementation (see [ORIGIN.md](ORIGIN.md)).
+- **Clean-room.** EDT-Bridge is an independent, from-scratch implementation (see [ORIGIN.md](ORIGIN.md)).
   Contribute only code you wrote, built on the open MCP spec and the public Eclipse / 1C:EDT plugin
   APIs (`org.eclipse.*`, `com._1c.g5.v8.dt.*`). Do not paste decompiled or otherwise proprietary
   source from EDT or any other tool.
@@ -37,7 +37,7 @@ build – edit `edt-bridge.target` first. More detail: [README](README.md#build-
 
 ## Running your build
 
-Copy the built jar into EDT's `dropins/` (keep exactly one edt-bridge jar there – two make Equinox
+Copy the built jar into EDT's `dropins/` (keep exactly one EDT-Bridge jar there – two make Equinox
 load an arbitrary one) and restart EDT, or let the wrapper deliver it. The MCP server comes up on
 `http://127.0.0.1:8770/mcp`; the dashboard at `http://127.0.0.1:8770/` has a runner for every tool.
 See [Manual install](README.md#manual-install-without-the-wrapper).

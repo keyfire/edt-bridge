@@ -1,6 +1,6 @@
 # Origin
 
-edt-bridge is an independent, **clean-room** implementation, written from scratch.
+EDT-Bridge is an independent, **clean-room** implementation, written from scratch.
 
 It is built only from:
 

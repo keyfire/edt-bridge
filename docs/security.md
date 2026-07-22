@@ -1,4 +1,20 @@
-# Security Policy
+---
+title: "Security"
+description: "How writes are gated, what the token protects, and how to report a security problem privately."
+sidebar:
+  label: Security
+  order: 5
+---
+
+- Binds **`127.0.0.1` only** – never a public interface.
+- **Writes are gated**: every write tool requires a configured token, defaults to a dry-run, and
+  operates only on your local EDT model; `edt_rename`, `edt_delete_object` and `edt_delete_method`
+  additionally need an explicit `force`.
+- Optional **shared-secret token** – set `EDT_BRIDGE_TOKEN` (or `-Dedt.bridge.token=`) and send
+  `Authorization: Bearer <token>` (or `X-Edt-Bridge-Token: <token>`). Any local process can reach
+  the port, so set a token on shared machines.
+- Port: `EDT_BRIDGE_PORT` / `-Dedt.bridge.port=` (default 8770; the next free port is used if busy).
+- Found a security problem? Report it **privately** – see [SECURITY.md](SECURITY.md), not a public issue.
 
 **English** · [Русский](docs/ru/SECURITY.ru.md)
 

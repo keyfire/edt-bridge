@@ -1,8 +1,8 @@
-# edt-bridge quick start
+# EDT-Bridge quick start
 
 **English** · [Русский](docs/ru/ONBOARDING.ru.md)
 
-edt-bridge gives an AI agent (Claude Code and other MCP clients) access to the **live 1C:EDT
+EDT-Bridge gives an AI agent (Claude Code and other MCP clients) access to the **live 1C:EDT
 model**: reading metadata and BSL, query validation, the platform Syntax Helper, and write
 operations – creating objects and extensions, refactoring, building `.epf`/`.erf` and updating
 infobases, all through EDT's own engine.

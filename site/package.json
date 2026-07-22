@@ -1,0 +1,18 @@
+{
+  "name": "edt-bridge-docs",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Documentation site for EDT-Bridge, built with Blume.",
+  "type": "module",
+  "scripts": {
+    "sync:docs": "node ../scripts/sync-docs.mjs",
+    "predev": "npm run sync:docs",
+    "dev": "blume dev",
+    "prebuild": "npm run sync:docs",
+    "build": "blume build",
+    "preview": "blume preview"
+  },
+  "devDependencies": {
+    "blume": "^1.1.2"
+  }
+}
