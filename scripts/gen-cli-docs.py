@@ -32,7 +32,7 @@ TEXT = {
         "title": "Команды",
         "desc": "Справочник команд обвязки edt-bridge-mcp: вызов инструмента из шелла, список инструментов, состояние моста и самообновление.",
         "label": "Команды",
-        "order": 4,
+        "order": 5,
         "intro": (
             "Обвязка `edt-bridge-mcp` – это не только stdio-сервер для MCP-клиента. Тем же "
             "исполняемым файлом можно дёрнуть мост прямо из шелла: посмотреть, поднят ли он, "
@@ -60,7 +60,7 @@ TEXT = {
         "title": "Commands",
         "desc": "Reference of the edt-bridge-mcp wrapper commands: call a tool from a shell, list tools, report the bridge, self-update.",
         "label": "Commands",
-        "order": 4,
+        "order": 5,
         "intro": (
             "The `edt-bridge-mcp` wrapper is not only a stdio server for an MCP client. The "
             "same executable drives the bridge from a shell: whether it is up, which tools it "
@@ -240,10 +240,16 @@ def subcommands(help_text: str) -> list[str]:
 
 def run(args: list[str], lang: str) -> str:
     env = dict(os.environ, PYTHONPATH=str(SRC), EDT_BRIDGE_LANG=lang, COLUMNS="88")
-    out = subprocess.run(
-        [sys.executable, "-m", "edt_bridge_mcp.server", *args, "--help"],
-        capture_output=True, text=True, encoding="utf-8", env=env, cwd=ROOT,
-    )
+    # The timeout is mandatory: a command that does not parse --help starts the MCP server
+    # and waits on stdin - without the limit the generation hangs instead of failing.
+    try:
+        out = subprocess.run(
+            [sys.executable, "-m", "edt_bridge_mcp.server", *args, "--help"],
+            capture_output=True, text=True, encoding="utf-8", env=env, cwd=ROOT,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        return ""          # no help - the command's section simply does not appear
     return (out.stdout or out.stderr).rstrip()
 
 
@@ -265,7 +271,16 @@ def page(lang: str) -> str:
     return out.getvalue()
 
 
-for lang, fname in (("en", "cli.md"), ("ru", "cli.ru.md")):
-    text = page(lang)
-    (ROOT / "docs" / fname).write_text(text, encoding="utf-8", newline="")
-    print(f"{fname}: {len(text.splitlines())} строк")
+def generate() -> dict[str, str]:
+    """File name -> page text; assembly without writing to disk (tests need this)."""
+    return {fname: page(lang) for lang, fname in (("en", "cli.md"), ("ru", "cli.ru.md"))}
+
+
+def main() -> None:
+    for fname, text in generate().items():
+        (ROOT / "docs" / fname).write_text(text, encoding="utf-8", newline="")
+        print(f"{fname}: {len(text.splitlines())} строк")
+
+
+if __name__ == "__main__":
+    main()

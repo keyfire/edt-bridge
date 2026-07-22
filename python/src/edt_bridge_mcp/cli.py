@@ -41,7 +41,8 @@ def add_connection_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--no-autostart", action="store_true", help=i18n.t("conn.no-autostart"))
 
 
-def _parse(command: str, argv: list[str]) -> argparse.Namespace:
+def build_parser(command: str) -> argparse.ArgumentParser:
+    """The parser of one shell command; separate from parsing so tests can walk it."""
     parser = i18n.ArgumentParser(
         prog=f"edt-bridge-mcp {command}",
         description=i18n.t(f"{command}.description"),
@@ -58,7 +59,11 @@ def _parse(command: str, argv: list[str]) -> argparse.Namespace:
     add_connection_flags(parser)
     parser.add_argument("--version", action="version", help=i18n.t("version"),
                         version=f"%(prog)s {__version__}")
-    return parser.parse_args(argv)
+    return parser
+
+
+def _parse(command: str, argv: list[str]) -> argparse.Namespace:
+    return build_parser(command).parse_args(argv)
 
 
 def _tool_arguments(args: argparse.Namespace) -> dict:

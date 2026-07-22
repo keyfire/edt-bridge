@@ -457,13 +457,8 @@ def apply_connection_options(args) -> None:
         os.environ["EDT_BRIDGE_AUTOSTART"] = "0"
 
 
-def main() -> int:
-    force_utf8_streams()
-    if len(sys.argv) > 1 and sys.argv[1] == "self-update":
-        from . import update
-        return update.run(sys.argv[2:])
-    if len(sys.argv) > 1 and sys.argv[1] in cli.COMMANDS:
-        return cli.run(sys.argv[1], sys.argv[2:])
+def build_parser() -> argparse.ArgumentParser:
+    """The server-mode parser (no command); separate from main so tests can walk it."""
     parser = i18n.ArgumentParser(
         prog="edt-bridge-mcp",
         usage=i18n.t("server.usage"),
@@ -474,7 +469,17 @@ def main() -> int:
     cli.add_connection_flags(parser)
     parser.add_argument("--version", action="version", help=i18n.t("version"),
                         version=f"%(prog)s {__version__}")
-    args = parser.parse_args()
+    return parser
+
+
+def main() -> int:
+    force_utf8_streams()
+    if len(sys.argv) > 1 and sys.argv[1] == "self-update":
+        from . import update
+        return update.run(sys.argv[2:])
+    if len(sys.argv) > 1 and sys.argv[1] in cli.COMMANDS:
+        return cli.run(sys.argv[1], sys.argv[2:])
+    args = build_parser().parse_args()
     apply_connection_options(args)
 
     backend = Backend()
