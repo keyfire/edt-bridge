@@ -32,6 +32,12 @@ that day are named in the heading. The format follows
   infobase credentials were passed: `rac session list` takes only `--infobase` and
   `--licenses`, no infobase authentication at all. The credentials are no longer sent there
   (and no longer advertised by the tool) – they belong to the operations that do need them.
+- Agent error messages no longer drown the diagnosis in the platform's licensing dump: one
+  refusal used to arrive as tens of kilobytes – the full hardware inventory repeated per
+  license file and per lookup stage, wrapped again by the SSH client. The gateways now drop
+  the inventory lines and the repeats (with an "N lines omitted" note); ordinary messages
+  pass through untouched. Measured live: ~25 KB down to 2.4 KB, the first line already says
+  "no license".
 
 ## 2026-07-22 – 0.8.0
 

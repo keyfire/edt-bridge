@@ -39,7 +39,11 @@ final class GatewaySupport {
     private GatewaySupport() {
     }
 
-    /** A throwable's cause chain as {@code Type: message <- Type: message} (up to 6 links). */
+    /**
+     * A throwable's cause chain as {@code Type: message <- Type: message} (up to 6 links).
+     * Every message is condensed first: a licensing refusal alone carries the platform's full
+     * hardware inventory repeated per lookup stage - tens of kilobytes around one useful line.
+     */
     static String describeCause(Throwable ex) {
         StringBuilder sb = new StringBuilder();
         Throwable t = ex;
@@ -50,7 +54,8 @@ final class GatewaySupport {
             }
             sb.append(t.getClass().getSimpleName());
             if (t.getMessage() != null) {
-                sb.append(": ").append(t.getMessage());
+                sb.append(": ").append(
+                        io.github.keyfire.edtbridge.core.PlatformMessages.condense(t.getMessage()));
             }
             if (t.getCause() == t) {
                 break;
