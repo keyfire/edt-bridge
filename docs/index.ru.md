@@ -24,7 +24,7 @@ AI-агентам и другим инструментам по протокол
 ## Установка (рекомендуется: pipx)
 
 Одна команда ставит всё – и обвязку клиента, и плагин. Обвязка
-[**edt-bridge-mcp**](../../python/README.ru.md) – это stdio MCP-сервер, с которым разговаривает клиент;
+[**edt-bridge-mcp**](https://github.com/keyfire/edt-bridge/blob/main/python/README.ru.md) – это stdio MCP-сервер, с которым разговаривает клиент;
 она пробрасывает запросы в запущенную EDT, **сама поднимает headless EDT**, когда ни одна не
 открыта, и **сама доставляет jar плагина** в `dropins/` EDT, если его нет. Никакой jar руками
 копировать не нужно.
@@ -41,8 +41,9 @@ claude mcp add edt-bridge -- edt-bridge-mcp --workspace "D:\\путь\\к\\works
 ```
 
 Это вся настройка. Флаги обвязки, токен write-инструментов и `self-update` описаны в
-[python/README.ru.md](../../python/README.ru.md). Хотите запускать плагин сами, без обвязки? См.
-[Установку вручную](#установка-вручную-без-обвязки) ниже.
+[python/README.ru.md](https://github.com/keyfire/edt-bridge/blob/main/python/README.ru.md). Хотите
+запускать плагин сами, без обвязки? См.
+[Установку вручную](/ru/install#установка-вручную-без-обвязки).
 
 <details>
 <summary>Нет <code>pipx</code>?</summary>

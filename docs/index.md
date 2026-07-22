@@ -24,7 +24,7 @@ Development notes and updates (in Russian): the [1C × AI: engineering workshop]
 ## Install (recommended: pipx)
 
 One command sets up everything – the client wrapper AND the plugin. The
-[**edt-bridge-mcp**](python/README.md) wrapper is a stdio MCP server that your client talks to; it
+[**edt-bridge-mcp**](https://github.com/keyfire/edt-bridge/blob/main/python/README.md) wrapper is a stdio MCP server that your client talks to; it
 forwards to a running EDT, **auto-starts a headless EDT** when none is open, and **delivers the
 plugin jar** into EDT's `dropins/` when it is missing. You do not copy any jar by hand.
 
@@ -40,8 +40,9 @@ claude mcp add edt-bridge -- edt-bridge-mcp --workspace "D:\\path\\to\\edt-works
 ```
 
 That is the whole setup. Wrapper flags, the write-tools token and `self-update` are documented in
-[python/README.md](python/README.md). Prefer to run the plugin yourself, without the wrapper? See
-[Manual install](#manual-install-without-the-wrapper) below.
+[python/README.md](https://github.com/keyfire/edt-bridge/blob/main/python/README.md). Prefer to run
+the plugin yourself, without the wrapper? See
+[Manual install](/install#manual-install-without-the-wrapper).
 
 <details>
 <summary>Don't have <code>pipx</code>?</summary>

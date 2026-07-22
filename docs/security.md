@@ -14,9 +14,8 @@ sidebar:
   `Authorization: Bearer <token>` (or `X-Edt-Bridge-Token: <token>`). Any local process can reach
   the port, so set a token on shared machines.
 - Port: `EDT_BRIDGE_PORT` / `-Dedt.bridge.port=` (default 8770; the next free port is used if busy).
-- Found a security problem? Report it **privately** – see [SECURITY.md](SECURITY.md), not a public issue.
-
-**English** · [Русский](docs/ru/SECURITY.ru.md)
+- Found a security problem? Report it **privately** – see
+  [Reporting a vulnerability](#reporting-a-vulnerability), not a public issue.
 
 ## Supported versions
 
@@ -38,7 +37,7 @@ recent release before reporting.
 - Any local process can reach the port, so on shared machines set a token
   (`EDT_BRIDGE_TOKEN` / `-Dedt.bridge.token=`).
 
-The README [Security](README.md#security) section has the full picture.
+The README [Security](https://github.com/keyfire/edt-bridge/blob/main/README.md#security) section has the full picture.
 
 ## Reporting a vulnerability
 
