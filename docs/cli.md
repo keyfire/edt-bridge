@@ -3,7 +3,7 @@ title: "Commands"
 description: "Reference of the edt-bridge-mcp wrapper commands: call a tool from a shell, list tools, report the bridge, self-update."
 sidebar:
   label: Commands
-  order: 4
+  order: 5
 ---
 
 <!-- Собрано из вывода `edt-bridge-mcp --help` скриптом scripts/gen-cli-docs.py. Не редактировать вручную. -->

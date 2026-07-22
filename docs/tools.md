@@ -3,7 +3,7 @@ title: "Tools"
 description: "Every edt_* tool the bridge exposes: reading the live model, writing through EDT's own engine, and debugging a running infobase."
 sidebar:
   label: Tools
-  order: 2
+  order: 3
 ---
 
 Tools are `edt_*` (snake_case); parameters are camelCase (`projectName`, `fqn`, `queryText`);

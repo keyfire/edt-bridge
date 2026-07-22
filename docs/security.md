@@ -3,7 +3,7 @@ title: "Security"
 description: "How writes are gated, what the token protects, and how to report a security problem privately."
 sidebar:
   label: Security
-  order: 5
+  order: 6
 ---
 
 - Binds **`127.0.0.1` only** – never a public interface.

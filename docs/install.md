@@ -3,7 +3,7 @@ title: "Installation and build"
 description: "Requirements, manual install without the wrapper, and building the plugin from source."
 sidebar:
   label: Install
-  order: 3
+  order: 4
 ---
 
 **To use the bridge**

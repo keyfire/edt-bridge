@@ -12,8 +12,11 @@ on:
       - "docs/**"
       - "site/**"
       - ".github/workflows/docs.yml"
-      # Страница истории изменений — зеркало этих файлов (см. scripts/sync-docs.mjs).
+      # Страницы истории изменений и быстрого старта – зеркала этих файлов
+      # (см. scripts/sync-docs.mjs; русские исходники зеркал лежат в docs/ru/
+      # и уже покрыты маской docs/** выше).
       - "CHANGELOG.md"
+      - "ONBOARDING.md"
       - "scripts/sync-docs.mjs"
   workflow_dispatch:
 

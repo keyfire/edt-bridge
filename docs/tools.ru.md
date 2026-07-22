@@ -3,7 +3,7 @@ title: "Инструменты"
 description: "Все инструменты edt_*: чтение живой модели, запись штатным движком среды и отладка запущенной информационной базы."
 sidebar:
   label: Инструменты
-  order: 2
+  order: 3
 ---
 
 Инструменты – `edt_*` (snake_case); параметры – camelCase (`projectName`, `fqn`, `queryText`);

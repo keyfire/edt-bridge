@@ -17,6 +17,8 @@ python/build/
 site/node_modules/
 site/dist/
 site/.blume/
-# Страницы-зеркала CHANGELOG собираются скриптом scripts/sync-docs.mjs перед сборкой.
+# Страницы-зеркала (CHANGELOG, ONBOARDING) собираются скриптом scripts/sync-docs.mjs перед сборкой.
 docs/changelog.md
 docs/changelog.ru.md
+docs/onboarding.md
+docs/onboarding.ru.md
