@@ -49,6 +49,8 @@ public final class ProjectGateway {
         public String markerType;
         public String source;   // "eclipse" (Eclipse IMarker) | "edt-check" (EDT check store)
         public String checkId;  // EDT check id, e.g. com.e1c.v8codestyle.bsl:module-unused-local-variable
+        public String sourceType;  // which validation produced it - tells a standards check from EDT's own
+        public java.util.Map<String, String> extraInfo; // whatever the check attached, e.g. its own uid
         public String edtSeverity; // EDT grade for edt-check: BLOCKER/CRITICAL/MAJOR/MINOR/TRIVIAL
         public String location; // EDT location, e.g. "строка 8" or a field presentation
     }
@@ -204,6 +206,20 @@ public final class ProjectGateway {
                 pr.severity = mapEdtSeverity(ms);
                 pr.message = mk.getMessage();
                 pr.checkId = mk.getCheckId();
+                pr.sourceType = mk.getSourceType();
+                // Not every check id is documented: some markers carry a short code (SU200) that no
+                // bundle resource knows, so whatever the check attached itself is the only other
+                // handle on "which rule is this".
+                try {
+                    com._1c.g5.v8.dt.validation.marker.IExtraInfoMap extra = mk.getExtraInfo();
+                    if (extra != null && !extra.isEmpty()) {
+                        java.util.Map<String, String> copy = new java.util.LinkedHashMap<>();
+                        extra.forEach((k, v) -> copy.put(String.valueOf(k), String.valueOf(v)));
+                        pr.extraInfo = copy;
+                    }
+                } catch (Throwable noExtra) {
+                    // older marker store - nothing to add
+                }
                 pr.location = mk.getLocation();
                 pr.resource = mk.getObjectPresentation();
                 pr.line = parseLine(mk.getLocation());

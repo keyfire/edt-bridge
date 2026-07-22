@@ -8,6 +8,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
+## [Unreleased]
+
+### Added
+- `edt_project_errors` reports the marker's `sourceType` and its `extraInfo`. That is what tells the
+  two validation families apart: the checks with documentation come from the standards framework and
+  are named by slug, while a problem carrying a short code like `SU200` reports
+  `sourceType: MdValidationChecker` - EDT's own metadata validation.
+- `edt_check_info` recognises a short code and says what it is, instead of answering "nothing found".
+
+  This corrects what 0.7.1 assumed: there is no code-to-slug mapping "in the check engine" to be dug
+  out. The code appears in no bundle at all - not as a resource, not in the classes, not in a
+  properties file - because the two families are simply different. Matching by TITLE stays the way to
+  get from such a problem to a description, and it works because the message is the check's own title.
+
+### Fixed
+- `run-headless.ps1` refused to start whenever ANY GUI 1C:EDT process existed - including one that had
+  been closed and was still exiting - while its own message advised using a separate workspace and
+  port, which it then refused as well. It now checks for the actual collisions (the port already
+  served, the workspace lock, the shared dropins directory) and otherwise starts. Two things surfaced
+  next to it: `-Port` only changed which port was POLLED, so a non-default port started a second server
+  on 8770 - it is now passed to the instance as `EDT_BRIDGE_PORT`; and a workspace with no projects was
+  reported as "NOT READY" although the server was up, which is a legitimate state for tools that read
+  bundle resources rather than the model.
+
 ## [0.7.1] - 2026-07-21
 
 ### Fixed

@@ -126,6 +126,14 @@ public final class ProjectErrorsTool {
                     o.addProperty("resource", p.resource);
                     o.addProperty("line", p.line);
                     o.addProperty("source", p.source);
+                    if (p.sourceType != null) {
+                        o.addProperty("sourceType", p.sourceType);
+                    }
+                    if (p.extraInfo != null && !p.extraInfo.isEmpty()) {
+                        JsonObject extra = new JsonObject();
+                        p.extraInfo.forEach(extra::addProperty);
+                        o.add("extraInfo", extra);
+                    }
                     if (p.checkId != null) {
                         o.addProperty("checkId", p.checkId);
                     }
