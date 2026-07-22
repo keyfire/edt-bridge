@@ -8,6 +8,31 @@ that day are named in the heading. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
+## Unreleased
+
+### Added
+- `edt_infobase_maintenance` – a maintenance window around a database-configuration update,
+  through `rac`: `begin` raises `scheduled-jobs-deny` (optionally `sessions-deny` with a
+  permission code), watches the session list until only the allowed applications remain and
+  reports "clear to update"; `end` lowers the flags; `status` just reports. The point: on a
+  lively base BackgroundJob sessions respawn every minute, so terminating them is useless –
+  with the flag up they drain by themselves within a minute and nothing has to be killed.
+  Verified live on a clustered infobase: raising the flag stopped the respawn and the jobs
+  drained on their own; lowering it brought the queue back within seconds. The configurator
+  agent cannot do this at all – its SSH client has no operation for the denial flags – so rac
+  is the route, and the tool needs the infobase administrator.
+- The command reference and its generator are under tests (`python/tests/test_cli_docs.py`):
+  every argument documented, the Russian run actually Russian, the two language versions
+  differing, every command covered by a page section and answering `--help` within a timeout,
+  and the committed pages equal to what the generator produces. The generator itself gained
+  the missing timeout – a command that does not parse `--help` starts the server and hangs.
+
+### Fixed
+- `edt_infobase_sessions` died with "Ошибка разбора параметра: --infobase-user" whenever the
+  infobase credentials were passed: `rac session list` takes only `--infobase` and
+  `--licenses`, no infobase authentication at all. The credentials are no longer sent there
+  (and no longer advertised by the tool) – they belong to the operations that do need them.
+
 ## 2026-07-22 – 0.8.0
 
 ### Added

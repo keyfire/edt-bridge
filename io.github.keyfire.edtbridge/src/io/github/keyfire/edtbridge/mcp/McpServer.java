@@ -38,6 +38,7 @@ import io.github.keyfire.edtbridge.tools.CheckInfoTool;
 import io.github.keyfire.edtbridge.tools.DeleteExtensionTool;
 import io.github.keyfire.edtbridge.tools.DesignerAgentTool;
 import io.github.keyfire.edtbridge.tools.InfobaseSessionsTool;
+import io.github.keyfire.edtbridge.tools.InfobaseMaintenanceTool;
 import io.github.keyfire.edtbridge.tools.InfobaseConfigStateTool;
 import io.github.keyfire.edtbridge.tools.UpdateDatabaseConfigTool;
 import io.github.keyfire.edtbridge.tools.InfobaseDumpTool;
@@ -320,6 +321,7 @@ applyI18n();loadStatus();loadTools();
     private final CheckInfoTool checkInfo = new CheckInfoTool();
     private final DeleteExtensionTool deleteExtension = new DeleteExtensionTool();
     private final InfobaseSessionsTool infobaseSessions = new InfobaseSessionsTool();
+    private final InfobaseMaintenanceTool infobaseMaintenance = new InfobaseMaintenanceTool();
     private final UpdateDatabaseConfigTool updateDatabaseConfig = new UpdateDatabaseConfigTool();
     private final UpdateInfobaseTool updateInfobase = new UpdateInfobaseTool();
     private final PlatformInstallationsTool platformInstallations = new PlatformInstallationsTool();
@@ -594,6 +596,7 @@ applyI18n();loadStatus();loadTools();
         tools.add(checkInfo.descriptor());
         tools.add(deleteExtension.descriptor());
         tools.add(infobaseSessions.descriptor());
+        tools.add(infobaseMaintenance.descriptor());
         tools.add(updateDatabaseConfig.descriptor());
         tools.add(addForm.descriptor());
         tools.add(addFormAttribute.descriptor());
@@ -709,6 +712,10 @@ applyI18n();loadStatus();loadTools();
         if (infobaseSessions.name().equals(name)) {
             JsonObject denied = writeTokenGate(infobaseSessions.isWrite(), name);
             return denied != null ? denied : infobaseSessions.call(args);
+        }
+        if (infobaseMaintenance.name().equals(name)) {
+            JsonObject denied = writeTokenGate(infobaseMaintenance.isWrite(), name);
+            return denied != null ? denied : infobaseMaintenance.call(args);
         }
         if (updateDatabaseConfig.name().equals(name)) {
             JsonObject denied = writeTokenGate(updateDatabaseConfig.isWrite(), name);
