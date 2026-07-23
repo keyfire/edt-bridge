@@ -8,7 +8,7 @@ that day are named in the heading. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
-## Unreleased
+## 2026-07-24 – 0.9.0
 
 ### Added
 - `edt_infobase_maintenance` – a maintenance window around a database-configuration update,
