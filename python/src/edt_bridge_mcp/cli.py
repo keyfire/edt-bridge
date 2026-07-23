@@ -20,11 +20,12 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 import urllib.error
 
 from . import __version__, i18n
 
-COMMANDS = ("call", "tools", "status")
+COMMANDS = ("call", "tools", "status", "shutdown")
 
 _TOKEN_HINT = (
     "the bridge refused the request (401). Write tools - and, on a token-protected server, every "
@@ -56,6 +57,9 @@ def build_parser(command: str) -> argparse.ArgumentParser:
         source.add_argument("--stdin", action="store_true", help=i18n.t("call.stdin"))
     if command in ("call", "tools"):
         parser.add_argument("--raw", action="store_true", help=i18n.t("call.raw"))
+    if command == "shutdown":
+        parser.add_argument("--force", action="store_true", help=i18n.t("shutdown.force"))
+        parser.add_argument("--no-wait", action="store_true", help=i18n.t("shutdown.no-wait"))
     add_connection_flags(parser)
     parser.add_argument("--version", action="version", help=i18n.t("version"),
                         version=f"%(prog)s {__version__}")
@@ -126,6 +130,50 @@ def _print_result(result: dict, raw: bool) -> None:
             _emit(item.get("text", ""))
 
 
+def _shutdown(backend, args: argparse.Namespace) -> int:
+    """Ask the bridge to stop the EDT behind it - the graceful end of a headless session.
+
+    Deliberately never starts a backend: shutting down what is not running is a no-op, not a
+    reason to launch one. Exit codes follow the house rule - 0 done (or nothing to do), 2 the
+    bridge refused (a GUI EDT without --force), 1 the request could not be made.
+    """
+    if backend.status() is None:
+        print("no bridge is running in the scanned port range - nothing to shut down")
+        return 0
+    try:
+        answer = backend.shutdown(force=args.force)
+    except urllib.error.HTTPError as http:
+        if http.code == 401:
+            print(_TOKEN_HINT, file=sys.stderr)
+            return 1
+        detail = ""
+        try:
+            detail = json.loads(http.read().decode("utf-8")).get("message", "")
+        except (OSError, ValueError):
+            pass
+        if http.code == 409:
+            print(detail or "the bridge refused: a GUI EDT is running - close it from its "
+                            "window, or pass --force", file=sys.stderr)
+            return 2
+        print(detail or f"the bridge answered HTTP {http.code}", file=sys.stderr)
+        return 1
+    except urllib.error.URLError as url:
+        print(f"could not reach the bridge: {url.reason}", file=sys.stderr)
+        return 1
+    print(answer.get("message", "shutting down"))
+    if args.no_wait:
+        return 0
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        if backend.status() is None:
+            print("the bridge is down")
+            return 0
+        time.sleep(1)
+    print("the bridge is still answering after 60 s - it may be finishing a long operation",
+          file=sys.stderr)
+    return 1
+
+
 def run(command: str, argv: list[str]) -> int:
     try:
         return _run(command, argv)
@@ -153,6 +201,9 @@ def _run(command: str, argv: list[str]) -> int:
             return 1
         _emit(json.dumps(status, ensure_ascii=False, indent=2))
         return 0
+
+    if command == "shutdown":
+        return _shutdown(backend, args)
 
     ready, why = backend.ensure(wait=True)
     if not ready:

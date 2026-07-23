@@ -77,4 +77,46 @@ class PlatformMessagesTest {
         assertEquals(longButClean, PlatformMessages.condense(longButClean));
         assertEquals(null, PlatformMessages.condense(null));
     }
+
+    @Test
+    @DisplayName("the configuration-lock refusal earns a hint, everything else does not")
+    void hintsTheConfigurationLock() {
+        String refusal = "DesignerClientException: Ошибка блокировки информационной базы "
+                + "для конфигурирования";
+        String hint = PlatformMessages.hint(refusal);
+        assertTrue(hint != null && hint.contains("edt_infobase_sessions"),
+                "the lock refusal must point at the session tool");
+        // already hinted - not hinted twice
+        assertEquals(null, PlatformMessages.hint(refusal + " " + hint));
+        // the English platform says the same thing in its own words
+        assertTrue(PlatformMessages.hint("Error locking infobase for configuration.") != null);
+        // ordinary refusals carry no hint
+        assertEquals(null, PlatformMessages.hint("Пользователь не идентифицирован"));
+        assertEquals(null, PlatformMessages.hint(null));
+    }
+
+    @Test
+    @DisplayName("the platform speaks two languages and every recogniser hears both")
+    void recognisersAreBilingual() {
+        assertTrue(PlatformMessages.isConfigurationLockRefusal(
+                "Ошибка блокировки информационной базы для конфигурирования"));
+        assertTrue(PlatformMessages.isConfigurationLockRefusal(
+                "Error locking infobase for configuration."));
+        assertFalse(PlatformMessages.isConfigurationLockRefusal("some other refusal"));
+        assertFalse(PlatformMessages.isConfigurationLockRefusal(null));
+
+        assertTrue(PlatformMessages.isNotConnectedReply(
+                "Соединение с информационной базой не установлено"));
+        assertTrue(PlatformMessages.isNotConnectedReply(
+                "Designer (agent mode) is not connected to the infobase"));
+        assertFalse(PlatformMessages.isNotConnectedReply("connected and fine"));
+
+        // the Russian platform answers a second connect-ib with its own configuration lock;
+        // the English one also has a plain "already connected" wording - both mean the same
+        assertTrue(PlatformMessages.isAlreadyConnectedReply(
+                "Ошибка блокировки информационной базы для конфигурирования"));
+        assertTrue(PlatformMessages.isAlreadyConnectedReply(
+                "Designer (agent mode) is already connected to the infobase"));
+        assertFalse(PlatformMessages.isAlreadyConnectedReply("Пользователь не идентифицирован"));
+    }
 }

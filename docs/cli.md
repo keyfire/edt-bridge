@@ -127,6 +127,31 @@ usage: edt-bridge-mcp status [-h] [--workspace WORKSPACE] [--edt-dir EDT_DIR]
 | `--no-autostart` | never launch a headless EDT |
 | `--version` | show the version and exit |
 
+## `edt-bridge-mcp shutdown`
+
+Shut down the EDT behind the bridge - instead of killing its processes. A headless one is relaunched on the next call; a GUI is left alone without `--force`.
+
+```bash
+usage: edt-bridge-mcp shutdown [-h] [--force] [--no-wait] [--workspace WORKSPACE]
+                               [--edt-dir EDT_DIR] [--port PORT]
+                               [--start-timeout START_TIMEOUT] [--no-autostart]
+                               [--version]
+```
+
+**Options**
+
+| Option | Description |
+|---|---|
+| `-h, --help` | show this help message and exit |
+| `--force` | shut a GUI EDT down too: without this flag the bridge refuses rather than close somebody's window |
+| `--no-wait` | do not wait for the bridge to go down (the default waits up to 60 seconds) |
+| `--workspace WORKSPACE` | EDT workspace path for the headless auto-start |
+| `--edt-dir EDT_DIR` | EDT install dir (.../1cedt); auto-detected when omitted |
+| `--port PORT` | bridge port (default 8770) |
+| `--start-timeout START_TIMEOUT` | seconds to wait for a starting backend |
+| `--no-autostart` | never launch a headless EDT |
+| `--version` | show the version and exit |
+
 ## `edt-bridge-mcp self-update`
 
 Refresh the plugin jar in EDT's dropins and this wrapper in its own environment.

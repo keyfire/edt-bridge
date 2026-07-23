@@ -107,6 +107,21 @@ MESSAGES = {
         "ru": "Состояние запущенного моста (сам его не поднимает).",
         "en": "Report the running bridge (does not start one).",
     },
+    "shutdown.description": {
+        "ru": "Штатно завершить EDT, обслуживающую мост, - вместо taskkill по процессам. "
+              "Headless обвязка поднимет заново при следующем вызове; GUI без --force не трогается.",
+        "en": "Shut down the EDT behind the bridge - instead of killing its processes. "
+              "A headless one is relaunched on the next call; a GUI is left alone without --force.",
+    },
+    "shutdown.force": {
+        "ru": "завершать и GUI EDT: без этого флага мост отказывает, чтобы не закрыть чьё-то окно",
+        "en": "shut a GUI EDT down too: without this flag the bridge refuses rather than close "
+              "somebody's window",
+    },
+    "shutdown.no-wait": {
+        "ru": "не ждать фактической остановки (по умолчанию команда ждёт закрытия порта до 60 секунд)",
+        "en": "do not wait for the bridge to go down (the default waits up to 60 seconds)",
+    },
     "call.tool": {
         "ru": "имя инструмента, например edt_projects (перечень: edt-bridge-mcp tools)",
         "en": "tool name, e.g. edt_projects (see: edt-bridge-mcp tools)",

@@ -127,6 +127,31 @@ usage: edt-bridge-mcp status [-h] [--workspace WORKSPACE] [--edt-dir EDT_DIR]
 | `--no-autostart` | не поднимать headless EDT ни при каких условиях |
 | `--version` | показать версию и выйти |
 
+## `edt-bridge-mcp shutdown`
+
+Штатно завершить EDT, обслуживающую мост, - вместо taskkill по процессам. Headless обвязка поднимет заново при следующем вызове; GUI без `--force` не трогается.
+
+```bash
+usage: edt-bridge-mcp shutdown [-h] [--force] [--no-wait] [--workspace WORKSPACE]
+                               [--edt-dir EDT_DIR] [--port PORT]
+                               [--start-timeout START_TIMEOUT] [--no-autostart]
+                               [--version]
+```
+
+**Параметры**
+
+| Параметр | Описание |
+|---|---|
+| `-h, --help` | показать эту справку и выйти |
+| `--force` | завершать и GUI EDT: без этого флага мост отказывает, чтобы не закрыть чьё-то окно |
+| `--no-wait` | не ждать фактической остановки (по умолчанию команда ждёт закрытия порта до 60 секунд) |
+| `--workspace WORKSPACE` | воркспейс EDT для автозапуска headless |
+| `--edt-dir EDT_DIR` | каталог установки EDT (.../1cedt); без флага определяется сам |
+| `--port PORT` | порт моста (по умолчанию 8770) |
+| `--start-timeout START_TIMEOUT` | сколько секунд ждать поднимающийся мост |
+| `--no-autostart` | не поднимать headless EDT ни при каких условиях |
+| `--version` | показать версию и выйти |
+
 ## `edt-bridge-mcp self-update`
 
 Обновить jar плагина в dropins у EDT и саму обвязку в её окружении.

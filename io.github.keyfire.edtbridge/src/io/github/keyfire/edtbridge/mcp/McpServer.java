@@ -384,6 +384,7 @@ applyI18n();loadStatus();loadTools();
         }
         http.createContext("/mcp", this::handle);
         http.createContext("/status", this::handleStatus);
+        http.createContext("/shutdown", this::handleShutdown);
         http.createContext("/", this::handleRoot);
         // A bounded thread pool (not a single thread): a long operation – a rename or a project
         // create can run for many seconds – no longer blocks every other request. EDT's BM model does
@@ -503,6 +504,83 @@ applyI18n();loadStatus();loadTools();
             }
         } catch (Exception e) {
             send(ex, 500, "{}");
+        }
+    }
+
+    /**
+     * POST /shutdown - the graceful end of the EDT behind the bridge, instead of killing its
+     * processes. Token-gated like /mcp. A GUI workbench is refused unless {@code force} is set -
+     * a script must not close somebody's window by accident; a headless EDT just stops. The stop
+     * is the OSGi system bundle's, so bundles shut down in order and the workspace is left clean.
+     */
+    private void handleShutdown(HttpExchange ex) throws IOException {
+        try {
+            if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
+                send(ex, 405, "{}");
+                return;
+            }
+            String required = token();
+            if (required != null) {
+                String auth = ex.getRequestHeaders().getFirst("Authorization");
+                String alt = ex.getRequestHeaders().getFirst("X-Edt-Bridge-Token");
+                boolean ok = ("Bearer " + required).equals(auth) || required.equals(alt);
+                if (!ok) {
+                    send(ex, 401, "{}");
+                    return;
+                }
+            }
+            boolean force = false;
+            try {
+                String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                if (!body.isBlank()) {
+                    JsonObject req = JsonParser.parseString(body).getAsJsonObject();
+                    force = req.has("force") && !req.get("force").isJsonNull()
+                            && req.get("force").getAsBoolean();
+                }
+            } catch (RuntimeException ignored) {
+                // an empty or malformed body simply means no force
+            }
+            JsonObject r = new JsonObject();
+            if (guiWorkbenchRunning() && !force) {
+                r.addProperty("ok", false);
+                r.addProperty("message", "this EDT runs a GUI workbench - close it from its window, "
+                        + "or pass force=true to shut it down anyway");
+                send(ex, 409, gson.toJson(r));
+                return;
+            }
+            r.addProperty("ok", true);
+            r.addProperty("message", "shutting down - the OSGi framework stops after this reply");
+            send(ex, 200, gson.toJson(r));
+            Thread stopper = new Thread(() -> {
+                try {
+                    Thread.sleep(300); // let the reply leave the socket first
+                    org.osgi.framework.Bundle self =
+                            org.osgi.framework.FrameworkUtil.getBundle(McpServer.class);
+                    // the system bundle: a clean, ordered framework shutdown
+                    self.getBundleContext().getBundle(0).stop();
+                } catch (Exception e) {
+                    LOG.severe("edt-bridge: graceful shutdown failed: " + e);
+                }
+            }, "edt-bridge-shutdown");
+            stopper.setDaemon(false); // must outlive the request thread
+            stopper.start();
+        } catch (Exception e) {
+            send(ex, 500, "{}");
+        }
+    }
+
+    /** Whether this EDT runs a GUI workbench - reflection, because a headless one has no org.eclipse.ui. */
+    private static boolean guiWorkbenchRunning() {
+        try {
+            org.osgi.framework.Bundle ui = org.eclipse.core.runtime.Platform.getBundle("org.eclipse.ui");
+            if (ui == null) {
+                return false;
+            }
+            Class<?> platformUi = ui.loadClass("org.eclipse.ui.PlatformUI");
+            Object running = platformUi.getMethod("isWorkbenchRunning").invoke(null);
+            return Boolean.TRUE.equals(running);
+        } catch (Exception headlessOrNoUi) {
+            return false;
         }
     }
 

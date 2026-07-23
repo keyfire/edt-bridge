@@ -36,6 +36,8 @@ import com._1c.g5.v8.bm.core.IBmTransaction;
 import com._1c.g5.v8.bm.integration.AbstractBmTask;
 import com._1c.g5.v8.bm.integration.IBmModel;
 import com._1c.g5.v8.dt.core.platform.IBmModelManager;
+import com._1c.g5.v8.dt.core.platform.IDependentProject;
+import com._1c.g5.v8.dt.core.platform.IV8ProjectManager;
 import com._1c.g5.v8.dt.platform.services.core.infobases.IInfobaseAssociationManager;
 import com._1c.g5.v8.dt.platform.services.core.infobases.IInfobaseManager;
 import com._1c.g5.v8.dt.platform.services.core.infobases.InfobaseReferences;
@@ -149,8 +151,10 @@ public final class PlatformGateway {
         public String infobaseUuid;
         public boolean connected;
         public String equality;       // EDT's project-vs-infobase equality state, when known
+        public List<String> syncProjects = new ArrayList<>(); // every project this update synchronizes
         public String status;         // the update IStatus, when applied
         public String plan;
+        public String warning;
         public String message;
     }
 
@@ -211,9 +215,56 @@ public final class PlatformGateway {
         } catch (RuntimeException e) {
             r.equality = null;
         }
+        // EDT's synchronization has no per-project scope: it brings the infobase in line with EVERY
+        // workspace project associated with it - the named project AND its siblings (the base
+        // configuration's extensions, foreign probe projects, all of them). The API offers nothing
+        // narrower (checked against IInfobaseSynchronizationManager: one updateInfobase shape, no
+        // project filter), so the honest thing is to SAY what will ride along.
+        r.syncProjects.add(p.getName());
+        // Extensions ride along by PROJECT dependency, not by association: loading a configuration
+        // project drags every extension project that extends it, and none of those carries an
+        // association of its own (verified live - an update from the base configuration took two
+        // extension projects with it).
+        try {
+            IV8ProjectManager pm = ServiceAccess.get(IV8ProjectManager.class);
+            if (pm != null) {
+                for (IProject dep : IDependentProject.getDependent(p, pm.getProjects())) {
+                    if (dep.isOpen() && !r.syncProjects.contains(dep.getName())) {
+                        r.syncProjects.add(dep.getName());
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+            // dependency information is best-effort for the plan
+        }
+        IInfobaseAssociationManager assoc = ServiceAccess.get(IInfobaseAssociationManager.class);
+        if (assoc != null) {
+            for (IProject other : ResourcesPlugin.getWorkspace().getRoot().getProjects()) {
+                if (!other.isOpen() || r.syncProjects.contains(other.getName())) {
+                    continue;
+                }
+                try {
+                    InfobaseReference otherRef = assoc.getAssociation(other)
+                            .map(a -> a.getDefaultInfobase()).orElse(null);
+                    if (otherRef != null && otherRef.getUuid() != null
+                            && String.valueOf(otherRef.getUuid()).equals(r.infobaseUuid)) {
+                        r.syncProjects.add(other.getName());
+                    }
+                } catch (Exception ignored) {
+                    // a project without a readable association simply does not join the list
+                }
+            }
+        }
         r.ok = true;
         r.plan = "Update infobase \"" + r.infobaseName + "\" from project " + projectName
-                + " (db-structure changes auto-confirmed; a conflict aborts)";
+                + " (db-structure changes auto-confirmed; a conflict aborts); synchronizes "
+                + r.syncProjects.size() + " project(s): " + String.join(", ", r.syncProjects);
+        if (r.syncProjects.size() > 1) {
+            r.warning = "EDT synchronization has no per-project scope - this update brings the "
+                    + "infobase in line with EVERY project listed in syncProjects, not only "
+                    + p.getName() + ". To load ONE project and leave the siblings alone, use "
+                    + "transport=agent.";
+        }
         if (!apply) {
             return r;
         }

@@ -134,6 +134,23 @@ class Backend:
         with urllib.request.urlopen(req, timeout=600) as resp:
             return json.loads(resp.read().decode("utf-8"))
 
+    def shutdown(self, force: bool = False) -> dict:
+        """POST /shutdown to the live bridge - the graceful stop of the EDT behind it.
+
+        The bridge refuses (HTTP 409) when a GUI workbench is running and force is not set,
+        so a script cannot close somebody's window by accident. HTTP errors propagate to the
+        caller, which turns them into readable messages and exit codes."""
+        data = json.dumps({"force": bool(force)}).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
+        if self.token:
+            headers["Authorization"] = "Bearer " + self.token
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{self._active_port}/shutdown", data=data, headers=headers,
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
     # -- headless auto-start --------------------------------------------
 
     def ensure(self, wait: bool) -> tuple[bool, str]:

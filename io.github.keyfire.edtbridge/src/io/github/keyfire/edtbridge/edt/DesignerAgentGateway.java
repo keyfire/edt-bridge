@@ -269,6 +269,15 @@ public final class DesignerAgentGateway {
             r.message = "no agent is running for " + infobase;
             return r;
         }
+        stopAgent(agent);
+        r.ok = true;
+        r.stopped = true;
+        r.message = "the agent for " + agent.infobase + " was stopped";
+        return r;
+    }
+
+    /** Shut an agent down politely, then for real; forget it and sweep its base directory. */
+    private static void stopAgent(Agent agent) {
         agent.lock.lock();
         try {
             try {
@@ -290,10 +299,19 @@ public final class DesignerAgentGateway {
         if (agent.baseDir != null) {
             IbcmdGateway.deleteRecursively(Path.of(agent.baseDir));
         }
-        r.ok = true;
-        r.stopped = true;
-        r.message = "the agent for " + agent.infobase + " was stopped";
-        return r;
+    }
+
+    /**
+     * A FILE infobase pays for a standing agent with the base itself: the designer process holds
+     * the file open, so the next batch designer - or a human opening the configurator - is refused
+     * with "the infobase is already opened in Designer". A server infobase keeps its agent between
+     * calls (starting one is slow, and the cluster tolerates a designer session); a file one gives
+     * it up after every operation - reconnecting to a local file is cheap, the lock is not.
+     */
+    private static void releaseFileInfobaseAgent(Agent agent) {
+        if (agent != null && agent.connectionString != null && agent.connectionString.startsWith("/F")) {
+            stopAgent(agent);
+        }
     }
 
     // ── operations ──────────────────────────────────────────────────────────────────────────────
@@ -647,7 +665,8 @@ public final class DesignerAgentGateway {
                     before = s.extensions().properties().get()
                             .extension(name.trim()).exec(Duration.ofMinutes(10));
                 } catch (Exception notThere) {
-                    if (!GatewaySupport.describeCause(notThere).contains("не найдено")) {
+                    String cause = GatewaySupport.describeCause(notThere);
+                    if (!cause.contains("не найдено") && !cause.contains("is not found")) {
                         throw notThere;
                     }
                     r.message = "no extension named " + name.trim() + " in " + agent.infobase
@@ -952,8 +971,8 @@ public final class DesignerAgentGateway {
      * базой не установлено".
      */
     private static void dropSession(Agent agent, Exception cause) {
-        if (cause != null && GatewaySupport.describeCause(cause)
-                .contains("Соединение с информационной базой не установлено")) {
+        if (cause != null && io.github.keyfire.edtbridge.core.PlatformMessages
+                .isNotConnectedReply(GatewaySupport.describeCause(cause))) {
             agent.infobaseConnected = false;
         }
         dropSession(agent);
@@ -961,8 +980,8 @@ public final class DesignerAgentGateway {
 
     /** The agent refusing a second connect-ib because it already holds the infobase. */
     private static boolean alreadyConnected(Exception ex) {
-        return GatewaySupport.describeCause(ex)
-                .contains("Ошибка блокировки информационной базы для конфигурирования");
+        return io.github.keyfire.edtbridge.core.PlatformMessages
+                .isAlreadyConnectedReply(GatewaySupport.describeCause(ex));
     }
 
     /** Give up the cached session so the next call reconnects instead of reusing a broken one. */
@@ -1016,20 +1035,26 @@ public final class DesignerAgentGateway {
      */
     private static <T> T withSession(Agent agent, SessionAction<T> action) throws Exception {
         try {
-            return action.run(session(agent));
-        } catch (Exception first) {
-            if (!connectionLost(first)) {
-                throw first;
+            try {
+                return action.run(session(agent));
+            } catch (Exception first) {
+                if (!connectionLost(first)) {
+                    throw first;
+                }
+                dropSession(agent, first);
+                return action.run(session(agent));
             }
-            dropSession(agent, first);
-            return action.run(session(agent));
+        } finally {
+            // Every infobase operation runs through here exactly once, which makes this the one
+            // place to give up a file infobase's agent as soon as the operation is over.
+            releaseFileInfobaseAgent(agent);
         }
     }
 
-    /** The agent's gate reply for a dropped infobase connection. */
+    /** The agent's gate reply for a dropped infobase connection, in either platform language. */
     private static boolean connectionLost(Exception ex) {
-        return GatewaySupport.describeCause(ex)
-                .contains("Соединение с информационной базой не установлено");
+        return io.github.keyfire.edtbridge.core.PlatformMessages
+                .isNotConnectedReply(GatewaySupport.describeCause(ex));
     }
 
     /** An agent, or why there is none. */

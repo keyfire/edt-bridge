@@ -43,6 +43,8 @@ final class GatewaySupport {
      * A throwable's cause chain as {@code Type: message <- Type: message} (up to 6 links).
      * Every message is condensed first: a licensing refusal alone carries the platform's full
      * hardware inventory repeated per lookup stage - tens of kilobytes around one useful line.
+     * A refusal whose usual cause is not what its text suggests gets a hint appended once
+     * (see {@link io.github.keyfire.edtbridge.core.PlatformMessages#hint}).
      */
     static String describeCause(Throwable ex) {
         StringBuilder sb = new StringBuilder();
@@ -63,7 +65,9 @@ final class GatewaySupport {
             t = t.getCause();
             depth++;
         }
-        return sb.toString();
+        String out = sb.toString();
+        String hint = io.github.keyfire.edtbridge.core.PlatformMessages.hint(out);
+        return hint == null ? out : out + " " + hint;
     }
 
     /** The runtime (platform) version EDT associates with a project, or {@link Version#LATEST}. */

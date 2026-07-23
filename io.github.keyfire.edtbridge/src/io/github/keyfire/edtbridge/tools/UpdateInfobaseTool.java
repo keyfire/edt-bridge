@@ -93,7 +93,10 @@ public final class UpdateInfobaseTool {
                 "WRITE (Phase 2): update an infobase's configuration FROM an EDT project "
                 + "(configuration or extension) via EDT's own synchronization engine (the \"Update "
                 + "infobase configuration\" action). Db-structure changes auto-confirmed; a conflict "
-                + "aborts the update. Dry-run by default; apply=true mutates the infobase – use stands "
+                + "aborts the update. EDT synchronization has NO per-project scope: it brings the "
+                + "infobase in line with EVERY workspace project associated with it - the result lists "
+                + "them in syncProjects, and the dry-run plan names them; to load one project only, use "
+                + "transport=agent. Dry-run by default; apply=true mutates the infobase – use stands "
                 + "you own. Token-gated.\n\ntransport=agent takes a different route entirely: the "
                 + "project is exported to designer XML in-process and loaded through a configurator "
                 + "agent (config load-config-from-files), which authenticates AS THE INFOBASE USER. "
@@ -106,8 +109,12 @@ public final class UpdateInfobaseTool {
                 + "(конфигурация или расширение) штатным механизмом синхронизации (действие "
                 + "\"Обновить конфигурацию информационной базы\"). Изменения структуры БД "
                 + "подтверждаются автоматически; конфликт (в базе свои изменения) прерывает "
-                + "обновление. По умолчанию dry-run; apply=true МЕНЯЕТ базу – использовать на своих "
-                + "стендах. Требует токен.\n\ntransport=agent идёт другим путём: проект выгружается "
+                + "обновление. У синхронизации EDT НЕТ границы \"один проект\": база приводится в "
+                + "соответствие ВСЕМ ассоциированным с ней проектам workspace - ответ перечисляет их "
+                + "в syncProjects, план dry-run называет поимённо; чтобы загрузить один проект, "
+                + "используйте transport=agent. По умолчанию dry-run; apply=true МЕНЯЕТ базу – "
+                + "использовать на своих стендах. Требует токен.\n\ntransport=agent идёт другим путём: "
+                + "проект выгружается "
                 + "в XML конфигуратора внутри процесса и загружается через агент конфигуратора "
                 + "(config load-config-from-files), который проходит аутентификацию КАК ПОЛЬЗОВАТЕЛЬ "
                 + "БАЗЫ. Только так доступна серверная база с пользователями, и XML грузится прямо в "
@@ -150,6 +157,11 @@ public final class UpdateInfobaseTool {
                         + "sessions execute the database one. Check with edt_infobase_config_state, and "
                         + "apply it with edt_update_database_config.");
             }
+            if (!res.syncProjects.isEmpty()) {
+                JsonArray sync = new JsonArray();
+                res.syncProjects.forEach(sync::add);
+                o.add("syncProjects", sync);
+            }
             if (res.status != null) {
                 o.addProperty("status", res.status);
             }
@@ -165,6 +177,9 @@ public final class UpdateInfobaseTool {
             }
             if (res.plan != null) {
                 o.addProperty("plan", res.plan);
+            }
+            if (res.warning != null) {
+                o.addProperty("warning", res.warning);
             }
             if (res.message != null) {
                 o.addProperty("message", res.message);

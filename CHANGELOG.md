@@ -32,6 +32,13 @@ that day are named in the heading. The format follows
   carries `serviceAdopted`, the extension's `compatibilityMode` and a warning saying exactly
   that – before this the refusal only surfaced at infobase load, far from the tool that wrote
   the route.
+- `edt-bridge-mcp shutdown` – the graceful end of the EDT behind the bridge, instead of
+  killing its processes. The wrapper POSTs the bridge's new `/shutdown` (token-gated), which
+  stops the OSGi framework in order: the workspace `.lock` is released for a GUI to start,
+  and the configurator agents EDT itself runs close properly – their cluster sessions leave
+  with them, where a killed process leaves its session holding the configuration lock. A GUI
+  EDT is refused unless `--force` is passed, so a script cannot close somebody's window by
+  accident; shutting down when no bridge runs is a quiet no-op.
 
 ### Changed
 - A fully applied `edt_infobase_sessions terminate` answers with the terminated ids (and
@@ -43,6 +50,21 @@ that day are named in the heading. The format follows
   with a large configuration – and the operation runs to completion even when the client
   stops waiting. The five-minute "hang" of the first extension-project delete was exactly
   that: the cascade finished in the background and left the model clean.
+- `edt_update_infobase` (transport=edt) says what rides along: EDT's synchronization has no
+  per-project scope – it brings the infobase in line with EVERY workspace project associated
+  with it, and a configuration project drags its extension projects by dependency. The result
+  lists them all in `syncProjects`, the plan names them, and a multi-project update carries a
+  warning pointing at transport=agent for loading one project only. Before this, an update
+  from the base configuration quietly took two unrelated extension projects with it.
+- A FILE infobase's configurator agent is stopped as soon as its operation is over: the
+  standing agent held the base open, so the next batch designer – or a human opening the
+  configurator – was refused with "the infobase is already opened in Designer". A server
+  infobase keeps its agent between calls as before; reconnecting to a local file is cheap,
+  the lock is not.
+- The configuration-lock refusal ("Ошибка блокировки информационной базы для
+  конфигурирования") now carries a hint: the usual culprit is the Designer session of an
+  agent that died – the cluster keeps the session, the session keeps the lock, and nothing in
+  the platform's text points there. The hint names `edt_infobase_sessions` as the way out.
 
 ### Fixed
 - The agent reconnects by itself when a database restructure drops the process's infobase
@@ -60,6 +82,13 @@ that day are named in the heading. The format follows
   the inventory lines and the repeats (with an "N lines omitted" note); ordinary messages
   pass through untouched. Measured live: ~25 KB down to 2.4 KB, the first line already says
   "no license".
+- The platform speaks two languages and the bridge now hears both: every reply it recognises
+  – the configuration-lock refusal, the agent's "not connected to the infobase" gate that
+  drives the automatic reconnect, "extension not found", ibcmd asking for credentials – is
+  matched against the English wording as well as the Russian one, both read out of the
+  platform's own resource bundles. The ibcmd recogniser's earlier English guess
+  ("authentication is required") is corrected to the platform's actual string ("Authentication
+  in the infobase is required..."), which it used to miss.
 
 ## 2026-07-22 – 0.8.0
 

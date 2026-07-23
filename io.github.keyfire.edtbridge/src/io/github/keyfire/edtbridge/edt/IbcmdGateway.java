@@ -295,9 +295,12 @@ public final class IbcmdGateway {
         if (output == null) {
             return false;
         }
+        // The English string is the platform's own, read out of ibcli_root.res: "Authentication in
+        // the infobase is required to perform the operation" - note the words between
+        // "Authentication" and "is required", which a shorter guess here used to miss.
         return output.contains("требуется аутентификация в информационной базе")
                 || output.contains("Имя пользователя:")
-                || output.contains("authentication is required")
+                || output.contains("Authentication in the infobase is required")
                 || output.contains("User name:");
     }
 

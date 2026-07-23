@@ -80,4 +80,53 @@ public final class PlatformMessages {
         }
         return condensed;
     }
+
+    /**
+     * The configurator's "infobase is locked for configuring" refusal. The platform localises
+     * its messages, so every recogniser here matches BOTH languages it speaks - the Russian
+     * string and the English one, read out of the platform's own resource bundles
+     * (backend/config _ru.res and _root.res).
+     */
+    public static boolean isConfigurationLockRefusal(String message) {
+        return message != null
+                && (message.contains("Ошибка блокировки информационной базы для конфигурирования")
+                        || message.contains("Error locking infobase for configuration"));
+    }
+
+    /** The agent's "not connected to the infobase" reply, in either language. */
+    public static boolean isNotConnectedReply(String message) {
+        return message != null
+                && (message.contains("Соединение с информационной базой не установлено")
+                        || message.contains("Designer (agent mode) is not connected to the infobase"));
+    }
+
+    /**
+     * The agent's reply to a second connect-ib on a process that already holds the infobase:
+     * in Russian it surfaces as the agent's own configuration lock, in English the platform
+     * also has a plain "already connected" wording.
+     */
+    public static boolean isAlreadyConnectedReply(String message) {
+        return isConfigurationLockRefusal(message)
+                || (message != null
+                        && message.contains("Designer (agent mode) is already connected to the infobase"));
+    }
+
+    /**
+     * A hint for a platform refusal whose cause is regularly NOT what the text suggests, or
+     * {@code null} when there is nothing to add. The one known so far: the configuration-lock
+     * refusal reads as if somebody were configuring the infobase right now, while the usual
+     * culprit is the Designer session of a configurator agent that died - the cluster keeps
+     * the session, the session keeps the lock, and nothing in the platform's text points there.
+     */
+    public static String hint(String message) {
+        if (message == null || message.contains("edt_infobase_sessions")) {
+            return null;
+        }
+        if (isConfigurationLockRefusal(message)) {
+            return "(hint: a Designer session may still hold the configuration lock - a "
+                    + "configurator agent that died leaves its session in the cluster; list them "
+                    + "with edt_infobase_sessions appId=Designer and terminate the orphan)";
+        }
+        return null;
+    }
 }
