@@ -26,6 +26,23 @@ that day are named in the heading. The format follows
   differing, every command covered by a page section and answering `--help` within a timeout,
   and the committed pages equal to what the generator produces. The generator itself gained
   the missing timeout – a command that does not parse `--help` starts the server and hangs.
+- `edt_add_route` warns about the construct that will not load: an OWN url template added to
+  an ADOPTED service of an extension is accepted by EDT and serialised quietly, but the
+  platform refuses to load it in extension compatibility mode 8.5.1 and below. The result now
+  carries `serviceAdopted`, the extension's `compatibilityMode` and a warning saying exactly
+  that – before this the refusal only surfaced at infobase load, far from the tool that wrote
+  the route.
+
+### Changed
+- A fully applied `edt_infobase_sessions terminate` answers with the terminated ids (and
+  `terminatedCount`) instead of the whole session list: the list was read before the
+  terminations, so the ended sessions still looked alive in it – and on a lively cluster it
+  drowned the answer in noise. `list`, dry-runs and partial failures keep the list.
+- `edt_delete_object` now says in its description what a live run taught: building the delete
+  cascade analyses references across every open project, which takes minutes in a workspace
+  with a large configuration – and the operation runs to completion even when the client
+  stops waiting. The five-minute "hang" of the first extension-project delete was exactly
+  that: the cascade finished in the background and left the model clean.
 
 ### Fixed
 - The agent reconnects by itself when a database restructure drops the process's infobase

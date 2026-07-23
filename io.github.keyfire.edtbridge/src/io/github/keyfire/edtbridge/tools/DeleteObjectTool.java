@@ -72,14 +72,20 @@ public final class DeleteObjectTool {
                 + "engine removes the object's .mdo and updates the Configuration. Dry-run by default: returns "
                 + "the engine's change list + validation problems WITHOUT deleting. apply=true performs the "
                 + "cascade; requires a configured token AND force=true (delete is irreversible and breaking for "
-                + "peer configurations – owner approval). Verify bsl_support_status EDITABLE before apply.");
+                + "peer configurations – owner approval). Verify bsl_support_status EDITABLE before apply. "
+                + "Building the cascade analyses references across every open project - in a workspace with a "
+                + "large configuration this can take several minutes, and it keeps running to completion even "
+                + "if the client gives up waiting; re-check the model before concluding it hung.");
         t.addProperty("descriptionRu",
                 "ЗАПИСЬ (Phase 2): удалить объект метаданных (объект или его член) с каскадным удалением ВСЕХ "
                 + "ссылок в метаданных И в BSL через штатный движок рефакторинга EDT; движок сам удаляет .mdo "
                 + "объекта и правит Configuration. По умолчанию dry-run: возвращает список изменений и проблемы "
                 + "БЕЗ удаления. apply=true выполняет каскад; требует токен И force=true (удаление необратимо и "
                 + "ломает обратную совместимость для конфигураций-партнёров – нужно одобрение владельца). Перед "
-                + "apply проверить bsl_support_status = EDITABLE.");
+                + "apply проверить bsl_support_status = EDITABLE. Построение каскада анализирует ссылки по всем "
+                + "открытым проектам: в workspace с большой конфигурацией это занимает минуты, и операция "
+                + "доходит до конца, даже если клиент перестал ждать; прежде чем счесть вызов зависшим, "
+                + "перепроверьте модель.");
         t.add("inputSchema", schema);
         return t;
     }

@@ -99,7 +99,9 @@ public final class InfobaseSessionsTool {
                 + "configured (\"Ошибка блокировки информационной базы для конфигурирования\"): a "
                 + "designer session that was killed rather than closed still holds the configuration "
                 + "lock, and it shows up here as a Designer session. Terminating is dry-run by default "
-                + "and needs force on top of apply.");
+                + "and needs force on top of apply. A fully applied terminate returns only the "
+                + "terminated ids - the pre-termination list would be stale; re-list for the current "
+                + "state.");
         t.addProperty("descriptionRu",
                 "Сеансы кластера 1С через rac: список (можно по одной базе или одному виду приложения) "
                 + "и завершение. Это единственное, чего не умеют ни агент конфигуратора, ни ibcmd – "
@@ -107,7 +109,9 @@ public final class InfobaseSessionsTool {
                 + "автономный сервер ibcmd. Нужен, когда база отказывается конфигурироваться (\"Ошибка "
                 + "блокировки информационной базы для конфигурирования\"): убитый, а не закрытый сеанс "
                 + "конфигуратора продолжает держать блокировку и виден здесь как сеанс Designer. "
-                + "Завершение по умолчанию dry-run и требует force вдобавок к apply.");
+                + "Завершение по умолчанию dry-run и требует force вдобавок к apply. Применённое "
+                + "завершение возвращает только идентификаторы завершённых сеансов: список был снят "
+                + "до завершения и устарел бы; актуальное состояние – повторным list.");
         t.add("inputSchema", schema);
         return t;
     }
@@ -144,20 +148,27 @@ public final class InfobaseSessionsTool {
             if (res.platform != null) {
                 o.addProperty("platform", res.platform);
             }
-            o.addProperty("sessionCount", res.sessions.size());
-            JsonArray sessions = new JsonArray();
-            for (ClusterGateway.Session s : res.sessions) {
-                JsonObject one = new JsonObject();
-                one.addProperty("session", s.id);
-                one.addProperty("infobase", s.infobase);
-                one.addProperty("userName", s.userName);
-                one.addProperty("host", s.host);
-                one.addProperty("appId", s.appId);
-                one.addProperty("startedAt", s.startedAt);
-                sessions.add(one);
+            // A fully applied terminate answers with what it did, not with the session list: the
+            // list was read BEFORE the terminations, so the ended sessions would still look alive.
+            // Every other shape (list, dry-run, partial failure) keeps the list - there it is the point.
+            boolean listStale = res.applied && !res.terminated.isEmpty();
+            if (!listStale) {
+                o.addProperty("sessionCount", res.sessions.size());
+                JsonArray sessions = new JsonArray();
+                for (ClusterGateway.Session s : res.sessions) {
+                    JsonObject one = new JsonObject();
+                    one.addProperty("session", s.id);
+                    one.addProperty("infobase", s.infobase);
+                    one.addProperty("userName", s.userName);
+                    one.addProperty("host", s.host);
+                    one.addProperty("appId", s.appId);
+                    one.addProperty("startedAt", s.startedAt);
+                    sessions.add(one);
+                }
+                o.add("sessions", sessions);
             }
-            o.add("sessions", sessions);
             if (!res.terminated.isEmpty()) {
+                o.addProperty("terminatedCount", res.terminated.size());
                 JsonArray terminated = new JsonArray();
                 res.terminated.forEach(terminated::add);
                 o.add("terminated", terminated);

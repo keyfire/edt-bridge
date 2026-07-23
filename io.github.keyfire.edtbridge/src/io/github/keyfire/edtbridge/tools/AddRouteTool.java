@@ -83,16 +83,21 @@ public final class AddRouteTool {
                 + "code). Dry-run by default – resolves the service, checks the template name is free and the "
                 + "HTTP method is valid, returns the plan WITHOUT writing. apply=true creates the url template "
                 + "and its method through the model (uuids generated like the other writers) and serialises the "
-                + ".mdo; createHandler also writes a handler stub into the service module. Requires a configured "
-                + "token. Caller must verify bsl_support_status EDITABLE before any apply.");
+                + ".mdo; createHandler also writes a handler stub into the service module. On an ADOPTED "
+                + "service of an extension the plan carries a warning: in compatibility mode 8.5.1 and below "
+                + "the platform refuses to load an own url template on an adopted service, and EDT validation "
+                + "stays silent about it. Requires a configured token. Caller must verify bsl_support_status "
+                + "EDITABLE before any apply.");
         t.addProperty("descriptionRu",
                 "ЗАПИСЬ: добавить маршрут (шаблон URL и один HTTP-метод) в HTTPService – инструмент записи "
                 + "маршрутов HTTP-сервиса, рядом с edt_add_attribute (реквизиты) и edt_add_method (код модуля). "
                 + "По умолчанию dry-run – находит сервис, проверяет что имя шаблона свободно и HTTP-метод "
                 + "допустим, возвращает план БЕЗ записи. apply=true создаёт шаблон URL и его метод через модель "
                 + "(uuid генерируются как у прочих инструментов записи) и сериализует .mdo; createHandler ещё и "
-                + "пишет заглушку обработчика в модуль сервиса. Требует токен. Перед apply вызывающий обязан "
-                + "проверить bsl_support_status = EDITABLE.");
+                + "пишет заглушку обработчика в модуль сервиса. На ЗАИМСТВОВАННОМ сервисе расширения план несёт "
+                + "предупреждение: в режиме совместимости 8.5.1 и ниже платформа откажется загрузить собственный "
+                + "шаблон URL у заимствованного сервиса, а валидация EDT об этом молчит. Требует токен. Перед "
+                + "apply вызывающий обязан проверить bsl_support_status = EDITABLE.");
         t.add("inputSchema", schema);
         return t;
     }
@@ -138,6 +143,12 @@ public final class AddRouteTool {
             o.addProperty("httpMethodValid", res.httpMethodValid);
             if (res.templateInUse) {
                 o.addProperty("templateInUse", true);
+            }
+            if (Boolean.TRUE.equals(res.serviceAdopted)) {
+                o.addProperty("serviceAdopted", true);
+            }
+            if (res.compatibilityMode != null) {
+                o.addProperty("compatibilityMode", res.compatibilityMode);
             }
             if (res.templateUuid != null) {
                 o.addProperty("templateUuid", res.templateUuid);

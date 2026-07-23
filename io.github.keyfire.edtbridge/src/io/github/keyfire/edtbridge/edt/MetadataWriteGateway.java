@@ -79,6 +79,7 @@ import com._1c.g5.v8.dt.mcore.TypeItem;
 import com._1c.g5.v8.dt.metadata.mdclass.BasicFeature;
 import com._1c.g5.v8.dt.metadata.mdclass.MdClassPackage;
 import com._1c.g5.v8.dt.metadata.mdclass.MdObject;
+import io.github.keyfire.edtbridge.core.Versions;
 import com._1c.g5.v8.dt.metadata.mdclass.util.MdProducedTypesUtil;
 import com._1c.g5.v8.dt.metadata.mdtype.MdTypePackage;
 import com._1c.g5.v8.dt.platform.IEObjectProvider;
@@ -304,6 +305,8 @@ public final class MetadataWriteGateway {
         public Boolean nameAvailable;    // url-template name not already used on the service
         public boolean templateInUse;    // another url-template already uses this template (warning only)
         public boolean httpMethodValid;  // the method resolves to an enum literal
+        public Boolean serviceAdopted;   // the service is an adopted object of an extension project
+        public String compatibilityMode; // the extension's compatibility mode (read when adopted)
         public String templateUuid;      // generated on apply
         public String methodUuid;        // generated on apply
         public boolean handlerWritten;   // the stub was spliced into the service module
@@ -376,6 +379,18 @@ public final class MetadataWriteGateway {
                 }
                 r.serviceFound = true;
                 r.serviceType = svc.eClass().getName();
+                // An ADOPTED service means an extension project - read the extension's compatibility
+                // mode too, because the platform refuses OWN child objects on adopted ones in 8.5.1
+                // and below, and nothing before infobase load says so.
+                if (svc instanceof MdObject && ((MdObject) svc).getObjectBelonging() != null
+                        && "Adopted".equals(((MdObject) svc).getObjectBelonging().getName())) {
+                    r.serviceAdopted = Boolean.TRUE;
+                    EObject cfg = (EObject) tx.getTopObjectByFqn("Configuration");
+                    if (cfg instanceof Configuration) {
+                        var mode = ((Configuration) cfg).getConfigurationExtensionCompatibilityMode();
+                        r.compatibilityMode = (mode == null) ? null : mode.getLiteral();
+                    }
+                }
                 EStructuralFeature templatesF = svc.eClass().getEStructuralFeature("urlTemplates");
                 if (!(templatesF instanceof EReference)) {
                     r.message = "object is not an HTTP service (no urlTemplates): " + r.serviceType;
@@ -422,6 +437,19 @@ public final class MetadataWriteGateway {
             r.message = "the service already has a url template named \"" + name + "\"";
         } else if (r.templateInUse) {
             r.warning = "another url template already uses the template \"" + tmpl + "\"";
+        }
+        // The construct EDT accepts but the platform refuses to load: an OWN url template on an
+        // ADOPTED service, in extension compatibility mode 8.5.1 and below ("Добавление дочерних
+        // объектов этого типа к заимствованным в расширениях недопустимо"). EDT validation stays
+        // silent and the refusal only surfaces at infobase load - so the plan is where to say it.
+        if (Boolean.TRUE.equals(r.serviceAdopted)
+                && (r.compatibilityMode == null || Versions.compare(r.compatibilityMode, "8.5.1") <= 0)) {
+            String adopted = "the service is ADOPTED: in extension compatibility mode 8.5.1 and below "
+                    + "the platform refuses to LOAD an own url template added to an adopted service - "
+                    + "EDT validation stays silent, the refusal only comes when the extension is loaded "
+                    + "into an infobase. Extension compatibility mode: "
+                    + (r.compatibilityMode == null ? "not read" : r.compatibilityMode) + ".";
+            r.warning = (r.warning == null) ? adopted : r.warning + " " + adopted;
         }
 
         if (!apply) {
