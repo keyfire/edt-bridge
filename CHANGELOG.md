@@ -8,6 +8,36 @@ that day are named in the heading. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
+## 2026-07-27 – unreleased
+
+### Added
+- Configurator agents now clean up after themselves. Every agent writes a record into its own
+  `/AgentBaseDir` – a directory a clean stop removes and a crash leaves behind – naming the
+  infobase, the process and the id of the cluster session it opened. When a later run finds such a
+  record with a dead process, it ends exactly that session and removes the directory: the session of
+  a crashed agent holds the infobase's CONFIGURATION LOCK, and until now the next call failed with
+  "the infobase could not be locked for configuration" until somebody found and terminated it by
+  hand. Ownership is proven by the record, never guessed from the session's host and user – EDT
+  starts configurator agents of its own, and from the cluster's side they are indistinguishable, so
+  the obvious heuristic would end the developer's own configurator. Swept before every agent start
+  and on demand with `edt_designer_agent action=sweep`; `action=list` reports what is left over, and
+  `stopRunning=true` also stops agents of an earlier bridge process (off by default).
+- An agent that has been idle stops by itself. A standing agent of a server infobase costs a client
+  license and a Designer session for as long as it lives, which on a stand with a small pool is a
+  seat taken from a person. Configured by `edt.bridge.agent-idle-minutes` /
+  `EDT_BRIDGE_AGENT_IDLE_MINUTES` / the `agentIdleMinutes` preference: 30 minutes by default, `off`
+  or `0` disables it – and so does an unparsable value, deliberately, because a typo must not
+  silently shorten an agent's life. A call in flight always wins: the reaper takes the agent's lock
+  and holds it across the stop, so an operation can never be cut off mid-way. `edt_designer_agent
+  action=list` reports each agent's idle time and the configured timeout.
+
+### Fixed
+- Stopping an agent no longer leaves its session in the cluster. The polite shutdown was asked for
+  and the process killed immediately afterwards, giving it no time to close the infobase connection
+  – so every stop manufactured exactly the orphan described above, and the kill also held the
+  agent's own log file open, leaving the base directory behind. The process is now waited out (20 s)
+  before it is killed, and a session is ended explicitly when a kill was still necessary.
+
 ## 2026-07-24 – 0.9.0
 
 ### Added

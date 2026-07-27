@@ -45,15 +45,26 @@ public final class DesignerAgentTool {
     public JsonObject descriptor() {
         JsonObject action = new JsonObject();
         action.addProperty("type", "string");
-        action.addProperty("description", "list (default), start or stop.");
+        action.addProperty("description", "list (default), start, stop or sweep. sweep clears what an "
+                + "earlier bridge process left behind: the orphaned Designer session of an agent whose "
+                + "process is gone - the one that holds the infobase's configuration lock - and its "
+                + "temporary directory. A start sweeps once by itself.");
         JsonArray values = new JsonArray();
         values.add("list");
         values.add("start");
         values.add("stop");
+        values.add("sweep");
         action.add("enum", values);
+
+        JsonObject stopRunning = new JsonObject();
+        stopRunning.addProperty("type", "boolean");
+        stopRunning.addProperty("description", "sweep only: also stop agents of an earlier bridge "
+                + "process that are STILL RUNNING. Off by default - the bridge restarts more often "
+                + "than the agents it started, and those agents may be in use.");
 
         JsonObject props = new JsonObject();
         props.add("action", action);
+        props.add("stopRunning", stopRunning);
         props.add("infobase", strProp("Infobase registered in EDT - name or uuid. Required for start "
                 + "and stop."));
         props.add("infobaseUser", strProp("1C infobase user the agent authenticates as, e.g. "
@@ -75,13 +86,17 @@ public final class DesignerAgentTool {
                 + "open infobase session, and it authenticates as the INFOBASE user - which is how the "
                 + "bridge reaches a server infobase that authenticates its users. Agents are started on "
                 + "demand by the tools that need them; stopping one frees the session it holds on the "
-                + "server.");
+                + "server. An agent that has been idle too long is stopped on its own "
+                + "(EDT_BRIDGE_AGENT_IDLE_MINUTES, 30 by default, \"off\" to keep agents forever), and "
+                + "what an earlier bridge process left behind is swept - see action=sweep.");
         t.addProperty("descriptionRu",
                 "Управление агентами конфигуратора, через которые мост обращается к информационным "
                 + "базам: список, запуск для базы, остановка. Агент – это конфигуратор в режиме "
                 + "/AgentMode с открытым сеансом базы; он проходит аутентификацию КАК ПОЛЬЗОВАТЕЛЬ "
                 + "БАЗЫ, поэтому доступен и серверной базе с аутентификацией 1С. Агенты поднимаются по "
-                + "требованию тех инструментов, которым нужны; остановка освобождает сеанс на сервере.");
+                + "требованию тех инструментов, которым нужны; остановка освобождает сеанс на сервере. "
+                + "Простаивающий агент останавливается сам (EDT_BRIDGE_AGENT_IDLE_MINUTES, по умолчанию "
+                + "30, \"off\" – держать вечно), а остатки прежнего запуска моста подчищает action=sweep.");
         t.add("inputSchema", schema);
         return t;
     }
@@ -96,6 +111,8 @@ public final class DesignerAgentTool {
                         getStr(args, "infobasePassword"), getStr(args, "platformVersion"));
             } else if ("stop".equalsIgnoreCase(action)) {
                 res = gateway.stop(infobase);
+            } else if ("sweep".equalsIgnoreCase(action)) {
+                res = gateway.sweepLeftovers(getBool(args, "stopRunning"));
             } else {
                 res = gateway.list();
             }
@@ -114,9 +131,21 @@ public final class DesignerAgentTool {
                 one.addProperty("platform", a.platformVersion);
                 one.addProperty("user", a.user);
                 one.addProperty("baseDir", a.baseDir);
+                one.addProperty("clusterSessionId", a.clusterSessionId);
+                one.addProperty("idleSeconds", io.github.keyfire.edtbridge.core.AgentIdle
+                        .idleSeconds(a.lastUsedMillis, System.currentTimeMillis()));
                 agents.add(one);
             }
             o.add("agents", agents);
+            if (!res.leftovers.isEmpty()) {
+                JsonArray leftovers = new JsonArray();
+                for (java.util.Map<String, Object> left : res.leftovers) {
+                    JsonObject one = new JsonObject();
+                    left.forEach((k, v) -> one.addProperty(k, v == null ? null : String.valueOf(v)));
+                    leftovers.add(one);
+                }
+                o.add("leftovers", leftovers);
+            }
             if (res.plan != null) {
                 o.addProperty("plan", res.plan);
             }
@@ -138,5 +167,9 @@ public final class DesignerAgentTool {
 
     private static String getStr(JsonObject a, String k) {
         return (a.has(k) && !a.get(k).isJsonNull()) ? a.get(k).getAsString() : null;
+    }
+
+    private static boolean getBool(JsonObject a, String k) {
+        return a.has(k) && !a.get(k).isJsonNull() && a.get(k).getAsBoolean();
     }
 }

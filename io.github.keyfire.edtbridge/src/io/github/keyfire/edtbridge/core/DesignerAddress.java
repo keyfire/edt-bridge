@@ -102,4 +102,30 @@ public final class DesignerAddress {
         }
         return null;
     }
+
+    /** True for an address of a server infobase - the only kind a cluster knows about. */
+    public static boolean isServer(String address) {
+        return address != null && address.startsWith("/S") && address.indexOf('\\') > 2;
+    }
+
+    /**
+     * The cluster host out of {@code /S<host>\<reference>}, port included when it carries one.
+     * Null for anything else - a file infobase has no cluster.
+     */
+    public static String serverHost(String address) {
+        if (!isServer(address)) {
+            return null;
+        }
+        String host = address.substring(2, address.indexOf('\\')).trim();
+        return host.isEmpty() ? null : host;
+    }
+
+    /** The infobase name inside the cluster out of {@code /S<host>\<reference>}. */
+    public static String serverReference(String address) {
+        if (!isServer(address)) {
+            return null;
+        }
+        String reference = address.substring(address.indexOf('\\') + 1).trim();
+        return reference.isEmpty() ? null : reference;
+    }
 }

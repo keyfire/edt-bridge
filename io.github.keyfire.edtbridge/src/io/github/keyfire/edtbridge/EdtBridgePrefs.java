@@ -33,6 +33,8 @@ public final class EdtBridgePrefs {
     public static final String KEY_TOKEN = "token";
     public static final String KEY_PORT = "port";
     public static final String KEY_ALLOW_EVALUATE = "allowEvaluate";
+    /** Minutes a configurator agent may stay idle before it is stopped; 0 or "off" keeps it forever. */
+    public static final String KEY_AGENT_IDLE_MINUTES = "agentIdleMinutes";
 
     private EdtBridgePrefs() {
     }

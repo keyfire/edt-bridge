@@ -20,14 +20,24 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
+
+import io.github.keyfire.edtbridge.core.AgentIdle;
+import io.github.keyfire.edtbridge.core.AgentRecord;
 
 import com._1c.g5.designer.ssh.client.DesignerClient;
 import com._1c.g5.designer.ssh.client.IDesignerSession;
@@ -75,8 +85,17 @@ public final class DesignerAgentGateway {
     /** How many times to retry the SSH connect while the agent finishes coming up. */
     private static final int CONNECT_ATTEMPTS = 15;
 
+    /** How often the reaper looks for agents that have been idle too long. */
+    private static final int REAPER_PERIOD_SECONDS = 60;
+
+    /** How long a stopping agent is given to leave on its own before it is killed. */
+    private static final int SHUTDOWN_WAIT_SECONDS = 20;
+
     /** Running agents, keyed by the infobase connection string they were started for. */
     private static final Map<String, Agent> AGENTS = new ConcurrentHashMap<>();
+
+    /** Started with the first agent; stops the ones that go idle. */
+    private static ScheduledExecutorService reaper;
 
     private final PlatformGateway platform = new PlatformGateway();
 
@@ -89,6 +108,12 @@ public final class DesignerAgentGateway {
         public String platformVersion;
         public String baseDir;
         public String user = "";
+        /** The cluster session this agent's process opened; null for a file infobase or until known. */
+        public String clusterSessionId;
+        /** When an operation last ran against this agent - what the idle timeout is measured from. */
+        public volatile long lastUsedMillis;
+        /** When the process was started - the lower bound on the age of the session it opened. */
+        public long startedAtMillis;
         String password = "";
         transient Process process;
         final ReentrantLock lock = new ReentrantLock();
@@ -96,14 +121,33 @@ public final class DesignerAgentGateway {
         transient IDesignerSession session;
         /** The infobase connection belongs to the PROCESS, not to the SSH session that opened it. */
         boolean infobaseConnected;
+        /** Set when stopping had to kill the process - then its cluster session needs ending too. */
+        boolean killed;
+
+        /** The trace this agent leaves for a later bridge process. Carries no credentials. */
+        AgentRecord record() {
+            AgentRecord r = new AgentRecord();
+            r.connectionString = connectionString;
+            r.label = infobase;
+            r.port = port;
+            r.pid = pid;
+            r.user = user;
+            r.platformVersion = platformVersion;
+            r.startedAtMillis = startedAtMillis;
+            r.host = localHost();
+            r.clusterSessionId = clusterSessionId;
+            return r;
+        }
     }
 
-    /** Result of starting, listing or stopping agents. */
+    /** Result of starting, listing, stopping or sweeping agents. */
     public static final class AgentResult {
         public boolean ok;
         public boolean started;
         public boolean stopped;
         public final List<Agent> agents = new ArrayList<>();
+        /** Base directories of agents an earlier bridge process left behind, with what is known of them. */
+        public final List<Map<String, Object>> leftovers = new ArrayList<>();
         public String plan;
         public String message;
     }
@@ -175,6 +219,12 @@ public final class DesignerAgentGateway {
             r.message = "an agent for " + resolved.label + " is already running on port " + running.port;
             return r;
         }
+        // Before starting anything: remains hold the very lock this agent is about to ask for, and the
+        // failure they cause ("Ошибка блокировки информационной базы для конфигурирования") reads as if
+        // somebody else were configuring the infobase. Swept on EVERY start, not once per bridge
+        // process - an agent can also die while the bridge that started it lives on, and that is
+        // precisely the case a once-per-process sweep would never reach.
+        List<String> swept = sweep(false);
         PlatformGateway.DiskPlatform install = findDesignerInstall(platformVersion);
         if (install == null) {
             r.message = "no on-disk full install with a configurator was found"
@@ -199,12 +249,14 @@ public final class DesignerAgentGateway {
         agent.platformVersion = install.version;
         agent.user = user == null ? "" : user;
         agent.password = password == null ? "" : password;
+        agent.startedAtMillis = System.currentTimeMillis();
+        agent.lastUsedMillis = agent.startedAtMillis;
         r.plan = "Start a configurator agent " + install.version + " for " + resolved.label
                 + " on 127.0.0.1:" + port;
 
         Path baseDir = null;
         try {
-            baseDir = Files.createTempDirectory("edtbridge-agent-");
+            baseDir = Files.createTempDirectory(AgentRecord.BASE_DIR_PREFIX);
             agent.baseDir = baseDir.toString();
             Path log = baseDir.resolve("agent.log");
             // The parameters are glued to their values (/FD:\base, /AgentPort1543): that is the
@@ -242,21 +294,45 @@ public final class DesignerAgentGateway {
         }
 
         AGENTS.put(connection, agent);
+        writeRecord(agent);
+        startReaper();
         r.ok = true;
         r.started = true;
         r.agents.add(agent);
         r.message = "agent " + install.version + " for " + resolved.label
-                + " listening on 127.0.0.1:" + port;
+                + " listening on 127.0.0.1:" + port
+                + (swept.isEmpty() ? "" : ". Swept before starting: " + String.join("; ", swept));
         return r;
     }
 
-    /** Agents this bridge has running. */
+    /** Agents this bridge has running, plus what earlier bridge processes left behind. */
     public AgentResult list() {
         AgentResult r = new AgentResult();
         r.ok = true;
         AGENTS.values().removeIf(a -> a.process == null || !a.process.isAlive());
         r.agents.addAll(AGENTS.values());
-        r.message = r.agents.isEmpty() ? "no agent is running" : (r.agents.size() + " agent(s) running");
+        r.leftovers.addAll(inspectLeftovers());
+        long idle = idleMinutes();
+        r.message = (r.agents.isEmpty() ? "no agent is running" : r.agents.size() + " agent(s) running")
+                + (idle > 0 ? ", idle timeout " + idle + " min" : ", idle timeout off")
+                + (r.leftovers.isEmpty() ? "" : ", " + r.leftovers.size()
+                        + " left over from an earlier bridge process (action=sweep clears them)");
+        return r;
+    }
+
+    /**
+     * Clear what earlier bridge processes left behind: the Designer session of an agent whose process
+     * is gone, and its base directory. Agents still RUNNING from an earlier bridge process are only
+     * reported unless {@code stopRunning} says otherwise - the bridge restarts more often than the
+     * agents it started, and ending somebody's live session is not a side effect to hide.
+     */
+    public AgentResult sweepLeftovers(boolean stopRunning) {
+        AgentResult r = new AgentResult();
+        r.ok = true;
+        List<String> done = sweep(stopRunning);
+        r.agents.addAll(AGENTS.values());
+        r.leftovers.addAll(inspectLeftovers());
+        r.message = done.isEmpty() ? "nothing to sweep" : String.join("; ", done);
         return r;
     }
 
@@ -280,22 +356,54 @@ public final class DesignerAgentGateway {
     private static void stopAgent(Agent agent) {
         agent.lock.lock();
         try {
-            try {
-                session(agent).common().shutdown().exec(Duration.ofMinutes(1));
-            } catch (Exception politeFailed) {
-                // the process is going away regardless
-            }
-            dropSession(agent);
-            if (agent.process != null) {
-                agent.process.destroy();
-                if (agent.process.isAlive()) {
-                    agent.process.destroyForcibly();
-                }
-            }
+            stopLocked(agent);
         } finally {
             agent.lock.unlock();
         }
+        forget(agent);
+    }
+
+    /**
+     * The stopping itself, with the agent's lock already held by the caller.
+     *
+     * <p>The polite shutdown is asked for and then WAITED OUT, which is not politeness for its own
+     * sake: killing the process instead leaves its Designer session in the cluster - the very orphan
+     * the sweep exists for - and the process holds its own log file open, so the base directory
+     * survives too. Measured: an agent killed straight after the shutdown request left a live session
+     * behind; one given time to leave took its session with it.
+     */
+    private static void stopLocked(Agent agent) {
+        try {
+            session(agent).common().shutdown().exec(Duration.ofMinutes(1));
+        } catch (Exception politeFailed) {
+            // the process is going away regardless
+        }
+        dropSession(agent);
+        if (agent.process == null) {
+            return;
+        }
+        try {
+            agent.process.waitFor(SHUTDOWN_WAIT_SECONDS, TimeUnit.SECONDS);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        }
+        if (!agent.process.isAlive()) {
+            return;
+        }
+        agent.process.destroy();
+        if (agent.process.isAlive()) {
+            agent.process.destroyForcibly();
+        }
+        // It had to be killed, so its session is where a crash would have left it. We know which one.
+        agent.killed = true;
+    }
+
+    /** Drop the stopped agent, end a session it left behind, and remove its trace on disk. */
+    private static void forget(Agent agent) {
         AGENTS.remove(agent.connectionString);
+        if (agent.killed && agent.clusterSessionId != null) {
+            new DesignerAgentGateway().endRecordedSession(agent.record());
+        }
         if (agent.baseDir != null) {
             IbcmdGateway.deleteRecursively(Path.of(agent.baseDir));
         }
@@ -312,6 +420,324 @@ public final class DesignerAgentGateway {
         if (agent != null && agent.connectionString != null && agent.connectionString.startsWith("/F")) {
             stopAgent(agent);
         }
+    }
+
+    // ── remains of earlier bridge processes ─────────────────────────────────────────────────────
+
+    /**
+     * A crash - an exception, a dropped MCP connection, a killed process - takes the agent with it and
+     * leaves its Designer session in the cluster, holding the infobase's configuration lock. The next
+     * call then fails with "Ошибка блокировки информационной базы для конфигурирования", which reads as
+     * if somebody else were configuring the infobase; the cure used to be finding that session by hand.
+     *
+     * <p>Ownership is PROVEN, not guessed. Every agent writes an {@link AgentRecord} into its own
+     * temporary base directory - a clean stop removes the directory, a crash leaves it - and records the
+     * id of the cluster session it opened. The sweep ends exactly that session, and only when the
+     * process that owned it is gone. The obvious heuristic - "a Designer session from this host under
+     * this user" - is NOT used and must not be: EDT starts agents of its own for the infobases its
+     * projects are bound to, and they look exactly the same from the cluster's side.
+     */
+    private List<String> sweep(boolean stopRunning) {
+        List<String> report = new ArrayList<>();
+        int withoutRecord = 0;
+        Set<String> ours = ownBaseDirs();
+        for (Path dir : leftoverDirs(ours)) {
+            AgentRecord record = AgentRecord.read(dir);
+            if (record == null) {
+                // A directory without a record: left by a bridge older than this feature, or by an
+                // agent that died between creating the directory and writing the file. Nothing here
+                // identifies a session, so say so instead of guessing at one - and count them rather
+                // than name them, because years of crashes add up to a page of noise.
+                withoutRecord++;
+                IbcmdGateway.deleteRecursively(dir);
+                continue;
+            }
+            boolean alive = agentProcessAlive(record);
+            if (alive && !stopRunning) {
+                report.add("agent for " + record.label + " (pid " + record.pid
+                        + ") is still running from an earlier bridge process - left alone");
+                continue;
+            }
+            if (alive) {
+                ProcessHandle.of(record.pid).ifPresent(ProcessHandle::destroyForcibly);
+                report.add("stopped the agent for " + record.label + " (pid " + record.pid + ")");
+            }
+            report.add(endRecordedSession(record));
+            IbcmdGateway.deleteRecursively(dir);
+        }
+        if (withoutRecord > 0) {
+            report.add(withoutRecord + " base director" + (withoutRecord == 1 ? "y" : "ies")
+                    + " without a record removed (nothing in them identifies a session)");
+        }
+        return report;
+    }
+
+    /** What is left on disk from earlier bridge processes, as plain maps for the tool layer. */
+    private List<Map<String, Object>> inspectLeftovers() {
+        List<Map<String, Object>> out = new ArrayList<>();
+        Set<String> ours = ownBaseDirs();
+        for (Path dir : leftoverDirs(ours)) {
+            Map<String, Object> m = new java.util.LinkedHashMap<>();
+            m.put("baseDir", dir.toString());
+            AgentRecord record = AgentRecord.read(dir);
+            if (record == null) {
+                m.put("state", "no record");
+            } else {
+                m.put("infobase", record.label);
+                m.put("connectionString", record.connectionString);
+                m.put("pid", record.pid);
+                m.put("user", record.user);
+                m.put("clusterSessionId", record.clusterSessionId);
+                m.put("state", agentProcessAlive(record) ? "running" : "orphaned");
+            }
+            out.add(m);
+        }
+        return out;
+    }
+
+    /** Base directories in the temporary area that are not those of an agent this process runs. */
+    private static List<Path> leftoverDirs(Set<String> ours) {
+        List<Path> found = new ArrayList<>();
+        Path tmp = Path.of(System.getProperty("java.io.tmpdir", "."));
+        try (DirectoryStream<Path> dirs =
+                Files.newDirectoryStream(tmp, AgentRecord.BASE_DIR_PREFIX + "*")) {
+            for (Path dir : dirs) {
+                if (Files.isDirectory(dir) && !ours.contains(dir.toAbsolutePath().toString())) {
+                    found.add(dir);
+                }
+            }
+        } catch (IOException unreadable) {
+            // no temporary area to sweep is not a failure of the caller's operation
+        }
+        return found;
+    }
+
+    /**
+     * Base directories of agents this process runs and whose process is ALIVE. The liveness check is
+     * the point: an agent that died under a living bridge is still in the map, and shielding its
+     * directory would leave exactly the orphan this sweep exists for.
+     */
+    private static Set<String> ownBaseDirs() {
+        Set<String> ours = new HashSet<>();
+        for (Agent a : AGENTS.values()) {
+            if (a.baseDir != null && a.process != null && a.process.isAlive()) {
+                ours.add(Path.of(a.baseDir).toAbsolutePath().toString());
+            }
+        }
+        return ours;
+    }
+
+    /**
+     * Is the process named by the record still the agent it was?
+     *
+     * <p>A bare "does this pid exist" would be a lie waiting to happen - pids are reused - so the
+     * process also has to BE a designer and be no older than the record. Both checks are cheap and
+     * together they make a stale record indistinguishable from a dead one, which is what we want.
+     */
+    private static boolean agentProcessAlive(AgentRecord record) {
+        if (record.pid <= 0) {
+            return false;
+        }
+        return ProcessHandle.of(record.pid)
+                .filter(ProcessHandle::isAlive)
+                .map(handle -> {
+                    String command = handle.info().command().orElse("").toLowerCase();
+                    if (!command.contains("1cv8")) {
+                        return false;
+                    }
+                    return handle.info().startInstant()
+                            .map(started -> started.toEpochMilli() >= record.startedAtMillis - 60_000L)
+                            .orElse(true);
+                })
+                .orElse(false);
+    }
+
+    /** End the cluster session the dead agent recorded, and say plainly when there is nothing to end. */
+    private String endRecordedSession(AgentRecord record) {
+        String who = "agent for " + record.label;
+        if (!record.isServerInfobase()) {
+            return who + ": file infobase, no cluster session to end";
+        }
+        if (record.clusterSessionId == null) {
+            return who + ": died before it opened an infobase session - nothing to end";
+        }
+        ClusterGateway cluster = new ClusterGateway();
+        ClusterGateway.SessionsResult listed = cluster.sessions(record.clusterServer(),
+                record.clusterInfobase(), "Designer", null, null, null, null, record.platformVersion);
+        if (!listed.ok) {
+            return who + ": could not ask the cluster about session " + record.clusterSessionId
+                    + " (" + listed.message + ")";
+        }
+        boolean present = listed.sessions.stream()
+                .anyMatch(s -> record.clusterSessionId.equalsIgnoreCase(s.id));
+        if (!present) {
+            return who + ": its session " + record.clusterSessionId + " is already gone";
+        }
+        ClusterGateway.SessionsResult ended = cluster.terminate(record.clusterServer(),
+                record.clusterInfobase(), "Designer", List.of(record.clusterSessionId),
+                null, null, null, null, record.platformVersion,
+                "edt-bridge: sweeping the session of an agent whose process is gone", true, true);
+        return ended.applied
+                ? who + ": ended its orphaned session " + record.clusterSessionId
+                : who + ": could not end session " + record.clusterSessionId + " (" + ended.message + ")";
+    }
+
+    /**
+     * The Designer sessions the cluster shows for this agent's infobase right now, or null when the
+     * question does not apply (a file infobase) or cannot be asked (no rac, a cluster that wants
+     * credentials we were not given). Null means "no snapshot", which is not the same as "none".
+     */
+    private static Set<String> designerSessionIds(Agent agent) {
+        if (!io.github.keyfire.edtbridge.core.DesignerAddress.isServer(agent.connectionString)) {
+            return null;
+        }
+        try {
+            ClusterGateway.SessionsResult listed = new ClusterGateway().sessions(
+                    io.github.keyfire.edtbridge.core.DesignerAddress.serverHost(agent.connectionString),
+                    io.github.keyfire.edtbridge.core.DesignerAddress
+                            .serverReference(agent.connectionString),
+                    "Designer", null, null, null, null, agent.platformVersion);
+            if (!listed.ok) {
+                return null;
+            }
+            Set<String> ids = new HashSet<>();
+            listed.sessions.forEach(s -> ids.add(s.id));
+            return ids;
+        } catch (RuntimeException cannotAsk) {
+            return null;
+        }
+    }
+
+    /**
+     * Learn which cluster session this agent just opened, by taking the difference against the snapshot
+     * from before the connection. This is the whole basis of a safe sweep: without an id of its own,
+     * the only way to find the remains later is the host-and-user heuristic, which cannot tell our
+     * agent from the developer's own configurator.
+     *
+     * <p>Deliberately gives up rather than guesses. More than one new session in that window (someone
+     * else opened a configurator in the same seconds) leaves the record without an id, and a later
+     * sweep then says the agent died before it connected instead of ending a stranger's session.
+     */
+    private static void rememberOwnSession(Agent agent, Set<String> before) {
+        if (before == null) {
+            return;
+        }
+        String host = localHost();
+        List<String> fresh = new ArrayList<>();
+        ClusterGateway.SessionsResult listed = new ClusterGateway().sessions(
+                io.github.keyfire.edtbridge.core.DesignerAddress.serverHost(agent.connectionString),
+                io.github.keyfire.edtbridge.core.DesignerAddress.serverReference(agent.connectionString),
+                "Designer", null, null, null, null, agent.platformVersion);
+        if (!listed.ok) {
+            return;
+        }
+        for (ClusterGateway.Session s : listed.sessions) {
+            if (before.contains(s.id)) {
+                continue;
+            }
+            if (host != null && s.host != null && !host.equalsIgnoreCase(s.host)) {
+                continue;
+            }
+            if (!agent.user.isBlank() && s.userName != null && !agent.user.equalsIgnoreCase(s.userName)) {
+                continue;
+            }
+            fresh.add(s.id);
+        }
+        if (fresh.size() == 1) {
+            agent.clusterSessionId = fresh.get(0);
+            writeRecord(agent);
+        }
+    }
+
+    /** Write the agent's trace; a failure here costs the sweep, not the operation. */
+    private static void writeRecord(Agent agent) {
+        if (agent.baseDir == null) {
+            return;
+        }
+        try {
+            agent.record().write(Path.of(agent.baseDir));
+        } catch (IOException unwritable) {
+            // The agent works without its record - only a later sweep would have used it.
+        }
+    }
+
+    /** This machine's name, as the cluster reports the host of a client session. */
+    private static String localHost() {
+        try {
+            return java.net.InetAddress.getLocalHost().getHostName();
+        } catch (java.net.UnknownHostException unknown) {
+            return System.getenv("COMPUTERNAME");
+        }
+    }
+
+    // ── idle timeout ────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * A standing agent of a SERVER infobase costs a client license and a Designer session for as long
+     * as it lives, and on a stand with a small pool that is a seat taken from a person. Keeping it is
+     * still right - starting one opens a large configuration and is slow - but keeping it FOREVER after
+     * the work is done is not, and until now the only thing that stopped one was somebody remembering.
+     *
+     * <p>Configured by {@code edt.bridge.agent-idle-minutes} / {@code EDT_BRIDGE_AGENT_IDLE_MINUTES} /
+     * the {@code agentIdleMinutes} preference; see {@link AgentIdle} for the defaults and for switching
+     * it off. A file infobase's agent is released after every operation anyway, for a harder reason.
+     */
+    private static synchronized void startReaper() {
+        if (reaper != null || idleMinutes() <= 0) {
+            return;
+        }
+        reaper = Executors.newSingleThreadScheduledExecutor(runnable -> {
+            Thread t = new Thread(runnable, "edt-bridge-agent-reaper");
+            t.setDaemon(true);
+            return t;
+        });
+        reaper.scheduleWithFixedDelay(DesignerAgentGateway::reapIdleAgents,
+                REAPER_PERIOD_SECONDS, REAPER_PERIOD_SECONDS, TimeUnit.SECONDS);
+    }
+
+    private static void reapIdleAgents() {
+        long minutes = idleMinutes();
+        if (minutes <= 0) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        for (Agent agent : new LinkedHashSet<>(AGENTS.values())) {
+            if (!AgentIdle.expired(agent.lastUsedMillis, now, minutes)) {
+                continue;
+            }
+            // Never interrupt an operation. A call in flight holds the lock, and an agent that busy is
+            // not idle - it simply has not stamped itself yet. Taking the lock here (rather than
+            // letting stopAgent take it) also closes the window in which a call could start between
+            // the decision and the stop and be cut off mid-operation.
+            if (!agent.lock.tryLock()) {
+                continue;
+            }
+            boolean stopped = false;
+            try {
+                if (AgentIdle.expired(agent.lastUsedMillis, System.currentTimeMillis(), minutes)) {
+                    stopLocked(agent);
+                    stopped = true;
+                }
+            } catch (RuntimeException stopFailed) {
+                // an agent that will not die is reported by the next list(), not by a crashed reaper
+            } finally {
+                agent.lock.unlock();
+            }
+            if (stopped) {
+                forget(agent);
+            }
+        }
+    }
+
+    /** The configured idle timeout in minutes; 0 when the reaper is switched off. */
+    private static long idleMinutes() {
+        String configured = System.getProperty("edt.bridge.agent-idle-minutes",
+                System.getenv("EDT_BRIDGE_AGENT_IDLE_MINUTES"));
+        if (configured == null || configured.isBlank()) {
+            configured = io.github.keyfire.edtbridge.EdtBridgePrefs
+                    .get(io.github.keyfire.edtbridge.EdtBridgePrefs.KEY_AGENT_IDLE_MINUTES);
+        }
+        return AgentIdle.minutes(configured);
     }
 
     // ── operations ──────────────────────────────────────────────────────────────────────────────
@@ -935,9 +1361,11 @@ public final class DesignerAgentGateway {
                     // Which is also how we recognise that it IS already connected, so that refusal is
                     // not an error here: note it and reconnect without asking again. (If the lock were
                     // somebody else's, the first real operation says so plainly.)
+                    Set<String> before = designerSessionIds(agent);
                     try {
                         session.common().connectInfobase().exec(Duration.ofHours(1));
                         agent.infobaseConnected = true;
+                        rememberOwnSession(agent, before);
                     } catch (Exception refused) {
                         if (!alreadyConnected(refused)) {
                             throw refused;
@@ -1034,6 +1462,7 @@ public final class DesignerAgentGateway {
      * very retry to the caller.
      */
     private static <T> T withSession(Agent agent, SessionAction<T> action) throws Exception {
+        agent.lastUsedMillis = System.currentTimeMillis();
         try {
             try {
                 return action.run(session(agent));
@@ -1045,8 +1474,11 @@ public final class DesignerAgentGateway {
                 return action.run(session(agent));
             }
         } finally {
-            // Every infobase operation runs through here exactly once, which makes this the one
-            // place to give up a file infobase's agent as soon as the operation is over.
+            // Every infobase operation runs through here exactly once, which makes this the one place
+            // to stamp the agent for the idle timeout and to give up a file infobase's agent as soon
+            // as the operation is over. Stamped on the way OUT as well: a long operation must not look
+            // idle for having started an hour ago.
+            agent.lastUsedMillis = System.currentTimeMillis();
             releaseFileInfobaseAgent(agent);
         }
     }

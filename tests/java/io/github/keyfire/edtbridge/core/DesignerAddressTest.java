@@ -17,7 +17,9 @@
 package io.github.keyfire.edtbridge.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -85,5 +87,29 @@ class DesignerAddressTest {
         // published over a web server: the designer cannot reach it, and saying so beats guessing
         assertNull(DesignerAddress.of("web", null, "https://example.test/base", null));
         assertNull(DesignerAddress.of("unknown", "D:\\Bases\\demo", null, null));
+    }
+
+    @Test
+    @DisplayName("an address is taken apart again to ask the cluster about the infobase")
+    void backToClusterAndInfobase() {
+        String address = DesignerAddress.server("srv.example.test", "payments");
+        assertTrue(DesignerAddress.isServer(address));
+        assertEquals("srv.example.test", DesignerAddress.serverHost(address));
+        assertEquals("payments", DesignerAddress.serverReference(address));
+        // the port travels with the host, exactly as the designer takes it
+        assertEquals("srv.example.test:1741",
+                DesignerAddress.serverHost("/Ssrv.example.test:1741\\payments"));
+    }
+
+    @Test
+    @DisplayName("a file infobase has no cluster - and a Windows path must not be read as one")
+    void fileHasNoCluster() {
+        String file = DesignerAddress.file("D:\\Bases\\demo");
+        assertFalse(DesignerAddress.isServer(file));
+        assertNull(DesignerAddress.serverHost(file));
+        assertNull(DesignerAddress.serverReference(file));
+        assertNull(DesignerAddress.serverHost(null));
+        // a switch with nothing after the backslash names no infobase
+        assertNull(DesignerAddress.serverReference("/Ssrv.example.test\\"));
     }
 }
