@@ -2,7 +2,7 @@
 # настройках репозитория должен быть "GitHub Actions" (Settings -> Pages -> Source).
 # Сайт живёт отдельным подпроектом в site/ (свой package.json): корневой dist/ занят
 # релизным jar, а blume собирает в dist рядом со своим конфигом – так они не спорят.
-# Сборка проверяется тем же `npx blume build`, что и локально; вывод — в site/dist/.
+# Сборка проверяется тем же `npx blume build`, что и локально; вывод – в site/dist/.
 name: Docs
 
 on:
