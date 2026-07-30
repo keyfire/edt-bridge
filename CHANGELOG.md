@@ -8,6 +8,26 @@ that day are named in the heading. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
+## 2026-07-30 – unreleased
+
+### Added
+- **`edt_open_gui` – hand the workspace from the headless EDT to the GUI one.** Reaching the EDT
+  window meant finding 1cedtcli in the task manager, killing it and starting EDT by hand; the
+  bridge could stop its EDT but not open the next one. The tool stops the headless session, waits
+  until its processes are actually gone and launches the GUI EDT on the same workspace. Waiting on
+  the port is not enough – it falls silent while the runtime still holds the workspace lock, and
+  that leftover is exactly what gets hunted by hand; `force` kills what does not stop in time,
+  the keepalive shell first, because it is the CLI's parent and a tree kill from below never
+  reaches it. Served by the WRAPPER, not by the bridge: a tool inside EDT cannot report on the EDT
+  it just ended. Also `edt-bridge-mcp gui` in the shell.
+
+### Fixed
+- **A localized Windows hid every EDT process from the wrapper.** `tasklist` answers in the console
+  OEM codepage, and the wrapper decoded it as UTF-8: the decode failed inside the reader thread and
+  left the listing EMPTY, which every caller read as "no such process". So the guard that refuses
+  to start a headless EDT while a GUI one is running never fired on such a machine, and a second
+  EDT was launched onto a locked workspace. The listing is now decoded with the console codepage.
+
 ## 2026-07-27 – 0.10.0
 
 ### Added

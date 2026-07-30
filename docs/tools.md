@@ -91,3 +91,13 @@ production. All are token-gated; `edt_evaluate` is gated hardest.
 | `edt_debug_attach` · `edt_debug_detach` | Attach a debug session to a running infobase's debug server (returns a `sessionId` for the other debug tools), and detach – terminating the session and freeing the infobase. |
 | `edt_debug_inspect` · `edt_debug_control` | List a session's threads and, for **suspended** ones, their BSL stack frames + the top frame's variables (read-only); then control execution – `suspend`/`resume`, or `stepOver`/`stepInto`/`stepReturn` a suspended thread. |
 | `edt_evaluate` | Evaluate an **arbitrary BSL expression** in a suspended frame – code execution against the live infobase. Needs the token **and** per-call `allowCodeExecution=true` **and** the server switch `EDT_BRIDGE_ALLOW_EVALUATE=1` (off by default). |
+
+### Served by the wrapper
+
+One tool does not come from the bridge inside EDT: it acts ON that EDT, and a tool cannot report
+on the process it just ended. `edt-bridge-mcp` serves it itself, listing it alongside the bridge
+tools and answering it without forwarding.
+
+| Wrapper tool | What it does |
+|--------------|--------------|
+| `edt_open_gui` | Hand the workspace over to the **GUI EDT**: stop the headless session behind the bridge, wait until its processes are really gone – the port falls silent well before the runtime does, and it is that leftover process which otherwise gets hunted in the task manager – and open the EDT window on the same workspace. `force` kills what does not stop in time, including the keepalive shell that outlives a tree kill from below. The bridge returns by itself once the GUI EDT has loaded the plugin. |

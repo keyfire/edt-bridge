@@ -25,7 +25,7 @@ import urllib.error
 
 from . import __version__, i18n
 
-COMMANDS = ("call", "tools", "status", "shutdown")
+COMMANDS = ("call", "tools", "status", "shutdown", "gui")
 
 _TOKEN_HINT = (
     "the bridge refused the request (401). Write tools - and, on a token-protected server, every "
@@ -60,6 +60,9 @@ def build_parser(command: str) -> argparse.ArgumentParser:
     if command == "shutdown":
         parser.add_argument("--force", action="store_true", help=i18n.t("shutdown.force"))
         parser.add_argument("--no-wait", action="store_true", help=i18n.t("shutdown.no-wait"))
+    if command == "gui":
+        parser.add_argument("--force", action="store_true", help=i18n.t("gui.force"))
+        parser.add_argument("--timeout", type=int, default=90, help=i18n.t("gui.timeout"))
     add_connection_flags(parser)
     parser.add_argument("--version", action="version", help=i18n.t("version"),
                         version=f"%(prog)s {__version__}")
@@ -204,6 +207,14 @@ def _run(command: str, argv: list[str]) -> int:
 
     if command == "shutdown":
         return _shutdown(backend, args)
+
+    if command == "gui":
+        # Never starts a backend on the way: the point of the command is to END the headless
+        # session, and autostart would race the GUI for the workspace lock.
+        ok, lines = backend.open_gui(force=args.force, timeout=args.timeout)
+        for line in lines:
+            print(line, file=sys.stdout if ok else sys.stderr)
+        return 0 if ok else 1
 
     ready, why = backend.ensure(wait=True)
     if not ready:

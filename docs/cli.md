@@ -42,6 +42,8 @@ usage: edt-bridge-mcp [options]           (no command: run as an MCP server)
 | `call <tool>` | call one bridge tool and print what it returned |
 | `tools` | list the tools the running bridge serves |
 | `status` | report the running bridge (never starts one) |
+| `shutdown` | shut down the EDT behind the bridge |
+| `gui` | stop the headless EDT and open the GUI one |
 | `self-update` | refresh the plugin jar and this wrapper |
 
 Run 'edt-bridge-mcp &lt;command&gt; `--help`' for a command's own options. The options above apply to the MCP-server mode and to every command.
@@ -145,6 +147,30 @@ usage: edt-bridge-mcp shutdown [-h] [--force] [--no-wait] [--workspace WORKSPACE
 | `-h, --help` | show this help message and exit |
 | `--force` | shut a GUI EDT down too: without this flag the bridge refuses rather than close somebody's window |
 | `--no-wait` | do not wait for the bridge to go down (the default waits up to 60 seconds) |
+| `--workspace WORKSPACE` | EDT workspace path for the headless auto-start |
+| `--edt-dir EDT_DIR` | EDT install dir (.../1cedt); auto-detected when omitted |
+| `--port PORT` | bridge port (default 8770) |
+| `--start-timeout START_TIMEOUT` | seconds to wait for a starting backend |
+| `--no-autostart` | never launch a headless EDT |
+| `--version` | show the version and exit |
+
+## `edt-bridge-mcp gui`
+
+Hand the workspace over to the GUI EDT: stop the headless one, wait until its processes are really gone, and open the EDT window on the same workspace. Never starts a headless EDT on the way.
+
+```bash
+usage: edt-bridge-mcp gui [-h] [--force] [--timeout TIMEOUT] [--workspace WORKSPACE]
+                          [--edt-dir EDT_DIR] [--port PORT]
+                          [--start-timeout START_TIMEOUT] [--no-autostart] [--version]
+```
+
+**Options**
+
+| Option | Description |
+|---|---|
+| `-h, --help` | show this help message and exit |
+| `--force` | kill the headless session when it does not stop within the timeout |
+| `--timeout TIMEOUT` | seconds to wait for the headless EDT to stop (default 90) |
 | `--workspace WORKSPACE` | EDT workspace path for the headless auto-start |
 | `--edt-dir EDT_DIR` | EDT install dir (.../1cedt); auto-detected when omitted |
 | `--port PORT` | bridge port (default 8770) |

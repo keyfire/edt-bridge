@@ -26,8 +26,11 @@ Registration in Claude Code:
 from __future__ import annotations
 
 import argparse
+import csv
+import io
 import json
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -41,6 +44,29 @@ from . import __version__
 from . import cli, i18n
 
 PROTOCOL_FALLBACK = "2024-11-05"
+
+_WINDOWS = os.name == "nt"
+
+
+def _console_encoding() -> str:
+    """The codepage console tools answer in - the OEM one on Windows, not UTF-8 (see _pids_of)."""
+    if not _WINDOWS:
+        return "utf-8"
+    try:
+        import ctypes
+
+        return f"cp{ctypes.windll.kernel32.GetOEMCP()}"
+    except Exception:  # no ctypes, or a stub kernel32 - the fields we read are ASCII anyway
+        return "cp437"
+
+
+_CONSOLE_ENCODING = _console_encoding()
+#: Process images of an EDT installation. The GUI workbench is one process; a headless session
+#: is two - the CLI launcher and the runtime it spawns - and both have to go before the GUI can
+#: take the workspace.
+GUI_IMAGE = "1cedt.exe" if _WINDOWS else "1cedt"
+CLI_IMAGE = "1cedtcli.exe" if _WINDOWS else "1cedtcli"
+HEADLESS_IMAGES = (CLI_IMAGE, "1cedtc.exe" if _WINDOWS else "1cedtc")
 
 
 def force_utf8_streams() -> None:
@@ -184,40 +210,59 @@ class Backend:
             "EDT_BRIDGE_START_TIMEOUT)"
         )
 
+    def _pids_of(self, image: str) -> list[int]:
+        """Live pids of one EDT image – a list, not a flag: a hung process is killed by pid.
+
+        The name is matched exactly, so asking for the GUI (1cedt) never returns the headless
+        CLI (1cedtcli).
+        """
+        try:
+            if os.name == "nt":
+                # BYTES, decoded by hand: tasklist prints in the console OEM codepage, and
+                # text=True decodes as UTF-8 - on a localized Windows that raises inside the
+                # reader thread and leaves the output EMPTY. The old boolean checks read that
+                # emptiness as "no such process": the GUI guard never fired here.
+                raw = subprocess.run(
+                    ["tasklist", "/FI", f"IMAGENAME eq {image}", "/FO", "CSV", "/NH"],
+                    capture_output=True, timeout=15, check=False,
+                ).stdout
+                out = raw.decode(_CONSOLE_ENCODING, errors="replace")
+                pids = []
+                for row in csv.reader(io.StringIO(out)):
+                    # A miss prints an info line, not a CSV row - it simply does not parse.
+                    if len(row) >= 2 and row[0].lower() == image.lower():
+                        try:
+                            pids.append(int(row[1]))
+                        except ValueError:
+                            pass
+                return pids
+            out = subprocess.run(
+                ["pgrep", "-x", image], capture_output=True, text=True, timeout=15, check=False
+            ).stdout
+            return [int(item) for item in out.split() if item.isdigit()]
+        except OSError:
+            return []
+
+    def gui_pids(self) -> list[int]:
+        return self._pids_of(GUI_IMAGE)
+
+    def headless_pids(self) -> list[int]:
+        """Both halves of a headless session: the CLI launcher and the runtime it spawns."""
+        pids = []
+        for image in HEADLESS_IMAGES:
+            pids.extend(self._pids_of(image))
+        return pids
+
     def _gui_edt_running(self) -> bool:
         """True when a GUI EDT (1cedt) process exists – we then refuse to launch headless
         (the GUI holds the workspace lock; the user likely just lacks the plugin there)."""
-        try:
-            if os.name == "nt":
-                out = subprocess.run(
-                    ["tasklist", "/FI", "IMAGENAME eq 1cedt.exe", "/FO", "CSV", "/NH"],
-                    capture_output=True, text=True, timeout=15, check=False,
-                ).stdout
-                return "1cedt.exe" in out
-            out = subprocess.run(
-                ["pgrep", "-x", "1cedt"], capture_output=True, text=True, timeout=15, check=False
-            ).stdout
-            return bool(out.strip())
-        except OSError:
-            return False
+        return bool(self.gui_pids())
 
     def _headless_cli_running(self) -> bool:
-        try:
-            if os.name == "nt":
-                out = subprocess.run(
-                    ["tasklist", "/FI", "IMAGENAME eq 1cedtcli.exe", "/FO", "CSV", "/NH"],
-                    capture_output=True, text=True, timeout=15, check=False,
-                ).stdout
-                return "1cedtcli.exe" in out
-            out = subprocess.run(
-                ["pgrep", "-f", "1cedtcli"], capture_output=True, text=True, timeout=15, check=False
-            ).stdout
-            return bool(out.strip())
-        except OSError:
-            return False
+        return bool(self._pids_of(HEADLESS_IMAGES[0]))
 
-    def _find_cli(self) -> Path | None:
-        exe = "1cedtcli.exe" if os.name == "nt" else "1cedtcli"
+    def _find_exe(self, exe: str) -> Path | None:
+        """Locate one executable of the EDT installation – the CLI and the GUI live side by side."""
         if self.edt_dir:
             p = Path(self.edt_dir) / exe
             return p if p.exists() else None
@@ -235,6 +280,9 @@ class Backend:
                     if p.exists():
                         return p
         return None
+
+    def _find_cli(self) -> Path | None:
+        return self._find_exe(CLI_IMAGE)
 
     def _ensure_plugin_jar(self, cli_dir: Path) -> tuple[bool, str]:
         """Deliver the plugin jar into EDT's dropins when it is missing: the wrapper installs
@@ -323,6 +371,201 @@ class Backend:
             return False, f"failed to launch 1cedtcli: {exc}"
         return True, "launched"
 
+    # -- handing the workspace over to the GUI ---------------------------
+
+    def _keepalive_pids(self) -> list[int]:
+        """The shell that feeds the headless CLI its keepalive stdin, and its ping.
+
+        It is the PARENT of 1cedtcli, so killing the tree below the CLI does not reach it, and
+        while it lives it keeps the dropins jar locked. Matched by command line - the same
+        marker scripts/toggle-headless.ps1 uses.
+        """
+        if not _WINDOWS:
+            return []
+        # $PID excludes the query itself: the pattern we look for is part of THIS command line,
+        # so without it the shell reports - and force would kill - its own process.
+        query = (
+            "Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne $PID -and "
+            "$_.CommandLine -match 'edtbridge-headless|999999 127\\.0\\.0\\.1' } | "
+            "ForEach-Object { $_.ProcessId }"
+        )
+        try:
+            raw = subprocess.run(["powershell", "-NoProfile", "-Command", query],
+                                 capture_output=True, timeout=30, check=False).stdout
+        except (OSError, subprocess.SubprocessError):
+            return []
+        return [int(item) for item in raw.decode(_CONSOLE_ENCODING, errors="replace").split()
+                if item.isdigit()]
+
+    def _kill(self, pid: int) -> None:
+        """Kill one process and its children – the headless CLI is started from a keepalive shell."""
+        try:
+            if _WINDOWS:
+                subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
+                               capture_output=True, timeout=30, check=False)
+            else:
+                os.kill(pid, signal.SIGKILL)
+        except (OSError, subprocess.SubprocessError):
+            pass
+
+    def stop_headless(self, force: bool = False, timeout: int = 90,
+                      report=None) -> tuple[bool, list[int]]:
+        """Stop the headless EDT and wait until its processes are really gone.
+
+        Waiting on the port alone is not enough: the port closes while the runtime is still
+        finishing, and it is exactly that leftover process a person then hunts in the task
+        manager. Returns (stopped, survivors); with force the survivors are killed.
+        """
+        say = report or log
+        if self.status() is not None:
+            try:
+                answer = self.shutdown(force=force)
+                say(answer.get("message", "shutdown requested"))
+            except urllib.error.HTTPError as http:
+                if http.code == 409:
+                    return False, []  # a GUI workbench answers here - not ours to stop
+                say(f"the bridge answered HTTP {http.code} to the shutdown request")
+            except urllib.error.URLError as url:
+                say(f"could not ask the bridge to stop: {url.reason}")
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            survivors = self.headless_pids()
+            if not survivors and self.status() is None:
+                return True, []
+            time.sleep(1)
+        survivors = self.headless_pids()
+        if not survivors:
+            return self.status() is None, []
+        if not force:
+            return False, survivors
+        say(f"killing what is left of the headless session: {survivors}")
+        # The keepalive shell goes first, exactly as the toggle script does it: it is the CLI's
+        # parent, so it outlives a tree kill from below and keeps the dropins jar locked.
+        for pid in self._keepalive_pids():
+            self._kill(pid)
+        for pid in survivors:
+            self._kill(pid)
+        for _ in range(10):
+            survivors = self.headless_pids()
+            if not survivors:
+                return True, []
+            time.sleep(1)
+        return False, survivors
+
+    def _clear_stale_lock(self) -> None:
+        """Drop the workspace lock left by a killed session – EDT refuses the workspace with it."""
+        if not self.workspace:
+            return
+        lock = Path(self.workspace) / ".metadata" / ".lock"
+        if lock.exists():
+            try:
+                lock.unlink()
+            except OSError:
+                pass  # still held: the GUI will say so itself, and it is right to
+
+    def launch_gui(self, report=None) -> tuple[bool, str]:
+        """Start the GUI EDT on the configured workspace, detached from this process."""
+        say = report or log
+        exe = self._find_exe(GUI_IMAGE)
+        if exe is None:
+            return False, (
+                f"{GUI_IMAGE} not found - pass --edt-dir or set EDT_BRIDGE_EDT_DIR to the "
+                ".../1cedt install folder"
+            )
+        # Same care as the launch scripts: one jar in dropins, and it is the current one -
+        # otherwise the GUI comes up without the bridge, or with two versions of it.
+        self._ensure_plugin_jar(exe.parent)
+        command = [str(exe)]
+        if self.workspace:
+            command += ["-data", self.workspace]
+        say(f"starting the GUI EDT: {' '.join(command)}")
+        try:
+            if _WINDOWS:
+                subprocess.Popen(
+                    command, cwd=str(exe.parent),
+                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS,
+                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+            else:
+                subprocess.Popen(
+                    command, cwd=str(exe.parent), start_new_session=True,
+                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+        except OSError as exc:
+            return False, f"failed to launch {GUI_IMAGE}: {exc}"
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            pids = self.gui_pids()
+            if pids:
+                return True, f"the GUI EDT is starting (pid {pids[0]})"
+            time.sleep(1)
+        return False, ("the GUI EDT was launched but no process showed up within 60 s - "
+                       "check the installation")
+
+    def open_gui(self, force: bool = False, timeout: int = 90) -> tuple[bool, list[str]]:
+        """Hand the workspace over: stop the headless EDT, then open the GUI one on it.
+
+        The whole point of doing this in the wrapper rather than in a bridge tool: the wrapper
+        outlives the EDT it stops, so it can report what happened and start the next one.
+        """
+        lines: list[str] = []
+        say = lines.append
+        already = self.gui_pids()
+        if already and not self.headless_pids():
+            say(f"a GUI EDT is already running (pid {already[0]}) - nothing to do")
+            return True, lines
+        if self.headless_pids() or self.status() is not None:
+            stopped, survivors = self.stop_headless(force=force, timeout=timeout, report=say)
+            if not stopped:
+                if survivors:
+                    say(f"the headless EDT is still alive (pid {survivors}) after {timeout} s - "
+                        "rerun with --force to kill it")
+                else:
+                    say("the bridge refused to stop - it belongs to a GUI EDT; "
+                        "close that window or rerun with --force")
+                return False, lines
+            say("the headless EDT is down")
+            self._clear_stale_lock()
+        if already:
+            say(f"a GUI EDT is already running (pid {already[0]})")
+            return True, lines
+        ok, message = self.launch_gui(report=say)
+        say(message)
+        return ok, lines
+
+
+#: Tools the WRAPPER serves itself, on top of whatever the bridge inside EDT offers. The one
+#: thing they have in common: they must survive the EDT they act on, which a tool running
+#: inside that EDT cannot. They are listed alongside the bridge tools and never forwarded.
+LOCAL_TOOLS = [
+    {
+        "name": "edt_open_gui",
+        "description": (
+            "Stop the headless EDT that serves the bridge and open the GUI EDT on the same "
+            "workspace. Use it when a person needs the EDT window: a headless session holds the "
+            "workspace lock, so it has to end first, and its processes have to be gone - not just "
+            "its port. Served by the wrapper, which is why it can still answer after the EDT it "
+            "stopped is gone. The bridge comes back by itself once the GUI EDT has loaded the "
+            "plugin; until then no bridge tool is available."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "force": {
+                    "type": "boolean",
+                    "description": "kill the headless session when it does not stop in time "
+                                   "(default false)",
+                },
+                "timeoutSeconds": {
+                    "type": "integer",
+                    "description": "how long to wait for the headless EDT to stop, default 90",
+                },
+            },
+        },
+    },
+]
+LOCAL_TOOL_NAMES = {tool["name"] for tool in LOCAL_TOOLS}
+
 
 class StdioServer:
     """Newline-delimited JSON-RPC over stdio; forwards to the Backend."""
@@ -403,13 +646,18 @@ class StdioServer:
             return
         if method == "tools/list":
             if self.backend.is_up():
-                self._forward_or_error(message, req_id)
+                self._forward_tools_list(message, req_id)
                 self._announced_ready = True
                 return
             self._kick_background_start()
-            self._result(req_id, {"tools": []})
+            self._result(req_id, {"tools": list(LOCAL_TOOLS)})
             return
         if method == "tools/call":
+            if params.get("name") in LOCAL_TOOL_NAMES:
+                # Before ensure(): this tool ENDS a headless session, and autostarting one
+                # first would only give it something new to stop.
+                self._call_local(req_id, params.get("name"), params.get("arguments") or {})
+                return
             ready, msg = self.backend.ensure(wait=True)
             if not ready:
                 self._tool_error(req_id, f"edt-bridge backend is unavailable: {msg}")
@@ -424,6 +672,42 @@ class StdioServer:
             self._forward_or_error(message, req_id)
         else:
             self._error(req_id, -32601, f"method not available while the backend is down: {method}")
+
+    def _call_local(self, req_id, name: str, arguments: dict) -> None:
+        """Run a wrapper-served tool and report as a normal tool result."""
+        if name != "edt_open_gui":
+            self._tool_error(req_id, f"unknown local tool: {name}")
+            return
+        try:
+            seconds = max(1, int(arguments.get("timeoutSeconds")))
+        except (TypeError, ValueError):
+            seconds = 90
+        ok, lines = self.backend.open_gui(force=bool(arguments.get("force")), timeout=seconds)
+        text = "\n".join(lines) or ("done" if ok else "nothing happened")
+        if not ok:
+            self._tool_error(req_id, text)
+            return
+        self._result(req_id, {"content": [{"type": "text", "text": text}]})
+        # The tool set just changed under the client: the bridge went down with the headless
+        # EDT and comes back when the GUI one has loaded the plugin.
+        self._announced_ready = False
+        self._notify_tools_changed()
+        threading.Thread(target=self._announce_when_ready, daemon=True).start()
+
+    def _forward_tools_list(self, message: dict, req_id) -> None:
+        """Forward tools/list and add the wrapper's own tools to the answer."""
+        try:
+            reply = self.backend.forward(message)
+        except (OSError, ValueError) as exc:
+            self._error(req_id, -32000, f"edt-bridge request failed: {exc}")
+            return
+        result = reply.get("result")
+        if isinstance(result, dict) and isinstance(result.get("tools"), list):
+            served = {tool.get("name") for tool in result["tools"]}
+            result["tools"].extend(tool for tool in LOCAL_TOOLS if tool["name"] not in served)
+        reply.setdefault("jsonrpc", "2.0")
+        reply["id"] = req_id
+        self._send(reply)
 
     def _forward_or_error(self, message: dict, req_id) -> None:
         try:

@@ -60,6 +60,8 @@ MESSAGES = {
               "  call <инструмент>   вызвать один инструмент моста и напечатать ответ\n"
               "  tools               перечислить инструменты, которые отдаёт мост\n"
               "  status              состояние запущенного моста (сам его не поднимает)\n"
+              "  shutdown            штатно завершить EDT, обслуживающую мост\n"
+              "  gui                 остановить headless и открыть клиентскую EDT\n"
               "  self-update         обновить jar плагина и саму обвязку\n"
               "\n"
               "Опции команды: edt-bridge-mcp <команда> --help.\n"
@@ -68,6 +70,8 @@ MESSAGES = {
               "  call <tool>   call one bridge tool and print what it returned\n"
               "  tools         list the tools the running bridge serves\n"
               "  status        report the running bridge (never starts one)\n"
+              "  shutdown      shut down the EDT behind the bridge\n"
+              "  gui           stop the headless EDT and open the GUI one\n"
               "  self-update   refresh the plugin jar and this wrapper\n"
               "\n"
               "Run 'edt-bridge-mcp <command> --help' for a command's own options.\n"
@@ -121,6 +125,22 @@ MESSAGES = {
     "shutdown.no-wait": {
         "ru": "не ждать фактической остановки (по умолчанию команда ждёт закрытия порта до 60 секунд)",
         "en": "do not wait for the bridge to go down (the default waits up to 60 seconds)",
+    },
+    "gui.description": {
+        "ru": "Передать воркспейс клиентской EDT: остановить headless, дождаться, пока его "
+              "процессы действительно исчезнут, и запустить окно EDT на том же воркспейсе. "
+              "Сама обвязка headless при этом не поднимает.",
+        "en": "Hand the workspace over to the GUI EDT: stop the headless one, wait until its "
+              "processes are really gone, and open the EDT window on the same workspace. "
+              "Never starts a headless EDT on the way.",
+    },
+    "gui.force": {
+        "ru": "снять headless принудительно, если он не завершился за отведённое время",
+        "en": "kill the headless session when it does not stop within the timeout",
+    },
+    "gui.timeout": {
+        "ru": "сколько секунд ждать завершения headless (по умолчанию 90)",
+        "en": "seconds to wait for the headless EDT to stop (default 90)",
     },
     "call.tool": {
         "ru": "имя инструмента, например edt_projects (перечень: edt-bridge-mcp tools)",
