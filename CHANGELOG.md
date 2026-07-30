@@ -8,7 +8,7 @@ that day are named in the heading. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
-## 2026-07-30 – unreleased
+## 2026-07-30 – 0.11.0
 
 ### Added
 - **`edt_open_gui` – hand the workspace from the headless EDT to the GUI one.** Reaching the EDT
