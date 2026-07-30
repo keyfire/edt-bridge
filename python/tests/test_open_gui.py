@@ -80,14 +80,44 @@ class _Edt:
         return True, "the GUI EDT is starting (pid 4242)"
 
 
-def test_a_running_gui_is_left_alone():
+def test_a_running_gui_is_brought_to_the_front():
+    """Not "nothing to do": the workbench is launched without foreground rights and comes up
+    BEHIND everything else - which looks exactly like it never started. Running the command
+    again is how a person asks for that window, so it raises it instead of shrugging."""
     backend = server.Backend()
     with pytest.MonkeyPatch.context() as patch:
         edt = _Edt(gui=[100], headless=[], bridge=False).install(backend, patch)
+        patch.setattr(backend, "raise_gui_window", lambda wait=0: True)
         ok, lines = backend.open_gui()
     assert ok
     assert not edt.launched
-    assert "already running" in "\n".join(lines)
+    assert "brought to the front" in "\n".join(lines)
+
+
+def test_a_gui_that_has_no_window_yet_says_so():
+    backend = server.Backend()
+    with pytest.MonkeyPatch.context() as patch:
+        _Edt(gui=[100], headless=[], bridge=False).install(backend, patch)
+        patch.setattr(backend, "raise_gui_window", lambda wait=0: False)
+        ok, lines = backend.open_gui()
+    assert ok and "still loading" in "\n".join(lines)
+
+
+def test_the_window_is_looked_for_across_the_whole_process_tree(monkeypatch):
+    """The window belongs to the javaw the launcher starts, and that javaw runs from whatever
+    JDK the installation resolved - on this machine one outside the EDT folder entirely. The
+    first attempt matched by the installation path and found nothing while the window was open."""
+    backend = server.Backend()
+    monkeypatch.setattr(backend, "gui_pids", lambda: [14648])
+    monkeypatch.setattr(backend, "_parents", lambda: {17036: 14648, 22012: 17036, 999: 1})
+    assert backend._gui_family() == {14648, 17036, 22012}
+
+
+def test_a_parent_loop_does_not_spin(monkeypatch):
+    backend = server.Backend()
+    monkeypatch.setattr(backend, "gui_pids", lambda: [10])
+    monkeypatch.setattr(backend, "_parents", lambda: {10: 11, 11: 10})
+    assert backend._gui_family() == {10, 11}
 
 
 def test_headless_is_stopped_before_the_gui_starts():

@@ -67,6 +67,10 @@ _CONSOLE_ENCODING = _console_encoding()
 GUI_IMAGE = "1cedt.exe" if _WINDOWS else "1cedt"
 CLI_IMAGE = "1cedtcli.exe" if _WINDOWS else "1cedtcli"
 HEADLESS_IMAGES = (CLI_IMAGE, "1cedtc.exe" if _WINDOWS else "1cedtc")
+#: How long to wait for the workbench WINDOW after the process is up. The window is what a
+#: person is waiting for, but a large workspace loads for minutes - waiting that out would hang
+#: the command, so a miss is reported and the next run brings the window forward.
+WINDOW_WAIT = int(os.environ.get("EDT_BRIDGE_WINDOW_WAIT", "90"))
 
 
 def force_utf8_streams() -> None:
@@ -470,6 +474,91 @@ class Backend:
             except OSError:
                 pass  # still held: the GUI will say so itself, and it is right to
 
+    def _parents(self) -> dict[int, int]:
+        """pid -> parent pid for every process, in one query."""
+        if not _WINDOWS:
+            return {}
+        query = ("Get-CimInstance Win32_Process | ForEach-Object "
+                 "{ \"$($_.ProcessId) $($_.ParentProcessId)\" }")
+        try:
+            raw = subprocess.run(["powershell", "-NoProfile", "-Command", query],
+                                 capture_output=True, timeout=30, check=False).stdout
+        except (OSError, subprocess.SubprocessError):
+            return {}
+        table = {}
+        for line in raw.decode(_CONSOLE_ENCODING, errors="replace").splitlines():
+            pair = line.split()
+            if len(pair) == 2 and pair[0].isdigit() and pair[1].isdigit():
+                table[int(pair[0])] = int(pair[1])
+        return table
+
+    def _gui_family(self) -> set[int]:
+        """The launcher pids and everything under them.
+
+        The workbench WINDOW belongs to the javaw the launcher starts, and that javaw runs from
+        whatever JDK the installation resolved - here a Liberica under Program Files, nowhere
+        near the EDT folder. So the family is walked by process tree: no assumption about where
+        the runtime lives, and none about the language of the window title.
+        """
+        family = set(self.gui_pids())
+        if not family:
+            return family
+        parents = self._parents()
+        for _ in range(8):  # depth cap - a pid loop must not spin
+            grown = {pid for pid, parent in parents.items() if parent in family}
+            if grown <= family:
+                break
+            family |= grown
+        return family
+
+    def _window_of(self, pids: set[int]):
+        """A visible titled window owned by one of these processes, or None."""
+        if not _WINDOWS or not pids:
+            return None
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        found = []
+
+        @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        def _visit(hwnd, _lparam):
+            if not user32.IsWindowVisible(hwnd) or not user32.GetWindowTextLengthW(hwnd):
+                return True
+            pid = wintypes.DWORD()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            if pid.value in pids:
+                found.append(hwnd)
+                return False
+            return True
+
+        user32.EnumWindows(_visit, 0)
+        return found[0] if found else None
+
+    def raise_gui_window(self, wait: int = 0) -> bool:
+        """Bring the EDT window to the front, waiting for it to appear if asked.
+
+        A detached launch has no foreground rights, so the workbench came up BEHIND everything
+        else and looked as if it had not started at all. Loading a large workspace takes minutes,
+        so the wait is bounded and a miss is reported rather than endured.
+        """
+        if not _WINDOWS:
+            return False
+        import ctypes
+
+        user32 = ctypes.windll.user32
+        deadline = time.monotonic() + max(0, wait)
+        while True:
+            window = self._window_of(self._gui_family())
+            if window:
+                user32.ShowWindow(window, 9)  # SW_RESTORE - also un-minimizes
+                user32.BringWindowToTop(window)
+                user32.SetForegroundWindow(window)
+                return True
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(2)
+
     def launch_gui(self, report=None) -> tuple[bool, str]:
         """Start the GUI EDT on the configured workspace, detached from this process."""
         say = report or log
@@ -488,9 +577,12 @@ class Backend:
         say(f"starting the GUI EDT: {' '.join(command)}")
         try:
             if _WINDOWS:
+                # NOT detached: a detached process gets no foreground rights, and the workbench
+                # came up BEHIND every other window - indistinguishable from "it did not start".
+                # Its own process group only keeps a Ctrl+C in our console away from EDT.
                 subprocess.Popen(
                     command, cwd=str(exe.parent),
-                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS,
+                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 )
             else:
@@ -504,7 +596,13 @@ class Backend:
         while time.monotonic() < deadline:
             pids = self.gui_pids()
             if pids:
-                return True, f"the GUI EDT is starting (pid {pids[0]})"
+                if self.raise_gui_window(wait=WINDOW_WAIT):
+                    return True, f"the GUI EDT is up and in front (pid {pids[0]})"
+                return True, (
+                    f"the GUI EDT is starting (pid {pids[0]}); its window has not appeared within "
+                    f"{WINDOW_WAIT} s - loading a large workspace takes minutes, and it may open "
+                    "behind the other windows. Run the command again to bring it to the front."
+                )
             time.sleep(1)
         return False, ("the GUI EDT was launched but no process showed up within 60 s - "
                        "check the installation")
@@ -519,7 +617,12 @@ class Backend:
         say = lines.append
         already = self.gui_pids()
         if already and not self.headless_pids():
-            say(f"a GUI EDT is already running (pid {already[0]}) - nothing to do")
+            # Not "nothing to do": a workbench that is still loading, or simply buried under
+            # other windows, is exactly why the command gets run a second time.
+            raised = self.raise_gui_window()
+            say(f"a GUI EDT is already running (pid {already[0]}) - "
+                + ("brought to the front" if raised
+                   else "its window has not appeared yet, it is still loading"))
             return True, lines
         if self.headless_pids() or self.status() is not None:
             stopped, survivors = self.stop_headless(force=force, timeout=timeout, report=say)

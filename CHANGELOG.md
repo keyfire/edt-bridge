@@ -24,6 +24,14 @@ that day are named in the heading. The format follows
   the keepalive shell first, because it is the CLI's parent and a tree kill from below never
   reaches it. Served by the WRAPPER, not by the bridge: a tool inside EDT cannot report on the EDT
   it just ended. Also `edt-bridge-mcp gui` in the shell.
+- The window is brought to the FRONT, and a second run of the command raises it again. A
+  process launched detached has no foreground rights: the workbench came up behind every
+  other window, which is indistinguishable from "it never started". The launch is no longer
+  detached, and the window is found by walking the launcher's process tree - it belongs to
+  the javaw the launcher starts, and that javaw runs from whatever JDK the installation
+  resolved, which need not be inside the EDT folder at all. Loading a large workspace takes
+  minutes, so the wait for the window is bounded (`EDT_BRIDGE_WINDOW_WAIT`, 90 s) and a miss
+  is reported instead of endured.
 
 ### Fixed
 - **A localized Windows hid every EDT process from the wrapper.** `tasklist` answers in the console
