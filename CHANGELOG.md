@@ -8,6 +8,18 @@ that day are named in the heading. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
+## Unreleased
+
+### Fixed
+- **`self-update` right after a release no longer misses it.** The wrapper's file list came from
+  the JSON metadata of PyPI, a cache that catches up minutes after an upload: within that window
+  the command answered "already current", and with an explicit version - "no wheel", because the
+  files were read from that same lagging document. The list now comes from the SIMPLE index
+  (PEP 691), the newest release is ranked numerically (`0.9.0` before `0.11.1`, no pre-releases,
+  no yanked files), and the JSON metadata stays as the fallback for an index that does not speak
+  PEP 691. Only the wrapper half is affected - the jar keeps coming from the assets of a GitHub
+  release, a different source with no such cache.
+
 ## 2026-07-31 – 0.11.1
 
 ### Fixed
