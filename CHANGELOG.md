@@ -8,6 +8,15 @@ that day are named in the heading. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
+## 2026-07-31 – unreleased
+
+### Fixed
+- **`self-update --from` accepts the repository root.** The wrapper lives in the repository's
+  `python/` subdirectory, and the command insisted on being handed that subdirectory - passing the
+  root, which is what one naturally does, answered "no edt_bridge_mcp package" and turned an
+  obvious command into a second attempt. All three shapes are now looked for, and a directory with
+  none of them says where it looked.
+
 ## 2026-07-30 – 0.11.0
 
 ### Added

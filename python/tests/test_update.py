@@ -103,3 +103,36 @@ def test_missing_wheel_is_reported(monkeypatch):
 
     with pytest.raises(update._UpdateError, match="no wheel"):
         update._wheel_url(None)
+
+
+# -- установка из рабочей копии -------------------------------------------------
+
+
+def _checkout(root, relative):
+    """Рабочая копия, где пакет лежит по указанному пути."""
+    package = root / relative
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text('__version__ = "9.9.9"\n', encoding="utf-8")
+    return package
+
+
+@pytest.mark.parametrize("relative", ["src/edt_bridge_mcp",
+                                      "edt_bridge_mcp",
+                                      "python/src/edt_bridge_mcp"])
+def test_a_checkout_is_found_by_any_of_its_shapes(tmp_path, relative):
+    """Корень РЕПОЗИТОРИЯ - то, что передают естественно, а обвязка живёт в его python/.
+    Требование этого суффикса превращало очевидную команду во вторую попытку."""
+    _checkout(tmp_path / "repo", relative)
+    site = tmp_path / "site"
+    site.mkdir()
+    assert update._install_from_checkout(site, str(tmp_path / "repo")) == "9.9.9"
+    assert (site / "edt_bridge_mcp" / "__init__.py").exists()
+
+
+def test_a_directory_without_the_package_names_where_it_looked(tmp_path):
+    site = tmp_path / "site"
+    site.mkdir()
+    (tmp_path / "repo").mkdir()
+    with pytest.raises(update._UpdateError) as error:
+        update._install_from_checkout(site, str(tmp_path / "repo"))
+    assert "python" in str(error.value) and "src" in str(error.value)

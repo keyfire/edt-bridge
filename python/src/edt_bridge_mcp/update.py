@@ -266,11 +266,17 @@ def _checkout_version(package_dir: Path) -> str:
 def _install_from_checkout(site: Path, checkout: str) -> str:
     """Copy the package straight out of a checkout - no build backend needed to try a local build."""
     source = Path(checkout).expanduser().resolve()
-    package = source / "src" / "edt_bridge_mcp"
-    if not package.is_dir():
-        package = source / "edt_bridge_mcp"
-    if not package.is_dir():
-        raise _UpdateError(f"no edt_bridge_mcp package under {source} (expected src/edt_bridge_mcp)")
+    # The REPOSITORY root is what one naturally passes - the wrapper lives in its python/
+    # subdirectory, and demanding that suffix turned an obvious command into a second attempt.
+    candidates = (source / "src" / "edt_bridge_mcp",
+                  source / "edt_bridge_mcp",
+                  source / "python" / "src" / "edt_bridge_mcp")
+    package = next((path for path in candidates if path.is_dir()), None)
+    if package is None:
+        raise _UpdateError(
+            f"no edt_bridge_mcp package under {source} - looked in "
+            + ", ".join(str(path.relative_to(source)) for path in candidates)
+        )
     version = _checkout_version(package)
     # Only the package tree is replaced; the dist-info stays as installed, so pip metadata will
     # report the released version until a real install happens. __version__ lives in the code, so
