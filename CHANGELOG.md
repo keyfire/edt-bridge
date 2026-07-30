@@ -14,7 +14,11 @@ that day are named in the heading. The format follows
 - **`edt_open_gui` – hand the workspace from the headless EDT to the GUI one.** Reaching the EDT
   window meant finding 1cedtcli in the task manager, killing it and starting EDT by hand; the
   bridge could stop its EDT but not open the next one. The tool stops the headless session, waits
-  until its processes are actually gone and launches the GUI EDT on the same workspace. Waiting on
+  until its processes are actually gone and launches the GUI EDT on the same workspace. `/shutdown`
+  alone does not end such a session, which a live run proved: it stops the OSGi framework, the port
+  falls silent, and 1cedtcli keeps running because it was started with a keepalive pipe on stdin. So
+  the keepalive shell is closed next - not a kill of EDT, which has already stopped itself, but the
+  closing of the pipe that holds the process, after which the CLI reaches EOF and exits. Waiting on
   the port is not enough – it falls silent while the runtime still holds the workspace lock, and
   that leftover is exactly what gets hunted by hand; `force` kills what does not stop in time,
   the keepalive shell first, because it is the CLI's parent and a tree kill from below never

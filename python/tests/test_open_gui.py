@@ -22,12 +22,17 @@ def _clean_environment(monkeypatch):
 class _Edt:
     """A fake installation: which processes live, and what stopping them does."""
 
-    def __init__(self, gui=(), headless=(), keepalive=(), bridge=True, dies_on_shutdown=True):
+    def __init__(self, gui=(), headless=(), keepalive=(), bridge=True,
+                 dies_on_shutdown=False, dies_on_keepalive=True):
         self.gui = list(gui)
         self.headless = list(headless)
         self.keepalive = list(keepalive)
         self.bridge = bridge
+        # The live default: /shutdown stops the framework, the CLI stays because its stdin pipe
+        # is still open, and it exits when the keepalive that holds that pipe is closed.
         self.dies_on_shutdown = dies_on_shutdown
+        self.dies_on_keepalive = dies_on_keepalive
+        self.clock = 0.0
         self.shutdowns = []
         self.killed = []
         self.launched = []
@@ -42,18 +47,31 @@ class _Edt:
         monkeypatch.setattr(backend, "_keepalive_pids", lambda: list(self.keepalive))
         monkeypatch.setattr(backend, "_kill", self._kill)
         monkeypatch.setattr(backend, "launch_gui", self._launch)
-        monkeypatch.setattr(server.time, "sleep", lambda _seconds: None)
+        # An artificial clock: the waits are bounded by monotonic(), so a no-op sleep would
+        # spin on the real one for the whole timeout (the first run took 90 seconds).
+        monkeypatch.setattr(server.time, "sleep", self._sleep)
+        monkeypatch.setattr(server.time, "monotonic", lambda: self.clock)
         return self
 
+    def _sleep(self, seconds):
+        self.clock += seconds
+
     def _shutdown(self, force=False):
+        """/shutdown stops the framework - the PORT. Whether the process follows is a separate
+        question, and on a keepalive-started session it does not (see dies_on_shutdown)."""
         self.shutdowns.append(force)
+        self.bridge = False
         if self.dies_on_shutdown:
             self.headless = []
-            self.bridge = False
         return {"message": "shutting down"}
 
     def _kill(self, pid):
         self.killed.append(pid)
+        if pid in self.keepalive:
+            self.keepalive = [p for p in self.keepalive if p != pid]
+            if self.dies_on_keepalive:
+                self.headless = []  # EOF on stdin - the CLI ends by itself
+            return
         self.headless = [p for p in self.headless if p != pid]
 
     def _launch(self, report=None):
@@ -73,15 +91,31 @@ def test_a_running_gui_is_left_alone():
 
 
 def test_headless_is_stopped_before_the_gui_starts():
+    """The graceful path in full, as it really goes: /shutdown quiets the port, closing the
+    keepalive frees the CLI's stdin, the CLI ends by itself - no force anywhere."""
     backend = server.Backend()
     with pytest.MonkeyPatch.context() as patch:
-        edt = _Edt(headless=[17276, 18448]).install(backend, patch)
+        edt = _Edt(headless=[17276, 18448], keepalive=[27796]).install(backend, patch)
         ok, lines = backend.open_gui()
     assert ok
     assert edt.shutdowns == [False]
+    assert edt.killed == [27796]  # the keepalive only - EDT stopped itself
     assert edt.launched
-    assert not edt.killed
     assert "the headless EDT is down" in lines
+
+
+def test_shutdown_alone_does_not_end_a_keepalive_started_session():
+    """Proven live: the port falls silent and 1cedtcli keeps running, because it was started
+    with a keepalive pipe on stdin. Waiting on the port would report success over a session
+    that is still holding the workspace."""
+    backend = server.Backend()
+    with pytest.MonkeyPatch.context() as patch:
+        edt = _Edt(headless=[17276], keepalive=[27796],
+                   dies_on_keepalive=False).install(backend, patch)
+        stopped, survivors = backend.stop_headless(timeout=0)
+    assert edt.shutdowns == [False]
+    assert not edt.bridge  # the port is down...
+    assert not stopped and survivors == [17276]  # ...and the session is not
 
 
 def test_a_surviving_process_is_reported_and_the_gui_does_not_start():
@@ -89,11 +123,12 @@ def test_a_surviving_process_is_reported_and_the_gui_does_not_start():
     manager. Without --force the command says which pids are left rather than kill them."""
     backend = server.Backend()
     with pytest.MonkeyPatch.context() as patch:
-        edt = _Edt(headless=[18448], dies_on_shutdown=False).install(backend, patch)
+        edt = _Edt(headless=[18448], keepalive=[27796],
+                   dies_on_keepalive=False).install(backend, patch)
         ok, lines = backend.open_gui(timeout=0)
     assert not ok
     assert not edt.launched
-    assert not edt.killed
+    assert edt.killed == [27796]  # the keepalive is closed on the graceful path, the CLI is not
     assert "18448" in "\n".join(lines) and "--force" in "\n".join(lines)
 
 
@@ -103,10 +138,10 @@ def test_force_kills_the_survivors_and_then_starts_the_gui():
     backend = server.Backend()
     with pytest.MonkeyPatch.context() as patch:
         edt = _Edt(headless=[17276, 18448], keepalive=[27796],
-                   dies_on_shutdown=False).install(backend, patch)
+                   dies_on_keepalive=False).install(backend, patch)
         ok, _lines = backend.open_gui(force=True, timeout=0)
     assert ok
-    assert edt.killed == [27796, 17276, 18448]
+    assert edt.killed == [27796, 17276, 18448]  # keepalive first, then what survived it
     assert edt.launched
 
 
@@ -117,7 +152,7 @@ def test_a_stale_workspace_lock_is_removed(tmp_path, monkeypatch):
     lock.write_bytes(b"")
     monkeypatch.setenv("EDT_BRIDGE_WORKSPACE", str(tmp_path))
     backend = server.Backend()
-    _Edt(headless=[17276]).install(backend, monkeypatch)
+    _Edt(headless=[17276], keepalive=[27796]).install(backend, monkeypatch)
     ok, _lines = backend.open_gui()
     assert ok
     assert not lock.exists()

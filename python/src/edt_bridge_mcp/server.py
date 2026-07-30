@@ -408,15 +408,28 @@ class Backend:
         except (OSError, subprocess.SubprocessError):
             pass
 
+    def _wait(self, until, deadline: float) -> bool:
+        while time.monotonic() < deadline:
+            if until():
+                return True
+            time.sleep(1)
+        return until()
+
     def stop_headless(self, force: bool = False, timeout: int = 90,
                       report=None) -> tuple[bool, list[int]]:
         """Stop the headless EDT and wait until its processes are really gone.
 
-        Waiting on the port alone is not enough: the port closes while the runtime is still
-        finishing, and it is exactly that leftover process a person then hunts in the task
-        manager. Returns (stopped, survivors); with force the survivors are killed.
+        Two steps, because /shutdown alone provably does not end the session. It stops the OSGi
+        framework - the port falls silent - but 1cedtcli keeps running: it was started with a
+        keepalive pipe on stdin, and it lives as long as that pipe is open. So once the bridge is
+        down, the keepalive shell is closed. That is not killing EDT (it has already stopped
+        itself); it is closing the pipe that holds the process, after which the CLI reaches EOF
+        and exits on its own. Only what survives even that needs force.
+
+        Returns (stopped, survivors).
         """
         say = report or log
+        deadline = time.monotonic() + timeout
         if self.status() is not None:
             try:
                 answer = self.shutdown(force=force)
@@ -427,30 +440,24 @@ class Backend:
                 say(f"the bridge answered HTTP {http.code} to the shutdown request")
             except urllib.error.URLError as url:
                 say(f"could not ask the bridge to stop: {url.reason}")
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            survivors = self.headless_pids()
-            if not survivors and self.status() is None:
-                return True, []
-            time.sleep(1)
-        survivors = self.headless_pids()
-        if not survivors:
+            self._wait(lambda: self.status() is None, deadline)
+        if self.headless_pids():
+            keepalive = self._keepalive_pids()
+            if keepalive:
+                say(f"closing the keepalive that holds the CLI's stdin open: {keepalive}")
+                for pid in keepalive:
+                    self._kill(pid)
+        if self._wait(lambda: not self.headless_pids(), deadline):
             return self.status() is None, []
+        survivors = self.headless_pids()
         if not force:
             return False, survivors
         say(f"killing what is left of the headless session: {survivors}")
-        # The keepalive shell goes first, exactly as the toggle script does it: it is the CLI's
-        # parent, so it outlives a tree kill from below and keeps the dropins jar locked.
-        for pid in self._keepalive_pids():
-            self._kill(pid)
         for pid in survivors:
             self._kill(pid)
-        for _ in range(10):
-            survivors = self.headless_pids()
-            if not survivors:
-                return True, []
-            time.sleep(1)
-        return False, survivors
+        if self._wait(lambda: not self.headless_pids(), time.monotonic() + 10):
+            return True, []
+        return False, self.headless_pids()
 
     def _clear_stale_lock(self) -> None:
         """Drop the workspace lock left by a killed session – EDT refuses the workspace with it."""
