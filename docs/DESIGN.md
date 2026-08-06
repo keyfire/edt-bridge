@@ -58,8 +58,9 @@ plugin that embeds an MCP server.
 
 ## Build & stack
 
-- Java: bundle **BREE / bytecode = 17** (the EDT runtime). The no-Maven build may use JDK 21 with
-  `--release 17`.
+- Java: bundle **BREE / bytecode = 17**, so one jar loads in every supported EDT. The compiler must
+  still be new enough to read EDT's own bundles – Java 25 class files as of EDT 2026.2 – so the
+  no-Maven build resolves the level from the pool and compiles with a matching JDK and `--release 17`.
 - Target platform: the **local EDT p2 bundle pool** (`<your-home>/.p2/pool/plugins`) referenced as a
   PDE/Tycho **Directory** location – offline, no p2 URL.
 - Two builds: `scripts/build-nomaven.ps1` (local JDK + pool) and Maven/Tycho (`pom.xml` + `edt-bridge.target`).

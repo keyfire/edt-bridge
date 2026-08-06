@@ -19,11 +19,14 @@ covers building it, the conventions, and how to propose changes.
 
 ## Building
 
-You need a **JDK 17+** and the local **1C:EDT bundle pool** – the plugin compiles against EDT's own
-bundles, which are proprietary and provided by your local EDT install (so there is no network build).
+You need a **JDK matching your EDT** and the local **1C:EDT bundle pool** – the plugin compiles
+against EDT's own bundles, which are proprietary and provided by your local EDT install (so there is
+no network build). Those bundles are Java 25 class files as of EDT 2026.2, so a JDK 25 is needed to
+read them; the script derives the level from the pool and falls back to any newer JDK it finds,
+including the one installed with EDT. The jar itself keeps targeting Java 17.
 
 ```powershell
-# Windows – defaults: -Pool %USERPROFILE%\.p2\pool\plugins, -JdkHome %JAVA_HOME%
+# Windows – defaults: -Pool %USERPROFILE%\.p2\pool\plugins, -JdkHome %JAVA_HOME% (auto if too old)
 powershell -ExecutionPolicy Bypass -File scripts/build-nomaven.ps1
 ```
 

@@ -170,7 +170,10 @@ production. All are token-gated; `edt_evaluate` is gated hardest.
 
 **To build the plugin from source** (contributors – end users install via pipx)
 
-- A **JDK 17+** (the bundle targets Java 17, the EDT runtime).
+- A **JDK matching the EDT bundles** – EDT 2026.2 ships Java 25 class files, so compiling against
+  them needs a JDK 25 (the build script reads the level from the pool and finds a suitable JDK by
+  itself, including the one installed alongside EDT). The jar keeps targeting Java 17, so a single
+  build also loads in EDT versions that still run on Java 17.
 - The local **EDT bundle pool**. On **Windows** the p2 pool `%USERPROFILE%\.p2\pool\plugins`; on
   **macOS** the pool inside the installed component
   `.../1C/1CE/components/1c-edt-<ver>-x86_64/1cedt (<ver>).app/Contents/Eclipse/plugins`

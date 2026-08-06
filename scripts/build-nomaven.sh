@@ -7,7 +7,9 @@
 # Defaults assume a typical install; override --pool / --jdk-home if yours differ.
 #
 #   ./build-nomaven.sh
-#   ./build-nomaven.sh --pool "/path/to/plugins" --jdk-home "/path/to/jdk-17"
+#   ./build-nomaven.sh --pool "/path/to/plugins" --jdk-home "/path/to/jdk"
+#
+# The JDK is picked automatically when JAVA_HOME is too old for the EDT bundles (see below).
 set -euo pipefail
 
 POOL=""
@@ -28,15 +30,6 @@ bundle="$root/io.github.keyfire.edtbridge"
 src="$bundle/src"
 out="$root/build"
 bin="$out/bin"
-
-# Resolve the JDK (need 17+). On macOS java_home can pick a matching JDK.
-if [ -z "$JDK_HOME" ] && [ -x /usr/libexec/java_home ]; then
-  JDK_HOME="$(/usr/libexec/java_home -v 17 2>/dev/null || true)"
-fi
-[ -n "$JDK_HOME" ] || { echo "Set --jdk-home <path> or the JAVA_HOME env var to a JDK 17+ home." >&2; exit 1; }
-JAVAC="$JDK_HOME/bin/javac"
-JAREXE="$JDK_HOME/bin/jar"
-[ -x "$JAVAC" ] || { echo "javac not found: $JAVAC (need a JDK 17+)" >&2; exit 1; }
 
 # Locate the EDT bundle pool - it must hold both the Eclipse base and the com._1c.g5.* bundles.
 # Candidates: each installed 1C:EDT component's self-contained pool (older RING components) plus
@@ -60,6 +53,50 @@ if [ -z "$POOL" ]; then
     echo "$HOME/.p2/pool/plugins")
 fi
 [ -n "$POOL" ] && [ -d "$POOL" ] || { echo "EDT bundle pool not found: '${POOL:-<empty>}' (pass --pool <.../Contents/Eclipse/plugins>)" >&2; exit 1; }
+
+# The JDK must be new enough to READ the EDT bundles: EDT 2026.2 ships Java 25 class files
+# (major 69), which a JDK 17 javac rejects outright ("class file has wrong version 69.0,
+# should be 61.0"). The requirement is read from the pool itself, so this keeps working when
+# EDT moves to a newer Java. The bundle bytecode stays at Java 17 (see --release below).
+javac_level() {   # Java feature version of a javac, 0 when the path is not a usable javac
+  local c="$1"
+  [ -x "$c" ] || { echo 0; return; }
+  "$c" -version 2>&1 | sed -n 's/^javac \([0-9][0-9]*\).*/\1/p' | head -1 | grep . || echo 0
+}
+pool_level() {    # Java level of the pool's class files, 0 when it cannot be probed
+  local probe="" f entry major
+  for f in "$POOL"/com._1c.g5.v8.dt.core_[0-9]*.jar; do [ -e "$f" ] && probe="$f"; done
+  [ -n "$probe" ] || { echo 0; return; }
+  command -v unzip >/dev/null 2>&1 && command -v od >/dev/null 2>&1 || { echo 0; return; }
+  entry="$(unzip -Z1 "$probe" '*.class' 2>/dev/null | head -1)"
+  [ -n "$entry" ] || { echo 0; return; }
+  major="$(unzip -p "$probe" "$entry" 2>/dev/null | od -An -tu1 -j6 -N2 | awk '{print $1*256+$2}')"
+  case "$major" in ''|*[!0-9]*) echo 0 ;; *) echo $((major - 44)) ;; esac   # major 61 = Java 17
+}
+find_jdk() {      # a JDK home whose javac is at least $1
+  local level="$1" cand
+  if [ -x /usr/libexec/java_home ]; then
+    cand="$(/usr/libexec/java_home -v "${level}+" 2>/dev/null || true)"
+    [ -n "$cand" ] && { printf '%s' "$cand"; return; }
+  fi
+  for cand in $(ls -d /usr/lib/jvm/* /opt/java/* 2>/dev/null | sort -r); do
+    [ "$(javac_level "$cand/bin/javac")" -ge "$level" ] && { printf '%s' "$cand"; return; }
+  done
+  printf ''
+}
+
+need_level="$(pool_level)"
+[ "$need_level" -ge 17 ] 2>/dev/null || need_level=17   # unreadable probe - keep the old floor
+if [ -n "$JDK_HOME" ] && [ "$(javac_level "$JDK_HOME/bin/javac")" -lt "$need_level" ]; then
+  echo "JDK $JDK_HOME cannot read Java $need_level bundles - looking for a newer one ..."
+  JDK_HOME=""
+fi
+[ -n "$JDK_HOME" ] || JDK_HOME="$(find_jdk "$need_level")"
+[ -n "$JDK_HOME" ] || { echo "The EDT bundles in $POOL are Java $need_level class files, so JDK $need_level+ is needed to compile against them. Pass --jdk-home <path to a JDK $need_level> or point JAVA_HOME at one." >&2; exit 1; }
+echo "JDK: $JDK_HOME (pool needs Java $need_level)"
+JAVAC="$JDK_HOME/bin/javac"
+JAREXE="$JDK_HOME/bin/jar"
+[ -x "$JAVAC" ] || { echo "javac not found: $JAVAC" >&2; exit 1; }
 
 # SWT fragment differs per OS (the host org.eclipse.swt is a stub; compile vs the platform fragment).
 case "$(uname -s)" in
@@ -142,6 +179,8 @@ rm -rf "$out"
 mkdir -p "$bin"
 sources=()
 while IFS= read -r f; do sources+=("$f"); done < <(find "$src" -name '*.java')
+# --release 17 regardless of the JDK used: one jar then loads in every supported EDT, including
+# older ones that still run on Java 17. Raise it only when the oldest supported EDT does.
 echo "Compiling ${#sources[@]} sources with --release 17 ..."
 "$JAVAC" --release 17 -encoding UTF-8 -cp "$cpStr" -d "$bin" "${sources[@]}"
 echo "OK: compiled."

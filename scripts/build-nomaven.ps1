@@ -16,11 +16,70 @@ $src    = Join-Path $bundle "src"
 $out    = Join-Path $root "build"
 $bin    = Join-Path $out "bin"
 
-if (-not $JdkHome) { throw "Set -JdkHome <path> or the JAVA_HOME env var to a JDK 17+ home." }
+if (-not (Test-Path $Pool))  { throw "EDT p2 pool not found: $Pool (point -Pool at <your-home>\.p2\pool\plugins)" }
+
+# The JDK must be new enough to READ the EDT bundles: EDT 2026.2 ships Java 25 class files
+# (major 69), which a JDK 17 javac rejects outright ("class file has wrong version 69.0,
+# should be 61.0"). The requirement is read from the pool itself, so this keeps working when
+# EDT moves to a newer Java. The bundle bytecode stays at Java 17 (see --release below).
+function Get-JavacJavaLevel([string]$javacPath) {
+  if (-not (Test-Path $javacPath)) { return 0 }
+  $text = (& $javacPath -version 2>&1) -join " "
+  if ($text -match 'javac\s+(\d+)') { return [int]$Matches[1] }
+  return 0
+}
+function Get-PoolJavaLevel([string]$poolPath) {
+  Add-Type -AssemblyName System.IO.Compression.FileSystem
+  $probe = Get-ChildItem $poolPath -Filter "com._1c.g5.v8.dt.core_*.jar" -ErrorAction SilentlyContinue |
+           Where-Object { $_.BaseName -match "^com\._1c\.g5\.v8\.dt\.core_\d" } |
+           Sort-Object Name -Descending | Select-Object -First 1
+  if (-not $probe) { return 0 }
+  $zip = [System.IO.Compression.ZipFile]::OpenRead($probe.FullName)
+  try {
+    $entry = $zip.Entries | Where-Object { $_.FullName -like "*.class" } | Select-Object -First 1
+    if (-not $entry) { return 0 }
+    $stream = $entry.Open()
+    $head = New-Object byte[] 8
+    [void]$stream.Read($head, 0, 8)
+    $stream.Close()
+    return ([int]$head[6] * 256 + [int]$head[7]) - 44   # class-file major 61 = Java 17
+  } finally { $zip.Dispose() }
+}
+function Find-JdkAtLeast([int]$level) {
+  # JDKs shipped by the 1C:Enterprise installer alongside EDT come first - they always match
+  # the EDT being built against; then the usual vendor roots.
+  $roots = @(
+    (Join-Path $env:ProgramFiles "1C\1CE\components"),
+    (Join-Path $env:ProgramFiles "Java"),
+    (Join-Path $env:ProgramFiles "Eclipse Adoptium"),
+    (Join-Path $env:ProgramFiles "Microsoft\jdk"),
+    (Join-Path $env:ProgramFiles "BellSoft"),
+    (Join-Path $env:ProgramFiles "Zulu"),
+    (Join-Path $env:LOCALAPPDATA "Programs\Eclipse Adoptium")
+  )
+  foreach ($r in $roots) {
+    if (-not (Test-Path $r)) { continue }
+    foreach ($d in (Get-ChildItem $r -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending)) {
+      if ((Get-JavacJavaLevel (Join-Path $d.FullName "bin\javac.exe")) -ge $level) { return $d.FullName }
+    }
+  }
+  return ""
+}
+
+$poolLevel = Get-PoolJavaLevel $Pool
+if ($poolLevel -lt 17) { $poolLevel = 17 }   # unreadable pool probe - fall back to the old floor
+if ($JdkHome -and (Get-JavacJavaLevel (Join-Path $JdkHome "bin\javac.exe")) -lt $poolLevel) {
+  "JDK $JdkHome cannot read Java $poolLevel bundles - looking for a newer one ..."
+  $JdkHome = ""
+}
+if (-not $JdkHome) { $JdkHome = Find-JdkAtLeast $poolLevel }
+if (-not $JdkHome) {
+  throw "The EDT bundles in $Pool are Java $poolLevel class files, so JDK $poolLevel+ is needed to compile against them. Pass -JdkHome <path to a JDK $poolLevel> or point JAVA_HOME at one."
+}
+"JDK: $JdkHome (pool needs Java $poolLevel)"
 $javac  = Join-Path $JdkHome "bin\javac.exe"
 $jarexe = Join-Path $JdkHome "bin\jar.exe"
-if (-not (Test-Path $javac)) { throw "javac not found: $javac (need a JDK 17+)" }
-if (-not (Test-Path $Pool))  { throw "EDT p2 pool not found: $Pool (point -Pool at <your-home>\.p2\pool\plugins)" }
+if (-not (Test-Path $javac)) { throw "javac not found: $javac" }
 
 # Resolve compile-time bundles from the pool (latest match each).
 $need = @(
@@ -89,6 +148,8 @@ $cpStr = ($cp -join ';')
 if (Test-Path $out) { Remove-Item $out -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $bin | Out-Null
 $sources = Get-ChildItem $src -Recurse -Filter *.java | ForEach-Object { $_.FullName }
+# --release 17 regardless of the JDK used: one jar then loads in every supported EDT, including
+# older ones that still run on Java 17. Raise it only when the oldest supported EDT does.
 "Compiling $($sources.Count) sources with --release 17 ..."
 & $javac --release 17 -encoding UTF-8 -cp $cpStr -d $bin @sources
 if ($LASTEXITCODE -ne 0) { throw "javac failed (exit $LASTEXITCODE)" }

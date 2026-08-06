@@ -2,8 +2,9 @@
 <!--
   edt-bridge - Maven/Tycho reactor.
   Build:    mvn -f pom.xml clean verify
-  Requires: JDK 17+ (run Maven on JDK 17/21) and a local 1C:EDT p2 bundle pool referenced
-            by edt-bridge.target. Bundle bytecode targets Java 17 (the EDT runtime).
+  Requires: a JDK able to read EDT's own bundles (Java 25 class files as of EDT 2026.2, so run
+            Maven on JDK 25) and a local 1C:EDT p2 bundle pool referenced by edt-bridge.target.
+            Bundle bytecode still targets Java 17, so one jar loads in older EDT versions too.
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"

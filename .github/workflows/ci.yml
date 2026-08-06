@@ -56,6 +56,8 @@ jobs:
     # The bundle needs the proprietary EDT SDK and cannot be built here - but the core package is
     # deliberately free of EDT and Eclipse types, so it compiles and tests on a plain JDK. The script
     # puts nothing but JUnit on the classpath, so an SDK dependency creeping into core fails here.
+    # JDK 17 on purpose: it also guards the bundle's Java 17 target - the newer JDK the local build
+    # needs is only about READING EDT's own (Java 25) bundles, which are absent here.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
