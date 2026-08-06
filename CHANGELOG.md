@@ -8,6 +8,23 @@ that day are named in the heading. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
+## Unreleased
+
+### Added
+- **`edt_project_errors` names the disk folder behind each validated project** (the `locations`
+  object of the report, also spelled out in the tool description). The model validates the
+  REGISTERED folder, so a caller editing a parallel checkout of the same sources used to get a
+  plausible-looking report about the wrong tree - silently, since the file names match. Now the
+  divergence is visible in the report itself.
+- **`edt_symbol_info` answers with a local variable's computed types.** A reference to a
+  variable (even one assigned on the previous line) yielded `types: []` while the editor hover
+  showed the types: the variable half of the type system is INFERRED, and a bare resource load
+  carries no type states. The tool now installs the tree type system on the module on demand
+  (one inference pass per ask) and computes against the module's actual environments. On a
+  method-access name the answer also carries `invocationTypes` - the computed type(s) of the
+  containing call, next to the DECLARED return type of the access itself; callers used to probe
+  commas and closing parens to reach exactly that.
+
 ## 2026-07-31 – 0.11.2
 
 ### Fixed

@@ -62,13 +62,19 @@ public final class ProjectErrorsTool {
                 + "read from EDT's own marker store. Each problem carries source (eclipse|edt-check), "
                 + "severity, message, resource, line, and for EDT checks the checkId and EDT grade. Narrow "
                 + "with fqn / modulePath / severity, or pass countOnly for just the counts – on a large "
-                + "configuration the unfiltered result is thousands of problems, so filter or count instead.");
+                + "configuration the unfiltered result is thousands of problems, so filter or count instead. "
+                + "The report names the disk folder behind each validated project (locations): the model "
+                + "validates the REGISTERED folder, so check it against the checkout you are editing – a "
+                + "parallel worktree of the same sources is NOT what gets validated.");
         t.addProperty("descriptionRu", "Список проблем валидации EDT по проекту из живой рабочей области: "
                 + "и стандартные маркеры Eclipse (синтаксис/сборка), и результаты проверок EDT (Стандарты, "
                 + "напр. com.e1c.v8codestyle) из собственного хранилища маркеров EDT. У каждой проблемы – "
                 + "источник (eclipse|edt-check), важность, сообщение, ресурс, строка, а у проверок EDT – checkId "
                 + "и класс важности. Сужение через fqn / modulePath / severity либо countOnly для одних "
-                + "счётчиков – на большой конфигурации полный список это тысячи проблем, фильтруйте или считайте.");
+                + "счётчиков – на большой конфигурации полный список это тысячи проблем, фильтруйте или считайте. "
+                + "Отчёт называет каталог диска за каждым проверенным проектом (locations): модель проверяет "
+                + "ЗАРЕГИСТРИРОВАННЫЙ каталог – сверьте его с тем, что правите; параллельный worktree тех же "
+                + "исходников проверен НЕ будет.");
         t.add("inputSchema", schema);
         return t;
     }
@@ -89,6 +95,13 @@ public final class ProjectErrorsTool {
             if (project != null) {
                 payload.addProperty("project", project);
             }
+            // The disk folder behind each validated project, named up front: the model
+            // validates the REGISTERED folder, and a caller editing a parallel checkout
+            // of the same sources would otherwise get a plausible report about the wrong
+            // tree - the file names match, so nothing else gives the divergence away.
+            JsonObject locations = new JsonObject();
+            rep.locations.forEach(locations::addProperty);
+            payload.add("locations", locations);
             payload.addProperty("total", rep.total);
             payload.addProperty("totalBeforeFilter", rep.totalBeforeFilter);
             JsonObject bySeverity = new JsonObject();

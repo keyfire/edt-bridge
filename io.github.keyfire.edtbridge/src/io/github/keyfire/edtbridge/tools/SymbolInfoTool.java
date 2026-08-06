@@ -57,11 +57,14 @@ public final class SymbolInfoTool {
         t.addProperty("description",
                 "Type/symbol info at a position (line+column, or offset) in a BSL module, using EDT's "
                 + "live dynamic type system: the element under the cursor (kind, name) and the computed "
-                + "value type(s) of the expression. Impossible with static parsing.");
+                + "value type(s) of the expression. On a method-access name, types carries the DECLARED "
+                + "return type and invocationTypes the computed type(s) of the containing call. "
+                + "Impossible with static parsing.");
         t.addProperty("descriptionRu",
                 "Тип/инфо символа в позиции (строка+столбец или offset) модуля BSL по живой динамической "
                 + "типизации EDT: элемент под курсором (вид, имя) и вычисленные типы значения выражения. "
-                + "Статическим разбором невозможно.");
+                + "На имени вызываемого метода types несёт ОБЪЯВЛЕННЫЙ тип возврата, а invocationTypes – "
+                + "вычисленные типы самого вызова. Статическим разбором невозможно.");
         t.add("inputSchema", schema);
         return t;
     }
@@ -94,6 +97,13 @@ public final class SymbolInfoTool {
                     }
                 }
                 o.add("types", types);
+                if (s.invocationTypes != null && !s.invocationTypes.isEmpty()) {
+                    JsonArray invocation = new JsonArray();
+                    for (String tp : s.invocationTypes) {
+                        invocation.add(tp);
+                    }
+                    o.add("invocationTypes", invocation);
+                }
             }
             return McpServer.textResult(new GsonBuilder().setPrettyPrinting().create().toJson(o));
         } catch (Exception e) {

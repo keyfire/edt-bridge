@@ -55,9 +55,9 @@ public final class ProjectGateway {
         public String location; // EDT location, e.g. "строка 8" or a field presentation
     }
 
-    public List<Problem> getProjectErrors(String projectName) throws CoreException {
+    /** The projects a validation call addresses: the named one when open, else every open project. */
+    private static List<IProject> selectProjects(String projectName) {
         IWorkspaceRoot root = ResourcesPlugin.getWorkspace().getRoot();
-
         List<IProject> projects = new ArrayList<>();
         if (projectName != null && !projectName.isBlank()) {
             IProject p = root.getProject(projectName);
@@ -71,6 +71,11 @@ public final class ProjectGateway {
                 }
             }
         }
+        return projects;
+    }
+
+    public List<Problem> getProjectErrors(String projectName) throws CoreException {
+        List<IProject> projects = selectProjects(projectName);
 
         List<Problem> out = new ArrayList<>();
         for (IProject p : projects) {
@@ -121,6 +126,11 @@ public final class ProjectGateway {
         public boolean truncated;       // the returned list was capped at limit
         public int limit;
         public List<Problem> problems = new ArrayList<>();
+        // Disk folder behind each validated project. The model validates the REGISTERED
+        // folder, and a caller editing a parallel checkout of the same sources gets a
+        // plausible-looking report about the WRONG tree - silently, since the file names
+        // match. Naming the folders lets the caller see the divergence.
+        public java.util.Map<String, String> locations = new java.util.LinkedHashMap<>();
     }
 
     /**
@@ -136,6 +146,11 @@ public final class ProjectGateway {
     public ProblemReport reportProblems(String projectName, String fqn, String modulePath,
             String severity, boolean countOnly, int limit) throws CoreException {
         List<Problem> all = getProjectErrors(projectName);
+        java.util.Map<String, String> locations = new java.util.LinkedHashMap<>();
+        for (IProject p : selectProjects(projectName)) {
+            locations.put(p.getName(),
+                    p.getLocation() == null ? null : p.getLocation().toOSString());
+        }
         String pathPrefix = null;
         String nameToken = null;
         if (modulePath != null && !modulePath.isBlank()) {
@@ -152,6 +167,7 @@ public final class ProjectGateway {
         r.countOnly = countOnly;
         r.limit = cap;
         r.totalBeforeFilter = all.size();
+        r.locations = locations;
         boolean locationFilter = pathPrefix != null || nameToken != null;
         for (Problem p : all) {
             if (sevFilter != null && !sevFilter.equalsIgnoreCase(p.severity)) {

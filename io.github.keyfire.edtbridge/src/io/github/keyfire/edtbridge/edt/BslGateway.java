@@ -94,6 +94,9 @@ import com._1c.g5.v8.bm.core.IBmObject;
 import com._1c.g5.v8.bm.core.IBmTransaction;
 import com._1c.g5.v8.bm.integration.AbstractBmTask;
 import com._1c.g5.v8.bm.integration.IBmModel;
+import com._1c.g5.v8.dt.bsl.common.IBslPreferences;
+import com._1c.g5.v8.dt.bsl.model.FeatureAccess;
+import com._1c.g5.v8.dt.bsl.model.Invocation;
 import com._1c.g5.v8.dt.bsl.model.Module;
 import com._1c.g5.v8.dt.bsl.resource.TypesComputer;
 import com._1c.g5.v8.dt.core.model.IModelObjectFactory;
@@ -1825,6 +1828,11 @@ public final class BslGateway {
         public String elementType;                       // EClass of the element under the position
         public String name;                              // symbol name, when the element is named
         public List<String> types = new ArrayList<>();   // computed value type(s) of the expression
+        // Computed type(s) of the CONTAINING call when the cursor sits on a method-access
+        // name. The access itself yields the DECLARED return type from the doc comment,
+        // while the call yields the extension-computed one - callers kept mis-measuring
+        // exactly this way, probing commas and closing parens to reach the invocation.
+        public List<String> invocationTypes = new ArrayList<>();
     }
 
     /**
@@ -1861,14 +1869,53 @@ public final class BslGateway {
             }
             try {
                 TypesComputer typesComputer = ctx.injector.getInstance(TypesComputer.class);
-                List<TypeItem> types = typesComputer.computeTypes(element, Environments.ALL);
-                if (types != null) {
-                    for (TypeItem ti : types) {
-                        String n = typeItemName(ti);
-                        if (n != null && !n.isBlank()) {
-                            r.types.add(n);
+                // The variable half of the type system is INFERRED, not parsed: the editor
+                // builds it in a background job, while a bare resource load carries no type
+                // states - a variable reference then answered with no types although the
+                // editor hover showed them. Install the type system on demand (idempotent;
+                // costs one inference pass over the module on the first ask).
+                try {
+                    Module module = null;
+                    for (EObject e : ctx.resource.getContents()) {
+                        if (e instanceof Module) {
+                            module = (Module) e;
+                            break;
                         }
                     }
+                    if (module != null) {
+                        com._1c.g5.v8.dt.bsl.typesystem.BslTypeSystemProvider provider =
+                                ctx.injector.getInstance(
+                                        com._1c.g5.v8.dt.bsl.typesystem.BslTypeSystemProvider.class);
+                        com._1c.g5.v8.dt.bsl.typesystem.ITypeSystem ts = provider.getTypeSystem();
+                        if (ts == null) {
+                            // Outside an editing session the provider has no current system.
+                            ts = provider.getTypeSystem(
+                                    com._1c.g5.v8.dt.bsl.typesystem.BslTypeSystemProvider.BslTypeSystemKind.TREE);
+                        }
+                        ts.installTypeSystem(module, org.eclipse.xtext.util.CancelIndicator.NullImpl);
+                    }
+                } catch (Throwable ignored) {
+                    // best effort - the declared types still answer
+                }
+                // The module's ACTUAL environments, not Environments.ALL: the type system
+                // tracks a local variable's type states per environment.
+                Environments envs = Environments.ALL;
+                try {
+                    Environments loaded = ctx.injector.getInstance(IBslPreferences.class).getLoadEnvs(element);
+                    if (loaded != null && !loaded.isEmpty()) {
+                        envs = loaded;
+                    }
+                } catch (RuntimeException ignored) {
+                    // preferences unavailable - ALL keeps the old behaviour
+                }
+                addTypeNames(typesComputer.computeTypes(element, envs), r.types);
+                // On a method-access name the element answers with the DECLARED return type;
+                // the extension-computed one belongs to the containing Invocation. Report both
+                // instead of making the caller probe commas and closing parens.
+                if (element instanceof FeatureAccess
+                        && element.eContainer() instanceof Invocation
+                        && ((Invocation) element.eContainer()).getMethodAccess() == element) {
+                    addTypeNames(typesComputer.computeTypes(element.eContainer(), envs), r.invocationTypes);
                 }
             } catch (RuntimeException ignored) {
                 // type computation is best-effort
@@ -1880,6 +1927,19 @@ public final class BslGateway {
     }
 
 
+
+    /** Append the readable names of the computed types to a result list. */
+    private void addTypeNames(List<TypeItem> types, List<String> into) {
+        if (types == null) {
+            return;
+        }
+        for (TypeItem ti : types) {
+            String n = typeItemName(ti);
+            if (n != null && !n.isBlank()) {
+                into.add(n);
+            }
+        }
+    }
 
     /** Readable (Russian) name of a type item; best-effort, never throws. */
     private String typeItemName(TypeItem ti) {
