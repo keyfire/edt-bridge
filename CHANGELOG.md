@@ -8,7 +8,7 @@ that day are named in the heading. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
-## Unreleased
+## 2026-08-07 – 0.12.0
 
 ### Added
 - **`edt_project_errors` names the disk folder behind each validated project** (the `locations`
@@ -24,6 +24,14 @@ that day are named in the heading. The format follows
   method-access name the answer also carries `invocationTypes` - the computed type(s) of the
   containing call, next to the DECLARED return type of the access itself; callers used to probe
   commas and closing parens to reach exactly that.
+
+### Changed
+- **Building from source picks a JDK matching the EDT bundles by itself.** Newer EDT ships
+  Java 25 class files, and compiling against that pool needs a JDK able to read them: the
+  build script now reads the class-file level from the pool and finds a suitable JDK on its
+  own, the one installed alongside EDT included, instead of dying on a too-old JAVA_HOME.
+  The jar keeps targeting Java 17, so a single build still loads in EDT versions that run
+  on Java 17.
 
 ## 2026-07-31 – 0.11.2
 
