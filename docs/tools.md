@@ -13,7 +13,7 @@ itself – `edt_rename` stays unambiguous where a bare `rename` is dangerously g
 
 Together they close the full cycle without leaving MCP – create, develop, build, deliver, debug:
 
-![Full delivery cycle over MCP](https://raw.githubusercontent.com/keyfire/edt-bridge/main/docs/delivery.png)
+![Full delivery cycle over MCP](https://raw.githubusercontent.com/keyfire/edt-bridge/main/docs/delivery.svg)
 
 ### Read
 

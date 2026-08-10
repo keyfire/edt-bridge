@@ -13,7 +13,7 @@ MCP-хост показывает агенту инструменты всех �
 
 Вместе они замыкают полный цикл, не выходя из MCP: создать, разработать, собрать, поставить, отладить:
 
-![Полный цикл поставки через MCP](https://raw.githubusercontent.com/keyfire/edt-bridge/main/docs/delivery.ru.png)
+![Полный цикл поставки через MCP](https://raw.githubusercontent.com/keyfire/edt-bridge/main/docs/delivery.ru.svg)
 
 ### Чтение
 

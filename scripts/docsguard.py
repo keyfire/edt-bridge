@@ -78,7 +78,10 @@ def injected(document: str, marker: str) -> str | None:
 def page_body(name: str) -> str:
     text = page(name)
     text = re.sub(r"^---\n[\s\S]*?\n---\n", "", text)
-    return re.sub(r"<!--[\s\S]*?-->\n?", "", text).strip()
+    text = re.sub(r"<!--[\s\S]*?-->\n?", "", text).strip()
+    # The injected copy carries the PNG of every diagram: a page shows the SVG and follows the
+    # reader's theme, a README on GitHub cannot (scripts/sync-docs.mjs, readmeImages).
+    return re.sub(r"(docs/[\w.-]+)\.svg\)", r"\1.png)", text)
 
 
 def check() -> list[str]:
@@ -120,6 +123,14 @@ def check() -> list[str]:
                 target = (DOCS / href).resolve()
             if not target.exists():
                 problems.append(f"{path.name}: the image {href} is not in the repository")
+                continue
+            # A page must show the SVG, which carries both palettes: the PNG next to it has one
+            # baked in, and a reader in the light theme was served a dark picture for a while.
+            if target.suffix == ".png" and target.with_suffix(".svg").exists():
+                problems.append(
+                    f"{path.name}: {target.name} follows no theme - the page needs "
+                    f"{target.with_suffix('.svg').name}, the PNG belongs to the README"
+                )
 
     return problems
 

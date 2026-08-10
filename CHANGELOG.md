@@ -37,6 +37,12 @@ that day are named in the heading. The format follows
   is one list now, and the port settings link to the environment variables.
 
 ### Fixed
+- **The delivery diagram ignored the reader's theme on the tools page.** The page embedded the
+  PNG – the file whose palette is baked in for the README – so a reader in the light theme was
+  served a dark picture. The page shows the SVG now, and the injected README copy gets the PNG
+  by a swap in `scripts/sync-docs.mjs`: one source, the right file on each surface. The guard
+  judges it, because the same slip is invisible until someone looks at the page in the other
+  theme.
 - **The README's copy of the tool catalogue had drifted from the site page** – `edt_designer_agent`
   had grown its `sweep` action and idle timeout, and the wrapper's own `edt_open_gui` had never
   been listed there at all. Both were only on the site; the two are one text now.

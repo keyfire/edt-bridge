@@ -58,6 +58,17 @@ def test_guard_notices_a_stale_readme_block(guard, monkeypatch):
     assert any("stale" in p for p in guard.check())
 
 
+def test_guard_notices_a_page_showing_the_readme_png(guard, monkeypatch):
+    # the page has to embed the SVG - it carries both palettes; the PNG has one baked in and
+    # showed a dark diagram to a reader in the light theme
+    original = guard.page
+    monkeypatch.setattr(
+        guard, "page",
+        lambda name: original(name).replace("docs/delivery.ru.svg)", "docs/delivery.ru.png)"),
+    )
+    assert any("delivery.ru.png follows no theme" in p for p in guard.check())
+
+
 def test_guard_notices_a_missing_image(guard, monkeypatch):
     original = guard.page
     monkeypatch.setattr(

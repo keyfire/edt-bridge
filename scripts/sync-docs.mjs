@@ -103,6 +103,13 @@ const pageBody = (text) =>
     .replace(/<!--[\s\S]*?-->\n?/g, '')
     .trim();
 
+// The two surfaces need different files for the same diagram. A page shows the SVG, which
+// carries both palettes and follows the reader's theme; a README on GitHub follows no theme
+// and needs the PNG with a palette baked in. So the injected copy swaps the extension - the
+// page kept a PNG for a while for exactly this reason, and showed a dark picture to a reader
+// in a light theme.
+export const readmeImages = (text) => text.replace(/(docs\/[\w.-]+)\.svg\)/g, '$1.png)');
+
 for (const p of PAGES) {
   const src = fs.readFileSync(path.join(root, p.from), 'utf8');
   const head =
@@ -123,7 +130,7 @@ for (const inj of INJECTIONS) {
   if (from === -1 || to === -1) {
     throw new Error(`${inj.into}: markers ${open} ... ${close} not found`);
   }
-  const body = pageBody(fs.readFileSync(path.join(root, inj.from), 'utf8'));
+  const body = readmeImages(pageBody(fs.readFileSync(path.join(root, inj.from), 'utf8')));
   const next = `${text.slice(0, from + open.length)}\n\n${body}\n\n${text.slice(to)}`;
   fs.writeFileSync(target, next);
   console.log(`${inj.from} -> ${inj.into} (${inj.marker})`);
