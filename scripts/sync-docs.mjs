@@ -2,6 +2,11 @@
 // truth is the file at the repository root, and the mirrored docs/*.md pages are assembled
 // from it before the site build (npm run sync:docs, called from prebuild). Never edit the
 // mirrored pages by hand.
+//
+// The tool catalogue travels the other way. It is one long table that used to be kept by hand
+// in both the README and the site page - and it drifted: `edt_designer_agent` grew a `sweep`
+// action on the page while the README still listed three. So docs/tools*.md is the source
+// now, and the README's "Tools" section is filled from it between the marker comments.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -65,6 +70,13 @@ const PAGES = [
   },
 ];
 
+// Sections injected from a site page into a repository document, the other direction. The
+// marker comments stay in the target file, so the surrounding text is edited by hand as usual.
+const INJECTIONS = [
+  { from: 'docs/tools.md', into: 'README.md', marker: 'tools' },
+  { from: 'docs/tools.ru.md', into: 'docs/ru/README.ru.md', marker: 'tools' },
+];
+
 // The leading heading and the language-switcher line are dropped: the site sets the
 // heading from the frontmatter and switches the language with its own button.
 const isSwitcherLine = (l) =>
@@ -83,6 +95,14 @@ const strip = (text) => {
 const rewriteLinks = (text, links = {}) =>
   Object.entries(links).reduce((t, [from, to]) => t.split(`](${from})`).join(`](${to})`), text);
 
+// A site page without its frontmatter and without the generator notes: what a repository
+// document embeds.
+const pageBody = (text) =>
+  text
+    .replace(/^---\n[\s\S]*?\n---\n/, '')
+    .replace(/<!--[\s\S]*?-->\n?/g, '')
+    .trim();
+
 for (const p of PAGES) {
   const src = fs.readFileSync(path.join(root, p.from), 'utf8');
   const head =
@@ -91,4 +111,20 @@ for (const p of PAGES) {
     `<!-- ${p.note(p.from)} -->\n\n`;
   fs.writeFileSync(path.join(root, p.to), head + rewriteLinks(strip(src), p.links) + '\n');
   console.log(`${p.from} -> ${p.to}`);
+}
+
+for (const inj of INJECTIONS) {
+  const target = path.join(root, inj.into);
+  const text = fs.readFileSync(target, 'utf8');
+  const open = `<!-- ${inj.marker}:start -->`;
+  const close = `<!-- ${inj.marker}:end -->`;
+  const from = text.indexOf(open);
+  const to = text.indexOf(close);
+  if (from === -1 || to === -1) {
+    throw new Error(`${inj.into}: markers ${open} ... ${close} not found`);
+  }
+  const body = pageBody(fs.readFileSync(path.join(root, inj.from), 'utf8'));
+  const next = `${text.slice(0, from + open.length)}\n\n${body}\n\n${text.slice(to)}`;
+  fs.writeFileSync(target, next);
+  console.log(`${inj.from} -> ${inj.into} (${inj.marker})`);
 }

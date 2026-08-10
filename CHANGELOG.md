@@ -8,6 +8,39 @@ that day are named in the heading. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
+## Unreleased
+
+### Added
+- **Every `EDT_BRIDGE_*` variable is documented**, in two tables on the install page – the ones
+  the wrapper reads at its start and the ones the plugin reads inside EDT, each with its flag or
+  launch property and its default. `EDT_BRIDGE_PORT_SCAN` and `EDT_BRIDGE_WINDOW_WAIT` were
+  readable and named nowhere at all; the rest lived only in the wrapper's README, off the site.
+- **A guard for the documentation** – `scripts/docsguard.py`, run by the wrapper's suite and so
+  by CI. It fails on a tool that has no row on the tools page, a page mentioning a tool that no
+  longer exists, a variable the code reads and no page documents, a README block left stale, and
+  an image no file backs. Each finding is provoked in the tests, because a check that quietly
+  stops finding anything looks exactly like a clean repository.
+
+### Changed
+- **The tool catalogue has a single source.** It used to be kept by hand in both the README and
+  the site page; `docs/tools*.md` is the source now, and `scripts/sync-docs.mjs` writes it into
+  the README between marker comments, in both languages.
+- **The diagrams follow the reader's theme.** Their palette moved into CSS variables with a
+  `prefers-color-scheme` branch, so the site shows a picture that matches the page around it.
+  A README still gets a PNG, and which palette that PNG carries is no longer decided by the
+  machine rendering it: `scripts/render-diagrams.py` (replacing `render-diagrams.sh`) forces the
+  palette before the screenshot.
+- **The architecture diagram opens the front page** – it used to be reachable only from the
+  READMEs on GitHub, which is a strange place for the picture that explains the whole layout.
+- **The security page no longer says everything twice.** It carried the README's bullet list and
+  then a threat model repeating it, and pointed back at the README for "the full picture"; there
+  is one list now, and the port settings link to the environment variables.
+
+### Fixed
+- **The README's copy of the tool catalogue had drifted from the site page** – `edt_designer_agent`
+  had grown its `sweep` action and idle timeout, and the wrapper's own `edt_open_gui` had never
+  been listed there at all. Both were only on the site; the two are one text now.
+
 ## 2026-08-07 – 0.12.0
 
 ### Added

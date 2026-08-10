@@ -18,6 +18,7 @@ deliver, all through EDT's own engine.
 > Read **and** write. Localhost only; writes are token-gated and dry-run by default. The plugin
 > runs inside EDT, so an EDT (GUI or headless) must be up with your project.
 
+![An MCP client talks stdio to the edt-bridge-mcp wrapper; the wrapper checks port 8770, delivers the plugin jar from GitHub Releases and starts a headless EDT when needed; the plugin inside a GUI or headless EDT serves the live model, and reaches a running infobase through a configurator agent, ibcmd or rac](https://raw.githubusercontent.com/keyfire/edt-bridge/main/docs/architecture.svg)
 
 Development notes and updates (in Russian): the [1C × AI: engineering workshop](https://t.me/ceh_1c_ai) Telegram channel.
 

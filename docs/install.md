@@ -50,6 +50,38 @@ An MCP client can also talk to the plugin over HTTP directly (no wrapper) – ad
 `{ "edt-bridge": { "type": "http", "url": "http://127.0.0.1:8770/mcp" } }` to its `.mcp.json`. The
 server speaks plain JSON-RPC over HTTP (`initialize` / `tools/list` / `tools/call`).
 
+## Environment variables
+
+The wrapper and the plugin take their settings under the same `EDT_BRIDGE_*` names, but different
+sides read them: the wrapper at its own start, the plugin inside EDT. Most wrapper settings have a
+flag twin, documented in [Commands](/cli).
+
+**Read by the `edt-bridge-mcp` wrapper**
+
+| Variable | Flag | Default | What it sets |
+|----------|------|---------|--------------|
+| `EDT_BRIDGE_PORT` | `--port` | `8770` | the port the wrapper looks for the bridge on |
+| `EDT_BRIDGE_PORT_SCAN` | – | `20` | how many consecutive ports from that one to scan: a busy port makes the plugin take the next free one, and the bridge is then looked for across that same window |
+| `EDT_BRIDGE_TOKEN` | – | empty | the write-tools token: sent as an `Authorization: Bearer` header and passed into the headless instance's JVM |
+| `EDT_BRIDGE_WORKSPACE` | `--workspace` | – | the EDT workspace to serve when auto-starting headless |
+| `EDT_BRIDGE_EDT_DIR` | `--edt-dir` | the newest install | the EDT install directory (`.../1cedt`) |
+| `EDT_BRIDGE_START_TIMEOUT` | `--start-timeout` | `360` | seconds to wait for a starting bridge |
+| `EDT_BRIDGE_AUTOSTART` | `--no-autostart` | on | `0` – never launch anything, act as a proxy only |
+| `EDT_BRIDGE_WINDOW_WAIT` | – | `90` | seconds the `gui` command waits for the EDT window to appear: a large workspace loads for minutes, so a miss is not an error but a reason to run the command again |
+| `EDT_BRIDGE_LANG` | – | the system locale | the language of the wrapper's help and messages (`ru` / `en`) |
+
+**Read by the plugin inside EDT**
+
+| Variable | Launch property | Default | What it sets |
+|----------|-----------------|---------|--------------|
+| `EDT_BRIDGE_PORT` | `-Dedt.bridge.port` | `8770` | the MCP server's port; the next free one is taken when it is busy |
+| `EDT_BRIDGE_TOKEN` | `-Dedt.bridge.token` | from the preference page | the shared secret every write tool requires |
+| `EDT_BRIDGE_ALLOW_EVALUATE` | – | off | `1` enables `edt_evaluate` – arbitrary BSL executed against a live infobase; the preference page carries the same switch |
+| `EDT_BRIDGE_AGENT_IDLE_MINUTES` | `-Dedt.bridge.agent-idle-minutes` | `30` | after how many idle minutes a configurator agent stops itself; `off` keeps agents forever |
+
+What is given at launch wins: environment variables and `-Dedt.bridge.*` properties take precedence
+over EDT's preference page – which is how the wrapper drives a headless instance.
+
 ### Build from source
 
 No Maven (quickest – pure local JDK + the EDT pool, no network):

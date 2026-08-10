@@ -73,6 +73,8 @@ the command line.
 
 ## Tools
 
+<!-- tools:start -->
+
 Tools are `edt_*` (snake_case); parameters are camelCase (`projectName`, `fqn`, `queryText`);
 Object names are Cyrillic as in the configuration, the type prefix is English (`Catalog.Контрагенты`, `Document.ЗаказКлиента`). The `edt_` prefix is deliberate: an MCP
 host presents every server's tools to the agent as one flat list, so a name must carry its context
@@ -137,7 +139,7 @@ Tools that change an infobase are token-gated and dry-run by default, exactly li
 | Tool | Through | What it does |
 |------|---------|--------------|
 | `edt_infobases` · `edt_platform_installations` | EDT | What the platform side has to work with: EDT's registered infobases (name, uuid, connection string) with the open projects' associations, and the 1C:Enterprise installations EDT resolves from when dumping an `.epf`/`.erf` or creating an infobase – each resolved to a concrete install carrying a thick client, plus the full installs found on disk. |
-| `edt_designer_agent` | agent | Lifecycle of the **configurator agents** the bridge drives: list, start, stop. An agent is a configurator in `/AgentMode` holding an open infobase session, authenticating **as the infobase user** – which is how the bridge reaches an infobase the other transports cannot. Started on demand and kept between calls; stopping one frees the session it holds on the server. |
+| `edt_designer_agent` | agent | Lifecycle of the **configurator agents** the bridge drives: list, start, stop, sweep. An agent is a configurator in `/AgentMode` holding an open infobase session, authenticating **as the infobase user** – which is how the bridge reaches an infobase the other transports cannot. Started on demand and kept between calls; stopping one frees the session it holds on the server. An agent idle past `EDT_BRIDGE_AGENT_IDLE_MINUTES` (30 by default, `off` to keep agents forever) stops by itself, because a standing agent costs a client license and a Designer session. What a crashed agent left behind – the session that holds the infobase's **configuration lock** – is swept before every start and on demand with `action=sweep`; ownership is proven by the record each agent writes, never guessed from the session's host and user. |
 | `edt_infobase_config_state` | agent | Is the infobase's **database** configuration – the code sessions actually execute – up to date, or is an update still pending? The platform itself answers: the update is started and its confirmation **refused**, so nothing is applied and a pending update comes back as the full list of structure changes that are waiting. Driven through a configurator agent, so a server infobase that authenticates its users is reachable. |
 | `edt_update_database_config` | agent | **Applies** the database configuration – the step that makes running sessions execute the configuration the infobase holds. Loading a project into an infobase does not do this, and until it happens every session keeps running the previous code (a freshly added HTTP route answering 404 is what that looks like). Dry-run by default; `sessionTermination=force` ends the sessions holding the base when an exclusive lock is needed. |
 | `edt_update_infobase` | EDT · agent | Update an infobase's configuration **from an EDT project**. Through EDT's synchronization engine by default (db-structure changes auto-confirmed, a conflict aborts), which cannot authenticate to an infobase that has users; with `transport=agent` the project is exported to designer XML and loaded through the agent instead – the only route into a server infobase with users – and the database configuration is applied afterwards. |
@@ -158,6 +160,18 @@ production. All are token-gated; `edt_evaluate` is gated hardest.
 | `edt_debug_attach` · `edt_debug_detach` | Attach a debug session to a running infobase's debug server (returns a `sessionId` for the other debug tools), and detach – terminating the session and freeing the infobase. |
 | `edt_debug_inspect` · `edt_debug_control` | List a session's threads and, for **suspended** ones, their BSL stack frames + the top frame's variables (read-only); then control execution – `suspend`/`resume`, or `stepOver`/`stepInto`/`stepReturn` a suspended thread. |
 | `edt_evaluate` | Evaluate an **arbitrary BSL expression** in a suspended frame – code execution against the live infobase. Needs the token **and** per-call `allowCodeExecution=true` **and** the server switch `EDT_BRIDGE_ALLOW_EVALUATE=1` (off by default). |
+
+### Served by the wrapper
+
+One tool does not come from the bridge inside EDT: it acts ON that EDT, and a tool cannot report
+on the process it just ended. `edt-bridge-mcp` serves it itself, listing it alongside the bridge
+tools and answering it without forwarding.
+
+| Wrapper tool | What it does |
+|--------------|--------------|
+| `edt_open_gui` | Hand the workspace over to the **GUI EDT**: stop the headless session behind the bridge, wait until its processes are really gone – the port falls silent well before the runtime does, and it is that leftover process which otherwise gets hunted in the task manager – and open the EDT window on the same workspace. `force` kills what does not stop in time, including the keepalive shell that outlives a tree kill from below. The bridge returns by itself once the GUI EDT has loaded the plugin. |
+
+<!-- tools:end -->
 
 ## Requirements
 

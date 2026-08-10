@@ -91,6 +91,10 @@ CLI flags override the environment.
 | `EDT_BRIDGE_START_TIMEOUT` | `--start-timeout` | seconds to wait for a starting backend (default 360) |
 | `EDT_BRIDGE_AUTOSTART` | `--no-autostart` | set `0`/pass the flag for proxy-only mode |
 
+The rarely-touched ones (`EDT_BRIDGE_PORT_SCAN`, `EDT_BRIDGE_WINDOW_WAIT`, `EDT_BRIDGE_LANG`) and
+the plugin's own variables are in
+[Environment variables](https://docs.keyfire.ru/edt-bridge/install#environment-variables).
+
 ## Safety
 
 - If a **GUI EDT is running but the bridge port is dead** (plugin missing there), the wrapper

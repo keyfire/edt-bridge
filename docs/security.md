@@ -6,16 +6,19 @@ sidebar:
   order: 6
 ---
 
-- Binds **`127.0.0.1` only** – never a public interface.
-- **Writes are gated**: every write tool requires a configured token, defaults to a dry-run, and
-  operates only on your local EDT model; `edt_rename`, `edt_delete_object` and `edt_delete_method`
-  additionally need an explicit `force`.
-- Optional **shared-secret token** – set `EDT_BRIDGE_TOKEN` (or `-Dedt.bridge.token=`) and send
-  `Authorization: Bearer <token>` (or `X-Edt-Bridge-Token: <token>`). Any local process can reach
-  the port, so set a token on shared machines.
-- Port: `EDT_BRIDGE_PORT` / `-Dedt.bridge.port=` (default 8770; the next free port is used if busy).
-- Found a security problem? Report it **privately** – see
-  [Reporting a vulnerability](#reporting-a-vulnerability), not a public issue.
+## Threat model (by design)
+
+- The MCP server binds **`127.0.0.1` only** – never a public interface.
+- **Write tools are gated:** each requires a configured token, defaults to a dry-run (`apply=false`),
+  and acts only on your local EDT model. `edt_rename`, `edt_delete_object` and `edt_delete_method`
+  additionally require an explicit `force`; `edt_evaluate` (arbitrary BSL against a live infobase)
+  additionally requires a per-call opt-in **and** a server-side switch that is off by default.
+- The **shared-secret token** is optional but is what separates you from every other process on the
+  machine: set `EDT_BRIDGE_TOKEN` (or `-Dedt.bridge.token=`) and send `Authorization: Bearer <token>`
+  (or `X-Edt-Bridge-Token: <token>`). Any local process can reach the port, so on a shared machine a
+  token is not optional in practice.
+- The port is `EDT_BRIDGE_PORT` / `-Dedt.bridge.port=` (default 8770; the next free one is taken when
+  it is busy) – see [Environment variables](/install#environment-variables) for the rest.
 
 ## Supported versions
 
@@ -26,18 +29,6 @@ recent release before reporting.
 |--------------|-----------|
 | latest `0.x` | yes       |
 | older        | no        |
-
-## Threat model (by design)
-
-- The MCP server binds **`127.0.0.1` only** – never a public interface.
-- **Write tools are gated:** each requires a configured token, defaults to a dry-run (`apply=false`),
-  and acts only on your local EDT model. `edt_rename`, `edt_delete_object` and `edt_delete_method`
-  additionally require an explicit `force`; `edt_evaluate` (arbitrary BSL against a live infobase)
-  additionally requires a per-call opt-in **and** a server-side switch that is off by default.
-- Any local process can reach the port, so on shared machines set a token
-  (`EDT_BRIDGE_TOKEN` / `-Dedt.bridge.token=`).
-
-The README [Security](https://github.com/keyfire/edt-bridge/blob/main/README.md#security) section has the full picture.
 
 ## Reporting a vulnerability
 

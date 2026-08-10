@@ -1,39 +1,71 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="820" height="570" viewBox="0 0 820 570">
   <style>
+    /* The colours live in variables so the picture follows the reader's theme: the light
+       palette is the default, the dark one comes from the media query. It works even when the
+       file is embedded as an image: the SVG document gets the system preference of its own. The PNG next to
+       it is rendered from this file with a palette forced (scripts/render-diagrams.py),
+       because a README on GitHub does not follow the reader's theme. */
+    :root {
+      --card: #ffffff; --card-edge: #d0d7e2; --divider: #d7dde8;
+      --box: #ffffff; --box-edge: #ccd4e0;
+      --title: #1c2029; --muted: #5c6577; --body: #414a5c;
+      --edge-text: #3c4557; --edge: #8a94a6; --edge-sub: #67707f;
+      --accent-blue: #0969da; --accent-teal: #0b7285; --accent-green: #1a7f37;
+      --accent-yellow: #9a6700; --accent-orange: #bc4c00; --accent-purple: #8250df;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --card: #14171e; --card-edge: #262c38; --divider: #2c3345;
+        --box: #232a38; --box-edge: #3b445c;
+        --title: #eef1f8; --muted: #7f8aa3; --body: #aab3c7;
+        --edge-text: #c6cddd; --edge: #6d7891; --edge-sub: #8b95ab;
+        --accent-blue: #3794ff; --accent-teal: #39c5cf; --accent-green: #56d364;
+        --accent-yellow: #ffd23f; --accent-orange: #f0883e; --accent-purple: #a78bfa;
+      }
+    }
     text { font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; }
     .mono { font-family: Consolas, 'Cascadia Mono', Menlo, monospace; }
-    .title { font-size: 17px; font-weight: 600; fill: #eef1f8; }
-    .box-title { font-size: 15px; font-weight: 600; fill: #eef1f8; }
-    .box-sub { font-size: 12px; fill: #7f8aa3; }
-    .box-body { font-size: 12.5px; fill: #aab3c7; }
-    .edge-label { font-size: 12.5px; font-weight: 600; fill: #c6cddd; }
-    .edge-sub { font-size: 11.5px; font-style: italic; fill: #8b95ab; }
-    .note { font-size: 12px; fill: #8b95ab; }
-    .box { fill: #232a38; stroke: #3b445c; }
-    .edge { stroke: #6d7891; stroke-width: 1.5; fill: none; }
+    .title { font-size: 17px; font-weight: 600; fill: var(--title); }
+    .box-title { font-size: 15px; font-weight: 600; fill: var(--title); }
+    .box-sub { font-size: 12px; fill: var(--muted); }
+    .box-body { font-size: 12.5px; fill: var(--body); }
+    .edge-label { font-size: 12.5px; font-weight: 600; fill: var(--edge-text); }
+    .edge-sub { font-size: 11.5px; font-style: italic; fill: var(--edge-sub); }
+    .note { font-size: 12px; fill: var(--edge-sub); }
+    .box { fill: var(--box); stroke: var(--box-edge); }
+    .edge { stroke: var(--edge); stroke-width: 1.5; fill: none; }
+      .dot-blue { fill: var(--accent-blue); }
+    .dot-teal { fill: var(--accent-teal); }
+    .dot-green { fill: var(--accent-green); }
+    .dot-yellow { fill: var(--accent-yellow); }
+    .dot-orange { fill: var(--accent-orange); }
+    .dot-purple { fill: var(--accent-purple); }
+    .card { fill: var(--card); stroke: var(--card-edge); }
+    .divider { stroke: var(--divider); }
+    .arrow { fill: var(--edge); }
   </style>
   <defs>
     <marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0,0 L8,4 L0,8 Z" fill="#6d7891"/>
+      <path d="M0,0 L8,4 L0,8 Z" class="arrow"/>
     </marker>
   </defs>
 
-  <rect x="0.5" y="0.5" width="819" height="569" rx="12" fill="#14171e" stroke="#262c38"/>
+  <rect x="0.5" y="0.5" width="819" height="569" rx="12" class="card"/>
   <text x="410" y="36" text-anchor="middle" class="title">Как устроен мост</text>
 
   <!-- MCP client -->
   <rect x="26" y="80" width="182" height="88" rx="10" class="box"/>
-  <circle cx="46" cy="106" r="4" fill="#3794ff"/>
+  <circle cx="46" cy="106" r="4" class="dot-blue"/>
   <text x="58" y="111" class="box-title">MCP-клиент</text>
   <text x="42" y="134" class="box-body">Claude Code или любой</text>
   <text x="42" y="152" class="box-body">MCP-хост</text>
 
   <!-- wrapper -->
   <rect x="288" y="66" width="244" height="196" rx="10" class="box"/>
-  <circle cx="308" cy="92" r="4" fill="#39c5cf"/>
+  <circle cx="308" cy="92" r="4" class="dot-teal"/>
   <text x="320" y="97" class="box-title">edt-bridge-mcp</text>
   <text x="304" y="116" class="box-sub">python-обвязка – pipx / PyPI</text>
-  <line x1="304" y1="126" x2="516" y2="126" stroke="#2c3345"/>
+  <line x1="304" y1="126" x2="516" y2="126" class="divider"/>
   <text x="304" y="146" class="box-body">1. проверка 127.0.0.1:8770</text>
   <text x="304" y="165" class="box-body">2. нет jar? доставит из релизов</text>
   <text x="304" y="184" class="box-body">3. нет EDT? поднимет headless</text>
@@ -46,13 +78,13 @@
 
   <!-- backends -->
   <rect x="612" y="66" width="182" height="88" rx="10" class="box"/>
-  <circle cx="632" cy="92" r="4" fill="#56d364"/>
+  <circle cx="632" cy="92" r="4" class="dot-green"/>
   <text x="644" y="97" class="box-title">GUI 1C:EDT</text>
   <text x="628" y="120" class="box-body">сессия пользователя,</text>
   <text x="628" y="138" class="box-body">плагин в dropins/</text>
 
   <rect x="612" y="174" width="182" height="88" rx="10" class="box" stroke-dasharray="6 4"/>
-  <circle cx="632" cy="200" r="4" fill="#56d364"/>
+  <circle cx="632" cy="200" r="4" class="dot-green"/>
   <text x="644" y="205" class="box-title">headless EDT</text>
   <text x="628" y="228" class="box-body">1cedtcli, поднимается</text>
   <text x="628" y="246" class="box-body">обвязкой сам</text>
@@ -66,7 +98,7 @@
 
   <!-- model -->
   <rect x="612" y="302" width="182" height="92" rx="10" class="box"/>
-  <circle cx="632" cy="328" r="4" fill="#ffd23f"/>
+  <circle cx="632" cy="328" r="4" class="dot-yellow"/>
   <text x="644" y="333" class="box-title">живая модель EDT</text>
   <text x="628" y="356" class="box-body">проекты, BM, проверки</text>
   <text x="628" y="374" class="box-body">+ Синтакс-помощник</text>
@@ -75,14 +107,14 @@
 
   <!-- работающая информационная база (вне процесса) -->
   <rect x="612" y="414" width="182" height="86" rx="10" class="box"/>
-  <circle cx="632" cy="440" r="4" fill="#f0883e"/>
+  <circle cx="632" cy="440" r="4" class="dot-orange"/>
   <text x="644" y="445" class="box-title">работающая ИБ</text>
   <text x="628" y="468" class="box-body">вне процесса:</text>
   <text x="628" y="486" class="box-body">агент (SSH) - ibcmd - rac</text>
   <line x1="703" y1="394" x2="703" y2="410" class="edge" marker-end="url(#ah)"/>
   <!-- releases -->
   <rect x="288" y="302" width="244" height="72" rx="10" class="box"/>
-  <circle cx="308" cy="328" r="4" fill="#a78bfa"/>
+  <circle cx="308" cy="328" r="4" class="dot-purple"/>
   <text x="320" y="333" class="box-title">GitHub Releases</text>
   <text x="304" y="356" class="box-body">jar плагина + SHA256SUMS</text>
   <line x1="410" y1="298" x2="410" y2="266" class="edge" marker-end="url(#ah)"/>
