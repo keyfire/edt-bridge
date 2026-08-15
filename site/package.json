@@ -13,6 +13,7 @@
     "preview": "blume preview"
   },
   "devDependencies": {
-    "blume": "^1.1.2"
+    "blume": "^1.1.2",
+    "flexsearch": "^0.8.212"
   }
 }

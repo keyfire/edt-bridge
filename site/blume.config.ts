@@ -37,6 +37,18 @@ export default defineConfig({
     repo: "edt-bridge",
   },
 
+  // Search: FlexSearch rather than the default Orama. Both are keyless and share the same
+  // static /blume-search.json index, but Orama tokenizes with its English splitter
+  // (/[^A-Za-zàèéìòóù0-9_'-]+/), which treats every Cyrillic letter as a separator: the whole
+  // Russian half of the site collapses to zero tokens, so every Russian query answered
+  // "nothing found". Orama's tokenizer is fixed inside Blume and takes no language from this
+  // config, whereas FlexSearch's default encoder is Unicode-aware and indexes Cyrillic as
+  // words. Its "forward" tokenization also prefix-matches, which stands in for the stemming
+  // an inflected language would otherwise need.
+  search: {
+    provider: "flexsearch",
+  },
+
   // The "last modified" date comes from the git history (CI needs fetch-depth: 0).
   lastModified: true,
 
