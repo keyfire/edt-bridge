@@ -73,6 +73,7 @@ import io.github.keyfire.edtbridge.tools.DeleteMethodTool;
 import io.github.keyfire.edtbridge.tools.DeleteObjectTool;
 import io.github.keyfire.edtbridge.tools.CleanProjectTool;
 import io.github.keyfire.edtbridge.tools.DeleteProjectTool;
+import io.github.keyfire.edtbridge.tools.ImportProjectTool;
 import io.github.keyfire.edtbridge.tools.FindReferencesTool;
 import io.github.keyfire.edtbridge.tools.FormRenderTool;
 import io.github.keyfire.edtbridge.tools.FormStructureTool;
@@ -332,6 +333,7 @@ applyI18n();loadStatus();loadTools();
     private final PlatformHelpTool platformHelp = new PlatformHelpTool();
     private final DeleteObjectTool deleteObject = new DeleteObjectTool();
     private final DeleteProjectTool deleteProject = new DeleteProjectTool();
+    private final ImportProjectTool importProject = new ImportProjectTool();
     private final CleanProjectTool cleanProject = new CleanProjectTool();
     private final SearchModulesTool searchModules = new SearchModulesTool();
     private final AdoptObjectTool adoptObject = new AdoptObjectTool();
@@ -705,6 +707,7 @@ applyI18n();loadStatus();loadTools();
         tools.add(platformHelp.descriptor());
         tools.add(deleteObject.descriptor());
         tools.add(deleteProject.descriptor());
+        tools.add(importProject.descriptor());
         tools.add(cleanProject.descriptor());
         tools.add(searchModules.descriptor());
         tools.add(adoptObject.descriptor());
@@ -911,6 +914,10 @@ applyI18n();loadStatus();loadTools();
         if (deleteObject.name().equals(name)) {
             JsonObject denied = writeTokenGate(deleteObject.isWrite(), name);
             return denied != null ? denied : deleteObject.call(args);
+        }
+        if (importProject.name().equals(name)) {
+            JsonObject denied = writeTokenGate(importProject.isWrite(), name);
+            return denied != null ? denied : importProject.call(args);
         }
         if (deleteProject.name().equals(name)) {
             JsonObject denied = writeTokenGate(deleteProject.isWrite(), name);

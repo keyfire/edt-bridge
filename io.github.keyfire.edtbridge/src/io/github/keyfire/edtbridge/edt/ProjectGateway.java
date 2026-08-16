@@ -342,6 +342,8 @@ public final class ProjectGateway {
         public int problemsBefore = -1;
         public int problemsAfter = -1;
         public boolean settled;
+        /** Whether validation was seen running at all while waiting - see ValidationSettle. */
+        public boolean sawValidation;
         public long elapsedMs;
         public String plan;
         public String warning;
@@ -420,16 +422,16 @@ public final class ProjectGateway {
             return r;
         }
 
-        // Validation keeps running after the build returns, so wait for the count to stop moving
-        // rather than reporting a number caught mid-flight.
+        // Validation keeps running after the build returns - and it is NOT part of the build job
+        // families joined above, so a count that merely stopped changing proves nothing: right after
+        // a clean it sits at zero because nothing has been reported yet. Waiting for the workspace to
+        // go idle as well is what tells "not started" apart from "done".
         int limit = (waitSeconds > 0 ? waitSeconds : 120) * 1000;
-        int previous = Integer.MIN_VALUE;
-        int stable = 0;
+        io.github.keyfire.edtbridge.core.ValidationSettle settle =
+                new io.github.keyfire.edtbridge.core.ValidationSettle();
         while (System.currentTimeMillis() - started < limit) {
-            int now = countProblems(projectName);
-            stable = (now == previous) ? stable + 1 : 0;
-            previous = now;
-            if (stable >= 3) {
+            boolean idle = org.eclipse.core.runtime.jobs.Job.getJobManager().isIdle();
+            if (settle.poll(countProblems(projectName), idle)) {
                 r.settled = true;
                 break;
             }
@@ -440,13 +442,18 @@ public final class ProjectGateway {
                 break;
             }
         }
-        r.problemsAfter = previous;
+        r.sawValidation = settle.sawWork();
+        r.problemsAfter = settle.problems();
         r.elapsedMs = System.currentTimeMillis() - started;
         r.applied = true;
         r.message = "cleaned " + projectName + (rebuild ? " and rebuilt" : "")
                 + "; problems " + r.problemsBefore + " -> " + r.problemsAfter
-                + (r.settled ? " (settled)" : " - WARNING: still changing when the wait ran out, "
-                        + "re-read edt_project_errors in a moment");
+                + (r.settled
+                        ? (r.sawValidation ? " (settled)"
+                                : " (settled, but validation was never seen running - if the count "
+                                        + "looks too good, re-read edt_project_errors in a moment)")
+                        : " - WARNING: still changing when the wait ran out, "
+                                + "re-read edt_project_errors in a moment");
         return r;
     }
 
@@ -551,6 +558,144 @@ public final class ProjectGateway {
         } catch (CoreException e) {
             r.applied = false;
             r.message = "delete failed: " + GatewaySupport.describeCause(e);
+        }
+        return r;
+    }
+
+    /** Outcome of registering an existing project directory in the workspace. */
+    public static final class ImportProjectResult {
+        public boolean ok;
+        public boolean applied;
+        public String name;
+        public String declaredName;
+        public String location;
+        public boolean directory;
+        public boolean descriptor;
+        public boolean already;
+        public boolean nameTaken;
+        public boolean insideWorkspace;
+        public boolean open;
+        public String plan;
+        public String warning;
+        public String message;
+    }
+
+    /**
+     * Register an existing project directory in the workspace - "Import existing project" without the
+     * dialog, the one step of the create/work/delete cycle that had no programmatic form.
+     *
+     * <p>Why it is needed: an extension in "modification and control" mode is validated against a BASE
+     * project that must sit on the target release. The checkout at hand is usually on some other
+     * branch, so the second project comes from a worktree - and adding it was a GUI-only action, which
+     * stopped the work dead.
+     *
+     * <p>The name comes from the directory's own {@code .project} unless the caller overrides it: two
+     * checkouts of one repository declare the SAME name, and the workspace allows a name once, so the
+     * override is what makes the second one importable at all.
+     *
+     * @param path      directory holding a {@code .project} file
+     * @param name      name to register it under; {@code null} keeps the declared one
+     * @param apply     {@code false} reports the plan; {@code true} registers and opens the project
+     */
+    public ImportProjectResult importProject(String path, String name, boolean apply) {
+        ImportProjectResult r = new ImportProjectResult();
+        r.location = path;
+        if (path == null || path.isBlank()) {
+            r.message = "path is required (the directory holding the project)";
+            return r;
+        }
+        java.nio.file.Path dir;
+        try {
+            dir = java.nio.file.Path.of(path).toAbsolutePath().normalize();
+        } catch (RuntimeException badPath) {
+            r.message = "path is not a valid file path: " + path;
+            return r;
+        }
+        r.location = dir.toString();
+        r.directory = java.nio.file.Files.isDirectory(dir);
+        if (!r.directory) {
+            r.message = "not a directory: " + r.location;
+            return r;
+        }
+        java.nio.file.Path descriptorFile = dir.resolve(".project");
+        r.descriptor = java.nio.file.Files.isRegularFile(descriptorFile);
+        if (!r.descriptor) {
+            r.message = "no .project file in " + r.location
+                    + " - an existing project is imported by its descriptor; this directory holds none.";
+            return r;
+        }
+        org.eclipse.core.resources.IProjectDescription description;
+        try {
+            description = ResourcesPlugin.getWorkspace().loadProjectDescription(
+                    new org.eclipse.core.runtime.Path(descriptorFile.toString()));
+        } catch (CoreException | RuntimeException e) {
+            r.message = "the .project file could not be read: " + GatewaySupport.describeCause(e);
+            return r;
+        }
+        r.declaredName = description.getName();
+        r.name = (name != null && !name.isBlank()) ? name.trim() : r.declaredName;
+        if (r.name == null || r.name.isBlank()) {
+            r.message = "the .project file declares no name - pass name explicitly";
+            return r;
+        }
+        description.setName(r.name);
+        // A directory that already lies inside the workspace root is registered by name alone: setting
+        // an explicit location for it is what Eclipse rejects as "overlaps the workspace location".
+        java.nio.file.Path workspaceRoot = ResourcesPlugin.getWorkspace().getRoot().getLocation() == null
+                ? null
+                : java.nio.file.Path.of(
+                        ResourcesPlugin.getWorkspace().getRoot().getLocation().toOSString());
+        r.insideWorkspace = workspaceRoot != null && dir.getParent() != null
+                && dir.getParent().equals(workspaceRoot);
+        if (!r.insideWorkspace) {
+            description.setLocation(new org.eclipse.core.runtime.Path(dir.toString()));
+        }
+
+        IProject existing = ResourcesPlugin.getWorkspace().getRoot().getProject(r.name);
+        if (existing.exists()) {
+            java.io.File where = (existing.getLocation() == null) ? null : existing.getLocation().toFile();
+            if (where != null && where.toPath().toAbsolutePath().normalize().equals(dir)) {
+                r.ok = true;
+                r.already = true;
+                r.open = existing.isOpen();
+                r.message = "this directory is already imported as \"" + r.name + "\""
+                        + (r.open ? "" : " (closed - open it in EDT or reopen the workspace)");
+                return r;
+            }
+            r.nameTaken = true;
+            r.message = "the workspace already has a project named \"" + r.name + "\""
+                    + (where == null ? "" : " at " + where)
+                    + " - pass another name to import this directory beside it.";
+            return r;
+        }
+
+        r.ok = true;
+        r.plan = "Register " + r.location + " as project \"" + r.name + "\""
+                + (r.name.equals(r.declaredName) ? "" : " (its .project declares \"" + r.declaredName + "\")")
+                + " and open it";
+        if (!r.name.equals(r.declaredName)) {
+            r.warning = "the project is registered under a name of its own while the .project on disk "
+                    + "keeps the declared one - that is how two checkouts of one repository live side "
+                    + "by side, and nothing on disk is rewritten.";
+        }
+        if (!apply) {
+            return r;
+        }
+        try {
+            org.eclipse.core.runtime.IProgressMonitor monitor =
+                    new org.eclipse.core.runtime.NullProgressMonitor();
+            existing.create(description, monitor);
+            existing.open(monitor);
+            r.open = existing.isOpen();
+            r.applied = true;
+            String persisted = snapshotWorkspace();
+            r.message = "imported " + r.location + " as \"" + r.name + "\""
+                    + " - validation of a freshly imported project takes a while; read"
+                    + " edt_project_errors after edt_clean_project rather than right away"
+                    + (persisted == null ? "" : " - WARNING: " + persisted);
+        } catch (CoreException | RuntimeException e) {
+            r.ok = false;
+            r.message = "import failed: " + GatewaySupport.describeCause(e);
         }
         return r;
     }

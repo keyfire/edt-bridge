@@ -1207,8 +1207,12 @@ public final class PlatformGateway {
             return r;
         }
         r.platform = ib.version;
+        java.nio.file.Path outputParent = java.nio.file.Path.of(outputPath).toAbsolutePath().getParent();
+        boolean parentMissing = outputParent != null && !java.nio.file.Files.isDirectory(outputParent);
         r.plan = "Export extension \"" + extName + "\" from " + projectName + " and build .cfe via ibcmd "
-                + ib.version + " (throwaway temp base) -> " + outputPath;
+                + ib.version + " (throwaway temp base) -> " + outputPath
+                + (parentMissing ? "; the directory " + outputParent + " does not exist yet and will "
+                        + "be created" : "");
         if (!apply) {
             r.ok = true;
             return r;
@@ -1252,6 +1256,13 @@ public final class PlatformGateway {
                         "--database-path=" + tempDb, "--extension=" + extName, xmlDir.toString());
             }
             if (err == null) {
+                // ibcmd does not create the directory of the file it writes: it answers
+                // "Каталог не обнаружен '<path>.cfe'" and exits, and the text reads like a build
+                // problem rather than a missing folder. Any builder creates it, so we do too.
+                java.nio.file.Path parent = java.nio.file.Path.of(outputPath).toAbsolutePath().getParent();
+                if (parent != null) {
+                    java.nio.file.Files.createDirectories(parent);
+                }
                 err = runIbcmd(ibcmd, "config", "save", "--data=" + tempData,
                         "--database-path=" + tempDb, "--extension=" + extName, outputPath);
             }

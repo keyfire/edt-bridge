@@ -98,6 +98,10 @@ public final class CleanProjectTool {
             }
             if (res.applied) {
                 o.addProperty("settled", res.settled);
+                // Whether the checks were seen running at all: "settled" without them is the shape
+                // of a wait that finished before validation started, and the caller must be able to
+                // tell the two apart without reading the message.
+                o.addProperty("sawValidation", res.sawValidation);
                 o.addProperty("elapsedMs", res.elapsedMs);
             }
             if (res.plan != null) {

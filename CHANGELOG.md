@@ -11,6 +11,12 @@ that day are named in the heading. The format follows
 ## Unreleased
 
 ### Added
+- **`edt_import_project`** – register an EXISTING project directory in the workspace, the
+  programmatic form of "Import existing project". The create/work/delete cycle lacked that
+  step, so a second project – the BASE one an extension in modification-and-control mode is
+  validated against, taken from a worktree of the target release – could only be added by
+  hand in the GUI. A name of its own lets two checkouts of one repository sit side by side;
+  nothing on disk is rewritten.
 - **Every `EDT_BRIDGE_*` variable is documented**, in two tables on the install page – the ones
   the wrapper reads at its start and the ones the plugin reads inside EDT, each with its flag or
   launch property and its default. `EDT_BRIDGE_PORT_SCAN` and `EDT_BRIDGE_WINDOW_WAIT` were
@@ -37,6 +43,15 @@ that day are named in the heading. The format follows
   is one list now, and the port settings link to the environment variables.
 
 ### Fixed
+- **`edt_clean_project` no longer calls a count final before validation has run.** It waited
+  for the problem count to stop changing, but EDT's checks are not part of the build job
+  families it joins: right after a clean the count sits at zero simply because nothing has
+  been reported yet, and "0 problems, settled" is the worst possible answer there – that
+  number is what clean was called for. The wait now also requires the workspace to be idle,
+  and the result says whether validation was seen running at all.
+- **`edt_build_extension` creates the directory of the file it writes.** `ibcmd` does not,
+  and its refusal reads like a build problem rather than a missing folder. The dry-run plan
+  now names the directory it is going to create.
 - **The delivery diagram ignored the reader's theme on the tools page.** The page embedded the
   PNG – the file whose palette is baked in for the README – so a reader in the light theme was
   served a dark picture. The page shows the SVG now, and the injected README copy gets the PNG
@@ -46,7 +61,6 @@ that day are named in the heading. The format follows
 - **The README's copy of the tool catalogue had drifted from the site page** – `edt_designer_agent`
   had grown its `sweep` action and idle timeout, and the wrapper's own `edt_open_gui` had never
   been listed there at all. Both were only on the site; the two are one text now.
-
 ## 2026-08-07 – 0.12.0
 
 ### Added
