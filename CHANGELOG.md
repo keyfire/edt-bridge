@@ -8,7 +8,7 @@ that day are named in the heading. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
-## Unreleased
+## 2026-08-17 – 0.14.0
 
 ### Added
 - **OBJECT types in the form-attribute grammar** – `ВнешняяОбработкаОбъект.X`,
