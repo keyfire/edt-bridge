@@ -42,7 +42,9 @@ public final class AddFormAttributeTool {
         JsonObject props = ToolJson.formMemberProps();
         props.add("name", ToolJson.strProp("New form attribute name (a valid 1C identifier)"));
         props.add("type", ToolJson.strProp("Value type: Строка(150), Число(15, 2), Булево, Дата, "
-                + "ТаблицаЗначений, or a reference such as СправочникСсылка.Контрагенты. "
+                + "ТаблицаЗначений, a reference such as СправочникСсылка.Контрагенты, or an OBJECT "
+                + "type such as ВнешняяОбработкаОбъект.X / СправочникОбъект.X - that is what a main "
+                + "attribute carries, the one that reaches the object module. "
                 + "Comma-separate for a composite type."));
         props.add("titleRu", ToolJson.strProp("Russian title. Optional."));
         props.add("columnOf", ToolJson.strProp("Work on a COLUMN of this value-table form attribute instead of a form attribute, e.g. columnOf=Курсы addresses the columns of the Курсы attribute. Optional."));

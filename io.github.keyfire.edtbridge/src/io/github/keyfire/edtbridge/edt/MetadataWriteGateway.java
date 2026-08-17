@@ -2602,6 +2602,28 @@ public final class MetadataWriteGateway {
     private static final Pattern REF_T = Pattern.compile("(?i)^(Справочник|Документ|Перечисление|"
             + "ПланВидовХарактеристик|ПланСчетов|ПланВидовРасчета|БизнесПроцесс|Задача|ПланОбмена)Ссылка\\.(.+)$");
     private static final Pattern DEFINED_T = Pattern.compile("(?i)^ОпределяемыйТип\\.(.+)$");
+    /**
+     * Object-type prefix (Russian, lower-cased) → EDT metadata-class FQN prefix. All produce
+     * MD_OBJECT_TYPE - the type a MAIN form attribute carries, the one that reaches the object
+     * module through РеквизитФормыВЗначение("Объект"). The processors and reports are here
+     * because their object type is the only way to give a generated form that attribute.
+     */
+    private static final Map<String, String> OBJECT_KIND_TO_MDCLASS = Map.ofEntries(
+            Map.entry("справочник", "Catalog"),
+            Map.entry("документ", "Document"),
+            Map.entry("планвидовхарактеристик", "ChartOfCharacteristicTypes"),
+            Map.entry("плансчетов", "ChartOfAccounts"),
+            Map.entry("планвидоврасчета", "ChartOfCalculationTypes"),
+            Map.entry("бизнеспроцесс", "BusinessProcess"),
+            Map.entry("задача", "Task"),
+            Map.entry("планобмена", "ExchangePlan"),
+            Map.entry("обработка", "DataProcessor"),
+            Map.entry("отчет", "Report"),
+            Map.entry("внешняяобработка", "ExternalDataProcessor"),
+            Map.entry("внешнийотчет", "ExternalReport"));
+    private static final Pattern OBJECT_T = Pattern.compile("(?i)^(Справочник|Документ|"
+            + "ПланВидовХарактеристик|ПланСчетов|ПланВидовРасчета|БизнесПроцесс|Задача|ПланОбмена|"
+            + "ВнешняяОбработка|ВнешнийОтчет|Обработка|Отчет)Объект\\.(.+)$");
 
     /**
      * Parse a type string (single or composite). A composite is comma-separated at the top level
@@ -2728,6 +2750,19 @@ public final class MetadataWriteGateway {
                 t.display = m.group(1) + "Ссылка." + objName;
                 t.refFqn = typePrefix + "." + objName;
                 t.producedTypeEClass = MdTypePackage.Literals.MD_REF_TYPE;
+            }
+            return t;
+        }
+        if ((m = OBJECT_T.matcher(s)).matches()) {
+            String kind = m.group(1).toLowerCase();
+            String objName = m.group(2).trim();
+            String typePrefix = OBJECT_KIND_TO_MDCLASS.get(kind);
+            if (typePrefix != null) {
+                t.valid = true;
+                t.kind = TypeKind.REF;
+                t.display = m.group(1) + "Объект." + objName;
+                t.refFqn = typePrefix + "." + objName;
+                t.producedTypeEClass = MdTypePackage.Literals.MD_OBJECT_TYPE;
             }
             return t;
         }

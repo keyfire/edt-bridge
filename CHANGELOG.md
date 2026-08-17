@@ -8,6 +8,21 @@ that day are named in the heading. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
+## Unreleased
+
+### Added
+- **OBJECT types in the form-attribute grammar** – `ВнешняяОбработкаОбъект.X`,
+  `СправочникОбъект.X` and the rest of the family now parse, so a main form attribute can be
+  added by the tool. Until now only reference types did, and `edt_add_form_attribute` answered
+  "type does not parse": the attribute that reaches the object module had to be written into
+  `Form.form` by hand.
+
+### Fixed
+- **A table's title no longer lands on every generated column.** EDT hands the new-item
+  descriptor to each column it generates from the bound attribute, so a table titled "Rates"
+  came out with that same caption on all of its columns. The table is now created untitled and
+  titled afterwards; the columns keep the default EDT gives them.
+
 ## 2026-08-16 – 0.13.0
 
 ### Added

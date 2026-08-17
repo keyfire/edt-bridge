@@ -1785,7 +1785,14 @@ public final class FormWriteGateway {
                         }
                     }
                     Map<String, String> title = new LinkedHashMap<>();
-                    if (titleRu != null && !titleRu.isBlank()) {
+                    // A table generates its columns from the bound attribute, and EDT hands the
+                    // SAME descriptor to every one of them: a table titled "Курсы валют" came out
+                    // with that caption repeated on all seven columns. So a table is created
+                    // untitled and gets its title afterwards - the columns then keep the default
+                    // EDT gives them (verified against a table added without a title: no <title>
+                    // element at all, so the platform shows the column's own name).
+                    boolean titleAfterwards = "table".equals(itemKind);
+                    if (titleRu != null && !titleRu.isBlank() && !titleAfterwards) {
                         title.put("ru", titleRu);
                     }
                     FormNewItemDescriptor descriptor = new FormNewItemDescriptor(
@@ -1817,6 +1824,10 @@ public final class FormWriteGateway {
                     if (created == null) {
                         failure[0] = "EDT's form item service returned nothing for kind " + itemKind;
                         return null;
+                    }
+                    if (titleAfterwards && titleRu != null && !titleRu.isBlank()
+                            && created instanceof Titled) {
+                        ((Titled) created).getTitle().put("ru", titleRu);
                     }
                     r.name = created.getName();
                     r.id = Integer.valueOf(created.getId());
