@@ -90,5 +90,10 @@ export default defineConfig({
   // An orange accent - it matches the diagrams in the documentation.
   theme: {
     accent: "orange",
+    // Code is set in JetBrains Mono: the default IBM Plex Mono is narrower and lighter,
+    // and these pages are read mostly as code. Astro downloads its Latin subset only -
+    // the Cyrillic one comes from theme.css, which names the family variable of every
+    // role of this block, so a font changed here has to be renamed there too.
+    fonts: { mono: "jetbrains-mono" },
   },
 });

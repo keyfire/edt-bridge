@@ -8,3 +8,9 @@ inside, 1C:EDT, using the Eclipse Platform and 1C:EDT plugin APIs (their respect
 licenses apply). At runtime it uses Google Gson (Apache License 2.0). Those
 dependencies are provided by the host EDT environment and are not redistributed by
 this project.
+
+The documentation site carries the Cyrillic subsets of the Inter, Inter Tight and
+JetBrains Mono webfonts (site/public/fonts): the build downloads the Latin subset of
+them only, so without these files Russian pages would fall back to Arial and Courier
+New. The fonts are licensed under the SIL Open Font License 1.1 - the license texts lie
+next to them.
