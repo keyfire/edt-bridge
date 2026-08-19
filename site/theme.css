@@ -12,9 +12,9 @@
  * Fonts and served from public/fonts. Their unicode-range covers Cyrillic and nothing
  * else, so Latin still comes from Astro's subset (its metric fallbacks intact) and these
  * faces only fill the hole. The files are variable, so one of them covers every weight
- * of a role. Inter Tight and Fira Code get no italic file: headings and code are not set
- * in italics, Fira Code has no italic at all, and the odd one is synthesized from the
- * upright face - which still keeps the typeface right.
+ * of a role. Inter Tight and Geist Mono get no italic file: headings and code are not set
+ * in italics, and the odd one is synthesized from the upright face - which still keeps
+ * the typeface right.
  *
  * The tokens name the family variables Astro fills for the roles of blume.config.ts, so
  * a font changed there has to be renamed here too - otherwise the role silently falls
@@ -22,7 +22,7 @@
  *
  * To refresh: take the cyrillic block of
  * https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,100..900;1,100..900 (and of
- * the same for Inter+Tight and Fira+Code) and re-download the woff2 it points at.
+ * the same for Inter+Tight and Geist+Mono) and re-download the woff2 it points at.
  * The font licenses (SIL OFL 1.1) lie next to the files in public/fonts.
  */
 
@@ -54,11 +54,11 @@
 }
 
 @font-face {
-  font-family: "Fira Code Cyrillic";
+  font-family: "Geist Mono Cyrillic";
   font-display: swap;
   font-style: normal;
-  font-weight: 300 700;
-  src: url("/edt-bridge/fonts/fira-code-cyrillic.woff2") format("woff2");
+  font-weight: 100 900;
+  src: url("/edt-bridge/fonts/geist-mono-cyrillic.woff2") format("woff2");
   unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
 }
 
@@ -67,6 +67,6 @@
     var(--blume-ff-inter, ui-sans-serif, system-ui, sans-serif);
   --blume-font-display: "Inter Tight Cyrillic",
     var(--blume-ff-inter-tight, ui-sans-serif, system-ui, sans-serif);
-  --blume-font-mono: "Fira Code Cyrillic",
-    var(--blume-ff-fira-code, ui-monospace, "Cascadia Code", Consolas, monospace);
+  --blume-font-mono: "Geist Mono Cyrillic",
+    var(--blume-ff-geist-mono, ui-monospace, "Cascadia Code", Consolas, monospace);
 }
