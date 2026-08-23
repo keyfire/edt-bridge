@@ -18,6 +18,7 @@ $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "edt-common.ps1")
 
 $EdtDir = Resolve-EdtDir -EdtDir $EdtDir -RequireExe "1cedt.exe"
+Write-EdtSelection -EdtDir $EdtDir -BuildDir (Join-Path $PSScriptRoot "..\build")
 $exe = Join-Path $EdtDir "1cedt.exe"
 
 if (-not (Assert-WorkspaceFree -Workspace $Workspace)) { exit 2 }

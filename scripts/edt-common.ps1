@@ -117,6 +117,47 @@ function Clear-StaleWorkspaceLock {
   Two singletons of the same bundle make Equinox resolve an arbitrary (often older) one, so a fresh
   build silently does not take effect.
 #>
+<#
+.SYNOPSIS
+  Печатает, ИЗ КАКОЙ установки EDT идёт запуск и какой jar моста в ней лежит.
+.DESCRIPTION
+  Установок на машине несколько, скрипт выбирает её сам, а подменённый jar кладут в dropins
+  той, которую запомнили. Правка, ушедшая в одну установку, при запуске из другой выглядела
+  как несобравшийся jar: инструмент отвечал по-старому, и опознать это удавалось только
+  списком процессов. Поэтому запуск сам говорит: установка, её dropins, имя и время jar,
+  число jar (двух там быть не должно - Equinox грузит произвольный) и предупреждение, если
+  собранный в build/ новее лежащего в dropins.
+#>
+function Write-EdtSelection {
+  param(
+    [Parameter(Mandatory = $true)][string]$EdtDir,
+    [string]$BuildDir
+  )
+  $drop = Join-Path $EdtDir "dropins"
+  "EDT installation: $EdtDir"
+  "dropins:          $drop"
+  $jars = @(
+    Get-ChildItem $drop -Filter "io.github.keyfire.edtbridge_*.jar" -ErrorAction SilentlyContinue |
+      Sort-Object LastWriteTime -Descending
+  )
+  if ($jars.Count -eq 0) {
+    Write-Warning "no bridge jar in $drop - the bridge tools will not be there"
+    return
+  }
+  $newest = $jars[0]
+  "bridge jar:       $($newest.Name) ($($newest.LastWriteTime.ToString('yyyy-MM-dd HH:mm')))"
+  if ($jars.Count -gt 1) {
+    Write-Warning "$($jars.Count) bridge jars in dropins - Equinox loads an arbitrary one; leave a single jar"
+  }
+  if (-not $BuildDir) { return }
+  $built = Get-ChildItem $BuildDir -Filter "io.github.keyfire.edtbridge_*.jar" -ErrorAction SilentlyContinue |
+    Sort-Object LastWriteTime -Descending | Select-Object -First 1
+  if ($built -and $built.LastWriteTime -gt $newest.LastWriteTime) {
+    Write-Warning ("the jar in $BuildDir is newer ($($built.Name), " +
+      "$($built.LastWriteTime.ToString('yyyy-MM-dd HH:mm'))) - this installation runs the OLD code")
+  }
+}
+
 function Set-SingleDropinJar {
   param([Parameter(Mandatory = $true)][string]$EdtDir)
   $drop = Join-Path $EdtDir "dropins"

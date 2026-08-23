@@ -8,6 +8,16 @@ that day are named in the heading. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
+## Unreleased
+
+### Fixed
+- **The launchers name the installation they start from.** There are several EDT installations
+  on a machine, the script picks one itself, and the swapped jar lies in the dropins of the one
+  somebody wrote down: a fix that went into another installation looked like a jar that had not
+  been built. `run-headless.ps1` and `run-gui.ps1` now print the installation, its dropins, the
+  name and time of the bridge jar, warn when there are two of them (Equinox loads an arbitrary
+  one) and when the jar in `build/` is newer than the one installed.
+
 ## 2026-08-17 – 0.14.0
 
 ### Added

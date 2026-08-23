@@ -21,6 +21,9 @@ $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "edt-common.ps1")
 
 $EdtDir = Resolve-EdtDir -EdtDir $EdtDir -RequireExe "1cedtcli.exe"
+# Из какой установки идёт запуск - первой же строкой: правка, ушедшая в другую установку,
+# выглядела как несобравшийся jar (см. Write-EdtSelection).
+Write-EdtSelection -EdtDir $EdtDir -BuildDir (Join-Path $PSScriptRoot "..uild")
 
 # 1) SAFETY: never disturb a GUI 1C:EDT (1cedt.exe) the user may be working in. What actually
 #    collides with one is narrow, so check FOR THE COLLISION rather than for the process:
