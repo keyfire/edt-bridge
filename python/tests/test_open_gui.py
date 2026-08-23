@@ -320,3 +320,47 @@ def test_the_names_the_schema_knows_are_let_through():
     assert server.unknown_arguments("edt_open_gui", {"force": True, "timeoutSeconds": 5}) is None
     assert server.unknown_arguments("edt_open_gui", {}) is None
     assert server.unknown_arguments("edt_projects", {"whatever": 1}) is None
+
+
+class _Silent:
+    """A backend whose port answers nothing while the headless processes are still there."""
+
+    def __init__(self, survivors):
+        self.survivors = list(survivors)
+        self.asked = []
+
+    def status(self):
+        return None
+
+    def headless_pids(self):
+        return list(self.survivors)
+
+    def stop_headless(self, force=False, report=None):
+        self.asked.append(force)
+        if force:
+            self.survivors = []
+            return True, []
+        return False, list(self.survivors)
+
+
+def test_a_silent_port_with_a_live_session_is_not_reported_as_nothing_to_do(capsys):
+    """The CLI outlives the framework it hosted and keeps the workspace lock; answering
+    "nothing to shut down" leaves the next start failing on a lock nobody is looking at."""
+    backend = _Silent([4242])
+    code = cli._shutdown(backend, cli._parse("shutdown", ["--force"]))
+    assert code == 0
+    assert backend.asked == [True]
+    assert "4242" in capsys.readouterr().out
+
+
+def test_without_force_the_survivors_are_named_and_the_call_fails(capsys):
+    backend = _Silent([4242])
+    code = cli._shutdown(backend, cli._parse("shutdown", []))
+    assert code == 2
+    assert "--force" in capsys.readouterr().err
+
+
+def test_a_silent_port_with_no_session_is_nothing_to_do(capsys):
+    backend = _Silent([])
+    assert cli._shutdown(backend, cli._parse("shutdown", [])) == 0
+    assert "nothing to shut down" in capsys.readouterr().out

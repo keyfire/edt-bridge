@@ -54,6 +54,18 @@ def test_json_file_is_read_as_utf8(tmp_path):
     }
 
 
+def test_json_file_written_by_a_windows_shell_is_read(tmp_path):
+    """PowerShell writes a byte order mark by default, and the file is otherwise valid JSON -
+    refusing it sends the person hunting for an encoding flag instead of calling the tool."""
+    path = tmp_path / "args.json"
+    path.write_text(json.dumps({"fqn": "Справочник.Товары"}, ensure_ascii=False),
+                    encoding="utf-8-sig")
+
+    assert cli._tool_arguments(_call(["edt_add_route", "--json-file", str(path)])) == {
+        "fqn": "Справочник.Товары"
+    }
+
+
 def test_stdin_arguments(monkeypatch):
     monkeypatch.setattr(sys, "stdin", io.StringIO('{"projectName": "APP"}'))
     assert cli._tool_arguments(_call(["edt_projects", "--stdin"])) == {"projectName": "APP"}

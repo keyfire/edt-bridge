@@ -21,6 +21,11 @@ that day are named in the heading. The format follows
   `infobasePassword` were read but not declared, so no caller could find them.
 
 ### Fixed
+- **`shutdown` sees a session whose port has gone silent.** The CLI outlives the framework it
+  hosted and keeps the workspace lock, and the answer used to be "nothing to shut down" - the
+  next start then failed on a lock nobody was looking at.
+- **`--json-file` accepts a file with a byte order mark**, which is what the Windows shells
+  write by default.
 - **`edt_dump_external_object` falls back to the on-disk route** when EDT's own dumper refuses –
   an object bound to a base configuration used to end there – and puts back the auto-dump
   generation if the refusal switched it off. `route` pins the builder.

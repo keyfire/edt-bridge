@@ -76,7 +76,10 @@ def _parse(command: str, argv: list[str]) -> argparse.Namespace:
 def _tool_arguments(args: argparse.Namespace) -> dict:
     """The JSON object to pass as the tool's arguments; raises ValueError with a usable message."""
     if args.json_file:
-        with open(args.json_file, encoding="utf-8") as handle:
+        # utf-8-sig, not utf-8: the Windows shells write a byte order mark by default
+        # (Out-File -Encoding utf8), and a strict reader answers "unexpected UTF-8 BOM" to a file
+        # the person just wrote with the tool at hand.
+        with open(args.json_file, encoding="utf-8-sig") as handle:
             text = handle.read()
     elif args.json_text:
         text = args.json_text
@@ -141,8 +144,21 @@ def _shutdown(backend, args: argparse.Namespace) -> int:
     bridge refused (a GUI EDT without --force), 1 the request could not be made.
     """
     if backend.status() is None:
-        print("no bridge is running in the scanned port range - nothing to shut down")
-        return 0
+        # A silent port is not an ended session: the CLI outlives the framework it hosted, and it
+        # keeps the workspace lock - the next start then fails with the lock held by a process
+        # nobody is looking at. So look for the processes, not only for the port.
+        survivors = backend.headless_pids()
+        if not survivors:
+            print("no bridge is running in the scanned port range - nothing to shut down")
+            return 0
+        print(f"the bridge is silent, but its headless session is still there: {survivors}")
+        stopped, left = backend.stop_headless(force=args.force, report=print)
+        if stopped and not left:
+            print("the headless session is down")
+            return 0
+        print("still running: " + ", ".join(str(pid) for pid in left)
+              + ("" if args.force else " - pass --force to end them"), file=sys.stderr)
+        return 2
     try:
         answer = backend.shutdown(force=args.force)
     except urllib.error.HTTPError as http:
