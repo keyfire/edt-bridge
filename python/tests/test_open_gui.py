@@ -295,3 +295,28 @@ def test_the_gui_command_takes_force_and_timeout():
     args = cli._parse("gui", ["--force", "--timeout", "45"])
     assert args.force and args.timeout == 45
     assert cli._parse("gui", []).timeout == 90
+
+
+def test_an_argument_the_schema_does_not_know_refuses_the_call(monkeypatch):
+    """A dropped name reads as success for a call that did something else: the bridge refuses such
+    a name for its own tools, and the wrapper has to do the same for the one it serves itself."""
+    backend = server.Backend()
+    opened = {}
+    monkeypatch.setattr(backend, "open_gui",
+                        lambda force, timeout: opened.setdefault("called", True) or (True, ["ok"]))
+    stdio = _Recorder(backend)
+    stdio.handle({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+                  "params": {"name": "edt_open_gui", "arguments": {"timeoutSecond": 30}}})
+    result = stdio.sent[0]["result"]
+    assert result["isError"] is True
+    text = result["content"][0]["text"]
+    assert "'timeoutSecond'" in text
+    assert "did you mean 'timeoutSeconds'" in text
+    assert "force, timeoutSeconds" in text
+    assert "called" not in opened
+
+
+def test_the_names_the_schema_knows_are_let_through():
+    assert server.unknown_arguments("edt_open_gui", {"force": True, "timeoutSeconds": 5}) is None
+    assert server.unknown_arguments("edt_open_gui", {}) is None
+    assert server.unknown_arguments("edt_projects", {"whatever": 1}) is None

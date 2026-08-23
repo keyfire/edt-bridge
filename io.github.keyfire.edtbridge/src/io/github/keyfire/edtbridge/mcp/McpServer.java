@@ -21,6 +21,10 @@ import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -31,6 +35,7 @@ import org.osgi.framework.Bundle;
 import org.osgi.framework.FrameworkUtil;
 import org.osgi.framework.Version;
 
+import io.github.keyfire.edtbridge.core.ArgumentNames;
 import io.github.keyfire.edtbridge.edt.ProjectGateway;
 import io.github.keyfire.edtbridge.tools.AddAttributeTool;
 import io.github.keyfire.edtbridge.tools.AddRouteTool;
@@ -280,6 +285,8 @@ applyI18n();loadStatus();loadTools();
 """;
 
     private final Gson gson = new GsonBuilder().disableHtmlEscaping().create();
+    /** Argument names by tool, built on the first call - the descriptors do not change at run time. */
+    private Map<String, Set<String>> declaredArguments;
     private final ProjectErrorsTool projectErrors = new ProjectErrorsTool();
     private final ProjectsTool projects = new ProjectsTool();
     private final ModuleTextTool moduleText = new ModuleTextTool();
@@ -726,6 +733,10 @@ applyI18n();loadStatus();loadTools();
         JsonObject args = params.has("arguments") && params.get("arguments").isJsonObject()
                 ? params.getAsJsonObject("arguments")
                 : new JsonObject();
+        JsonObject misnamed = unknownArgumentGate(name, args);
+        if (misnamed != null) {
+            return misnamed;
+        }
         if (projectErrors.name().equals(name)) {
             return projectErrors.call(args);
         }
@@ -954,6 +965,41 @@ applyI18n();loadStatus();loadTools();
             return denied != null ? denied : debugEvaluate.call(args);
         }
         return toolError("unknown tool: " + name);
+    }
+
+    /**
+     * Name gate for every tool: an argument the tool does not declare refuses the whole call.
+     *
+     * <p>Silently dropping it is worse than refusing: an erase asked with {@code deleteContents}
+     * (the schema spells it {@code deleteContent}) kept every file and answered like a done deed.
+     * The gate stands here rather than in each tool so no tool can forget it, and it judges against
+     * the tool's OWN descriptor - however the tool assembles it, including shared property helpers.
+     * A name this server does not serve is left to the dispatch below, which names it as unknown.
+     */
+    private JsonObject unknownArgumentGate(String name, JsonObject args) {
+        Set<String> declared = declaredArguments().get(name);
+        if (declared == null || args == null) {
+            return null;
+        }
+        String refusal = ArgumentNames.refusal(name, args.keySet(), declared);
+        return refusal == null ? null : toolError(refusal);
+    }
+
+    /** The argument names each tool declares, read once from the descriptors the server serves. */
+    private Map<String, Set<String>> declaredArguments() {
+        if (declaredArguments == null) {
+            Map<String, Set<String>> byTool = new HashMap<>();
+            for (JsonElement element : toolsList().getAsJsonArray("tools")) {
+                JsonObject tool = element.getAsJsonObject();
+                JsonObject schema = tool.has("inputSchema") ? tool.getAsJsonObject("inputSchema") : null;
+                JsonObject props = schema != null && schema.has("properties")
+                        ? schema.getAsJsonObject("properties")
+                        : new JsonObject();
+                byTool.put(tool.get("name").getAsString(), new HashSet<>(props.keySet()));
+            }
+            declaredArguments = byTool;
+        }
+        return declaredArguments;
     }
 
     /**

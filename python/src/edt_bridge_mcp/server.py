@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import difflib
 import io
 import json
 import os
@@ -677,6 +678,33 @@ LOCAL_TOOLS = [
 LOCAL_TOOL_NAMES = {tool["name"] for tool in LOCAL_TOOLS}
 
 
+def unknown_arguments(name: str, arguments: dict) -> str | None:
+    """The refusal for a local call carrying names the tool does not declare, or None.
+
+    The bridge itself judges the names of its own tools; the wrapper serves edt_open_gui by
+    itself, so the same judgement has to be made here. Dropping a name in silence is worse than
+    refusing: the answer then reads as a done deed for a call that did something else.
+    """
+    declared: set[str] = set()
+    for tool in LOCAL_TOOLS:
+        if tool["name"] == name:
+            declared = set(tool.get("inputSchema", {}).get("properties", {}))
+            break
+    else:
+        return None
+    unknown = [key for key in arguments if key not in declared]
+    if not unknown:
+        return None
+    named = []
+    for key in unknown:
+        near = difflib.get_close_matches(key, sorted(declared), n=1, cutoff=0.7)
+        named.append(f"'{key}'" + (f" (did you mean '{near[0]}'?)" if near else ""))
+    return (f"{name}: unknown argument{'s' if len(unknown) > 1 else ''} " + ", ".join(named)
+            + ". Nothing was done - an argument that is not in the schema would be dropped, and "
+            "the answer would read as success. Arguments this tool takes: "
+            + (", ".join(sorted(declared)) or "(none)"))
+
+
 class StdioServer:
     """Newline-delimited JSON-RPC over stdio; forwards to the Backend."""
 
@@ -787,6 +815,10 @@ class StdioServer:
         """Run a wrapper-served tool and report as a normal tool result."""
         if name != "edt_open_gui":
             self._tool_error(req_id, f"unknown local tool: {name}")
+            return
+        misnamed = unknown_arguments(name, arguments)
+        if misnamed:
+            self._tool_error(req_id, misnamed)
             return
         try:
             seconds = max(1, int(arguments.get("timeoutSeconds")))

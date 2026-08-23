@@ -80,6 +80,10 @@ Object names are Cyrillic as in the configuration, the type prefix is English (`
 host presents every server's tools to the agent as one flat list, so a name must carry its context
 itself – `edt_rename` stays unambiguous where a bare `rename` is dangerously generic.
 
+A parameter name the tool does not declare **refuses the whole call**, naming the near miss
+(`deleteContents` → `deleteContent`) and listing what the tool takes. Dropping it in silence
+would answer like a done deed for a call that did something else.
+
 Together they close the full cycle without leaving MCP – create, develop, build, deliver, debug:
 
 ![Full delivery cycle over MCP](https://raw.githubusercontent.com/keyfire/edt-bridge/main/docs/delivery.png)

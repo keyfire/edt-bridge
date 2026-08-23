@@ -73,6 +73,9 @@ public final class InfobaseSessionsTool {
         props.add("sessions", sessions);
         props.add("clusterUser", strProp("Cluster administrator, when the cluster has one."));
         props.add("clusterPassword", strProp("That administrator's password. Never echoed back."));
+        props.add("infobaseUser", strProp("Infobase administrator, when the infobase itself asks for "
+                + "one: a bare call then answers that the user lacks rights on the infobase."));
+        props.add("infobasePassword", strProp("That administrator's password. Never echoed back."));
         props.add("reason", strProp("Message shown to the user whose session is ended."));
         props.add("platformVersion", strProp("Platform version line to pick rac from, e.g. 8.5.1. "
                 + "Optional."));
