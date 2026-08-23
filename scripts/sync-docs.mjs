@@ -99,7 +99,7 @@ const rewriteLinks = (text, links = {}) =>
 // document embeds.
 const pageBody = (text) =>
   text
-    .replace(/^---\n[\s\S]*?\n---\n/, '')
+    .replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '')
     .replace(/<!--[\s\S]*?-->\n?/g, '')
     .trim();
 

@@ -50,6 +50,7 @@ import io.github.keyfire.edtbridge.tools.InfobaseDumpTool;
 import io.github.keyfire.edtbridge.tools.AdoptObjectTool;
 import io.github.keyfire.edtbridge.tools.AddFormAttributeTool;
 import io.github.keyfire.edtbridge.tools.AddFormCommandTool;
+import io.github.keyfire.edtbridge.tools.AddFormHandlerTool;
 import io.github.keyfire.edtbridge.tools.AddFormItemTool;
 import io.github.keyfire.edtbridge.tools.ModifyFormItemTool;
 import io.github.keyfire.edtbridge.tools.RemoveFormItemTool;
@@ -308,6 +309,7 @@ applyI18n();loadStatus();loadTools();
     private final ModifyFormAttributeTool modifyFormAttribute = new ModifyFormAttributeTool();
     private final RemoveFormAttributeTool removeFormAttribute = new RemoveFormAttributeTool();
     private final AddFormCommandTool addFormCommand = new AddFormCommandTool();
+    private final AddFormHandlerTool addFormHandler = new AddFormHandlerTool();
     private final ModifyFormCommandTool modifyFormCommand = new ModifyFormCommandTool();
     private final RemoveFormCommandTool removeFormCommand = new RemoveFormCommandTool();
     private final AddFormItemTool addFormItem = new AddFormItemTool();
@@ -690,6 +692,7 @@ applyI18n();loadStatus();loadTools();
         tools.add(modifyFormAttribute.descriptor());
         tools.add(removeFormAttribute.descriptor());
         tools.add(addFormCommand.descriptor());
+        tools.add(addFormHandler.descriptor());
         tools.add(modifyFormCommand.descriptor());
         tools.add(removeFormCommand.descriptor());
         tools.add(addFormItem.descriptor());
@@ -836,6 +839,10 @@ applyI18n();loadStatus();loadTools();
         if (addFormCommand.name().equals(name)) {
             JsonObject denied = writeTokenGate(addFormCommand.isWrite(), name);
             return denied != null ? denied : addFormCommand.call(args);
+        }
+        if (addFormHandler.name().equals(name)) {
+            JsonObject denied = writeTokenGate(addFormHandler.isWrite(), name);
+            return denied != null ? denied : addFormHandler.call(args);
         }
         if (modifyFormCommand.name().equals(name)) {
             JsonObject denied = writeTokenGate(modifyFormCommand.isWrite(), name);

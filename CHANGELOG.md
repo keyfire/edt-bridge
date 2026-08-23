@@ -11,10 +11,16 @@ that day are named in the heading. The format follows
 ## Unreleased
 
 ### Added
+- **`edt_add_form_handler`** registers an event handler on a form or on one of its items – the
+  `handlers` entry in `Form.form` without which the platform never calls the procedure. The
+  allowed events come from EDT, and the stub it can write carries the event's own signature and
+  directive.
 - **Infobase credentials are in the schema of `edt_infobase_sessions`** – `infobaseUser` and
   `infobasePassword` were read but not declared, so no caller could find them.
 
 ### Fixed
+- **`scripts/sync-docs.mjs` survives a CRLF checkout** – it used to leave the page frontmatter
+  inside the README block, which then read as stale.
 - **An argument the schema does not know refuses the call.** It used to be dropped in silence:
   an erase asked with `deleteContents` kept every file and answered like a done deed. The
   refusal names the near miss and lists what the tool takes.

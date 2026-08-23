@@ -62,6 +62,8 @@ import com._1c.g5.v8.dt.form.model.AbstractDataPath;
 import com._1c.g5.v8.dt.form.model.AbstractFormAttribute;
 import com._1c.g5.v8.dt.form.model.CommandHandler;
 import com._1c.g5.v8.dt.form.model.DataItem;
+import com._1c.g5.v8.dt.form.model.EventHandler;
+import com._1c.g5.v8.dt.form.model.EventHandlerContainer;
 import com._1c.g5.v8.dt.form.model.DataPath;
 import com._1c.g5.v8.dt.form.model.Form;
 import com._1c.g5.v8.dt.form.model.FormAttribute;
@@ -71,14 +73,20 @@ import com._1c.g5.v8.dt.form.model.FormCommandHandlerContainer;
 import com._1c.g5.v8.dt.form.model.FormFactory;
 import com._1c.g5.v8.dt.form.model.FormItem;
 import com._1c.g5.v8.dt.form.model.FormItemContainer;
+import com._1c.g5.v8.dt.form.model.FormVisualEntity;
 import com._1c.g5.v8.dt.form.model.ManagedFormGroupType;
 import com._1c.g5.v8.dt.form.model.Table;
 import com._1c.g5.v8.dt.form.model.Titled;
 import com._1c.g5.v8.dt.form.model.Visible;
 import com._1c.g5.v8.dt.form.service.FormIdentifierService;
+import com._1c.g5.v8.dt.form.service.FormItemInformationService;
 import com._1c.g5.v8.dt.form.service.item.FormNewItemDescriptor;
 import com._1c.g5.v8.dt.form.service.item.IFormItemManagementService;
+import com._1c.g5.v8.dt.mcore.Event;
+import com._1c.g5.v8.dt.mcore.ParamSet;
+import com._1c.g5.v8.dt.mcore.Parameter;
 import com._1c.g5.v8.dt.mcore.TypeDescription;
+import com._1c.g5.v8.dt.mcore.util.Environments;
 import com._1c.g5.v8.dt.metadata.mdclass.AbstractForm;
 import com._1c.g5.v8.dt.metadata.mdclass.AdjustableBoolean;
 import com._1c.g5.v8.dt.metadata.mdclass.BasicForm;
@@ -663,6 +671,32 @@ public final class FormWriteGateway {
     // ---- Form members: attributes and commands (add / modify / remove) ---------------------------
 
     /** Outcome shared by the six form-member operations. */
+    /** What registering a form event handler decided and did. */
+    public static final class FormHandlerResult {
+        public boolean ok;
+        public boolean applied;
+        public String projectName;
+        public String formFqn;
+        public String owner;            // the item the handler sits on; null = the form itself
+        public String event;            // the event as the platform names it in English
+        public String eventRu;
+        public String handler;          // the procedure that will be called
+        public String signature;        // handler(parameters), as written into the module
+        public String directive;        // &НаКлиенте / &НаСервере, decided by the event
+        public boolean formFound;
+        public boolean ownerFound;
+        public Boolean eventKnown;      // the event is one this owner allows
+        public Boolean eventFree;       // no handler is registered for it yet
+        public String existingHandler;  // the procedure already handling it
+        public String modulePath;       // where the stub landed
+        public String plan;
+        public String warning;
+        public String message;
+        public final List<String> events = new ArrayList<>();      // what this owner allows
+        public final List<String> parameters = new ArrayList<>();  // the event's own signature
+        public final List<String> items = new ArrayList<>();       // the form items, when one was missed
+    }
+
     public static final class FormMemberResult {
         public boolean ok;
         public boolean applied;
@@ -1083,6 +1117,251 @@ public final class FormWriteGateway {
         }
         finish(r, mm, model, formFqn, "added command \"" + name + "\" to ");
         return r;
+    }
+
+    /**
+     * Register an event handler on a managed form or on one of its items.
+     *
+     * <p>The procedure alone is not a handler: without a {@code handlers} entry in {@code Form.form}
+     * naming the event, the platform never calls it, and validation says nothing about it - the
+     * procedure just sits there. This is the entry the form editor writes when a person double-clicks
+     * an event in the property sheet.
+     *
+     * <p>The events a form or an item allows are asked of EDT itself, so an unknown event is refused
+     * with the list of the ones that ARE allowed. {@code createHandler} additionally writes the
+     * procedure stub with the signature the event declares and the directive its environments imply.
+     */
+    public FormHandlerResult addFormHandler(String projectName, String formFqn, String itemName,
+            String event, String handlerName, boolean createHandler, boolean apply) {
+        FormHandlerResult r = new FormHandlerResult();
+        r.projectName = projectName;
+        r.formFqn = formFqn;
+        r.owner = (itemName == null || itemName.isBlank()) ? null : itemName;
+        r.event = event;
+        IProject p = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+        if (!p.exists() || !p.isOpen()) {
+            r.message = "project not found or closed: " + projectName;
+            return r;
+        }
+        if (formFqn == null || formFqn.isBlank()) {
+            r.message = "formFqn is required, e.g. Catalog.Контрагенты.Form.ФормаЭлемента";
+            return r;
+        }
+        if (event == null || event.isBlank()) {
+            r.message = "event is required, e.g. OnCreateAtServer or ПриСозданииНаСервере";
+            return r;
+        }
+        IBmModelManager mm = ServiceAccess.get(IBmModelManager.class);
+        IBmModel model = (mm == null) ? null : mm.getModel(p);
+        if (model == null) {
+            r.message = "no BM model for project: " + projectName;
+            return r;
+        }
+        boolean russian = scriptVariantOf(p) == ScriptVariant.RUSSIAN;
+        inspectHandlerTarget(model, r, formFqn, r.owner, event, russian);
+        if (!r.formFound) {
+            r.message = "form not found: " + formFqn;
+            return r;
+        }
+        if (!r.ownerFound) {
+            r.message = "the form has no item named \"" + r.owner + "\"";
+            return r;
+        }
+        if (!Boolean.TRUE.equals(r.eventKnown)) {
+            r.message = "the " + (r.owner == null ? "form" : "item \"" + r.owner + "\"")
+                    + " has no event \"" + event + "\" - it allows: " + String.join(", ", r.events);
+            return r;
+        }
+        String handler = (handlerName == null || handlerName.isBlank())
+                ? defaultHandlerName(r.owner, russian ? r.eventRu : r.event)
+                : handlerName;
+        if (!IDENT.matcher(handler).matches()) {
+            r.message = "handler is not a valid 1C identifier: \"" + handler + "\"";
+            return r;
+        }
+        r.handler = handler;
+        r.signature = handler + "(" + String.join(", ", r.parameters) + ")";
+        r.ok = Boolean.TRUE.equals(r.eventFree);
+        r.plan = "Register " + r.eventRu + " on "
+                + (r.owner == null ? formFqn : formFqn + " item \"" + r.owner + "\"")
+                + " as " + r.signature
+                + (createHandler ? " and write its stub into the form module" : "");
+        if (!r.ok) {
+            r.message = "the event is already handled by " + r.existingHandler + "()";
+        }
+        if (!apply) {
+            return r;
+        }
+        if (!r.ok) {
+            r.message = r.message + " - apply refused (nothing written).";
+            return r;
+        }
+        final String[] failure = {null};
+        final String eventName = r.event;
+        final String owner = r.owner;
+        try {
+            model.execute(new AbstractBmTask<Object>("edt-bridge.addFormHandler.apply") {
+                @Override
+                public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
+                    Form form = resolveForm(tx, formFqn);
+                    if (form == null) {
+                        failure[0] = "the form disappeared between validation and apply";
+                        return null;
+                    }
+                    FormVisualEntity entity = handlerOwner(form, owner);
+                    if (!(entity instanceof EventHandlerContainer)) {
+                        failure[0] = "the item disappeared between validation and apply";
+                        return null;
+                    }
+                    Event allowed = allowedEvent(entity, eventName);
+                    if (allowed == null) {
+                        failure[0] = "the event disappeared between validation and apply";
+                        return null;
+                    }
+                    EventHandler eventHandler = FormFactory.eINSTANCE.createEventHandler();
+                    eventHandler.setEvent(allowed);
+                    eventHandler.setName(handler);
+                    ((EventHandlerContainer) entity).getHandlers().add(eventHandler);
+                    return null;
+                }
+            });
+        } catch (RuntimeException ex) {
+            r.message = "apply failed (nothing committed): " + GatewaySupport.describeCause(ex);
+            return r;
+        }
+        if (failure[0] != null) {
+            r.message = "apply failed (nothing committed): " + failure[0];
+            return r;
+        }
+        if (createHandler) {
+            try {
+                r.modulePath = writeHandlerStub(p, model, formFqn, handler, r.directive, r.parameters);
+            } catch (Exception ex) {
+                r.warning = "the handler is registered, but its stub could not be written: "
+                        + GatewaySupport.describeCause(ex);
+            }
+        }
+        String topFqn = formTopFqn(model, formFqn);
+        IDtProject dtProject = mm.getDtProject(model);
+        boolean exported = dtProject != null && topFqn != null && mm.forceExport(dtProject, topFqn);
+        r.applied = true;
+        r.message = "registered " + r.eventRu + " as " + r.signature + " on " + formFqn
+                + (exported ? " (serialized to Form.form)"
+                        : " - WARNING: committed in-memory but forceExport did not persist (Form.form "
+                                + "unchanged)");
+        return r;
+    }
+
+    /**
+     * Read everything the decision needs while the model is open: whether the form and the item are
+     * there, which events the target allows, whether the asked one is among them and still free, and
+     * what signature and directive its stub would carry. Model objects do not leave the transaction -
+     * only strings do.
+     */
+    private void inspectHandlerTarget(IBmModel model, FormHandlerResult r, String formFqn,
+            String itemName, String event, boolean russian) {
+        model.executeReadonlyTask(new AbstractBmTask<Object>("edt-bridge.addFormHandler.inspect") {
+            @Override
+            public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
+                Form form = resolveForm(tx, formFqn);
+                if (form == null) {
+                    return null;
+                }
+                r.formFound = true;
+                FormVisualEntity entity = handlerOwner(form, itemName);
+                if (!(entity instanceof EventHandlerContainer)) {
+                    if (itemName == null) {
+                        r.message = "the form does not accept event handlers";
+                    }
+                    collectItemNames(form.getItems(), r.items);
+                    return null;
+                }
+                r.ownerFound = true;
+                Event matched = null;
+                for (Event candidate : new FormItemInformationService().getAllowedEvents(entity)) {
+                    String name = candidate.getName();
+                    String nameRu = candidate.getNameRu();
+                    r.events.add(russian && nameRu != null && !nameRu.isBlank() ? nameRu : name);
+                    if (event.equalsIgnoreCase(name) || event.equalsIgnoreCase(nameRu)) {
+                        matched = candidate;
+                    }
+                }
+                r.eventKnown = Boolean.valueOf(matched != null);
+                if (matched == null) {
+                    return null;
+                }
+                r.event = matched.getName();
+                r.eventRu = (matched.getNameRu() == null || matched.getNameRu().isBlank())
+                        ? matched.getName() : matched.getNameRu();
+                r.parameters.addAll(parameterNames(matched, russian));
+                r.directive = directiveOf(matched, russian);
+                r.eventFree = Boolean.TRUE;
+                for (EventHandler existing : ((EventHandlerContainer) entity).getHandlers()) {
+                    Event its = existing.getEvent();
+                    if (its != null && !its.eIsProxy() && r.event.equals(its.getName())) {
+                        r.eventFree = Boolean.FALSE;
+                        r.existingHandler = existing.getName();
+                    }
+                }
+                return null;
+            }
+        });
+    }
+
+    /** The form itself, or the named item inside it. */
+    private static FormVisualEntity handlerOwner(Form form, String itemName) {
+        if (itemName == null || itemName.isBlank()) {
+            return form;
+        }
+        return findItem(form.getItems(), itemName);
+    }
+
+    /** The allowed event of that entity whose English name matches; {@code null} when there is none. */
+    private static Event allowedEvent(FormVisualEntity entity, String englishName) {
+        for (Event candidate : new FormItemInformationService().getAllowedEvents(entity)) {
+            if (englishName.equals(candidate.getName())) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    /** The parameter names of the event's first parameter set, in the project's script variant. */
+    private static List<String> parameterNames(Event event, boolean russian) {
+        List<String> names = new ArrayList<>();
+        List<ParamSet> sets = event.getParamSet();
+        if (sets.isEmpty()) {
+            return names;
+        }
+        for (Parameter parameter : sets.get(0).getParams()) {
+            String ru = parameter.getNameRu();
+            String en = parameter.getName();
+            String name = (russian && ru != null && !ru.isBlank()) ? ru : en;
+            if (name != null && !name.isBlank()) {
+                names.add(name);
+            }
+        }
+        return names;
+    }
+
+    /**
+     * The compilation directive the event's environments imply. An event that runs only on the server
+     * (OnCreateAtServer and its kin) must carry the server directive - given the client one, the
+     * platform refuses the module.
+     */
+    private static String directiveOf(Event event, boolean russian) {
+        Environments environments = event.environments();
+        boolean client = environments != null && environments.containsAny(Environments.ALL_CLIENTS);
+        if (client) {
+            return russian ? "&НаКлиенте" : "&AtClient";
+        }
+        return russian ? "&НаСервере" : "&AtServer";
+    }
+
+    /** What to call the procedure when the caller did not say: the form editor's own convention. */
+    private static String defaultHandlerName(String itemName, String eventName) {
+        String event = eventName == null ? "" : eventName;
+        return (itemName == null || itemName.isBlank()) ? event : itemName + event;
     }
 
     /** Change an existing form command's title, tooltip or handler name. */
@@ -1542,6 +1821,18 @@ public final class FormWriteGateway {
      */
     private String writeHandlerStub(IProject project, IBmModel model, String formFqn, String handler)
             throws Exception {
+        boolean commandVariant = scriptVariantOf(project) == ScriptVariant.RUSSIAN;
+        return writeHandlerStub(project, model, formFqn, handler,
+                commandVariant ? "&НаКлиенте" : "&AtClient",
+                List.of(commandVariant ? "Команда" : "Command"));
+    }
+
+    /**
+     * The same stub, with the directive and the parameters the caller decided on - a form event
+     * declares its own signature, and an event that runs on the server refuses the client directive.
+     */
+    private String writeHandlerStub(IProject project, IBmModel model, String formFqn, String handler,
+            String directive, List<String> parameters) throws Exception {
         IProjectFileSystemSupportProvider provider = fileSystemSupportProvider();
         if (provider == null) {
             throw new IllegalStateException("project file-system support unavailable");
@@ -1568,9 +1859,10 @@ public final class FormWriteGateway {
         if (existing.contains(russian ? "Процедура " + handler : "Procedure " + handler)) {
                 return file.getProjectRelativePath().toString();
         }
+        String signature = handler + "(" + String.join(", ", parameters) + ")";
         String stub = russian
-                ? "&НаКлиенте\nПроцедура " + handler + "(Команда)\n\nКонецПроцедуры\n"
-                : "&AtClient\nProcedure " + handler + "(Command)\n\nEndProcedure\n";
+                ? directive + "\nПроцедура " + signature + "\n\nКонецПроцедуры\n"
+                : directive + "\nProcedure " + signature + "\n\nEndProcedure\n";
         String body = existing.isBlank() ? stub
                 : existing + (existing.endsWith("\n") ? "\n" : "\n\n") + stub;
         IProgressMonitor monitor = new NullProgressMonitor();

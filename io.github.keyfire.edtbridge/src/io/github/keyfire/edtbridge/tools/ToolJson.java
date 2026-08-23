@@ -147,6 +147,62 @@ final class ToolJson {
     }
 
     /** Render a form-member outcome as the tool's JSON result. */
+    /** Render the outcome of registering a form event handler. */
+    static String render(FormWriteGateway.FormHandlerResult res) {
+        JsonObject o = new JsonObject();
+        o.addProperty("ok", res.ok);
+        o.addProperty("applied", res.applied);
+        o.addProperty("formFqn", res.formFqn);
+        o.addProperty("owner", res.owner == null ? "form" : res.owner);
+        o.addProperty("event", res.event);
+        if (res.eventRu != null) {
+            o.addProperty("eventRu", res.eventRu);
+        }
+        if (res.handler != null) {
+            o.addProperty("handler", res.handler);
+        }
+        if (res.signature != null) {
+            o.addProperty("signature", res.signature);
+        }
+        if (res.directive != null) {
+            o.addProperty("directive", res.directive);
+        }
+        if (res.modulePath != null) {
+            o.addProperty("modulePath", res.modulePath);
+        }
+        o.addProperty("formFound", res.formFound);
+        o.addProperty("ownerFound", res.ownerFound);
+        if (res.eventKnown != null) {
+            o.addProperty("eventKnown", res.eventKnown.booleanValue());
+        }
+        if (res.eventFree != null) {
+            o.addProperty("eventFree", res.eventFree.booleanValue());
+        }
+        if (res.existingHandler != null) {
+            o.addProperty("existingHandler", res.existingHandler);
+        }
+        if (!res.events.isEmpty()) {
+            JsonArray arr = new JsonArray();
+            res.events.forEach(arr::add);
+            o.add("allowedEvents", arr);
+        }
+        if (!res.items.isEmpty()) {
+            JsonArray arr = new JsonArray();
+            res.items.forEach(arr::add);
+            o.add("items", arr);
+        }
+        if (res.plan != null) {
+            o.addProperty("plan", res.plan);
+        }
+        if (res.warning != null) {
+            o.addProperty("warning", res.warning);
+        }
+        if (res.message != null) {
+            o.addProperty("message", res.message);
+        }
+        return new GsonBuilder().setPrettyPrinting().create().toJson(o);
+    }
+
     static String render(FormWriteGateway.FormMemberResult res) {
         JsonObject o = new JsonObject();
         o.addProperty("ok", res.ok);
