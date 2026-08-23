@@ -40,20 +40,24 @@ public final class ModifyFormItemTool {
     public JsonObject descriptor() {
         JsonObject props = ToolJson.formMemberProps();
         props.add("name", ToolJson.strProp("Form item to change"));
+        props.add("newName", ToolJson.strProp("Rename the item to this (a valid 1C identifier, free "
+                + "on the form). Optional. The handler procedures keep their own names - only the "
+                + "item is renamed."));
         props.add("titleRu", ToolJson.strProp("New Russian title; an empty string clears it. Optional."));
         props.add("visible", ToolJson.boolProp("Design-time visibility. Optional."));
         props.add("enabled", ToolJson.boolProp("Design-time enabled state. Optional."));
         props.add("apply", ToolJson.boolProp("false (default) = dry-run: validate and return the plan, "
                 + "write nothing. true = apply the change and serialize Form.form."));
         return ToolJson.descriptor(name(),
-                "WRITE (Phase 2): change a form item's title, visibility or enabled state. These are the "
-                + "DESIGN values stored in Form.form - runtime BSL (ПриСозданииНаСервере and friends) can "
-                + "still override them. Dry-run by default; pass at least one of titleRu / visible / "
-                + "enabled. Requires a configured token.",
-                "ЗАПИСЬ (Phase 2): изменить у элемента формы заголовок, видимость или доступность. Это "
-                + "ПРОЕКТНЫЕ значения, хранящиеся в Form.form, - код (ПриСозданииНаСервере и подобные) "
-                + "может переопределить их в рантайме. По умолчанию dry-run; задать нужно хотя бы одно "
-                + "из titleRu / visible / enabled. Требует токен.",
+                "WRITE (Phase 2): rename a form item or change its title, visibility or enabled state. "
+                + "Except for the name these are the DESIGN values stored in Form.form - runtime BSL "
+                + "(ПриСозданииНаСервере and friends) can still override them. Dry-run by default; pass "
+                + "at least one of newName / titleRu / visible / enabled. Requires a configured token.",
+                "ЗАПИСЬ (Phase 2): переименовать элемент формы или изменить у него заголовок, "
+                + "видимость и доступность. Кроме имени это ПРОЕКТНЫЕ значения, хранящиеся в Form.form, "
+                + "- код (ПриСозданииНаСервере и подобные) может переопределить их в рантайме. По "
+                + "умолчанию dry-run; задать нужно хотя бы одно из newName / titleRu / visible / "
+                + "enabled. Требует токен.",
                 props, "projectName", "formFqn", "name");
     }
 
@@ -66,8 +70,9 @@ public final class ModifyFormItemTool {
         }
         try {
             return McpServer.textResult(ToolJson.renderItem(gateway.modifyFormItem(project, formFqn, name,
-                    ToolJson.getStr(args, "titleRu"), ToolJson.getBoolOrNull(args, "visible"),
-                    ToolJson.getBoolOrNull(args, "enabled"), ToolJson.getBool(args, "apply"))));
+                    ToolJson.getStr(args, "newName"), ToolJson.getStr(args, "titleRu"),
+                    ToolJson.getBoolOrNull(args, "visible"), ToolJson.getBoolOrNull(args, "enabled"),
+                    ToolJson.getBool(args, "apply"))));
         } catch (Exception e) {
             return McpServer.toolError("edt_modify_form_item failed: " + e.getMessage());
         }

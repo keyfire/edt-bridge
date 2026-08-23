@@ -2141,6 +2141,20 @@ public final class FormWriteGateway {
     /** Change a form item's title, visibility or enabled state. */
     public FormItemResult modifyFormItem(String projectName, String formFqn, String name,
             String titleRu, Boolean visible, Boolean enabled, boolean apply) {
+        return modifyFormItem(projectName, formFqn, name, null, titleRu, visible, enabled, apply);
+    }
+
+    /**
+     * The same change, plus renaming the item.
+     *
+     * <p>An item's name is what the form module and the item tree address it by, and until now
+     * nothing here could change it: {@code edt_rename} works on metadata, not on the pieces of a
+     * form. The name lives in the form model alone - the handler procedures keep their own names -
+     * so the rename is the assignment plus the checks a person would make: a valid identifier, and
+     * no other item already holding it.
+     */
+    public FormItemResult modifyFormItem(String projectName, String formFqn, String name,
+            String newName, String titleRu, Boolean visible, Boolean enabled, boolean apply) {
         FormItemResult r = new FormItemResult();
         r.projectName = projectName;
         r.formFqn = formFqn;
@@ -2149,8 +2163,14 @@ public final class FormWriteGateway {
             r.message = "name is required - the form item to change";
             return r;
         }
-        if (titleRu == null && visible == null && enabled == null) {
-            r.message = "nothing to change - pass at least one of titleRu, visible, enabled";
+        if (titleRu == null && visible == null && enabled == null
+                && (newName == null || newName.isBlank())) {
+            r.message = "nothing to change - pass at least one of newName, titleRu, visible, enabled";
+            return r;
+        }
+        if (newName != null && !newName.isBlank() && !IDENT.matcher(newName).matches()) {
+            r.message = "newName is not a valid 1C identifier: \"" + newName
+                    + "\" (letters/digits/underscore; must not start with a digit, no spaces)";
             return r;
         }
         IProject p = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
@@ -2170,7 +2190,23 @@ public final class FormWriteGateway {
             return r;
         }
         r.ok = Boolean.TRUE.equals(r.present);
+        boolean renaming = newName != null && !newName.isBlank() && !newName.equals(name);
+        if (renaming) {
+            for (String taken : r.items) {
+                if (newName.equalsIgnoreCase(taken)) {
+                    r.ok = false;
+                    r.nameAvailable = Boolean.FALSE;
+                    r.message = "the form already has an item named \"" + taken + "\"";
+                }
+            }
+            if (r.nameAvailable == null) {
+                r.nameAvailable = Boolean.TRUE;
+            }
+        }
         StringBuilder what = new StringBuilder();
+        if (renaming) {
+            what.append(" name -> \"").append(newName).append('"');
+        }
         if (titleRu != null) {
             what.append(" title -> \"").append(titleRu).append('"');
         }
@@ -2181,7 +2217,7 @@ public final class FormWriteGateway {
             what.append(" enabled -> ").append(enabled);
         }
         r.plan = "Change item \"" + name + "\" of " + formFqn + ":" + what;
-        if (!r.ok) {
+        if (!r.ok && r.message == null) {
             r.message = "the form has no item named \"" + name + "\"";
         }
         if (!apply) {
@@ -2221,6 +2257,9 @@ public final class FormWriteGateway {
                         failure[0] = "item " + name + " has no visibility properties";
                         return null;
                     }
+                    if (renaming) {
+                        item.setName(newName);
+                    }
                     r.id = Integer.valueOf(item.getId());
                     return null;
                 }
@@ -2232,6 +2271,9 @@ public final class FormWriteGateway {
         if (failure[0] != null) {
             r.message = "apply failed (nothing committed): " + failure[0];
             return r;
+        }
+        if (renaming) {
+            r.name = newName;
         }
         finishItem(r, mm, model, formFqn, "changed item \"" + name + "\" of ");
         return r;

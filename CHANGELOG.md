@@ -15,6 +15,8 @@ that day are named in the heading. The format follows
   `handlers` entry in `Form.form` without which the platform never calls the procedure. The
   allowed events come from EDT, and the stub it can write carries the event's own signature and
   directive.
+- **`edt_modify_form_item` renames an item** (`newName`) – nothing could: `edt_rename` works on
+  metadata, not on the pieces of a form.
 - **Infobase credentials are in the schema of `edt_infobase_sessions`** – `infobaseUser` and
   `infobasePassword` were read but not declared, so no caller could find them.
 
