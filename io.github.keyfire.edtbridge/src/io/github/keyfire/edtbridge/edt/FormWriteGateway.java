@@ -1277,8 +1277,13 @@ public final class FormWriteGateway {
                     return null;
                 }
                 r.ownerFound = true;
+                FormItemInformationService service = formItemInformationService();
+                if (service == null) {
+                    r.message = "the form item information service is unavailable in this EDT";
+                    return null;
+                }
                 Event matched = null;
-                for (Event candidate : new FormItemInformationService().getAllowedEvents(entity)) {
+                for (Event candidate : service.getAllowedEvents(entity)) {
                     String name = candidate.getName();
                     String nameRu = candidate.getNameRu();
                     r.events.add(russian && nameRu != null && !nameRu.isBlank() ? nameRu : name);
@@ -1316,9 +1321,28 @@ public final class FormWriteGateway {
         return findItem(form.getItems(), itemName);
     }
 
+    /**
+     * The service that knows which events an entity allows.
+     *
+     * <p>Built by the form bundle's injector, not by {@code new}: the service holds an injected
+     * version support, and a hand-built one dies on the first question with a null field.
+     */
+    private static FormItemInformationService formItemInformationService() {
+        Injector injector = formInjector();
+        try {
+            return (injector == null) ? null : injector.getInstance(FormItemInformationService.class);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
     /** The allowed event of that entity whose English name matches; {@code null} when there is none. */
     private static Event allowedEvent(FormVisualEntity entity, String englishName) {
-        for (Event candidate : new FormItemInformationService().getAllowedEvents(entity)) {
+        FormItemInformationService service = formItemInformationService();
+        if (service == null) {
+            return null;
+        }
+        for (Event candidate : service.getAllowedEvents(entity)) {
             if (englishName.equals(candidate.getName())) {
                 return candidate;
             }
@@ -1345,17 +1369,31 @@ public final class FormWriteGateway {
     }
 
     /**
-     * The compilation directive the event's environments imply. An event that runs only on the server
+     * The compilation directive an event's handler needs. An event that runs on the server
      * (OnCreateAtServer and its kin) must carry the server directive - given the client one, the
      * platform refuses the module.
+     *
+     * <p>The name decides, not the environments: measured on a live model, OnCreateAtServer declares
+     * the client environments as well (they describe where the event is AVAILABLE, which is the form
+     * itself), so an environment test called every event a client one. The platform names a server
+     * event by its suffix, and that suffix is the same rule a person applies.
      */
     private static String directiveOf(Event event, boolean russian) {
-        Environments environments = event.environments();
-        boolean client = environments != null && environments.containsAny(Environments.ALL_CLIENTS);
-        if (client) {
-            return russian ? "&НаКлиенте" : "&AtClient";
+        String name = event.getName() == null ? "" : event.getName();
+        String nameRu = event.getNameRu() == null ? "" : event.getNameRu();
+        boolean server = name.endsWith("AtServer") || nameRu.endsWith("НаСервере");
+        if (!server && !name.isEmpty()) {
+            // A name that says nothing either way: fall back to the environments, where an event
+            // with no client environment at all can only be a server one.
+            Environments environments = event.environments();
+            server = !name.endsWith("AtClient") && !nameRu.endsWith("НаКлиенте")
+                    && environments != null && !environments.isEmpty()
+                    && !environments.containsAny(Environments.ALL_CLIENTS);
         }
-        return russian ? "&НаСервере" : "&AtServer";
+        if (server) {
+            return russian ? "&НаСервере" : "&AtServer";
+        }
+        return russian ? "&НаКлиенте" : "&AtClient";
     }
 
     /** What to call the procedure when the caller did not say: the form editor's own convention. */
@@ -1928,6 +1966,8 @@ public final class FormWriteGateway {
         public String message;
         public final List<String> items = new ArrayList<>();
         public final List<String> createdColumns = new ArrayList<>();
+        public final List<String> renamedChildren = new ArrayList<>();  // moved with a rename
+        public final List<String> takenNames = new ArrayList<>();       // every item name on the form
     }
 
     /**
@@ -2192,7 +2232,7 @@ public final class FormWriteGateway {
         r.ok = Boolean.TRUE.equals(r.present);
         boolean renaming = newName != null && !newName.isBlank() && !newName.equals(name);
         if (renaming) {
-            for (String taken : r.items) {
+            for (String taken : r.takenNames) {
                 if (newName.equalsIgnoreCase(taken)) {
                     r.ok = false;
                     r.nameAvailable = Boolean.FALSE;
@@ -2259,6 +2299,7 @@ public final class FormWriteGateway {
                     }
                     if (renaming) {
                         item.setName(newName);
+                        renameOwnChildren(item, name, newName, r.renamedChildren);
                     }
                     r.id = Integer.valueOf(item.getId());
                     return null;
@@ -2373,6 +2414,7 @@ public final class FormWriteGateway {
                 }
                 r.formFound = true;
                 collectItemNames(form.getItems(), r.items);
+                collectEveryItemName(form, r.takenNames);
                 FormItem item = findItem(form.getItems(), name);
                 r.present = Boolean.valueOf(item != null);
                 if (item instanceof FormItemContainer) {
@@ -2427,6 +2469,45 @@ public final class FormWriteGateway {
             }
         }
         return null;
+    }
+
+    /**
+     * Every item name the form carries, wherever it sits.
+     *
+     * <p>Not the same list as the item tree: the command bar, the extended tooltips and the context
+     * menus are FEATURES of their owner, not entries in {@code getItems()}, and they hold names all
+     * the same - measured on a live form, a rename to the command bar's name went through because
+     * the tree did not mention it.
+     */
+    private static void collectEveryItemName(Form form, List<String> out) {
+        java.util.Iterator<EObject> all = form.eAllContents();
+        while (all.hasNext()) {
+            EObject each = all.next();
+            if (each instanceof FormItem && ((FormItem) each).getName() != null) {
+                out.add(((FormItem) each).getName());
+            }
+        }
+    }
+
+    /**
+     * Rename the pieces EDT names after their owner - the extended tooltip, the context menu, a
+     * table's command bar. They are not in {@code getItems()} (they are features of the item), so a
+     * plain rename leaves them carrying the old name, which is exactly what the form editor does not
+     * do. Renamed pieces are reported, so the answer shows what else moved.
+     */
+    private static void renameOwnChildren(EObject item, String oldName, String newName, List<String> renamed) {
+        for (EObject child : item.eContents()) {
+            if (child instanceof FormItem) {
+                FormItem nested = (FormItem) child;
+                String name = nested.getName();
+                if (name != null && name.startsWith(oldName)) {
+                    String moved = newName + name.substring(oldName.length());
+                    nested.setName(moved);
+                    renamed.add(moved);
+                }
+                renameOwnChildren(nested, oldName, newName, renamed);
+            }
+        }
     }
 
     /** Depth-first search for a container item by name. */

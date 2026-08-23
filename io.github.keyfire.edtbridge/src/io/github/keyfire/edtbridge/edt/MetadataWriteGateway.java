@@ -2456,7 +2456,8 @@ public final class MetadataWriteGateway {
         r.nativeError = nativeError;
         r.method = r.applied ? method.toString() : r.method;
         String because = nativeError != null ? "; EDT's own dumper refused first"
-                : "; EDT resolves no thick client for " + version;
+                : "disk".equals(r.route) ? "; the route was pinned to the disk"
+                        : "; EDT resolves no thick client for " + version;
         r.message = r.applied
                 ? "dumped " + fqn + " to " + target + " using the on-disk platform (" + method
                         + because + "); build log: " + r.logPath

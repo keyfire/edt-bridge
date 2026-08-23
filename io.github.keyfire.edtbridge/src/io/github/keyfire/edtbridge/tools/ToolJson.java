@@ -129,6 +129,11 @@ final class ToolJson {
             res.createdColumns.forEach(arr::add);
             o.add("nestedItems", arr);
         }
+        if (!res.renamedChildren.isEmpty()) {
+            JsonArray arr = new JsonArray();
+            res.renamedChildren.forEach(arr::add);
+            o.add("renamedChildren", arr);
+        }
         if (!res.items.isEmpty()) {
             JsonArray arr = new JsonArray();
             res.items.forEach(arr::add);

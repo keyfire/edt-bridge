@@ -23,7 +23,7 @@ that day are named in the heading. The format follows
 ### Fixed
 - **`edt_dump_external_object` falls back to the on-disk route** when EDT's own dumper refuses –
   an object bound to a base configuration used to end there – and puts back the auto-dump
-  generation EDT switches off on such a refusal. `route` pins the builder.
+  generation if the refusal switched it off. `route` pins the builder.
 - **`scripts/sync-docs.mjs` survives a CRLF checkout** – it used to leave the page frontmatter
   inside the README block, which then read as stale.
 - **An argument the schema does not know refuses the call.** It used to be dropped in silence:
