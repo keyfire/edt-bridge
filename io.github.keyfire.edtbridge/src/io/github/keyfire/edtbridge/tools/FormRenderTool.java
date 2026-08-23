@@ -40,7 +40,10 @@ public final class FormRenderTool {
     public JsonObject descriptor() {
         JsonObject props = new JsonObject();
         props.add("projectName", strProp("EDT project name"));
-        props.add("fqn", strProp("Form FQN, e.g. CommonForm.МояФорма, Catalog.Контрагенты.Form.ФормаЭлемента"));
+        props.add("formFqn", strProp("Form FQN, e.g. CommonForm.МояФорма, "
+                + "Catalog.Контрагенты.Form.ФормаЭлемента"));
+        props.add("fqn", strProp("The old name of formFqn. Still accepted, so calls written before the "
+                + "form tools agreed on one name keep working; write formFqn in new ones."));
         props.add("variant", strProp("Interface variant: TAXI (8.3) or VERSION8_5 (default VERSION8_5)"));
         props.add("theme", strProp("Theme: LIGHT (default) or DARK"));
         props.add("density", strProp("Field density: NORMAL (default) or COMPACT – COMPACT matches EDT's compact editor mode (denser fields, larger relative font)"));
@@ -52,7 +55,7 @@ public final class FormRenderTool {
 
         JsonArray req = new JsonArray();
         req.add("projectName");
-        req.add("fqn");
+        req.add("formFqn");
 
         JsonObject schema = new JsonObject();
         schema.addProperty("type", "object");
@@ -75,9 +78,9 @@ public final class FormRenderTool {
 
     public JsonObject call(JsonObject args) {
         String project = getStr(args, "projectName");
-        String fqn = getStr(args, "fqn");
+        String fqn = ToolJson.formFqn(args);
         if (project == null || fqn == null) {
-            return McpServer.toolError("projectName and fqn are required");
+            return McpServer.toolError("projectName and formFqn are required");
         }
         String variant = getStr(args, "variant");
         String theme = getStr(args, "theme");
@@ -95,7 +98,8 @@ public final class FormRenderTool {
             FormGateway.RenderResult res = gateway.renderForm(project, fqn, variant, theme, density, ratio, width, height, scale, outPath);
             JsonObject o = new JsonObject();
             o.addProperty("ok", res.ok);
-            o.addProperty("fqn", res.fqn);
+            o.addProperty("formFqn", res.fqn);
+            o.addProperty("fqn", res.fqn);  // the old key, kept while callers move to formFqn
             if (res.ok) {
                 o.addProperty("pngPath", res.pngPath);
                 o.addProperty("width", res.width);

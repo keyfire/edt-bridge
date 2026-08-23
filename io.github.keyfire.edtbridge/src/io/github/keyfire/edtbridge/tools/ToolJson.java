@@ -83,6 +83,19 @@ final class ToolJson {
         return t;
     }
 
+    /**
+     * The form a call is about, under either name.
+     *
+     * <p>The tools that WRITE a form have always called it {@code formFqn}, while the two that READ
+     * one called it {@code fqn} - and since an argument outside the schema now refuses the call, the
+     * difference stopped being cosmetic. The family says {@code formFqn}; the old name is still read
+     * here so calls written before the change keep working.
+     */
+    static String formFqn(JsonObject args) {
+        String named = getStr(args, "formFqn");
+        return named != null ? named : getStr(args, "fqn");
+    }
+
     /** The properties every form-member tool takes. */
     static JsonObject formMemberProps() {
         JsonObject props = new JsonObject();

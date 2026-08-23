@@ -39,15 +39,14 @@ public final class FormStructureTool {
     }
 
     public JsonObject descriptor() {
-        JsonObject props = new JsonObject();
-        props.add("projectName", strProp("EDT project name"));
-        props.add("fqn", strProp("Form FQN with English type prefixes, e.g. Catalog.Контрагенты.Form.ФормаЭлемента, "
-                + "Document.МойДокумент.Form.ФормаДокумента, CommonForm.МояОбщаяФорма"));
+        JsonObject props = ToolJson.formMemberProps();
+        props.add("fqn", strProp("The old name of formFqn. Still accepted, so calls written before the "
+                + "form tools agreed on one name keep working; write formFqn in new ones."));
         props.add("limit", intProp("Max items in the visual tree (default " + DEFAULT_LIMIT + "; <=0 means no cap)"));
 
         JsonArray req = new JsonArray();
         req.add("projectName");
-        req.add("fqn");
+        req.add("formFqn");
 
         JsonObject schema = new JsonObject();
         schema.addProperty("type", "object");
@@ -85,16 +84,17 @@ public final class FormStructureTool {
 
     public JsonObject call(JsonObject args) {
         String project = getStr(args, "projectName");
-        String fqn = getStr(args, "fqn");
+        String fqn = ToolJson.formFqn(args);
         if (project == null || fqn == null) {
-            return McpServer.toolError("projectName and fqn are required");
+            return McpServer.toolError("projectName and formFqn are required");
         }
         int limit = getInt(args, "limit", DEFAULT_LIMIT);
         try {
             FormGateway.FormDetails d = gateway.getFormStructure(project, fqn, limit);
             JsonObject o = new JsonObject();
             o.addProperty("found", d.found);
-            o.addProperty("fqn", d.fqn);
+            o.addProperty("formFqn", d.fqn);
+            o.addProperty("fqn", d.fqn);  // the old key, kept while callers move to formFqn
             if (!d.found) {
                 o.addProperty("type", d.type);
                 o.addProperty("message", d.message);

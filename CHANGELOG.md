@@ -8,6 +8,14 @@ that day are named in the heading. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
+## Unreleased
+
+### Changed
+- **The form tools agree on one parameter name: `formFqn`.** `edt_form_structure` and
+  `edt_form_render` called it `fqn` while everything that writes a form called it `formFqn` –
+  cosmetic until an argument outside the schema started refusing the call. The old name is still
+  read, and both answers now carry `formFqn` next to the old `fqn` key.
+
 ## 2026-08-23 – 0.15.0
 
 ### Added
