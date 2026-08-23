@@ -2293,6 +2293,9 @@ public final class MetadataWriteGateway {
         public String targetPath;
         public String validation;     // validateDumpGeneration status message (empty = OK)
         public String method;         // edt | disk:<version> - which route built the file
+        public String route;          // what the caller asked for: auto | edt | disk
+        public String nativeError;    // what EDT's own dumper said before the disk route took over
+        public boolean autoDumpRestored;  // EDT switched auto-dump off on the failure; we switched it back
         public String logPath;        // where the platform build log was written (disk route only)
         public String plan;
         public String message;
@@ -2306,9 +2309,20 @@ public final class MetadataWriteGateway {
      */
     public DumpExternalObjectResult dumpExternalObject(String projectName, String objectName,
             String kind, String targetPath, String logPath, boolean apply) {
+        return dumpExternalObject(projectName, objectName, kind, targetPath, logPath, null, apply);
+    }
+
+    /** The same dump, with the route pinned: {@code auto} (default), {@code edt} or {@code disk}. */
+    public DumpExternalObjectResult dumpExternalObject(String projectName, String objectName,
+            String kind, String targetPath, String logPath, String route, boolean apply) {
         DumpExternalObjectResult r = new DumpExternalObjectResult();
         r.project = projectName;
         r.targetPath = targetPath;
+        r.route = (route == null || route.isBlank()) ? "auto" : route.trim().toLowerCase(java.util.Locale.ROOT);
+        if (!r.route.equals("auto") && !r.route.equals("edt") && !r.route.equals("disk")) {
+            r.message = "route must be auto, edt or disk: \"" + route + "\"";
+            return r;
+        }
         // Default the build log to a sibling of the artefact, so it is always somewhere findable.
         r.logPath = (logPath == null || logPath.isBlank()) ? targetPath + ".log" : logPath;
         IProject p = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName == null ? "" : projectName);
@@ -2348,18 +2362,32 @@ public final class MetadataWriteGateway {
         // taken, instead of promising a dump that cannot happen.
         final Version version = GatewaySupport.projectVersion(p);
         PlatformGateway platforms = new PlatformGateway();
-        boolean nativeAvailable = platforms.edtResolvesThickClient();
-        String diskPlatform = nativeAvailable ? null : platforms.diskPlatformFor(String.valueOf(version));
+        boolean nativeAvailable = !r.route.equals("disk") && platforms.edtResolvesThickClient();
+        // The disk platform is looked up even when EDT has a thick client: the native route can still
+        // refuse (an object bound to a base configuration wants a developed application of an
+        // infobase, which a plain project does not have), and the answer should say beforehand what
+        // will happen then.
+        String diskPlatform = r.route.equals("edt") ? null : platforms.diskPlatformFor(String.valueOf(version));
         r.method = nativeAvailable ? "edt" : (diskPlatform != null ? "disk:" + diskPlatform : null);
         r.ok = nativeAvailable || diskPlatform != null;
         r.plan = "Dump " + fqn + " to " + targetPath
-                + (nativeAvailable ? " via EDT's dumper"
+                + (nativeAvailable
+                        ? " via EDT's dumper"
+                            + (diskPlatform != null
+                                    ? ", falling back to the on-disk platform " + diskPlatform
+                                            + " if it refuses" : "")
                         : diskPlatform != null ? " via the on-disk platform " + diskPlatform
-                                + " (EDT resolves no thick client for " + version + ")" : "");
+                                + (r.route.equals("disk") ? " (route pinned)"
+                                        : " (EDT resolves no thick client for " + version + ")") : "");
         if (!r.ok) {
-            r.message = "no full (thick-client) 1C:Enterprise install is available for " + version
-                    + " - neither EDT's resolver nor a scan of the disk found one"
-                    + (r.validation == null || r.validation.isEmpty() ? "" : "; EDT reports: " + r.validation);
+            r.message = r.route.equals("edt")
+                    ? "EDT resolves no thick client for " + version + " and route=edt forbids the disk"
+                            + " route" + (r.validation == null || r.validation.isEmpty() ? ""
+                                    : "; EDT reports: " + r.validation)
+                    : "no full (thick-client) 1C:Enterprise install is available for " + version
+                            + " - neither EDT's resolver nor a scan of the disk found one"
+                            + (r.validation == null || r.validation.isEmpty() ? ""
+                                    : "; EDT reports: " + r.validation);
         }
         if (!apply) {
             return r;
@@ -2373,19 +2401,9 @@ public final class MetadataWriteGateway {
         if (!nativeAvailable) {
             // EDT cannot resolve a thick client for this line, so go straight to the disk platform
             // rather than provoking the MatchingRuntimeNotFound we already know is coming.
-            StringBuilder method = new StringBuilder();
-            java.nio.file.Path log = java.nio.file.Path.of(r.logPath);
-            String problem = platforms.dumpExternalObjectViaDisk(found[0], target, version, log, method);
-            r.applied = problem == null && java.nio.file.Files.exists(target);
-            r.method = r.applied ? method.toString() : r.method;
-            r.message = r.applied
-                    ? "dumped " + fqn + " to " + target + " using the on-disk platform ("
-                            + method + "; EDT resolves no thick client for " + version
-                            + "); build log: " + r.logPath
-                    : "dump failed via the on-disk platform: " + problem
-                            + " - build log: " + r.logPath;
-            return r;
+            return viaDisk(r, platforms, found[0], target, version, fqn, null);
         }
+        boolean autoDumpWasOn = support != null && support.isEnabled(p);
         IExternalObjectDumper dumper = ServiceAccess.get(IExternalObjectDumper.class);
         if (dumper == null) {
             r.message = "IExternalObjectDumper service unavailable";
@@ -2417,7 +2435,56 @@ public final class MetadataWriteGateway {
                         + "edt_platform_installations).";
             }
         }
+        if (!r.applied) {
+            // A refused dump also switches EDT's auto-dump generation off for the whole project, and
+            // the project then builds no .epf at all until somebody notices. Put it back.
+            restoreAutoDump(r, support, p, autoDumpWasOn);
+            if (diskPlatform != null) {
+                return viaDisk(r, platforms, found[0], target, version, fqn, r.message);
+            }
+        }
         return r;
+    }
+
+    /** Build the artefact with the platform found on disk; {@code nativeError} names why EDT refused. */
+    private DumpExternalObjectResult viaDisk(DumpExternalObjectResult r, PlatformGateway platforms,
+            EObject root, java.nio.file.Path target, Version version, String fqn, String nativeError) {
+        StringBuilder method = new StringBuilder();
+        java.nio.file.Path log = java.nio.file.Path.of(r.logPath);
+        String problem = platforms.dumpExternalObjectViaDisk(root, target, version, log, method);
+        r.applied = problem == null && java.nio.file.Files.exists(target);
+        r.nativeError = nativeError;
+        r.method = r.applied ? method.toString() : r.method;
+        String because = nativeError != null ? "; EDT's own dumper refused first"
+                : "; EDT resolves no thick client for " + version;
+        r.message = r.applied
+                ? "dumped " + fqn + " to " + target + " using the on-disk platform (" + method
+                        + because + "); build log: " + r.logPath
+                : "dump failed via the on-disk platform: " + problem
+                        + (nativeError == null ? "" : " (EDT's own dumper refused first: " + nativeError + ")")
+                        + " - build log: " + r.logPath;
+        return r;
+    }
+
+    /**
+     * Put EDT's auto-dump generation back when the failed attempt switched it off.
+     *
+     * <p>EDT answers a refused dump by writing {@code false} into the project's dump preference, and
+     * from then on the project builds no {@code .epf} at all - one unlucky call costs the artefact
+     * until somebody restarts the environment (the preference is held in memory, so editing the file
+     * does not help). The service that owns the preference puts it back.
+     */
+    private static void restoreAutoDump(DumpExternalObjectResult r, IExternalObjectDumpSupport support,
+            IProject project, boolean wasOn) {
+        if (support == null || !wasOn || support.isEnabled(project)) {
+            return;
+        }
+        try {
+            support.setEnabled(project, true);
+            r.autoDumpRestored = support.isEnabled(project);
+        } catch (RuntimeException ignored) {
+            // the answer already carries the failure that matters; this is a repair, not the point
+        }
     }
 
 

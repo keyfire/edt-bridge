@@ -49,6 +49,11 @@ public final class DumpExternalObjectTool {
         props.add("logPath", strProp("Where to write the platform build log. Optional - defaults to "
                 + "<targetPath>.log, next to the artefact. Only the on-disk build route produces a log; "
                 + "read it when a build fails, that is where the platform reports why."));
+        props.add("route", strProp("Which builder to use: auto (default) = EDT's own dumper, falling "
+                + "back to the platform found on disk when EDT refuses; edt = EDT's dumper only; "
+                + "disk = the on-disk platform only. The fallback matters for an object bound to a "
+                + "base configuration: EDT's route then wants a developed application of an infobase, "
+                + "which the project does not have, while the disk route builds the file anyway."));
         props.add("apply", boolProp("false (default) = dry-run: resolve the object and validate that "
                 + "dump generation is available (local 1C platform). true = write the file."));
 
@@ -67,13 +72,19 @@ public final class DumpExternalObjectTool {
         t.addProperty("description",
                 "WRITE (Phase 2): compile an external data processor/report into a binary .epf/.erf "
                 + "file via EDT's own IExternalObjectDumper (needs a locally installed 1C platform "
-                + "matching the project version). Dry-run by default: resolves the object and validates "
-                + "dump availability; apply=true writes the file. Token-gated.");
+                + "matching the project version). When EDT's dumper refuses, the build falls back to "
+                + "the platform found on disk (route pins it); a refusal also switches EDT's auto-dump "
+                + "generation off for the project, and the tool switches it back. Dry-run by default: "
+                + "resolves the object and validates dump availability; apply=true writes the file. "
+                + "Token-gated.");
         t.addProperty("descriptionRu",
                 "ЗАПИСЬ (Phase 2): скомпилировать внешнюю обработку/отчёт в бинарный файл .epf/.erf "
                 + "через штатный IExternalObjectDumper (нужна установленная платформа 1С, совместимая с "
-                + "версией проекта). По умолчанию dry-run: находит объект и проверяет доступность "
-                + "выгрузки; apply=true пишет файл. Требует токен.");
+                + "версией проекта). Когда штатный маршрут отказывает, сборка уходит на платформу, "
+                + "найденную на диске (route задаёт маршрут явно); отказ вдобавок выключает у проекта "
+                + "автогенерацию выгрузок, и инструмент включает её обратно. По умолчанию dry-run: "
+                + "находит объект и проверяет доступность выгрузки; apply=true пишет файл. Требует "
+                + "токен.");
         t.add("inputSchema", schema);
         return t;
     }
@@ -90,7 +101,7 @@ public final class DumpExternalObjectTool {
         try {
             MetadataWriteGateway.DumpExternalObjectResult res =
                     gateway.dumpExternalObject(projectName, objectName, kind, targetPath,
-                            getStr(args, "logPath"), apply);
+                            getStr(args, "logPath"), getStr(args, "route"), apply);
             JsonObject o = new JsonObject();
             o.addProperty("ok", res.ok);
             o.addProperty("applied", res.applied);
@@ -104,6 +115,15 @@ public final class DumpExternalObjectTool {
             }
             if (res.method != null) {
                 o.addProperty("method", res.method);
+            }
+            if (res.route != null) {
+                o.addProperty("route", res.route);
+            }
+            if (res.nativeError != null) {
+                o.addProperty("nativeError", res.nativeError);
+            }
+            if (res.autoDumpRestored) {
+                o.addProperty("autoDumpRestored", true);
             }
             if (res.validation != null && !res.validation.isEmpty()) {
                 o.addProperty("validation", res.validation);
