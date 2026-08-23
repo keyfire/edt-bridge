@@ -8,15 +8,7 @@ that day are named in the heading. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
-## Unreleased
-
-### Changed
-- **The form tools agree on one parameter name: `formFqn`.** `edt_form_structure` and
-  `edt_form_render` called it `fqn` while everything that writes a form called it `formFqn` –
-  cosmetic until an argument outside the schema started refusing the call. The old name is still
-  read, and both answers now carry `formFqn` next to the old `fqn` key.
-
-## 2026-08-23 – 0.15.0
+## 2026-08-23 – 0.15.0, 0.16.0
 
 ### Added
 - **`edt_add_form_handler`** registers an event handler on a form or on one of its items – the
@@ -27,6 +19,12 @@ that day are named in the heading. The format follows
   metadata, not on the pieces of a form.
 - **Infobase credentials are in the schema of `edt_infobase_sessions`** – `infobaseUser` and
   `infobasePassword` were read but not declared, so no caller could find them.
+
+### Changed
+- **The form tools agree on one parameter name: `formFqn`.** `edt_form_structure` and
+  `edt_form_render` called it `fqn` while everything that writes a form called it `formFqn` –
+  cosmetic until an argument outside the schema started refusing the call. The old name is still
+  read, and both answers now carry `formFqn` next to the old `fqn` key.
 
 ### Fixed
 - **`shutdown` sees a session whose port has gone silent.** The CLI outlives the framework it
