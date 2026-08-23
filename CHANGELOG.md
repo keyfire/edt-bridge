@@ -8,7 +8,7 @@ that day are named in the heading. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
-## Unreleased
+## 2026-08-23 – 0.15.0
 
 ### Added
 - **`edt_add_form_handler`** registers an event handler on a form or on one of its items – the
