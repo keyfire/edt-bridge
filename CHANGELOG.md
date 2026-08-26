@@ -8,6 +8,17 @@ that day are named in the heading. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
+## 2026-08-26
+
+### Added
+- **`edt_validate_query` reads the query out of the module itself.** Address a module
+  (`modulePath`, optionally one `method`) instead of pasting the text: the bridge pulls the
+  `|`-framed query literals out of the live model, drops the framing and validates each one,
+  so the checked text cannot drift from what the module holds - and one call covers every
+  query of a module. What qualifies is deliberately narrow: a multiline framed literal whose
+  first word is ВЫБРАТЬ or SELECT; a single-line caption never reaches the validator, and the
+  pieces of a query built by concatenation never qualify.
+
 ## 2026-08-23 – 0.15.0, 0.16.0
 
 ### Added
