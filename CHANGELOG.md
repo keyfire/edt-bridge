@@ -8,7 +8,7 @@ that day are named in the heading. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
-## 2026-08-27
+## 2026-08-27 – 0.17.0
 
 ### Added
 - **The wrapper takes plugins.** External packages installed into the wrapper's environment
