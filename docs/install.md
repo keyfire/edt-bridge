@@ -120,6 +120,30 @@ Installing one:
 pipx inject edt-bridge-mcp <package>
 ```
 
+### When pipx runs on uv (pipx >= 1.15)
+
+A pipx backed by uv builds the venv WITHOUT pip, and three familiar moves stop working the
+way they read:
+
+- `--pip-args="--no-deps"` written as one token reaches uv pre-split and dies with uv's own
+  usage screen. Pass the flag as a separate argument: `pipx inject edt-bridge-mcp <package>
+  --pip-args "--no-deps"`.
+- `<venv>/Scripts/python -m pip` answers "No module named pip". `pipx runpip edt-bridge-mcp`
+  still works - pipx routes it into `uv pip` itself - and is the supported way to reach the
+  environment.
+- reinstalling a plugin WITHOUT `--no-deps` also reinstalls the core package and fails to
+  replace `edt-bridge-mcp.exe` while a live MCP session holds it ("failed to persist ...
+  Access denied"). The plugin itself usually lands before the failure - judge the outcome by
+  `edt-bridge-mcp plugins`, not by the exit code.
+
+The form that updates a plugin without touching the busy core:
+
+```bash
+python -m pipx runpip edt-bridge-mcp -- install --upgrade --no-deps <package>
+```
+
+(add `--index-url <your index>` when the plugin lives in a private registry).
+
 `edt-bridge-mcp plugins` lists what is plugged in – packages, entry points and the tools they
 add – and prints the loader's message when a plugin is broken. `EDT_BRIDGE_NO_PLUGINS=1` turns
 the discovery off.

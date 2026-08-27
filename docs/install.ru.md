@@ -121,6 +121,29 @@ powershell -ExecutionPolicy Bypass -File scripts/build-nomaven.ps1
 pipx inject edt-bridge-mcp <пакет>
 ```
 
+### Когда pipx работает поверх uv (pipx >= 1.15)
+
+pipx на uv собирает окружение БЕЗ pip, и три привычных приёма перестают работать так, как
+читаются:
+
+- `--pip-args="--no-deps"` одним словом доезжает до uv уже разобранным и падает его экраном
+  использования. Флаг передаётся отдельным аргументом: `pipx inject edt-bridge-mcp <пакет>
+  --pip-args "--no-deps"`.
+- `<venv>/Scripts/python -m pip` отвечает "No module named pip". `pipx runpip edt-bridge-mcp`
+  при этом РАБОТАЕТ – pipx сам уходит в `uv pip` – и остаётся штатной дорогой к окружению.
+- переустановка плагина БЕЗ `--no-deps` переустанавливает и ядро и не может заменить
+  `edt-bridge-mcp.exe`, пока его держит живая MCP-сессия ("failed to persist ... Отказано в
+  доступе"). Сам плагин при этом обычно успевает встать – итог смотреть по
+  `edt-bridge-mcp plugins`, а не по коду выхода.
+
+Форма обновления плагина, не трогающая занятое ядро:
+
+```bash
+python -m pipx runpip edt-bridge-mcp -- install --upgrade --no-deps <пакет>
+```
+
+(если плагин живёт в закрытом реестре – добавить `--index-url <адрес индекса>`).
+
 `edt-bridge-mcp plugins` показывает, что подключено, – пакеты, точки расширения и добавленные
 ими инструменты, – а при сломанном плагине печатает сообщение загрузчика.
 `EDT_BRIDGE_NO_PLUGINS=1` выключает поиск плагинов.
