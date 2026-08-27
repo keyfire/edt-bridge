@@ -25,7 +25,7 @@ import urllib.error
 
 from . import __version__, i18n
 
-COMMANDS = ("call", "tools", "status", "shutdown", "gui")
+COMMANDS = ("call", "tools", "status", "shutdown", "gui", "plugins")
 
 _TOKEN_HINT = (
     "the bridge refused the request (401). Write tools - and, on a token-protected server, every "
@@ -136,6 +136,68 @@ def _print_result(result: dict, raw: bool) -> None:
             _emit(item.get("text", ""))
 
 
+def _plugins_report() -> int:
+    """The `plugins` command: what is plugged in, through which entry points, or why not.
+
+    Needs no bridge and starts none - the plugins live in the wrapper's own environment.
+    A discovery failure exits with 1 and the loader's message: this command is where a
+    person looks when the MCP log says plugins are unavailable.
+    """
+    from . import plugins
+    from .server import LOCAL_TOOL_NAMES
+
+    if plugins.disabled():
+        print(f"plugins are disabled ({plugins.ENV_DISABLE} is set)")
+        return 0
+    try:
+        tools = plugins.plugin_tools(reserved=frozenset(LOCAL_TOOL_NAMES))
+    except plugins.PluginError as bad:
+        print(str(bad), file=sys.stderr)
+        return 1
+    packages = plugins.installed()
+    if not tools and not packages:
+        print(f"no plugins are installed (entry-point group {plugins.TOOLS_GROUP})")
+        return 0
+    for package in packages:
+        print(f"{package['name']} {package['version']}".rstrip())
+    by_source: dict[str, list[str]] = {}
+    for tool in tools:
+        by_source.setdefault(tool.source, []).append(tool.name)
+    for source in sorted(by_source):
+        print(f"  {source}: " + ", ".join(sorted(by_source[source])))
+    return 0
+
+
+def _call_plugin_tool(tool, args: argparse.Namespace) -> int:
+    """Run one plugin tool in-process - the same dispatch the MCP server applies.
+
+    Exit codes follow the house rule: 1 the call could not be made (bad arguments JSON),
+    2 the tool was judged or ran and refused - the same distinction bridge calls get.
+    """
+    from .server import unknown_arguments
+
+    try:
+        arguments = _tool_arguments(args)
+    except ValueError as bad:
+        print(str(bad), file=sys.stderr)
+        return 1
+    except OSError as bad:
+        print(f"could not read the arguments: {bad}", file=sys.stderr)
+        return 1
+    misnamed = unknown_arguments(tool.name, arguments, tools=[tool.descriptor()])
+    if misnamed:
+        print(misnamed, file=sys.stderr)
+        return 2
+    try:
+        answer = tool.handler(arguments)
+    except Exception as exc:  # the tool's own refusal or failure - report, not crash
+        print(f"{tool.name} failed: {exc}", file=sys.stderr)
+        return 2
+    text = answer if isinstance(answer, str) else json.dumps(answer, ensure_ascii=False, indent=2)
+    _print_result({"content": [{"type": "text", "text": text}]}, args.raw)
+    return 0
+
+
 def _shutdown(backend, args: argparse.Namespace) -> int:
     """Ask the bridge to stop the EDT behind it - the graceful end of a headless session.
 
@@ -209,9 +271,23 @@ def run(command: str, argv: list[str]) -> int:
 def _run(command: str, argv: list[str]) -> int:
     args = _parse(command, argv)
 
-    from .server import Backend, apply_connection_options
+    if command == "plugins":
+        return _plugins_report()
+
+    from .server import Backend, apply_connection_options, load_plugin_tools
     apply_connection_options(args)
     backend = Backend()
+
+    plugin_tools, plugin_error = ({}, None)
+    if command in ("call", "tools"):
+        plugin_tools, plugin_error = load_plugin_tools()
+        if plugin_error:
+            print(f"plugins are unavailable: {plugin_error}", file=sys.stderr)
+
+    if command == "call" and args.tool in plugin_tools:
+        # A plugin tool runs in the wrapper and needs no EDT - calling one must not
+        # spend minutes starting a headless session.
+        return _call_plugin_tool(plugin_tools[args.tool], args)
 
     if command == "status":
         status = backend.status()
@@ -259,10 +335,14 @@ def _run(command: str, argv: list[str]) -> int:
     result = answer.get("result", {})
 
     if command == "tools":
+        served = result.get("tools", [])
+        names = {tool.get("name") for tool in served}
+        served = served + [plugin_tools[name].descriptor()
+                           for name in sorted(plugin_tools) if name not in names]
         if args.raw:
-            _emit(json.dumps(result, ensure_ascii=False, indent=2))
+            _emit(json.dumps(dict(result, tools=served), ensure_ascii=False, indent=2))
         else:
-            for tool in result.get("tools", []):
+            for tool in served:
                 _emit(tool.get("name", ""))
         return 0
 

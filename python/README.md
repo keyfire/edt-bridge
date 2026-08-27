@@ -73,6 +73,23 @@ The wrapper updates itself by unpacking, not through an installer: it downloads 
 `site-packages` using the standard library alone. No pip, no pipx, no build backend – which matters,
 because pipx 1.15 builds its venvs through uv and a uv-built venv contains no pip at all.
 
+## Plugins
+
+External packages installed into the wrapper's environment can add MCP tools of their own –
+the home for what a public repository cannot carry (reference material under somebody's
+license, tools wired to an internal service). The wrapper discovers them through the
+`edt_bridge.tools` entry-point group, lists their tools next to the bridge's and dispatches
+them itself, so they answer even while no EDT is running.
+
+```bash
+pipx inject edt-bridge-mcp <package>   # install a plugin
+edt-bridge-mcp plugins                 # what is plugged in, or why a plugin refused to load
+```
+
+`EDT_BRIDGE_NO_PLUGINS=1` turns the discovery off. The declaration contract for plugin
+authors is on the
+[installation page](https://docs.keyfire.ru/edt-bridge/install#wrapper-plugins).
+
 The exes in `Scripts` are never touched: they are what a running client holds open, Windows will not
 let them be replaced, and they do not need to be – the stub launches whatever code is in
 site-packages the next time it starts. `pipx_metadata.json` is corrected so `pipx list` does not go

@@ -44,6 +44,7 @@ usage: edt-bridge-mcp [options]           (no command: run as an MCP server)
 | `status` | report the running bridge (never starts one) |
 | `shutdown` | shut down the EDT behind the bridge |
 | `gui` | stop the headless EDT and open the GUI one |
+| `plugins` | list the wrapper's plugins and their tools |
 | `self-update` | refresh the plugin jar and this wrapper |
 
 Run 'edt-bridge-mcp &lt;command&gt; `--help`' for a command's own options. The options above apply to the MCP-server mode and to every command.
@@ -171,6 +172,28 @@ usage: edt-bridge-mcp gui [-h] [--force] [--timeout TIMEOUT] [--workspace WORKSP
 | `-h, --help` | show this help message and exit |
 | `--force` | kill the headless session when it does not stop within the timeout |
 | `--timeout TIMEOUT` | seconds to wait for the headless EDT to stop (default 90) |
+| `--workspace WORKSPACE` | EDT workspace path for the headless auto-start |
+| `--edt-dir EDT_DIR` | EDT install dir (.../1cedt); auto-detected when omitted |
+| `--port PORT` | bridge port (default 8770) |
+| `--start-timeout START_TIMEOUT` | seconds to wait for a starting backend |
+| `--no-autostart` | never launch a headless EDT |
+| `--version` | show the version and exit |
+
+## `edt-bridge-mcp plugins`
+
+List the wrapper's plugins: packages, entry points and the tools they add. Plugins live in the wrapper's own environment (pipx inject); no bridge is needed for this command.
+
+```bash
+usage: edt-bridge-mcp plugins [-h] [--workspace WORKSPACE] [--edt-dir EDT_DIR]
+                              [--port PORT] [--start-timeout START_TIMEOUT]
+                              [--no-autostart] [--version]
+```
+
+**Options**
+
+| Option | Description |
+|---|---|
+| `-h, --help` | show this help message and exit |
 | `--workspace WORKSPACE` | EDT workspace path for the headless auto-start |
 | `--edt-dir EDT_DIR` | EDT install dir (.../1cedt); auto-detected when omitted |
 | `--port PORT` | bridge port (default 8770) |

@@ -25,7 +25,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "python" / "src"
-COMMANDS = ["call", "tools", "status", "shutdown", "gui", "self-update"]
+COMMANDS = ["call", "tools", "status", "shutdown", "gui", "plugins", "self-update"]
 
 TEXT = {
     "ru": {

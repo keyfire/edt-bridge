@@ -42,7 +42,7 @@ import urllib.request
 from pathlib import Path
 
 from . import __version__
-from . import cli, i18n
+from . import cli, i18n, plugins
 
 PROTOCOL_FALLBACK = "2024-11-05"
 
@@ -678,15 +678,31 @@ LOCAL_TOOLS = [
 LOCAL_TOOL_NAMES = {tool["name"] for tool in LOCAL_TOOLS}
 
 
-def unknown_arguments(name: str, arguments: dict) -> str | None:
+def load_plugin_tools() -> tuple[dict[str, plugins.Tool], str | None]:
+    """Plugin tools by name, and the discovery failure if there was one.
+
+    A broken plugin must not take the bridge's own tools down with it: the MCP
+    server keeps serving, reports the failure on stderr, and the `plugins`
+    command shows the same message to a person. Loud where it can be, alive
+    where it must be.
+    """
+    try:
+        found = plugins.plugin_tools(reserved=frozenset(LOCAL_TOOL_NAMES))
+    except plugins.PluginError as exc:
+        return {}, str(exc)
+    return {tool.name: tool for tool in found}, None
+
+
+def unknown_arguments(name: str, arguments: dict, tools: list[dict] | None = None) -> str | None:
     """The refusal for a local call carrying names the tool does not declare, or None.
 
-    The bridge itself judges the names of its own tools; the wrapper serves edt_open_gui by
-    itself, so the same judgement has to be made here. Dropping a name in silence is worse than
-    refusing: the answer then reads as a done deed for a call that did something else.
+    The bridge itself judges the names of its own tools; the wrapper serves edt_open_gui
+    and the plugin tools by itself, so the same judgement has to be made here. Dropping a
+    name in silence is worse than refusing: the answer then reads as a done deed for a
+    call that did something else.
     """
     declared: set[str] = set()
-    for tool in LOCAL_TOOLS:
+    for tool in (LOCAL_TOOLS if tools is None else tools):
         if tool["name"] == name:
             declared = set(tool.get("inputSchema", {}).get("properties", {}))
             break
@@ -712,6 +728,16 @@ class StdioServer:
         self.backend = backend
         self._out_lock = threading.Lock()
         self._announced_ready = False
+        self._plugin_tools, self._plugin_error = load_plugin_tools()
+        if self._plugin_error:
+            log(f"plugins are unavailable: {self._plugin_error}")
+        elif self._plugin_tools:
+            log(f"plugins add {len(self._plugin_tools)} tool(s): "
+                + ", ".join(sorted(self._plugin_tools)))
+
+    def _local_descriptors(self) -> list[dict]:
+        """What the wrapper serves by itself: its own tools plus the plugin tools."""
+        return list(LOCAL_TOOLS) + [t.descriptor() for t in self._plugin_tools.values()]
 
     # -- frames ----------------------------------------------------------
 
@@ -788,13 +814,19 @@ class StdioServer:
                 self._announced_ready = True
                 return
             self._kick_background_start()
-            self._result(req_id, {"tools": list(LOCAL_TOOLS)})
+            self._result(req_id, {"tools": self._local_descriptors()})
             return
         if method == "tools/call":
             if params.get("name") in LOCAL_TOOL_NAMES:
                 # Before ensure(): this tool ENDS a headless session, and autostarting one
                 # first would only give it something new to stop.
                 self._call_local(req_id, params.get("name"), params.get("arguments") or {})
+                return
+            if params.get("name") in self._plugin_tools:
+                # Also before ensure(): a plugin tool runs in the wrapper and needs no EDT,
+                # so a call must not spend minutes starting one.
+                self._call_plugin(req_id, self._plugin_tools[params.get("name")],
+                                  params.get("arguments") or {})
                 return
             ready, msg = self.backend.ensure(wait=True)
             if not ready:
@@ -836,8 +868,27 @@ class StdioServer:
         self._notify_tools_changed()
         threading.Thread(target=self._announce_when_ready, daemon=True).start()
 
+    def _call_plugin(self, req_id, tool: plugins.Tool, arguments: dict) -> None:
+        """Run a plugin tool and report as a normal tool result."""
+        misnamed = unknown_arguments(tool.name, arguments, tools=[tool.descriptor()])
+        if misnamed:
+            self._tool_error(req_id, misnamed)
+            return
+        try:
+            answer = tool.handler(arguments)
+        except Exception as exc:  # a plugin must not take the server loop down
+            self._tool_error(req_id, f"{tool.name} failed: {exc}")
+            return
+        text = answer if isinstance(answer, str) else json.dumps(
+            answer, ensure_ascii=False, indent=2)
+        self._result(req_id, {"content": [{"type": "text", "text": text}]})
+
     def _forward_tools_list(self, message: dict, req_id) -> None:
-        """Forward tools/list and add the wrapper's own tools to the answer."""
+        """Forward tools/list and add the tools the wrapper serves itself.
+
+        The wrapper's own and plugin descriptors win over a bridge tool of the same
+        name: the dispatch never forwards those names, so the listing has to match it.
+        """
         try:
             reply = self.backend.forward(message)
         except (OSError, ValueError) as exc:
@@ -845,8 +896,14 @@ class StdioServer:
             return
         result = reply.get("result")
         if isinstance(result, dict) and isinstance(result.get("tools"), list):
-            served = {tool.get("name") for tool in result["tools"]}
-            result["tools"].extend(tool for tool in LOCAL_TOOLS if tool["name"] not in served)
+            local = self._local_descriptors()
+            local_names = {tool["name"] for tool in local}
+            shadowed = sorted(tool.get("name") for tool in result["tools"]
+                              if tool.get("name") in local_names)
+            if shadowed:
+                log("bridge tools shadowed by the wrapper or a plugin: " + ", ".join(shadowed))
+            result["tools"] = [tool for tool in result["tools"]
+                               if tool.get("name") not in local_names] + local
         reply.setdefault("jsonrpc", "2.0")
         reply["id"] = req_id
         self._send(reply)

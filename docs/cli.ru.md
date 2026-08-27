@@ -44,6 +44,7 @@ usage: edt-bridge-mcp [опции]                   (без команды: з�
 | `status` | состояние запущенного моста (сам его не поднимает) |
 | `shutdown` | штатно завершить EDT, обслуживающую мост |
 | `gui` | остановить headless и открыть клиентскую EDT |
+| `plugins` | перечислить плагины обвязки и их инструменты |
 | `self-update` | обновить jar плагина и саму обвязку |
 
 Опции команды: edt-bridge-mcp &lt;команда&gt; `--help`. Опции выше относятся и к режиму MCP-сервера, и к каждой команде.
@@ -171,6 +172,28 @@ usage: edt-bridge-mcp gui [-h] [--force] [--timeout TIMEOUT] [--workspace WORKSP
 | `-h, --help` | показать эту справку и выйти |
 | `--force` | снять headless принудительно, если он не завершился за отведённое время |
 | `--timeout TIMEOUT` | сколько секунд ждать завершения headless (по умолчанию 90) |
+| `--workspace WORKSPACE` | воркспейс EDT для автозапуска headless |
+| `--edt-dir EDT_DIR` | каталог установки EDT (.../1cedt); без флага определяется сам |
+| `--port PORT` | порт моста (по умолчанию 8770) |
+| `--start-timeout START_TIMEOUT` | сколько секунд ждать поднимающийся мост |
+| `--no-autostart` | не поднимать headless EDT ни при каких условиях |
+| `--version` | показать версию и выйти |
+
+## `edt-bridge-mcp plugins`
+
+Перечислить плагины обвязки: пакеты, точки расширения и добавленные ими инструменты. Плагины живут в окружении самой обвязки (pipx inject), мост для этой команды не нужен.
+
+```bash
+usage: edt-bridge-mcp plugins [-h] [--workspace WORKSPACE] [--edt-dir EDT_DIR]
+                              [--port PORT] [--start-timeout START_TIMEOUT]
+                              [--no-autostart] [--version]
+```
+
+**Параметры**
+
+| Параметр | Описание |
+|---|---|
+| `-h, --help` | показать эту справку и выйти |
 | `--workspace WORKSPACE` | воркспейс EDT для автозапуска headless |
 | `--edt-dir EDT_DIR` | каталог установки EDT (.../1cedt); без флага определяется сам |
 | `--port PORT` | порт моста (по умолчанию 8770) |

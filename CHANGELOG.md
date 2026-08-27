@@ -8,6 +8,20 @@ that day are named in the heading. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
+## 2026-08-27
+
+### Added
+- **The wrapper takes plugins.** External packages installed into the wrapper's environment
+  (`pipx inject edt-bridge-mcp <package>`) declare MCP tools through the `edt_bridge.tools`
+  entry-point group; the wrapper lists them next to the bridge's tools and dispatches them
+  itself, so they answer even while no EDT is running. This is the home for what a public
+  repository cannot carry – reference material under somebody's license, tools wired to an
+  internal service. The `plugins` command reports what is plugged in and why a broken plugin
+  refused to load; `EDT_BRIDGE_NO_PLUGINS=1` turns the discovery off. A failing entry point,
+  a duplicated tool name or a name that shadows the wrapper's own tools refuses loudly at
+  discovery – except in the MCP server itself, which keeps serving the bridge and reports the
+  failure on stderr instead of dying with the whole tool surface.
+
 ## 2026-08-26
 
 ### Added

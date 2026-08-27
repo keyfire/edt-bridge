@@ -62,6 +62,7 @@ MESSAGES = {
               "  status              состояние запущенного моста (сам его не поднимает)\n"
               "  shutdown            штатно завершить EDT, обслуживающую мост\n"
               "  gui                 остановить headless и открыть клиентскую EDT\n"
+              "  plugins             перечислить плагины обвязки и их инструменты\n"
               "  self-update         обновить jar плагина и саму обвязку\n"
               "\n"
               "Опции команды: edt-bridge-mcp <команда> --help.\n"
@@ -72,6 +73,7 @@ MESSAGES = {
               "  status        report the running bridge (never starts one)\n"
               "  shutdown      shut down the EDT behind the bridge\n"
               "  gui           stop the headless EDT and open the GUI one\n"
+              "  plugins       list the wrapper's plugins and their tools\n"
               "  self-update   refresh the plugin jar and this wrapper\n"
               "\n"
               "Run 'edt-bridge-mcp <command> --help' for a command's own options.\n"
@@ -141,6 +143,14 @@ MESSAGES = {
     "gui.timeout": {
         "ru": "сколько секунд ждать завершения headless (по умолчанию 90)",
         "en": "seconds to wait for the headless EDT to stop (default 90)",
+    },
+    "plugins.description": {
+        "ru": "Перечислить плагины обвязки: пакеты, точки расширения и добавленные ими "
+              "инструменты. Плагины живут в окружении самой обвязки (pipx inject), мост "
+              "для этой команды не нужен.",
+        "en": "List the wrapper's plugins: packages, entry points and the tools they add. "
+              "Plugins live in the wrapper's own environment (pipx inject); no bridge is "
+              "needed for this command.",
     },
     "call.tool": {
         "ru": "имя инструмента, например edt_projects (перечень: edt-bridge-mcp tools)",

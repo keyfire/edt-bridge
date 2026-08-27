@@ -69,6 +69,7 @@ flag twin, documented in [Commands](/cli).
 | `EDT_BRIDGE_AUTOSTART` | `--no-autostart` | on | `0` – never launch anything, act as a proxy only |
 | `EDT_BRIDGE_WINDOW_WAIT` | – | `90` | seconds the `gui` command waits for the EDT window to appear: a large workspace loads for minutes, so a miss is not an error but a reason to run the command again |
 | `EDT_BRIDGE_LANG` | – | the system locale | the language of the wrapper's help and messages (`ru` / `en`) |
+| `EDT_BRIDGE_NO_PLUGINS` | – | off | `1` – do not discover [wrapper plugins](#wrapper-plugins): a run with the wrapper's own capabilities only |
 
 **Read by the plugin inside EDT**
 
@@ -103,3 +104,37 @@ Releases are cut from a locally built jar – CI cannot compile it (the 1C:EDT S
 proprietary and cannot be fetched anonymously). The maintainer runs `scripts/build-nomaven.ps1 -Dist`,
 commits the jar under `dist/`, tags `vX.Y.Z` and pushes the tag; `.github/workflows/release.yml`
 attaches the jar + checksum. Verify an asset by rebuilding from the tagged source and comparing.
+
+## Wrapper plugins
+
+Not everything a team runs next to the bridge belongs in a public repository – reference
+material under somebody's license, tools wired to an internal service. Those live in separate
+packages installed into the wrapper's own environment, and the wrapper discovers them through
+the `edt_bridge.tools` entry-point group – the tools they declare are listed next to the
+bridge's tools and dispatched by the wrapper itself, so they answer even while no EDT is
+running.
+
+Installing one:
+
+```bash
+pipx inject edt-bridge-mcp <package>
+```
+
+`edt-bridge-mcp plugins` lists what is plugged in – packages, entry points and the tools they
+add – and prints the loader's message when a plugin is broken. `EDT_BRIDGE_NO_PLUGINS=1` turns
+the discovery off.
+
+A plugin declares its tools in `pyproject.toml`:
+
+```toml
+[project.entry-points."edt_bridge.tools"]
+package-name = "my_package.tools:tools"
+```
+
+The value is a `Tool` (from `edt_bridge_mcp.plugins`), a list of them, or a zero-argument
+callable returning either. A `Tool` carries the MCP descriptor – `name`, `description`, the
+JSON schema of the arguments – and the handler the wrapper calls; a str return becomes the
+text result, any other JSON-serializable value is pretty-printed as JSON, and an exception
+becomes the tool's error message. A failing entry point, a duplicated tool name or a name
+that shadows the wrapper's own tools refuses loudly at discovery – a silently dropped plugin
+would leave an agent without its tools and without an explanation.
