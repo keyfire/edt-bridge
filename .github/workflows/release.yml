@@ -49,10 +49,21 @@ jobs:
           sha256sum "$jar" > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
+      - name: Release notes from the changelog
+        # The body is the version's section of CHANGELOG.md - subscribers then see the
+        # actual "what's new" in their feeds instead of a bare compare link. A missing
+        # section must not hold the jar back: the release ships with the generated notes
+        # alone, and the warning names the slip.
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          python3 scripts/release-notes.py "$version" CHANGELOG.md --out notes.md \
+            || { echo "::warning::CHANGELOG.md has no section naming $version - the release body falls back to the generated notes"; : > notes.md; }
+
       - name: Create the release with assets
         uses: softprops/action-gh-release@v2
         with:
           files: |
             ${{ steps.jar.outputs.jar }}
             SHA256SUMS.txt
+          body_path: notes.md
           generate_release_notes: true
