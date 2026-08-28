@@ -103,7 +103,7 @@ public final class DebugGateway {
     /**
      *: attach a debug session to a RUNNING infobase's debug server (dbgs). Builds a
      * {@code REMOTE_RUNTIME} Eclipse launch configuration ({@link IDebugConfigurationAttributes}),
-     * launches it in {@code DEBUG_MODE} (EDT's {@code RemoteRuntimeDebugLaunchDelegate} performs the
+     * launches it in {@code DEBUG_MODE} (EDT's own launch delegate performs the
      * network connect), and records the resulting {@link IRuntimeDebugClientTarget} under a session id for
      * the control/inspect/evaluate tools. Token-gated (opens a session against a live IB). STAND-ONLY:
      * target the {@code tests} stand, never production.
@@ -169,7 +169,7 @@ public final class DebugGateway {
             if (haveAlias) {
                 wc.setAttribute(IDebugConfigurationAttributes.DEBUG_INFOBASE_ALIAS, infobaseAlias);
             }
-            // Attach EXACTLY as EDT's RemoteRuntimeDebugLaunchDelegate does, but WITHOUT
+            // Attach EXACTLY as EDT's own remote-debug launch does, but WITHOUT
             // ILaunchConfiguration.launch(): that path runs preLaunchCheck/saveBeforeLaunch which load
             // org.eclipse.debug.ui (Prompter/ISuspendTrigger) – absent headless, so the launch aborts.
             // Instead build a DtLaunch directly and ask the target manager to create the remote target.
@@ -263,7 +263,7 @@ public final class DebugGateway {
             r.message = "attached debug session " + sid + " to " + url + " (infobase " + alias + ")"
                     + (r.connected ? " – connected" : " – created, not yet connected");
             r.warning = (r.warning == null ? "" : r.warning)
-                    + "ОТЛАДКА ЖИВОЙ ИБ – только тестовый стенд, никогда продакшен. Области данных: "
+                    + "ОТЛАДКА ЖИВОЙ ИБ – только тестовый стенд, никогда не рабочая база. Области данных: "
                     + areaNote + ".";
         } catch (Exception ex) {
             if (launch != null) {

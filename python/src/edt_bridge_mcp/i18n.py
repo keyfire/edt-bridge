@@ -49,7 +49,7 @@ MESSAGES = {
         "ru": "stdio-обвязка MCP для плагина edt-bridge к 1С:EDT: проксирует запросы в\n"
               "запущенный EDT, а если ни одного нет – поднимает headless.\n\n"
               "Без команды обвязка говорит JSON-RPC через stdin/stdout – так её запускает\n"
-              "MCP-клиент. Команды ниже адресуют тот же мост из шелла.",
+              "MCP-клиент. Команды ниже адресуют тот же мост из командной строки.",
         "en": "stdio MCP front-end for the edt-bridge 1C:EDT plugin: proxies to a running\n"
               "EDT, or auto-starts a headless one.\n\n"
               "With no command it speaks JSON-RPC over stdin/stdout - that is how an MCP\n"

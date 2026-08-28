@@ -923,7 +923,7 @@ public final class FormGateway {
         final int h = height > 0 ? height : 800;
 
         final int zoom = scale;
-        // Where to run the render depends on the runtime. NativeRenderService.setWindows() disposes
+        // Where to run the render depends on the runtime. The native renderer's setWindows() disposes
         // widgets it owns, and in a GUI EDT those belong to the workbench's main-thread Display – so
         // the render MUST run on that thread (a private Display throws "Invalid thread access" inside
         // setWindows). Headless CLI has no workbench Display, so there we own a private one on a
@@ -983,7 +983,7 @@ public final class FormGateway {
         ILayoutRenderService renderService = null;
         LayoutTransformationService transformator = null;
         try {
-            // 1) offscreen SWT scaffold (NativeRenderService casts only to Composite / ScrolledComposite)
+            // 1) offscreen SWT scaffold (the native renderer casts only to Composite / ScrolledComposite)
             shell = new Shell(d, SWT.NO_TRIM);
             shell.setSize(w, h);
             scrolled = new ScrolledComposite(shell, SWT.H_SCROLL | SWT.V_SCROLL);

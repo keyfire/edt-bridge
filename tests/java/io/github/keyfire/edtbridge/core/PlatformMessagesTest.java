@@ -28,12 +28,12 @@ class PlatformMessagesTest {
 
     private static String inventoryBlock() {
         return String.join("\n",
-                "Phys mem_0: 21046472704",
-                "CPU_0: Intel(R) Core(TM) i7-8700K CPU @ 3.70GHz Family 6 Model 158",
+                "Phys mem_0: 17179869184",
+                "CPU_0: Example CPU X0000 @ 3.00GHz Family 0 Model 0",
                 "",
-                "CPU_1: Intel(R) Core(TM) i7-8700K CPU @ 3.70GHz Family 6 Model 158",
+                "CPU_1: Example CPU X0000 @ 3.00GHz Family 0 Model 0",
                 "",
-                "HASP_0: ORG8B, client, 500 users, id 978493417, 1",
+                "HASP_0: ORG00, client, 100 users, id 100000001, 1",
                 "Sys name_0: srv.example.test",
                 "DISK_0: Virtual Disk Ver: 1.0 Size: 107374182400");
     }

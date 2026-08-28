@@ -1794,10 +1794,10 @@ public final class MetadataWriteGateway {
             // get in) and fills contained-object ids. A factory-made Configuration carries none of that
             // and instead carries full-configuration properties an extension has no business with; an
             // infobase refuses to load such a project ("the load must not change the ownership of the
-            // main configuration object"). This mirrors ExtensionWizard.adopt(), the New Configuration
-            // Extension wizard's own step. create() then attaches the object DIRECTLY to the new
-            // project's model (ExtensionProjectManager -> tx.attachTopObject, no copy), so what is
-            // handed over must be detached - which an adopted copy is.
+            // main configuration object"). This mirrors the New Configuration Extension wizard's own
+            // adopt step. create() then attaches the object DIRECTLY to the new project's model
+            // (attachTopObject, no copy), so what is handed over must be detached - which an adopted
+            // copy is.
             Configuration adopted = adopter.adopt(baseConfig, version, new NullProgressMonitor());
             if (adopted == null) {
                 r.message = "the adopter returned nothing for the base configuration of "
@@ -1818,8 +1818,8 @@ public final class MetadataWriteGateway {
                 }
             }
             // Without this flag every object adopted later binds to its base object BY NAME; with it
-            // EDT writes the base object's uuid (MdObjectAdopterParticipant reads the flag off the
-            // extension's Configuration when it builds an adopted copy). The wizard always sets it.
+            // EDT writes the base object's uuid (the adopter reads the flag off the extension's
+            // Configuration when it builds an adopted copy). The wizard always sets it.
             adopted.setKeepMappingToExtendedConfigurationObjectsByIDs(true);
 
             IProject created = epm.create(name, version, adopted, base, new NullProgressMonitor());
@@ -2565,8 +2565,8 @@ public final class MetadataWriteGateway {
             td.getTypes().add(ref);
             return;
         }
-        // Platform types are served by the version-specific TypeItemProvider, registered for eClass
-        // TYPE_ITEM (NOT TYPE – that registry slot is empty), e.g. ...platform.type.v8_5_1.TypeItemProvider.
+        // Platform types are served by the version-specific provider registered for eClass
+        // TYPE_ITEM (NOT TYPE – that registry slot is empty).
         IEObjectProvider provider = IEObjectProvider.Registry.INSTANCE.get(McorePackage.Literals.TYPE_ITEM, version);
         if (provider == null) {
             throw new IllegalStateException("no platform type provider (TYPE_ITEM) for version " + version);

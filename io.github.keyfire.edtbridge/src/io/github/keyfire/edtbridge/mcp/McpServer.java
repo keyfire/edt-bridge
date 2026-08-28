@@ -431,7 +431,7 @@ applyI18n();loadStatus();loadTools();
     }
 
     /**
-     * Enable EDT's native form-layout renderer. {@code NativeRenderService} reads these flags into
+     * Enable EDT's native form-layout renderer. The native renderer reads these flags into
      * {@code static final} fields in its class initializer, so they must be set BEFORE that class
      * loads (it loads lazily on the first form render – well after this). Without them
      * {@code HippoLayoutService} returns a layout with a null image. Don't override an explicit value.

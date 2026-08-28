@@ -105,7 +105,7 @@ import com.google.inject.Injector;
  * EDT's own form generator ({@link IFormGenerator}) - the very engine behind the "New form" wizard - so
  * the produced form is born valid instead of being hand-assembled as XML.
  *
- * <p>The flow mirrors EDT's {@code FormNewWizardRelatedModelsFactory}: create the {@code BasicForm}
+ * <p>The flow mirrors EDT's own "New form" wizard: create the {@code BasicForm}
  * metadata entry, link it into the owner's {@code forms} feature, generate the {@link Form} content,
  * bind the two with {@code setMdForm}, attach the form as a BM top object under the FQN produced by
  * {@link ITopObjectFqnGenerator}, then materialise the form module from
