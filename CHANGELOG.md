@@ -8,6 +8,26 @@ that day are named in the heading. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
+## 2026-08-28 – 0.18.0
+
+### Added
+- **Plugins can reach the live bridge.** A plugin handler that declares a `bridge`
+  parameter – `handler(arguments, bridge)` – receives a callable forwarding one tool call
+  to the running bridge and returning the text of its result. The wrapper never starts an
+  EDT for it: with no bridge up the callable raises with a readable message and the plugin
+  degrades to a note, instead of hanging its caller through a minutes-long headless start.
+  Both dispatch paths pass it – the MCP server and `call` on the command line. This is what
+  lets a documentation plugin answer across corpora: the books it bundles plus the Syntax
+  Helper behind the bridge, in one search.
+- **`self-update` updates the wrapper plugins too.** Every distribution publishing
+  `edt_bridge.tools` entry points is updated through pip from the source it was installed
+  from – its git repository (read from PEP 610 `direct_url.json`), or a package index by
+  project name, with `EDT_BRIDGE_PLUGIN_INDEX` naming the index. pip is reached the way the
+  environment allows: `pipx runpip` for a pipx venv (works on uv-built venvs that have no
+  pip module), the venv's own pip otherwise; unlike the wrapper itself, a plugin has no exe
+  for a running client to hold, so pip's route is safe here. `--plugins-only` limits the run
+  to the plugins; each one is reported as `name: old -> new`.
+
 ## 2026-08-27 – 0.17.0
 
 ### Added

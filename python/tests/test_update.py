@@ -239,3 +239,155 @@ def test_a_directory_without_the_package_names_where_it_looked(tmp_path):
     with pytest.raises(update._UpdateError) as error:
         update._install_from_checkout(site, str(tmp_path / "repo"))
     assert "python" in str(error.value) and "src" in str(error.value)
+
+
+# -- wrapper plugins ---------------------------------------------------------------------------
+
+
+class _Dist:
+    """A distribution as `_plugin_source` sees one: name, version, readable direct_url.json."""
+
+    def __init__(self, name, version, direct_url=None):
+        self.name = name
+        self.version = version
+        self._direct = direct_url
+
+    def read_text(self, filename):
+        if filename == "direct_url.json" and self._direct is not None:
+            import json as _json
+            return _json.dumps(self._direct)
+        return None
+
+
+def test_plugin_source_prefers_the_git_origin():
+    dist = _Dist("demo-plugin", "0.1.0", {
+        "url": "ssh://git@example.invalid/team/demo-plugin.git",
+        "vcs_info": {"vcs": "git", "commit_id": "abc"},
+    })
+    assert update._plugin_source(dist) == "git+ssh://git@example.invalid/team/demo-plugin.git"
+
+
+def test_plugin_source_refuses_a_local_directory_install():
+    dist = _Dist("demo-plugin", "0.1.0", {"url": "file:///work/demo", "dir_info": {}})
+    assert update._plugin_source(dist) is None
+
+
+def test_plugin_source_falls_back_to_the_project_name():
+    assert update._plugin_source(_Dist("demo-plugin", "0.1.0")) == "demo-plugin"
+
+
+def test_installed_version_reads_dist_info_from_disk(tmp_path):
+    (tmp_path / "demo_plugin-0.2.0.dist-info").mkdir()
+    assert update._installed_version(tmp_path, "demo-plugin") == "0.2.0"
+    assert update._installed_version(tmp_path, "other") == ""
+
+
+def _plugins_site(tmp_path):
+    """A site-packages inside a venv shape, so `_pip_command` has a parent to look at."""
+    site = tmp_path / "venv" / "Lib" / "site-packages"
+    site.mkdir(parents=True)
+    return site
+
+
+def test_update_plugins_runs_pip_against_the_git_origin(tmp_path, monkeypatch):
+    site = _plugins_site(tmp_path)
+    dist = _Dist("demo-plugin", "0.1.0", {
+        "url": "https://example.invalid/team/demo-plugin.git",
+        "vcs_info": {"vcs": "git", "commit_id": "abc"},
+    })
+    monkeypatch.setattr(update, "_site_packages", lambda: site)
+    monkeypatch.setattr(update, "_ensure_regular_install", lambda _site: None)
+    monkeypatch.setattr(update, "_plugin_distributions", lambda: [dist])
+    monkeypatch.setattr(update, "_pip_command", lambda _site: ["pip"])
+    calls = []
+
+    def fake_run(argv, **_kwargs):
+        calls.append(argv)
+        (site / "demo_plugin-0.2.0.dist-info").mkdir()
+
+        class Done:
+            returncode = 0
+            stdout = stderr = ""
+        return Done()
+
+    monkeypatch.setattr(update.subprocess, "run", fake_run)
+    lines = []
+
+    assert update.update_plugins(emit=lines.append) is True
+    assert calls == [["pip", "install", "--upgrade", "--no-deps",
+                      "git+https://example.invalid/team/demo-plugin.git"]]
+    assert any("0.1.0 -> 0.2.0" in line for line in lines)
+
+
+def test_update_plugins_names_the_index_for_registry_installs(tmp_path, monkeypatch):
+    site = _plugins_site(tmp_path)
+    monkeypatch.setattr(update, "_site_packages", lambda: site)
+    monkeypatch.setattr(update, "_ensure_regular_install", lambda _site: None)
+    monkeypatch.setattr(update, "_plugin_distributions", lambda: [_Dist("demo-plugin", "0.1.0")])
+    monkeypatch.setattr(update, "_pip_command", lambda _site: ["pip"])
+    monkeypatch.setenv(update.PLUGIN_INDEX_ENV, "https://index.invalid/simple")
+    calls = []
+
+    def fake_run(argv, **_kwargs):
+        calls.append(argv)
+
+        class Done:
+            returncode = 0
+            stdout = stderr = ""
+        return Done()
+
+    monkeypatch.setattr(update.subprocess, "run", fake_run)
+
+    assert update.update_plugins(emit=lambda _line: None) is True
+    assert calls == [["pip", "install", "--upgrade", "--no-deps",
+                      "--index-url", "https://index.invalid/simple", "demo-plugin"]]
+
+
+def test_update_plugins_reports_a_failing_pip(tmp_path, monkeypatch):
+    site = _plugins_site(tmp_path)
+    monkeypatch.setattr(update, "_site_packages", lambda: site)
+    monkeypatch.setattr(update, "_ensure_regular_install", lambda _site: None)
+    monkeypatch.setattr(update, "_plugin_distributions", lambda: [_Dist("demo-plugin", "0.1.0")])
+    monkeypatch.setattr(update, "_pip_command", lambda _site: ["pip"])
+
+    def fake_run(_argv, **_kwargs):
+        class Failed:
+            returncode = 1
+            stdout = ""
+            stderr = "ERROR: No matching distribution found for demo-plugin"
+        return Failed()
+
+    monkeypatch.setattr(update.subprocess, "run", fake_run)
+    lines = []
+
+    assert update.update_plugins(emit=lines.append) is False
+    assert any("No matching distribution" in line for line in lines)
+
+
+def test_update_plugins_without_plugins_is_a_no_op(tmp_path, monkeypatch):
+    site = _plugins_site(tmp_path)
+    monkeypatch.setattr(update, "_site_packages", lambda: site)
+    monkeypatch.setattr(update, "_ensure_regular_install", lambda _site: None)
+    monkeypatch.setattr(update, "_plugin_distributions", lambda: [])
+    lines = []
+
+    assert update.update_plugins(emit=lines.append) is True
+    assert any("nothing to update" in line for line in lines)
+
+
+def test_pip_command_prefers_pipx_runpip_for_a_pipx_venv(tmp_path, monkeypatch):
+    site = _plugins_site(tmp_path)
+    (site.parent.parent / "pipx_metadata.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(update.shutil, "which", lambda name: "C:/pipx" if name == "pipx" else None)
+    assert update._pip_command(site) == ["pipx", "runpip", "edt-bridge-mcp", "--"]
+
+
+def test_pip_command_falls_back_to_the_venv_python(tmp_path, monkeypatch):
+    site = _plugins_site(tmp_path)
+    scripts = site.parent.parent / ("Scripts" if update.os.name == "nt" else "bin")
+    scripts.mkdir()
+    python = scripts / ("python.exe" if update.os.name == "nt" else "python")
+    python.write_bytes(b"")
+    monkeypatch.setattr(update.shutil, "which", lambda _name: None)
+    command = update._pip_command(site)
+    assert command is not None and command[1:] == ["-m", "pip"]

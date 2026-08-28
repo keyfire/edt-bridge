@@ -168,12 +168,13 @@ def _plugins_report() -> int:
     return 0
 
 
-def _call_plugin_tool(tool, args: argparse.Namespace) -> int:
+def _call_plugin_tool(tool, args: argparse.Namespace, backend) -> int:
     """Run one plugin tool in-process - the same dispatch the MCP server applies.
 
     Exit codes follow the house rule: 1 the call could not be made (bad arguments JSON),
     2 the tool was judged or ran and refused - the same distinction bridge calls get.
     """
+    from . import plugins
     from .server import unknown_arguments
 
     try:
@@ -189,7 +190,10 @@ def _call_plugin_tool(tool, args: argparse.Namespace) -> int:
         print(misnamed, file=sys.stderr)
         return 2
     try:
-        answer = tool.handler(arguments)
+        if plugins.wants_bridge(tool.handler):
+            answer = tool.handler(arguments, bridge=backend.call_tool)
+        else:
+            answer = tool.handler(arguments)
     except Exception as exc:  # the tool's own refusal or failure - report, not crash
         print(f"{tool.name} failed: {exc}", file=sys.stderr)
         return 2
@@ -286,8 +290,10 @@ def _run(command: str, argv: list[str]) -> int:
 
     if command == "call" and args.tool in plugin_tools:
         # A plugin tool runs in the wrapper and needs no EDT - calling one must not
-        # spend minutes starting a headless session.
-        return _call_plugin_tool(plugin_tools[args.tool], args)
+        # spend minutes starting a headless session. The backend still travels along:
+        # a handler declaring `bridge` may enrich its answer from a bridge that is
+        # ALREADY up (and degrades itself when none is).
+        return _call_plugin_tool(plugin_tools[args.tool], args, backend)
 
     if command == "status":
         status = backend.status()

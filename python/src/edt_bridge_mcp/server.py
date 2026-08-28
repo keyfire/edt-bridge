@@ -165,6 +165,37 @@ class Backend:
         with urllib.request.urlopen(req, timeout=600) as resp:
             return json.loads(resp.read().decode("utf-8"))
 
+    def call_tool(self, name: str, arguments: dict) -> str:
+        """One tools/call to the live bridge; the text of its result.
+
+        The `bridge` callable handed to plugin handlers (see plugins.Tool).
+        Deliberately never starts an EDT: a plugin tool answers fast by
+        contract, and a headless start takes minutes - the caller degrades
+        with this error's message instead, and the bridge tool called
+        directly keeps its usual autostart.
+        """
+        if not self.is_up():
+            raise RuntimeError(
+                "no EDT bridge is running - start one (any bridge tool autostarts it) "
+                "or call the bridge tool directly"
+            )
+        try:
+            answer = self.forward({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                                   "params": {"name": name, "arguments": arguments}})
+        except (OSError, ValueError) as exc:
+            raise RuntimeError(f"the bridge did not answer: {exc}") from exc
+        error = answer.get("error")
+        if error is not None:
+            message = error.get("message") if isinstance(error, dict) else None
+            raise RuntimeError(str(message or error))
+        result = answer.get("result") or {}
+        parts = [part.get("text", "") for part in result.get("content") or []
+                 if isinstance(part, dict)]
+        text = "\n".join(part for part in parts if part)
+        if result.get("isError"):
+            raise RuntimeError(text or f"{name} reported an error without a message")
+        return text
+
     def shutdown(self, force: bool = False) -> dict:
         """POST /shutdown to the live bridge - the graceful stop of the EDT behind it.
 
@@ -875,7 +906,10 @@ class StdioServer:
             self._tool_error(req_id, misnamed)
             return
         try:
-            answer = tool.handler(arguments)
+            if plugins.wants_bridge(tool.handler):
+                answer = tool.handler(arguments, bridge=self.backend.call_tool)
+            else:
+                answer = tool.handler(arguments)
         except Exception as exc:  # a plugin must not take the server loop down
             self._tool_error(req_id, f"{tool.name} failed: {exc}")
             return

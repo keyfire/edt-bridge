@@ -50,6 +50,20 @@ class PluginError(RuntimeError):
     pass
 
 
+def wants_bridge(handler: Callable) -> bool:
+    """Whether the handler declares the optional `bridge` parameter (see Tool).
+
+    Inspected once per call, not at discovery: the cost is trivial and the
+    handler object is what dispatch already holds. Signatures that cannot be
+    inspected (builtins, some callables) simply count as not wanting one.
+    """
+    import inspect
+    try:
+        return "bridge" in inspect.signature(handler).parameters
+    except (TypeError, ValueError):
+        return False
+
+
 def disabled() -> bool:
     """Whether plugin discovery is turned off (EDT_BRIDGE_NO_PLUGINS).
 
@@ -75,6 +89,15 @@ class Tool:
     value is pretty-printed as JSON. An exception becomes an isError result
     with the exception's message – raise ValueError with a readable message for
     a deliberate refusal (a missing required argument, an unknown path).
+
+    A handler that also declares a `bridge` parameter – handler(arguments,
+    bridge) – receives a callable bridge(tool_name, arguments) -> str that
+    forwards one tools/call to the live bridge and returns the text of its
+    result. The wrapper never starts an EDT for it: a plugin tool answers fast
+    by contract, and minutes of a headless start inside somebody's call would
+    read as a hang. With no bridge up (or the bridge tool failing) the callable
+    raises RuntimeError with a readable message – degrade to a note instead of
+    letting it become the whole answer when the bridge is only an enrichment.
     """
 
     name: str

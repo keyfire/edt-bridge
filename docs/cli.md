@@ -203,7 +203,7 @@ usage: edt-bridge-mcp plugins [-h] [--workspace WORKSPACE] [--edt-dir EDT_DIR]
 
 ## `edt-bridge-mcp self-update`
 
-Refresh the plugin jar in EDT's dropins and this wrapper in its own environment.
+Refresh the plugin jar in EDT's dropins, this wrapper in its own environment, and the wrapper plugins.
 
 ```bash
 usage: edt-bridge-mcp self-update [options]
@@ -215,8 +215,9 @@ usage: edt-bridge-mcp self-update [options]
 |---|---|
 | `--jar-only` | only the plugin jar (GitHub Releases) |
 | `--pip-only` | only the wrapper (PyPI, or `--from`) |
+| `--plugins-only` | only the wrapper plugins |
 | `--from <path>` | install the wrapper from a checkout instead of PyPI |
 | `-h, --help` | show this message |
 
-The jar applies on EDT's next restart. The wrapper is replaced inside site-packages; the exes in Scripts are left alone, so restart any running edt-bridge-mcp afterwards.
+The jar applies on EDT's next restart. The wrapper is replaced inside site-packages; the exes in Scripts are left alone, so restart any running edt-bridge-mcp afterwards. Plugins are updated through pip from the source they were installed from (a git repository or a package index; set EDT_BRIDGE_PLUGIN_INDEX to name the index).
 

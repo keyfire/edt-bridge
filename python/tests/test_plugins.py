@@ -326,3 +326,63 @@ def test_cli_tools_appends_plugin_tools_to_the_bridge_list(monkeypatch, capsys):
     assert cli.run("tools", []) == 0
     lines = capsys.readouterr().out.split()
     assert "edt_projects" in lines and "edt_probe_echo" in lines
+
+
+# -- the bridge callable for plugin handlers --------------------------------
+
+
+def test_wants_bridge_detects_the_parameter():
+    assert plugins.wants_bridge(lambda arguments, bridge: None) is True
+    assert plugins.wants_bridge(lambda arguments: None) is False
+    assert plugins.wants_bridge(len) is False  # a signature-less builtin counts as "no"
+
+
+def test_a_bridge_wanting_handler_receives_the_backend_callable(stdio, monkeypatch):
+    srv, sent = stdio
+    srv._plugin_tools["edt_probe_echo"].handler = (
+        lambda arguments, bridge: bridge("edt_platform_help", {"query": "x"}))
+    monkeypatch.setattr(srv.backend, "call_tool",
+                        lambda name, arguments: f"bridge answered {name}")
+    srv.handle({"jsonrpc": "2.0", "id": 5, "method": "tools/call",
+                "params": {"name": "edt_probe_echo", "arguments": {}}})
+    assert result_of(sent)["content"][0]["text"] == "bridge answered edt_platform_help"
+
+
+def test_call_tool_refuses_without_a_live_bridge(monkeypatch):
+    backend = server.Backend()
+    monkeypatch.setattr(backend, "is_up", lambda: False)
+    with pytest.raises(RuntimeError) as refusal:
+        backend.call_tool("edt_platform_help", {})
+    assert "no EDT bridge is running" in str(refusal.value)
+
+
+def test_call_tool_joins_the_text_content(monkeypatch):
+    backend = server.Backend()
+    monkeypatch.setattr(backend, "is_up", lambda: True)
+    monkeypatch.setattr(backend, "forward", lambda payload: {
+        "jsonrpc": "2.0", "id": 1,
+        "result": {"content": [{"type": "text", "text": "first"},
+                               {"type": "text", "text": "second"}]},
+    })
+    assert backend.call_tool("edt_platform_help", {"query": "x"}) == "first\nsecond"
+
+
+def test_call_tool_turns_a_tool_error_into_an_exception(monkeypatch):
+    backend = server.Backend()
+    monkeypatch.setattr(backend, "is_up", lambda: True)
+    monkeypatch.setattr(backend, "forward", lambda payload: {
+        "jsonrpc": "2.0", "id": 1,
+        "result": {"isError": True, "content": [{"type": "text", "text": "path is required"}]},
+    })
+    with pytest.raises(RuntimeError, match="path is required"):
+        backend.call_tool("edt_platform_help", {})
+
+
+def test_call_tool_turns_a_protocol_error_into_an_exception(monkeypatch):
+    backend = server.Backend()
+    monkeypatch.setattr(backend, "is_up", lambda: True)
+    monkeypatch.setattr(backend, "forward", lambda payload: {
+        "jsonrpc": "2.0", "id": 1, "error": {"code": -32601, "message": "unknown tool"},
+    })
+    with pytest.raises(RuntimeError, match="unknown tool"):
+        backend.call_tool("no_such_tool", {})

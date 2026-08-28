@@ -70,6 +70,7 @@ flag twin, documented in [Commands](/cli).
 | `EDT_BRIDGE_WINDOW_WAIT` | – | `90` | seconds the `gui` command waits for the EDT window to appear: a large workspace loads for minutes, so a miss is not an error but a reason to run the command again |
 | `EDT_BRIDGE_LANG` | – | the system locale | the language of the wrapper's help and messages (`ru` / `en`) |
 | `EDT_BRIDGE_NO_PLUGINS` | – | off | `1` – do not discover [wrapper plugins](#wrapper-plugins): a run with the wrapper's own capabilities only |
+| `EDT_BRIDGE_PLUGIN_INDEX` | – | – | package index URL `self-update` names to pip for plugins installed by project name (git installs carry their own source) |
 
 **Read by the plugin inside EDT**
 
@@ -136,13 +137,18 @@ way they read:
   Access denied"). The plugin itself usually lands before the failure - judge the outcome by
   `edt-bridge-mcp plugins`, not by the exit code.
 
-The form that updates a plugin without touching the busy core:
+The form that updates a plugin by hand without touching the busy core:
 
 ```bash
 python -m pipx runpip edt-bridge-mcp -- install --upgrade --no-deps <package>
 ```
 
 (add `--index-url <your index>` when the plugin lives in a private registry).
+
+`edt-bridge-mcp self-update` runs that same route for every installed plugin on its own
+(`--plugins-only` for just the plugins): each plugin is updated from the source it was
+installed from – its git repository, or a package index by project name, with
+`EDT_BRIDGE_PLUGIN_INDEX` naming the index for registry installs.
 
 `edt-bridge-mcp plugins` lists what is plugged in – packages, entry points and the tools they
 add – and prints the loader's message when a plugin is broken. `EDT_BRIDGE_NO_PLUGINS=1` turns
@@ -162,3 +168,10 @@ text result, any other JSON-serializable value is pretty-printed as JSON, and an
 becomes the tool's error message. A failing entry point, a duplicated tool name or a name
 that shadows the wrapper's own tools refuses loudly at discovery – a silently dropped plugin
 would leave an agent without its tools and without an explanation.
+
+A handler that also declares a `bridge` parameter – `handler(arguments, bridge)` – receives
+a callable `bridge(tool_name, arguments) -> str` that forwards one call to the live bridge
+and returns the text of its result. The wrapper never starts an EDT for it: with no bridge
+up the callable raises `RuntimeError` with a readable message, and the plugin degrades to a
+note instead of hanging its caller through a minutes-long headless start. Older wrappers
+call such handlers with the single argument as before – give `bridge` a default of `None`.

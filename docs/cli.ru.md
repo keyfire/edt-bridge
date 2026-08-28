@@ -203,7 +203,7 @@ usage: edt-bridge-mcp plugins [-h] [--workspace WORKSPACE] [--edt-dir EDT_DIR]
 
 ## `edt-bridge-mcp self-update`
 
-Обновить jar плагина в dropins у EDT и саму обвязку в её окружении.
+Обновить jar плагина в dropins у EDT, саму обвязку в её окружении и плагины обвязки.
 
 ```bash
 usage: edt-bridge-mcp self-update [опции]
@@ -215,8 +215,9 @@ usage: edt-bridge-mcp self-update [опции]
 |---|---|
 | `--jar-only` | только jar плагина (GitHub Releases) |
 | `--pip-only` | только обвязку (PyPI или `--from`) |
+| `--plugins-only` | только плагины обвязки |
 | `--from <путь>` | ставить обвязку из рабочей копии, а не с PyPI |
 | `-h, --help` | показать эту справку |
 
-Jar применится при следующем запуске EDT. Обвязка заменяется прямо в site-packages; exe в Scripts не трогаются, поэтому запущенные edt-bridge-mcp надо перезапустить.
+Jar применится при следующем запуске EDT. Обвязка заменяется прямо в site-packages; exe в Scripts не трогаются, поэтому запущенные edt-bridge-mcp надо перезапустить. Плагины обновляются через pip из своего источника установки (git-репозиторий или реестр пакетов; реестру можно указать адрес переменной EDT_BRIDGE_PLUGIN_INDEX).
 

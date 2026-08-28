@@ -1,7 +1,7 @@
-"""self-update: refresh the plugin jar in EDT's dropins from GitHub Releases, and the
-python wrapper itself from PyPI (when published).
+"""self-update: refresh the plugin jar in EDT's dropins from GitHub Releases, the
+python wrapper itself from PyPI (when published), and the wrapper plugins.
 
-    edt-bridge-mcp self-update [--jar-only | --pip-only] [--from <checkout>]
+    edt-bridge-mcp self-update [--jar-only | --pip-only | --plugins-only] [--from <checkout>]
 
 Jar update:
 - downloads the latest release asset ``io.github.keyfire.edtbridge_*.jar`` and verifies it
@@ -21,6 +21,15 @@ Wrapper update:
   code is in site-packages next time. Installers are no use here anyway: pipx 1.15 builds its
   venvs through uv and a uv-built venv has no pip in it at all.
 - ``pipx_metadata.json`` is corrected, so ``pipx list`` does not go on reporting the old version.
+
+Plugin update:
+- wrapper plugins (the distributions publishing ``edt_bridge.tools`` entry points) are updated
+  through pip, unlike the wrapper itself: a plugin has no exe for a running client to hold, so
+  pip's route is safe here - and it is the only route that knows the plugin's source. That source
+  is read from each plugin's ``direct_url.json`` (PEP 610): a git install updates from its
+  repository URL, a registry install by project name (honouring ``EDT_BRIDGE_PLUGIN_INDEX`` as
+  the index URL). pip itself is reached the way the environment allows: ``pipx runpip`` for a
+  pipx venv (works even though a uv-built venv has no pip module), the venv's own pip otherwise.
 """
 
 from __future__ import annotations
@@ -30,6 +39,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import tempfile
 import urllib.error
 import urllib.request
@@ -37,7 +47,7 @@ import zipfile
 from io import BytesIO
 from pathlib import Path
 
-from . import __version__, i18n
+from . import __version__, i18n, plugins
 
 RELEASES_LATEST = "https://api.github.com/repos/keyfire/edt-bridge/releases/latest"
 JAR_PREFIX = "io.github.keyfire.edtbridge_"
@@ -429,6 +439,138 @@ def _update_pipx_metadata(site: Path, version: str) -> None:
         pass
 
 
+# -- wrapper plugins ---------------------------------------------------------------------------
+
+#: Index URL for plugins installed by project name; git installs carry their own source.
+PLUGIN_INDEX_ENV = "EDT_BRIDGE_PLUGIN_INDEX"
+
+
+def _plugin_distributions() -> list:
+    """Installed plugin distributions - the ones publishing ``edt_bridge.tools`` entry points."""
+    from importlib.metadata import entry_points
+    seen, dists = set(), []
+    for point in entry_points(group=plugins.TOOLS_GROUP):
+        dist = getattr(point, "dist", None)
+        if dist is None or dist.name in seen:
+            continue
+        seen.add(dist.name)
+        dists.append(dist)
+    return dists
+
+
+def _plugin_source(dist) -> str | None:
+    """pip target that updates this plugin.
+
+    A git install (PEP 610 ``direct_url.json`` with ``vcs_info``) updates from its repository
+    URL; an archive URL from that URL; a registry install by project name. None for a local
+    directory install - pip would just reinstall the same files, so the answer is "update the
+    checkout itself".
+    """
+    raw = None
+    try:
+        raw = dist.read_text("direct_url.json")
+    except OSError:
+        pass
+    if raw:
+        try:
+            direct = json.loads(raw)
+        except ValueError:
+            direct = {}
+        url = str(direct.get("url") or "")
+        vcs = (direct.get("vcs_info") or {}).get("vcs")
+        if url and vcs:
+            return f"{vcs}+{url}"
+        if direct.get("dir_info") is not None:
+            return None
+        if url:
+            return url
+    return dist.name
+
+
+def _pip_command(site: Path) -> list[str] | None:
+    """How pip reaches this environment.
+
+    ``pipx runpip`` for a pipx venv - it routes through uv on uv-built venvs, which have no pip
+    module of their own. Elsewhere the venv's python with ``-m pip``; None when neither route
+    exists (the caller reports it).
+    """
+    venv = site.parent.parent
+    if (venv / "pipx_metadata.json").is_file() and shutil.which("pipx"):
+        return ["pipx", "runpip", "edt-bridge-mcp", "--"]
+    python = venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    if python.exists():
+        return [str(python), "-m", "pip"]
+    return None
+
+
+def _installed_version(site: Path, project: str) -> str:
+    """Version of a project by its dist-info directory name; "" when it is not installed.
+
+    Read from the file system, not importlib.metadata: this runs right after a child pip
+    changed site-packages, and the metadata finder of the running process may have cached
+    the old listing.
+    """
+    prefix = re.sub(r"[-_.]+", "_", project).lower() + "-"
+    for info in site.glob("*.dist-info"):
+        if info.name.lower().startswith(prefix):
+            return info.name[len(prefix):-len(".dist-info")]
+    return ""
+
+
+def update_plugins(emit=log) -> bool:
+    """Update every installed wrapper plugin through pip, reporting each one.
+
+    pip is the right tool HERE, unlike for the wrapper itself: a plugin has no console script
+    for a running client to hold open, and pip is what knows how to follow the plugin's own
+    source - a git repository for most of them.
+    """
+    site = _site_packages()
+    try:
+        _ensure_regular_install(site)
+    except _UpdateError as failure:
+        emit(str(failure))
+        return False
+    dists = _plugin_distributions()
+    if not dists:
+        emit("no wrapper plugins installed - nothing to update")
+        return True
+    command = _pip_command(site)
+    if command is None:
+        emit("no pip route into this environment - update the plugins by hand")
+        return False
+    ok = True
+    for dist in dists:
+        name, before = dist.name, dist.version
+        target = _plugin_source(dist)
+        if target is None:
+            emit(f"{name} {before}: installed from a local directory - update that checkout instead")
+            continue
+        argv = command + ["install", "--upgrade", "--no-deps"]
+        index = (os.environ.get(PLUGIN_INDEX_ENV) or "").strip()
+        if index and target == name:
+            argv += ["--index-url", index]
+        argv.append(target)
+        emit(f"updating {name} {before} from "
+             + ("its repository..." if target != name else "the package index..."))
+        try:
+            result = subprocess.run(argv, capture_output=True, text=True, timeout=600)
+        except (OSError, subprocess.TimeoutExpired) as failure:
+            emit(f"{name}: update failed - {failure}")
+            ok = False
+            continue
+        if result.returncode != 0:
+            tail = (result.stderr or result.stdout or "").strip().splitlines()
+            emit(f"{name}: update failed - {tail[-1] if tail else 'pip gave no output'}")
+            ok = False
+            continue
+        after = _installed_version(site, name) or before
+        emit(f"{name}: {before} -> {after}"
+             + (" (already current)" if after == before else ""))
+    if ok:
+        emit("restart the MCP client to pick up updated plugin code")
+    return ok
+
+
 def run(argv: list[str]) -> int:
     if "-h" in argv or "--help" in argv:
         # Without this, asking for help would perform the update - the flags are parsed by
@@ -437,6 +579,7 @@ def run(argv: list[str]) -> int:
         return 0
     jar_only = "--jar-only" in argv
     pip_only = "--pip-only" in argv
+    plugins_only = "--plugins-only" in argv
     source = None
     if "--from" in argv:
         index = argv.index("--from")
@@ -445,8 +588,10 @@ def run(argv: list[str]) -> int:
             return 1
         source = argv[index + 1]
     ok = True
-    if not pip_only:
+    if not pip_only and not plugins_only:
         ok = update_jar() and ok
-    if not jar_only:
+    if not jar_only and not plugins_only:
         ok = update_wrapper(source) and ok
+    if not jar_only and not pip_only:
+        ok = update_plugins() and ok
     return 0 if ok else 1
