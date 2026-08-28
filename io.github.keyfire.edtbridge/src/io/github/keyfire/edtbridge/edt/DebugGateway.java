@@ -59,7 +59,7 @@ import com._1c.g5.wiring.ServiceAccess;
  * Live-debugger half of the EDT bridge: attach to a running infobase's debug server, inspect its
  * threads/frames/variables, control execution (suspend/resume/step) and evaluate BSL expressions.
  * Split out of the original model gateway to keep that file focused; behaviour is unchanged. Written
- * against EDT's reverse-engineered debug API. STAND-ONLY: never target production.
+ * against EDT's debug API. STAND-ONLY: never target production.
  */
 public final class DebugGateway {
 
@@ -108,7 +108,7 @@ public final class DebugGateway {
      * the control/inspect/evaluate tools. Token-gated (opens a session against a live IB). STAND-ONLY:
      * target the {@code tests} stand, never production.
      *
-     * <p>Written against the reverse-engineered debug API; the feasibility spike ({@link #debugProbe})
+     * <p>Written against EDT's debug API; the feasibility spike ({@link #debugProbe})
      * proved the infra loads headless – this is the live network half, verified on the stand.
      */
     public AttachResult attachDebug(String projectName, String serverUrl, int serverPort,
