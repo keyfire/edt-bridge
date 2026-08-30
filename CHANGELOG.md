@@ -8,6 +8,13 @@ that day are named in the heading. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
+## 2026-08-30 – 0.18.1
+
+### Changed
+- **The package description names what the bridge gives.** The PyPI summary described the
+  wrapper alone – a front-end that proxies to a running EDT – and said nothing about the
+  diagnostics, metadata, query validation, write tools, infobases and debugger behind it.
+
 ## 2026-08-28 – 0.18.0
 
 ### Added
