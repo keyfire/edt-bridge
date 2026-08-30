@@ -1,6 +1,6 @@
 ---
 title: "EDT-Bridge"
-description: "A 1C:EDT plugin that exposes EDT's live semantic model to AI agents over MCP."
+description: "A 1C:EDT plugin that exposes EDT's live semantic model to AI agents over MCP: diagnostics, metadata and types, query validation, the platform Syntax Helper, write tools, infobases and a debugger."
 sidebar:
   label: Home
   order: 1
@@ -13,7 +13,7 @@ Static parsers read source files; EDT-Bridge instead asks the running IDE. It an
 that need the *live* model: EDT's own validation problems, real metadata structure and types,
 semantic cross-references, **query validation against the project's actual metadata**, and the
 **platform Syntax Helper** bundled with EDT – plus write tools that create, refactor, build and
-deliver, all through EDT's own engine.
+deliver, control of infobases and a debugger, all through EDT's own engine.
 
 > Read **and** write. Localhost only; writes are token-gated and dry-run by default. The plugin
 > runs inside EDT, so an EDT (GUI or headless) must be up with your project.

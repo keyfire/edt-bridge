@@ -77,3 +77,36 @@ def test_guard_notices_a_missing_image(guard, monkeypatch):
                                       "edt-bridge/main/docs/no-such-diagram.svg)\n",
     )
     assert any("no-such-diagram.svg" in p for p in guard.check())
+
+
+def test_guard_notices_a_group_missing_from_one_annotation(guard, monkeypatch):
+    # the failure this check exists for: the tools page has the group and the one-liners
+    # around it - what a search engine and an AI answer quote - do not name it
+    surfaces = guard.pitch_surfaces()
+    surfaces["ru"]["docs/index.ru.md"] = surfaces["ru"]["docs/index.ru.md"].replace("отлад", "")
+    monkeypatch.setattr(guard, "pitch_surfaces", lambda: surfaces)
+    problems = guard.pitch_problems()
+    assert len(problems) == 1
+    assert "docs/index.ru.md" in problems[0]
+
+
+def test_guard_notices_a_group_no_row_names(guard, monkeypatch):
+    original = guard.tool_groups
+    monkeypatch.setattr(guard, "tool_groups", lambda name: original(name) + ["Invented group"])
+    assert any("Invented group" in problem for problem in guard.pitch_problems())
+
+
+def test_guard_notices_a_row_the_page_dropped(guard, monkeypatch):
+    original = guard.tool_groups
+    monkeypatch.setattr(
+        guard, "tool_groups",
+        lambda name: [g for g in original(name) if g not in ("Debug", "Отладка")],
+    )
+    assert any("Debug" in problem for problem in guard.pitch_problems())
+
+
+def test_the_annotations_are_read_as_annotations(guard):
+    # an extractor quietly returning a whole file would make every word check above vacuous
+    for locale, group in guard.pitch_surfaces().items():
+        for where, text in group.items():
+            assert 80 < len(text) < 600, f"{locale} {where}: {len(text)} characters"

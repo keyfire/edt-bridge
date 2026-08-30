@@ -9,7 +9,8 @@ export default defineConfig({
   description:
     "A 1C:EDT plugin that exposes EDT's live semantic model to AI agents over MCP: " +
     "the environment's own diagnostics, real metadata and types, query validation " +
-    "against the project, plus write tools that go through EDT's own engine.",
+    "against the project, plus write tools, infobases and a debugger that go through " +
+    "EDT's own engine.",
 
   // All site content is in docs/. The changelog*.md pages mirror the CHANGELOG at the
   // repository root and are assembled by scripts/sync-docs.mjs (npm run sync:docs).

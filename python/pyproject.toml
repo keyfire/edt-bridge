@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "edt-bridge-mcp"
 dynamic = ["version"]
-description = "stdio MCP front-end for the edt-bridge 1C:EDT plugin: proxies to a running EDT, or auto-starts a headless one"
+description = "stdio MCP front-end for the edt-bridge 1C:EDT plugin: EDT's own diagnostics, metadata and types, query validation, write tools, infobases and a debugger; proxies to a running EDT, or auto-starts a headless one"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.10"

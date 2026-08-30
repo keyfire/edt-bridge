@@ -7,7 +7,7 @@ Static parsers read source files; EDT-Bridge instead asks the running IDE. It an
 that need the *live* model: EDT's own validation problems, real metadata structure and types,
 semantic cross-references, **query validation against the project's actual metadata**, and the
 **platform Syntax Helper** bundled with EDT – plus write tools that create, refactor, build and
-deliver, all through EDT's own engine.
+deliver, control of infobases and a debugger, all through EDT's own engine.
 
 > Read **and** write. Localhost only; writes are token-gated and dry-run by default. The plugin
 > runs inside EDT, so an EDT (GUI or headless) must be up with your project.

@@ -16,7 +16,10 @@ Checks, all of them cheap enough to run on every commit:
 * no page mentions a tool that no longer exists;
 * every `EDT_BRIDGE_*` variable the code reads is documented on the install pages;
 * the README's injected catalogue matches its source page (scripts/sync-docs.mjs was run);
-* every image a page embeds exists in the repository.
+* every image a page embeds exists in the repository;
+* every group of the tools page is named in the short annotations - the site description, the
+  front-page description of both languages, the PyPI summary - or is recorded in PITCH_GROUPS
+  as one deliberately left out of them.
 
 The exit code is what CI reads: 0 clean, 1 with findings printed one per line.
 """
@@ -84,6 +87,95 @@ def page_body(name: str) -> str:
     return re.sub(r"(docs/[\w.-]+)\.svg\)", r"\1.png)", text)
 
 
+#: A group of the tools page - the English heading, the Russian one - and the word that has to
+#: stand for that group in the short annotations of its language. The page groups every tool the
+#: bridge has; the one-liners around it are what a search engine, PyPI and an AI answer quote
+#: instead, and they drift on their own (at xbsl a whole capability was absent from all of them
+#: while the page had named it for two weeks). One word stands for a whole group on purpose - an
+#: annotation names the kind of work, not the tools. A row with no words is a group deliberately
+#: kept out of the annotations, with the reason beside it.
+PITCH_GROUPS: tuple[tuple[str, str, str | None, str | None], ...] = (
+    ("Read", "Чтение", "metadata", "метаданн"),
+    ("Write", "Запись", "write", "запис"),
+    ("Infobases, the cluster and the platform", "Информационные базы, кластер и платформа",
+     "infobase", "информационн"),
+    ("Debug", "Отладка", "debug", "отлад"),
+    # The wrapper's own tools are plumbing - a version, a self-update, the state of the bridge.
+    # The wrapper itself is named in the annotations; its tools are not a reason to install.
+    ("Served by the wrapper", "Инструменты самой обвязки", None, None),
+)
+
+
+def tool_groups(name: str) -> list[str]:
+    """The `### Group` headings of one tools page, in page order."""
+    return [line[4:].strip() for line in page(name).splitlines() if line.startswith("### ")]
+
+
+def front_description(name: str) -> str:
+    found = re.search(r'^description:\s*"(.*)"\s*$', page(name), re.M)
+    return found.group(1) if found else ""
+
+
+def site_description() -> str:
+    """The `description` of the site config - the meta description of every page."""
+    text = (ROOT / "site" / "blume.config.ts").read_text(encoding="utf-8")
+    found = re.search(r"\n  description:\s*((?:\s*\"[^\"]*\"\s*\+?)+),", text)
+    return "".join(re.findall(r'"([^"]*)"', found.group(1))) if found else ""
+
+
+def pyproject_description() -> str:
+    """The `description` of the wrapper package - the summary line of the PyPI card."""
+    text = (ROOT / "python" / "pyproject.toml").read_text(encoding="utf-8")
+    found = re.search(r'^description = "(.*)"\s*$', text, re.M)
+    return found.group(1) if found else ""
+
+
+def pitch_surfaces() -> dict[str, dict[str, str]]:
+    """The one-line annotations, by locale - what is quoted instead of the page being read.
+
+    The README lede is not here: it enumerates the same capabilities in a paragraph of its own,
+    right above the tool catalogue injected from the page.
+    """
+    return {
+        "en": {
+            "site/blume.config.ts": site_description(),
+            "docs/index.md": front_description("index.md"),
+            "python/pyproject.toml": pyproject_description(),
+        },
+        "ru": {"docs/index.ru.md": front_description("index.ru.md")},
+    }
+
+
+def pitch_problems() -> list[str]:
+    """The gaps between the tools page, the table above and the annotations."""
+    problems: list[str] = []
+    groups = {"en": tool_groups("tools.md"), "ru": tool_groups("tools.ru.md")}
+    for locale, column, name in (("en", 0, "tools.md"), ("ru", 1, "tools.ru.md")):
+        listed, known = groups[locale], [group[column] for group in PITCH_GROUPS]
+        for heading in listed:
+            if heading not in known:
+                problems.append(
+                    f'{name}: the group "{heading}" is in no PITCH_GROUPS row - add the word '
+                    f"that stands for it in the annotations, or the reason it stays out"
+                )
+        for heading in known:
+            if heading not in listed:
+                problems.append(f'{name}: PITCH_GROUPS names "{heading}", the page does not')
+
+    surfaces = pitch_surfaces()
+    for english, _russian, *words in PITCH_GROUPS:
+        for locale, word in zip(("en", "ru"), words):
+            if not word:
+                continue
+            for where, text in surfaces[locale].items():
+                if word.lower() not in text.lower():
+                    problems.append(
+                        f'{where}: the short annotation says nothing about the "{english}" '
+                        f'tools (expected "{word}")'
+                    )
+    return problems
+
+
 def check() -> list[str]:
     problems: list[str] = []
 
@@ -131,6 +223,8 @@ def check() -> list[str]:
                     f"{path.name}: {target.name} follows no theme - the page needs "
                     f"{target.with_suffix('.svg').name}, the PNG belongs to the README"
                 )
+
+    problems += pitch_problems()
 
     return problems
 
