@@ -52,6 +52,24 @@ export default defineConfig({
   // The "last modified" date comes from the git history (CI needs fetch-depth: 0).
   lastModified: true,
 
+  // Yandex.Metrika, counter 110620738 - one counter for the whole docs.keyfire.ru domain, so
+  // the same block stands in the xbsl and elemctl configs. Blume emits analytics in production
+  // builds only (blume build, never blume dev), and it renders <script> tags: the <noscript>
+  // pixel of the standard snippet is left out, as it would only count visitors with JavaScript
+  // off, whom the tag cannot count either.
+  analytics: {
+    scripts: [
+      {
+        content: `(function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+m[i].l=1*new Date();
+for (var j = 0; j < document.scripts.length; j++) { if (document.scripts[j].src === r) { return; } }
+k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)})
+(window, document, "script", "https://mc.yandex.ru/metrika/tag.js", "ym");
+ym(110620738, "init", { clickmap: true, trackLinks: true, accurateTrackBounce: true });`,
+      },
+    ],
+  },
+
   // Bilingual: English by default (Name.md), Russian by the .ru suffix (Name.ru.md).
   // The Russian UI pack ships with Blume - only the content is ours to translate.
   i18n: {
