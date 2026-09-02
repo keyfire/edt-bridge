@@ -48,6 +48,10 @@ public final class ProjectErrorsTool {
                 + "problem list – what a before/after baseline needs on a large configuration. Default false."));
         props.add("limit", intProp("Max problems in the returned list (default 1000); ignored when countOnly. "
                 + "Excess sets truncated=true."));
+        props.add("brief", boolProp("true = plain text, one line per problem - severity, resource:line, "
+                + "message, [checkId] - under a one-line summary, instead of the full objects with extraInfo "
+                + "and locations: what the question \"are there errors in this object\" needs. Ignored when "
+                + "countOnly. Default false."));
 
         JsonObject schema = new JsonObject();
         schema.addProperty("type", "object");
@@ -62,7 +66,8 @@ public final class ProjectErrorsTool {
                 + "read from EDT's own marker store. Each problem carries source (eclipse|edt-check), "
                 + "severity, message, resource, line, and for EDT checks the checkId and EDT grade. Narrow "
                 + "with fqn / modulePath / severity, or pass countOnly for just the counts – on a large "
-                + "configuration the unfiltered result is thousands of problems, so filter or count instead. "
+                + "configuration the unfiltered result is thousands of problems, so filter or count instead; "
+                + "brief gives one text line per problem. "
                 + "The report names the disk folder behind each validated project (locations): the model "
                 + "validates the REGISTERED folder, so check it against the checkout you are editing – a "
                 + "parallel worktree of the same sources is NOT what gets validated.");
@@ -71,7 +76,8 @@ public final class ProjectErrorsTool {
                 + "напр. com.e1c.v8codestyle) из собственного хранилища маркеров EDT. У каждой проблемы – "
                 + "источник (eclipse|edt-check), важность, сообщение, ресурс, строка, а у проверок EDT – checkId "
                 + "и класс важности. Сужение через fqn / modulePath / severity либо countOnly для одних "
-                + "счётчиков – на большой конфигурации полный список это тысячи проблем, фильтруйте или считайте. "
+                + "счётчиков – на большой конфигурации полный список это тысячи проблем, фильтруйте или считайте; "
+                + "brief даёт по одной текстовой строке на проблему. "
                 + "Отчёт называет каталог диска за каждым проверенным проектом (locations): модель проверяет "
                 + "ЗАРЕГИСТРИРОВАННЫЙ каталог – сверьте его с тем, что правите; параллельный worktree тех же "
                 + "исходников проверен НЕ будет.");
@@ -87,10 +93,14 @@ public final class ProjectErrorsTool {
         String severity = getStr(args, "severity");
         boolean countOnly = args.has("countOnly") && !args.get("countOnly").isJsonNull()
                 && args.get("countOnly").getAsBoolean();
+        boolean brief = args.has("brief") && !args.get("brief").isJsonNull() && args.get("brief").getAsBoolean();
         int limit = (args.has("limit") && !args.get("limit").isJsonNull()) ? args.get("limit").getAsInt() : 1000;
         try {
             ProjectGateway.ProblemReport rep =
                     gateway.reportProblems(project, fqn, modulePath, severity, countOnly, limit);
+            if (brief && !countOnly) {
+                return McpServer.textResult(briefReport(project, fqn, modulePath, severity, rep));
+            }
             JsonObject payload = new JsonObject();
             if (project != null) {
                 payload.addProperty("project", project);
@@ -172,6 +182,53 @@ public final class ProjectErrorsTool {
         } catch (Exception e) {
             return McpServer.toolError("edt_project_errors failed: " + e.getMessage());
         }
+    }
+
+    /**
+     * The one-line-per-problem form. The full objects carry extraInfo, marker types and the
+     * disk locations, which a caller asking "is this object clean" pays for on every problem;
+     * here a problem is severity, resource with line, message and the check id when there is one.
+     */
+    static String briefReport(String project, String fqn, String modulePath, String severity,
+            ProjectGateway.ProblemReport rep) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(project != null ? project : "all open projects").append(": ").append(rep.total)
+          .append(" problem(s) (ERROR ").append(rep.errors).append(", WARNING ").append(rep.warnings)
+          .append(", INFO ").append(rep.infos).append("; eclipse ").append(rep.eclipse)
+          .append(", edt-check ").append(rep.edtCheck).append(")");
+        if (rep.total != rep.totalBeforeFilter) {
+            sb.append(", ").append(rep.totalBeforeFilter).append(" before the filter");
+        }
+        java.util.List<String> filters = new java.util.ArrayList<>();
+        if (fqn != null) {
+            filters.add("fqn=" + fqn);
+        }
+        if (modulePath != null) {
+            filters.add("modulePath=" + modulePath);
+        }
+        if (severity != null) {
+            filters.add("severity=" + severity);
+        }
+        if (!filters.isEmpty()) {
+            sb.append("; filter: ").append(String.join(", ", filters));
+        }
+        sb.append('\n');
+        for (ProjectGateway.Problem p : rep.problems) {
+            sb.append(p.severity).append("  ").append(p.resource);
+            if (p.line > 0) {
+                sb.append(':').append(p.line);
+            }
+            sb.append("  ").append(p.message == null ? "" : p.message.replaceAll("\\s*\\R\\s*", " ").trim());
+            if (p.checkId != null) {
+                sb.append("  [").append(p.checkId).append(']');
+            }
+            sb.append('\n');
+        }
+        if (rep.truncated) {
+            sb.append("... ").append(rep.problems.size()).append(" of ").append(rep.total)
+              .append(" shown (limit ").append(rep.limit).append(")\n");
+        }
+        return sb.toString();
     }
 
     private static JsonObject strProp(String desc) {
