@@ -8,7 +8,7 @@ that day are named in the heading. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
-## [Unreleased]
+## 2026-09-02 – 0.19.0
 
 ### Added
 - **`edt_validate_query` follows the temporary tables through the batch.** EDT's validator
