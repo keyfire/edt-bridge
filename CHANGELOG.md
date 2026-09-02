@@ -8,6 +8,27 @@ that day are named in the heading. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
+## [Unreleased]
+
+### Added
+- **`edt_validate_query` follows the temporary tables through the batch.** EDT's validator
+  checks each query against the metadata and the batch against nothing, so a query reading a
+  `ПОМЕСТИТЬ` table that no earlier query puts – or that an earlier query dropped – passed as
+  valid and failed only on the platform. The bridge now tracks what each query puts and drops
+  and reports such a read with its position: an ERROR for `queryText`, whose text is taken as
+  a self-contained batch; an INFO note for a module literal, where a shared temporary table
+  manager or another literal routinely supplies the table – on a large working configuration
+  every one of 195 such reads in 3125 literals was legitimate.
+- **`edt_project_errors` has a `brief` form.** One text line per problem – severity, resource
+  with line, message, check id – under a one-line summary, instead of the full objects with
+  `extraInfo` and locations that the question "is this object clean" used to pay for.
+
+### Changed
+- **The tools page says what `edt_project_errors` sees.** A call to a method another module
+  does not have is a WARNING to EDT (`SU239`), not an error – only an undefined bare call is –
+  and `modulePath` reaches the Eclipse markers alone, so a check of generated code reads the
+  warnings and narrows by `fqn`. Measured on a live model, where such a call had looked clean.
+
 ## 2026-08-30 – 0.18.1
 
 ### Changed
