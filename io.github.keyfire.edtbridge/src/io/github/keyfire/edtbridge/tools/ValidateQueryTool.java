@@ -17,6 +17,7 @@
 package io.github.keyfire.edtbridge.tools;
 
 import io.github.keyfire.edtbridge.core.QueryLiterals;
+import io.github.keyfire.edtbridge.core.TempTableFlow;
 import io.github.keyfire.edtbridge.edt.BslGateway;
 import io.github.keyfire.edtbridge.mcp.McpServer;
 import com.google.gson.GsonBuilder;
@@ -34,6 +35,14 @@ import java.util.List;
  * fqn, optionally narrowed to one method): the bridge then pulls the |-framed query literals out of
  * the live module and validates each of them. The second way exists because copying a long literal
  * out of a module and back doubles the context and lets the checked text drift from the stored one.
+ *
+ * <p>One thing EDT's validator does not look at is the batch itself: a query reading a temporary
+ * table that no earlier query of the batch puts is valid to it and fails only when the platform
+ * runs it. {@link TempTableFlow} closes that gap. With queryText the caller hands over the whole
+ * batch, so such a read is an ERROR and the batch is not valid. A literal pulled out of a module
+ * is a different matter: modules routinely pass temporary tables between query objects through a
+ * shared temporary table manager, or assemble one batch from several literals, so there the same
+ * read is reported as INFO with the verdict left to the caller.
  */
 public final class ValidateQueryTool {
 
@@ -99,8 +108,13 @@ public final class ValidateQueryTool {
                 + "syntax plus semantics (unknown tables/fields, type errors). Returns issues with "
                 + "severity and position. Impossible with static parsing. Takes either the query text, "
                 + "or a module address (modulePath/fqn, optionally one method) - then the bridge pulls "
-                + "the |-framed query literals out of the live module itself and validates each one.");
-        t.addProperty("descriptionRu", "Проверка запроса 1С против живых метаданных проекта валидатором EDT: синтаксис и семантика (несуществующие таблицы/поля, ошибки типов). Возвращает проблемы с уровнем и позицией. Статическим разбором невозможно. Принимает либо текст запроса, либо адрес модуля (modulePath/fqn, при желании один метод) – тогда мост сам достаёт из живого модуля литералы запросов с обрамлением | и проверяет каждый.");
+                + "the |-framed query literals out of the live module itself and validates each one. "
+                + "The batch is also followed as a whole, which EDT does not do: a query reading a "
+                + "temporary table that no earlier query of the batch puts (ПОМЕСТИТЬ/INTO), or that an "
+                + "earlier query dropped, is an ERROR for queryText - the text is taken as a self-contained "
+                + "batch - and an INFO note for a module literal, where a shared temporary table manager or "
+                + "another literal may supply the table.");
+        t.addProperty("descriptionRu", "Проверка запроса 1С против живых метаданных проекта валидатором EDT: синтаксис и семантика (несуществующие таблицы/поля, ошибки типов). Возвращает проблемы с уровнем и позицией. Статическим разбором невозможно. Принимает либо текст запроса, либо адрес модуля (modulePath/fqn, при желании один метод) – тогда мост сам достаёт из живого модуля литералы запросов с обрамлением | и проверяет каждый. Пакет проверяется и как целое, чего EDT не делает: чтение временной таблицы, которую ни один предыдущий запрос пакета не создаёт (ПОМЕСТИТЬ/INTO) или которую предыдущий запрос уничтожил, для queryText – ошибка (текст считается самодостаточным пакетом), для литерала модуля – заметка INFO: таблицу там может давать общий менеджер временных таблиц или другой литерал.");
         t.add("inputSchema", schema);
         return t;
     }
@@ -123,12 +137,17 @@ public final class ValidateQueryTool {
                 if (v.error != null) {
                     return McpServer.toolError("edt_validate_query: " + v.error);
                 }
+                List<TempTableFlow.Problem> flow = TempTableFlow.check(queryText);
+                JsonArray issues = issuesOf(v);
+                for (TempTableFlow.Problem p : flow) {
+                    issues.add(flowIssue(p, "ERROR", p.message));
+                }
                 JsonObject payload = new JsonObject();
-                payload.addProperty("valid", v.valid);
-                payload.addProperty("errorCount", v.errorCount);
+                payload.addProperty("valid", v.valid && flow.isEmpty());
+                payload.addProperty("errorCount", v.errorCount + flow.size());
                 payload.addProperty("warningCount", v.warningCount);
-                payload.addProperty("issueCount", v.issues.size());
-                payload.add("issues", issuesOf(v));
+                payload.addProperty("issueCount", issues.size());
+                payload.add("issues", issues);
                 return McpServer.textResult(new GsonBuilder().setPrettyPrinting().create().toJson(payload));
             }
             return validateModule(project, modulePath, fqn,
@@ -176,7 +195,17 @@ public final class ValidateQueryTool {
             one.addProperty("valid", v.valid);
             one.addProperty("errorCount", v.errorCount);
             one.addProperty("warningCount", v.warningCount);
-            one.add("issues", issuesOf(v));
+            JsonArray issues = issuesOf(v);
+            // Inside a module the literal is not necessarily the whole batch: the table may come
+            // from a shared temporary table manager or from another literal, so this is a note,
+            // not a verdict - measured on a large working configuration, every such read was
+            // legitimate, and an ERROR here would be noise the caller learns to ignore.
+            for (TempTableFlow.Problem p : TempTableFlow.check(candidate.text)) {
+                issues.add(flowIssue(p, "INFO", "Query " + p.query + " reads temporary table \""
+                        + p.table + "\" that no earlier query of this literal puts - fine when a shared "
+                        + "temporary table manager or another literal supplies it, an error otherwise"));
+            }
+            one.add("issues", issues);
             queries.add(one);
             allValid &= v.valid;
             errors += v.errorCount;
@@ -203,6 +232,19 @@ public final class ValidateQueryTool {
                     "module text was capped, literals beyond the cap were not scanned");
         }
         return McpServer.textResult(new GsonBuilder().setPrettyPrinting().create().toJson(payload));
+    }
+
+    /** A temporary-table finding in the shape of the validator's own issues. */
+    private static JsonObject flowIssue(TempTableFlow.Problem p, String severity, String message) {
+        JsonObject o = new JsonObject();
+        o.addProperty("severity", severity);
+        o.addProperty("message", message);
+        o.addProperty("code", p.code);
+        o.addProperty("line", p.line);
+        o.addProperty("column", p.column);
+        o.addProperty("offset", p.offset);
+        o.addProperty("length", p.length);
+        return o;
     }
 
     private static JsonArray issuesOf(BslGateway.QueryValidation v) {
