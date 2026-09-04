@@ -24,7 +24,10 @@ Homepage = "https://github.com/keyfire/edt-bridge"
 edt-bridge-mcp = "edt_bridge_mcp.server:main"
 
 [project.optional-dependencies]
-test = ["pytest>=7"]
+# The documentation guard lives in its own repository: three repositories were keeping
+# the same readers in triplicate. It runs in checks only, so it is installed from git
+# rather than released.
+test = ["pytest>=7", "docsguard @ git+https://github.com/keyfire/docsguard@main"]
 
 [tool.setuptools.dynamic]
 version = { attr = "edt_bridge_mcp.__version__" }
