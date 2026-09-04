@@ -36,6 +36,26 @@ class ProblemFilterTest {
         assertTrue(ProblemFilter.matchesLocation("HTTPСервис.Payments.Модуль", null, "Payments"));
     }
 
+    // -- severities: one grade is not enough -----------------------------------------------------
+
+    @Test
+    @DisplayName("several severities are kept, in any of the accepted separators")
+    void severalSeveritiesAreKept() {
+        assertTrue(ProblemFilter.matchesSeverity("WARNING", ProblemFilter.severities("ERROR,WARNING")));
+        assertTrue(ProblemFilter.matchesSeverity("error", ProblemFilter.severities("ERROR, WARNING")));
+        assertTrue(ProblemFilter.matchesSeverity("ERROR", ProblemFilter.severities("error warning")));
+        assertFalse(ProblemFilter.matchesSeverity("INFO", ProblemFilter.severities("ERROR,WARNING")));
+    }
+
+    @Test
+    @DisplayName("one severity still means one, and nothing means every one of them")
+    void oneAndNoneStillWork() {
+        assertTrue(ProblemFilter.matchesSeverity("ERROR", ProblemFilter.severities("ERROR")));
+        assertFalse(ProblemFilter.matchesSeverity("WARNING", ProblemFilter.severities("ERROR")));
+        assertTrue(ProblemFilter.matchesSeverity("INFO", ProblemFilter.severities(null)));
+        assertTrue(ProblemFilter.matchesSeverity("INFO", ProblemFilter.severities("  ")));
+    }
+
     @Test
     @DisplayName("the name matches only as a whole identifier segment")
     void nameMatchesWholeSegmentsOnly() {

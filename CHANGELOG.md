@@ -8,6 +8,15 @@ that day are named in the heading. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
+## Unreleased
+
+### Fixed
+- **`edt_project_errors` keeps SEVERAL severities: `severity: "ERROR,WARNING"`.** One grade was
+  never the question a caller asks - EDT reports a call to a method nobody declares as a WARNING,
+  so a check filtered to ERROR reads clean over broken code. Worse, the comma form matched no
+  severity at all: on a live workspace of 13 698 problems it answered zero, which looks exactly
+  like a clean configuration.
+
 ## 2026-09-02 – 0.19.0
 
 ### Added

@@ -135,7 +135,8 @@ public final class ProjectGateway {
 
     /**
      * Filtered problems for a project. Additive over {@link #getProjectErrors}: narrow to one object
-     * ({@code fqn}) or module ({@code modulePath}), to a {@code severity} (ERROR/WARNING/INFO), and/or
+     * ({@code fqn}) or module ({@code modulePath}), to one or SEVERAL severities
+     * ({@code severity}: "ERROR", "ERROR,WARNING", ...), and/or
      * ask for {@code countOnly} (the counts, no list). The location filter matches a problem's
      * project-relative resource path, so it targets the Eclipse syntax/build markers precisely; an EDT
      * check marker is addressed by object presentation, so an {@code fqn} filter also matches its name
@@ -160,7 +161,7 @@ public final class ProjectGateway {
             pathPrefix = (folder == null) ? null : "src/" + folder;
             nameToken = MetadataPaths.nameToken(fqn);
         }
-        String sevFilter = (severity != null && !severity.isBlank()) ? severity.trim().toUpperCase() : null;
+        java.util.Set<String> sevFilter = ProblemFilter.severities(severity);
         int cap = (limit > 0) ? limit : 1000;
         ProblemReport r = new ProblemReport();
         r.project = projectName;
@@ -170,7 +171,7 @@ public final class ProjectGateway {
         r.locations = locations;
         boolean locationFilter = pathPrefix != null || nameToken != null;
         for (Problem p : all) {
-            if (sevFilter != null && !sevFilter.equalsIgnoreCase(p.severity)) {
+            if (!ProblemFilter.matchesSeverity(p.severity, sevFilter)) {
                 continue;
             }
             if (locationFilter && !ProblemFilter.matchesLocation(p.resource, pathPrefix, nameToken)) {

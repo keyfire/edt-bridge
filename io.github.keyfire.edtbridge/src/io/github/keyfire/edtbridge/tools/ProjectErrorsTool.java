@@ -43,7 +43,8 @@ public final class ProjectErrorsTool {
         props.add("modulePath", strProp("Narrow to one module by project-relative path, e.g. "
                 + "src/CommonModules/X/Module.bsl, or a folder prefix. Targets Eclipse syntax/build markers. "
                 + "Optional."));
-        props.add("severity", strProp("Keep only ERROR, WARNING or INFO (case-insensitive). Optional."));
+        props.add("severity", strProp("Keep these severities: ERROR, WARNING or INFO, one or several "
+                + "separated by commas (\"ERROR,WARNING\"), case-insensitive. A generated-code check wants both: EDT reports a call to a method nobody declares as a WARNING, so ERROR alone reads clean over broken code. Optional - omit for every severity."));
         props.add("countOnly", boolProp("true = return only the counts (total, by severity, by source), no "
                 + "problem list – what a before/after baseline needs on a large configuration. Default false."));
         props.add("limit", intProp("Max problems in the returned list (default 1000); ignored when countOnly. "

@@ -70,6 +70,40 @@ public final class ProblemFilter {
         return false;
     }
 
+    /**
+     * The severities a caller asked to keep, as an upper-cased set; empty means "every severity".
+     *
+     * <p>Accepts a list, because one severity is not enough to answer the question the tool exists
+     * for. A call generating code wants what BLOCKS the result, and that is not one grade: EDT
+     * reports a call to a method nobody declares as a WARNING, so `severity=ERROR` hides it and
+     * the report reads clean while the code is broken. Separators are commas, semicolons and
+     * spaces, so both `ERROR,WARNING` and `ERROR WARNING` work; an empty or blank value keeps
+     * everything, the same as passing nothing.
+     *
+     * @param severity one severity, or several separated by commas, semicolons or spaces
+     */
+    public static java.util.Set<String> severities(String severity) {
+        java.util.Set<String> kept = new java.util.LinkedHashSet<>();
+        if (severity == null || severity.isBlank()) {
+            return kept;
+        }
+        for (String part : severity.split("[,;\\s]+")) {
+            String value = part.trim().toUpperCase();
+            if (!value.isEmpty()) {
+                kept.add(value);
+            }
+        }
+        return kept;
+    }
+
+    /** Whether a problem of this severity is kept; an empty set keeps every one of them. */
+    public static boolean matchesSeverity(String severity, java.util.Set<String> kept) {
+        if (kept == null || kept.isEmpty()) {
+            return true;
+        }
+        return severity != null && kept.contains(severity.trim().toUpperCase());
+    }
+
     /** Lower-cased, forward-slashed form used for every comparison here. */
     private static String normalize(String value) {
         return (value == null) ? "" : value.replace('\\', '/').trim().toLowerCase();
