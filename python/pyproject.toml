@@ -24,10 +24,10 @@ Homepage = "https://github.com/keyfire/edt-bridge"
 edt-bridge-mcp = "edt_bridge_mcp.server:main"
 
 [project.optional-dependencies]
-# The documentation guard lives in its own repository: three repositories were keeping
-# the same readers in triplicate. It runs in checks only, so it is installed from git
-# rather than released.
-test = ["pytest>=7", "docsguard @ git+https://github.com/keyfire/docsguard@main"]
+# The documentation guard is installed by the checks themselves, not declared here:
+# PyPI refuses a distribution whose metadata carries a direct URL dependency, even
+# in an optional extra. See the CI workflow and CONTRIBUTING.
+test = ["pytest>=7"]
 
 [tool.setuptools.dynamic]
 version = { attr = "edt_bridge_mcp.__version__" }

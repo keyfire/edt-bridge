@@ -34,7 +34,9 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install the wrapper with its test extra
-        run: python -m pip install .[test]
+        run: |
+          python -m pip install .[test]
+          python -m pip install "git+https://github.com/keyfire/docsguard@main"
         working-directory: python
       - name: Run the suite
         run: python -m pytest -q
