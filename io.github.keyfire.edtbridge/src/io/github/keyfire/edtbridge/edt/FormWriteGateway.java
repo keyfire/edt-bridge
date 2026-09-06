@@ -598,7 +598,7 @@ public final class FormWriteGateway {
      * A service of EDT's core plugin: registered ones come from {@code ServiceAccess}, plain Guice
      * bindings only from the plugin's own injector - try both, in that order.
      */
-    private static <T> T coreService(Class<T> type) {
+    static <T> T coreService(Class<T> type) {
         try {
             T viaService = ServiceAccess.get(type);
             if (viaService != null) {

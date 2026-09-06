@@ -57,14 +57,18 @@ public final class CleanProjectTool {
                 + "survive long after the code that caused it was fixed, and reading a stale marker is "
                 + "worse than reading none. Reports the problem count before and after, waiting until "
                 + "it stops changing. Sources are untouched, so no force is needed - but it does need a "
-                + "configured token. Use it before trusting edt_project_errors after an edit.",
+                + "configured token. Use it before trusting edt_project_errors after an edit – or, for one "
+                + "module changed on disk, pass refresh=true to edt_project_errors instead: an incremental "
+                + "build of that scope, seconds instead of a full rebuild.",
                 "ЗАПИСЬ (Phase 2): сбросить результаты сборки проекта и дать пересчитать их заново - "
                 + "программный аналог диалога \"Очистить\" в EDT. Проверки EDT висят на сборке, поэтому "
                 + "именно это заставляет валидацию отработать снова: иначе замечание может пережить "
                 + "исправление кода, а читать устаревший маркер хуже, чем не читать вовсе. Возвращает "
                 + "число замечаний до и после, дождавшись, пока оно перестанет меняться. Исходники не "
                 + "трогаются, force не нужен - но нужен токен. Вызывать перед тем, как доверять "
-                + "edt_project_errors после правок.",
+                + "edt_project_errors после правок, – либо, для одного модуля, изменённого на диске, "
+                + "передать edt_project_errors refresh=true: инкрементальная сборка этой области, "
+                + "секунды вместо полной пересборки.",
                 props, "projectName");
     }
 

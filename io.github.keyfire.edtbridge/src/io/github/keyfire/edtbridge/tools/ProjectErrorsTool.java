@@ -28,6 +28,9 @@ import com.google.gson.JsonObject;
  */
 public final class ProjectErrorsTool {
 
+    /** How long a refresh waits for validation to settle before the markers are read. */
+    private static final int REFRESH_WAIT_SECONDS = 120;
+
     private final ProjectGateway gateway = new ProjectGateway();
 
     public String name() {
@@ -46,13 +49,22 @@ public final class ProjectErrorsTool {
         props.add("severity", strProp("Keep these severities: ERROR, WARNING or INFO, one or several "
                 + "separated by commas (\"ERROR,WARNING\"), case-insensitive. A generated-code check wants both: EDT reports a call to a method nobody declares as a WARNING, so ERROR alone reads clean over broken code. Optional - omit for every severity."));
         props.add("countOnly", boolProp("true = return only the counts (total, by severity, by source), no "
-                + "problem list – what a before/after baseline needs on a large configuration. Default false."));
+                + "problem list – what a before/after baseline needs on a large configuration. The listed "
+                + "problems are what gets judged for staleness, so there is no staleCount here; the "
+                + "unsynchronized files are still named. Default false."));
         props.add("limit", intProp("Max problems in the returned list (default 1000); ignored when countOnly. "
                 + "Excess sets truncated=true."));
         props.add("brief", boolProp("true = plain text, one line per problem - severity, resource:line, "
-                + "message, [checkId] - under a one-line summary, instead of the full objects with extraInfo "
-                + "and locations: what the question \"are there errors in this object\" needs. Ignored when "
-                + "countOnly. Default false."));
+                + "message, [checkId], (stale) - under a one-line summary, instead of the full objects with "
+                + "extraInfo and locations: what the question \"are there errors in this object\" needs. "
+                + "Ignored when countOnly. Default false."));
+        props.add("refresh", boolProp("true = re-read the narrowed scope from disk (refreshLocal), run an "
+                + "INCREMENTAL build of the project and wait for validation to settle before reading the "
+                + "markers – the point fix for a stale marker: seconds for one module, where "
+                + "edt_clean_project rebuilds everything for minutes. Without fqn / modulePath the project's "
+                + "sources folder is refreshed – what validation reads. A project never built in this "
+                + "session gets a full build instead. The result carries refreshed {resources, buildMs}. "
+                + "Default false."));
 
         JsonObject schema = new JsonObject();
         schema.addProperty("type", "object");
@@ -69,6 +81,12 @@ public final class ProjectErrorsTool {
                 + "with fqn / modulePath / severity, or pass countOnly for just the counts – on a large "
                 + "configuration the unfiltered result is thousands of problems, so filter or count instead; "
                 + "brief gives one text line per problem. "
+                + "A marker is a snapshot and can outlive the code that caused it, so every listed problem "
+                + "is judged against its file: stale=true when the marker predates the file's last change on "
+                + "disk, unsynchronized=true when the workspace has not even read that change. The summary "
+                + "counts them (staleCount, unsynchronized: [paths]) and a hint says what to do; refresh=true "
+                + "revalidates the narrowed scope in place – an incremental build, seconds – where "
+                + "edt_clean_project rebuilds the whole project. "
                 + "The report names the disk folder behind each validated project (locations): the model "
                 + "validates the REGISTERED folder, so check it against the checkout you are editing – a "
                 + "parallel worktree of the same sources is NOT what gets validated.");
@@ -79,6 +97,12 @@ public final class ProjectErrorsTool {
                 + "и класс важности. Сужение через fqn / modulePath / severity либо countOnly для одних "
                 + "счётчиков – на большой конфигурации полный список это тысячи проблем, фильтруйте или считайте; "
                 + "brief даёт по одной текстовой строке на проблему. "
+                + "Маркер – это снимок, и он может пережить код, который его вызвал, поэтому каждая "
+                + "выведенная проблема сверяется со своим файлом: stale=true, если маркер старше последнего "
+                + "изменения файла на диске, unsynchronized=true, если рабочая область это изменение ещё не "
+                + "прочитала. В сводке – счётчики (staleCount, unsynchronized: [пути]) и подсказка hint; "
+                + "refresh=true перепроверяет суженную область на месте – инкрементальная сборка, секунды, – "
+                + "тогда как edt_clean_project пересобирает весь проект. "
                 + "Отчёт называет каталог диска за каждым проверенным проектом (locations): модель проверяет "
                 + "ЗАРЕГИСТРИРОВАННЫЙ каталог – сверьте его с тем, что правите; параллельный worktree тех же "
                 + "исходников проверен НЕ будет.");
@@ -92,13 +116,16 @@ public final class ProjectErrorsTool {
         String fqn = getStr(args, "fqn");
         String modulePath = getStr(args, "modulePath");
         String severity = getStr(args, "severity");
-        boolean countOnly = args.has("countOnly") && !args.get("countOnly").isJsonNull()
-                && args.get("countOnly").getAsBoolean();
-        boolean brief = args.has("brief") && !args.get("brief").isJsonNull() && args.get("brief").getAsBoolean();
+        boolean countOnly = getBool(args, "countOnly");
+        boolean brief = getBool(args, "brief");
+        boolean refresh = getBool(args, "refresh");
         int limit = (args.has("limit") && !args.get("limit").isJsonNull()) ? args.get("limit").getAsInt() : 1000;
         try {
+            ProjectGateway.RefreshResult refreshed = refresh
+                    ? gateway.refreshScope(project, fqn, modulePath, REFRESH_WAIT_SECONDS)
+                    : null;
             ProjectGateway.ProblemReport rep =
-                    gateway.reportProblems(project, fqn, modulePath, severity, countOnly, limit);
+                    gateway.reportProblems(project, fqn, modulePath, severity, countOnly, limit, refreshed);
             if (brief && !countOnly) {
                 return McpServer.textResult(briefReport(project, fqn, modulePath, severity, rep));
             }
@@ -124,6 +151,21 @@ public final class ProjectErrorsTool {
             bySource.addProperty("eclipse", rep.eclipse);
             bySource.addProperty("edtCheck", rep.edtCheck);
             payload.add("bySource", bySource);
+            // Freshness: how many listed markers outlived a change of their file, which files the
+            // workspace has not read, and the one line saying what to do about it.
+            if (rep.staleCount >= 0) {
+                payload.addProperty("staleCount", rep.staleCount);
+            }
+            JsonArray unsynchronized = new JsonArray();
+            rep.unsynchronized.forEach(unsynchronized::add);
+            payload.add("unsynchronized", unsynchronized);
+            payload.addProperty("unsynchronizedCount", rep.unsynchronizedCount);
+            if (rep.hint != null) {
+                payload.addProperty("hint", rep.hint);
+            }
+            if (rep.refreshed != null) {
+                payload.add("refreshed", refreshedJson(rep.refreshed));
+            }
             JsonObject filter = new JsonObject();
             if (fqn != null) {
                 filter.addProperty("fqn", fqn);
@@ -170,6 +212,23 @@ public final class ProjectErrorsTool {
                     if (p.markerType != null) {
                         o.addProperty("markerType", p.markerType);
                     }
+                    // An EDT check marker names its object, not a file; the file it was traced to
+                    // is what the freshness verdict was read from.
+                    if (p.filePath != null) {
+                        o.addProperty("file", p.filePath);
+                    }
+                    if (p.stale) {
+                        o.addProperty("stale", true);
+                        if (p.markerCreatedAt > 0) {
+                            o.addProperty("validatedAt", iso(p.markerCreatedAt));
+                        }
+                        if (p.fileModifiedAt > 0) {
+                            o.addProperty("fileChangedAt", iso(p.fileModifiedAt));
+                        }
+                    }
+                    if (p.unsynchronized) {
+                        o.addProperty("unsynchronized", true);
+                    }
                     arr.add(o);
                 }
                 payload.add("problems", arr);
@@ -183,6 +242,25 @@ public final class ProjectErrorsTool {
         } catch (Exception e) {
             return McpServer.toolError("edt_project_errors failed: " + e.getMessage());
         }
+    }
+
+    /** The refresh that preceded the report, as the caller sees it. */
+    private static JsonObject refreshedJson(ProjectGateway.RefreshResult res) {
+        JsonObject o = new JsonObject();
+        JsonArray resources = new JsonArray();
+        res.resources.forEach(resources::add);
+        o.add("resources", resources);
+        o.addProperty("refreshMs", res.refreshMs);
+        o.addProperty("buildMs", res.buildMs);
+        o.addProperty("waitMs", res.waitMs);
+        o.addProperty("settled", res.settled);
+        // Whether the checks were seen running at all: "settled" without them is the shape of a
+        // wait that finished before validation started - see edt_clean_project.
+        o.addProperty("sawValidation", res.sawValidation);
+        if (res.warning != null) {
+            o.addProperty("warning", res.warning);
+        }
+        return o;
     }
 
     /**
@@ -200,6 +278,16 @@ public final class ProjectErrorsTool {
         if (rep.total != rep.totalBeforeFilter) {
             sb.append(", ").append(rep.totalBeforeFilter).append(" before the filter");
         }
+        if (rep.staleCount > 0) {
+            sb.append("; stale ").append(rep.staleCount);
+        }
+        if (rep.unsynchronizedCount > 0) {
+            sb.append("; unsynchronized ").append(rep.unsynchronizedCount).append(" file(s): ")
+              .append(String.join(", ", rep.unsynchronized));
+            if (rep.unsynchronizedCount > rep.unsynchronized.size()) {
+                sb.append(", ...");
+            }
+        }
         java.util.List<String> filters = new java.util.ArrayList<>();
         if (fqn != null) {
             filters.add("fqn=" + fqn);
@@ -214,6 +302,20 @@ public final class ProjectErrorsTool {
             sb.append("; filter: ").append(String.join(", ", filters));
         }
         sb.append('\n');
+        if (rep.refreshed != null) {
+            sb.append("refreshed: ").append(String.join(", ", rep.refreshed.resources))
+              .append(" (build ").append(rep.refreshed.buildMs).append(" ms, validation ")
+              .append(rep.refreshed.settled ? "settled" : "NOT settled").append(" after ")
+              .append(rep.refreshed.waitMs).append(" ms")
+              .append(rep.refreshed.sawValidation ? "" : ", never seen running").append(")");
+            if (rep.refreshed.warning != null) {
+                sb.append(" - ").append(rep.refreshed.warning);
+            }
+            sb.append('\n');
+        }
+        if (rep.hint != null) {
+            sb.append("hint: ").append(rep.hint).append('\n');
+        }
         for (ProjectGateway.Problem p : rep.problems) {
             sb.append(p.severity).append("  ").append(p.resource);
             if (p.line > 0) {
@@ -223,6 +325,11 @@ public final class ProjectErrorsTool {
             if (p.checkId != null) {
                 sb.append("  [").append(p.checkId).append(']');
             }
+            if (p.unsynchronized) {
+                sb.append("  (stale, unsynchronized)");
+            } else if (p.stale) {
+                sb.append("  (stale)");
+            }
             sb.append('\n');
         }
         if (rep.truncated) {
@@ -230,6 +337,12 @@ public final class ProjectErrorsTool {
               .append(" shown (limit ").append(rep.limit).append(")\n");
         }
         return sb.toString();
+    }
+
+    /** An instant as the server's local ISO time, the form the status page uses. */
+    private static String iso(long epochMs) {
+        return java.time.Instant.ofEpochMilli(epochMs).atZone(java.time.ZoneId.systemDefault())
+                .format(java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME);
     }
 
     private static JsonObject strProp(String desc) {
@@ -255,5 +368,9 @@ public final class ProjectErrorsTool {
 
     private static String getStr(JsonObject a, String k) {
         return (a.has(k) && !a.get(k).isJsonNull()) ? a.get(k).getAsString() : null;
+    }
+
+    private static boolean getBool(JsonObject a, String k) {
+        return a.has(k) && !a.get(k).isJsonNull() && a.get(k).getAsBoolean();
     }
 }

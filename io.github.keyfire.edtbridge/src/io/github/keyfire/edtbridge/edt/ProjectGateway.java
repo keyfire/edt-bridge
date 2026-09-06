@@ -19,18 +19,32 @@ package io.github.keyfire.edtbridge.edt;
 import java.util.ArrayList;
 import java.util.List;
 
+import io.github.keyfire.edtbridge.core.MarkerFreshness;
 import io.github.keyfire.edtbridge.core.MetadataPaths;
 import io.github.keyfire.edtbridge.core.ProblemFilter;
+import io.github.keyfire.edtbridge.core.ValidationSettle;
+import org.eclipse.core.resources.IContainer;
+import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IMarker;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.IWorkspaceRoot;
+import org.eclipse.core.resources.IncrementalProjectBuilder;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.IPath;
+import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.core.runtime.NullProgressMonitor;
+import org.eclipse.core.runtime.jobs.Job;
+import org.eclipse.emf.common.util.URI;
+import org.eclipse.emf.ecore.EObject;
 import com._1c.g5.v8.dt.validation.marker.IMarkerManager;
+import com._1c.g5.v8.dt.validation.marker.Marker;
 import com._1c.g5.v8.dt.validation.marker.MarkerFilter;
 import com._1c.g5.v8.dt.validation.marker.MarkerSeverity;
+import com._1c.g5.v8.dt.validation.marker.PlainEObjectMarker;
 import com._1c.g5.v8.dt.core.platform.IBmModelManager;
+import com._1c.g5.v8.dt.core.platform.IResourceLookup;
 import com._1c.g5.wiring.ServiceAccess;
 
 /**
@@ -53,6 +67,20 @@ public final class ProjectGateway {
         public java.util.Map<String, String> extraInfo; // whatever the check attached, e.g. its own uid
         public String edtSeverity; // EDT grade for edt-check: BLOCKER/CRITICAL/MAJOR/MINOR/TRIVIAL
         public String location; // EDT location, e.g. "строка 8" or a field presentation
+        /** The marker predates the last change of its file on disk - see MarkerFreshness. */
+        public boolean stale;
+        /** The file changed on disk and the workspace has not read the change yet. */
+        public boolean unsynchronized;
+        /** When the marker was created, epoch ms; 0 when the marker does not say. */
+        public long markerCreatedAt;
+        /** The last write of the file on disk, epoch ms; 0 when the file was not found. */
+        public long fileModifiedAt;
+        /** Project-relative path of the file behind an EDT check marker, once traced; else null. */
+        public String filePath;
+        /** The workspace resource the problem sits on, when known - what the freshness check reads. */
+        IResource file;
+        /** The EDT check marker behind an edt-check problem, kept to trace its file on demand. */
+        Marker edtMarker;
     }
 
     /** The projects a validation call addresses: the named one when open, else every open project. */
@@ -96,6 +124,12 @@ public final class ProjectGateway {
                         : r.getName();
                 pr.line = m.getAttribute(IMarker.LINE_NUMBER, -1);
                 try {
+                    pr.markerCreatedAt = m.getCreationTime();
+                } catch (CoreException e) {
+                    pr.markerCreatedAt = 0;
+                }
+                pr.file = r;
+                try {
                     pr.markerType = m.getType();
                 } catch (CoreException e) {
                     pr.markerType = "?";
@@ -131,6 +165,17 @@ public final class ProjectGateway {
         // plausible-looking report about the WRONG tree - silently, since the file names
         // match. Naming the folders lets the caller see the divergence.
         public java.util.Map<String, String> locations = new java.util.LinkedHashMap<>();
+        /** Listed problems whose marker predates the last change of their file; -1 when nothing
+         *  was listed to judge (countOnly). */
+        public int staleCount = -1;
+        /** Files in scope the workspace has not read since their last write on disk - the first
+         *  few; unsynchronizedCount says how many there are. */
+        public List<String> unsynchronized = new ArrayList<>();
+        public int unsynchronizedCount;
+        /** What to do about the stale and unsynchronized findings; null when there are none. */
+        public String hint;
+        /** The refresh that preceded this report, when the caller asked for one. */
+        public RefreshResult refreshed;
     }
 
     /**
@@ -146,21 +191,25 @@ public final class ProjectGateway {
      */
     public ProblemReport reportProblems(String projectName, String fqn, String modulePath,
             String severity, boolean countOnly, int limit) throws CoreException {
+        return reportProblems(projectName, fqn, modulePath, severity, countOnly, limit, null);
+    }
+
+    /**
+     * As above, for a report taken right after {@link #refreshScope}: the refresh is echoed in the
+     * report, and a hint still due points at the full clean instead of another refresh.
+     */
+    public ProblemReport reportProblems(String projectName, String fqn, String modulePath,
+            String severity, boolean countOnly, int limit, RefreshResult refreshed)
+            throws CoreException {
         List<Problem> all = getProjectErrors(projectName);
+        List<IProject> projects = selectProjects(projectName);
         java.util.Map<String, String> locations = new java.util.LinkedHashMap<>();
-        for (IProject p : selectProjects(projectName)) {
+        for (IProject p : projects) {
             locations.put(p.getName(),
                     p.getLocation() == null ? null : p.getLocation().toOSString());
         }
-        String pathPrefix = null;
-        String nameToken = null;
-        if (modulePath != null && !modulePath.isBlank()) {
-            pathPrefix = modulePath.replace('\\', '/').trim();
-        } else if (fqn != null && !fqn.isBlank()) {
-            String folder = MetadataPaths.objectFolder(fqn);
-            pathPrefix = (folder == null) ? null : "src/" + folder;
-            nameToken = MetadataPaths.nameToken(fqn);
-        }
+        String pathPrefix = locationPrefix(fqn, modulePath);
+        String nameToken = locationName(fqn, modulePath);
         java.util.Set<String> sevFilter = ProblemFilter.severities(severity);
         int cap = (limit > 0) ? limit : 1000;
         ProblemReport r = new ProblemReport();
@@ -197,7 +246,385 @@ public final class ProjectGateway {
         if (!countOnly && r.total > r.problems.size()) {
             r.truncated = true;
         }
+        r.refreshed = refreshed;
+        // Every listed problem is judged against its file, and the scope is checked for files
+        // the workspace has not read: a marker outliving its cause is the defect this report
+        // exists to expose, and a file holding problems nothing reports yet is its twin.
+        if (!countOnly) {
+            judgeFreshness(r.problems);
+            r.staleCount = 0;
+            for (Problem p : r.problems) {
+                if (p.stale) {
+                    r.staleCount++;
+                }
+            }
+        }
+        boolean several = projects.size() > 1;
+        java.util.Set<String> unseen = new java.util.LinkedHashSet<>();
+        int unseenCount = 0;
+        for (IProject p : projects) {
+            UnseenFiles files = unseenFiles(p, pathPrefix, nameToken);
+            unseenCount += files.count;
+            for (String path : files.paths) {
+                unseen.add(several ? p.getName() + "/" + path : path);
+            }
+        }
+        // A problem's file may lie outside the scope walked above - an EDT check marker matched
+        // by object name sits wherever its object does - so the listed verdicts are added too.
+        for (Problem p : r.problems) {
+            if (p.unsynchronized && p.file != null) {
+                String path = p.file.getProjectRelativePath().toString();
+                if (unseen.add(several ? p.project + "/" + path : path)) {
+                    unseenCount++;
+                }
+            }
+        }
+        r.unsynchronizedCount = unseenCount;
+        for (String path : unseen) {
+            if (r.unsynchronized.size() >= UNSYNCHRONIZED_LIST_CAP) {
+                break;
+            }
+            r.unsynchronized.add(path);
+        }
+        r.hint = MarkerFreshness.hint(Math.max(r.staleCount, 0), r.unsynchronizedCount,
+                refreshed != null);
         return r;
+    }
+
+    /** How many unsynchronized paths a report lists; the count says the rest. */
+    private static final int UNSYNCHRONIZED_LIST_CAP = 50;
+
+    /**
+     * The project-relative path prefix a narrowing addresses: the module path as given, or the
+     * object's source folder; null when nothing narrows or the FQN has an unknown shape.
+     */
+    private static String locationPrefix(String fqn, String modulePath) {
+        if (modulePath != null && !modulePath.isBlank()) {
+            return modulePath.replace('\\', '/').trim();
+        }
+        if (fqn != null && !fqn.isBlank()) {
+            String folder = MetadataPaths.objectFolder(fqn);
+            return (folder == null) ? null : "src/" + folder;
+        }
+        return null;
+    }
+
+    /** The object name an fqn narrowing also matches by presentation; null for a path narrowing. */
+    private static String locationName(String fqn, String modulePath) {
+        if (modulePath != null && !modulePath.isBlank()) {
+            return null;
+        }
+        return (fqn != null && !fqn.isBlank()) ? MetadataPaths.nameToken(fqn) : null;
+    }
+
+    /**
+     * Judge the listed problems against their files. Only the listed ones: for an Eclipse marker
+     * the check is a stat of its file, but an EDT check marker sits on an OBJECT and must first
+     * be traced to a file, and tracing the thousands the filter dropped would cost more than the
+     * report is worth. So the stale count covers what the caller reads - which is what the
+     * caller acts on.
+     */
+    private static void judgeFreshness(List<Problem> listed) {
+        if (listed.isEmpty()) {
+            return;
+        }
+        IResourceLookup lookup = FormWriteGateway.coreService(IResourceLookup.class);
+        java.util.Map<Object, IResource> byObject = new java.util.HashMap<>();
+        java.util.Map<IResource, long[]> stamps = new java.util.HashMap<>();
+        for (Problem p : listed) {
+            IResource res = p.file;
+            if (res == null && p.edtMarker != null) {
+                res = traceMarkerFile(p.edtMarker, lookup, byObject);
+                p.file = res;
+                if (res != null) {
+                    p.filePath = res.getProjectRelativePath().toString();
+                }
+            }
+            if (res == null) {
+                continue;
+            }
+            long[] stamp = stamps.computeIfAbsent(res, file -> new long[] {
+                diskStamp(file), file.isSynchronized(IResource.DEPTH_ZERO) ? 1L : 0L });
+            MarkerFreshness.Verdict verdict =
+                    MarkerFreshness.judge(p.markerCreatedAt, stamp[0], stamp[1] == 1L);
+            p.stale = verdict.stale;
+            p.unsynchronized = verdict.unsynchronized;
+            p.fileModifiedAt = stamp[0];
+        }
+    }
+
+    /**
+     * The file behind an EDT check marker. A marker on a plain EObject carries the object's URI,
+     * and a platform URI names the file outright - no object is loaded for it. A marker on a BM
+     * object is asked for its object, and the object for its file. Cached by object id, since
+     * one object usually carries several problems. Null when nothing traces.
+     */
+    private static IResource traceMarkerFile(Marker mk, IResourceLookup lookup,
+            java.util.Map<Object, IResource> byObject) {
+        Object key = null;
+        try {
+            key = mk.getMarkerObjectId();
+        } catch (RuntimeException ignored) {
+            // no id - no cache
+        }
+        if (key != null && byObject.containsKey(key)) {
+            return byObject.get(key);
+        }
+        IResource res = null;
+        try {
+            if (mk instanceof PlainEObjectMarker) {
+                URI uri = ((PlainEObjectMarker) mk).getURI();
+                if (uri != null && uri.isPlatformResource()) {
+                    res = ResourcesPlugin.getWorkspace().getRoot().findMember(
+                            new org.eclipse.core.runtime.Path(uri.toPlatformString(true)));
+                } else if (uri != null && lookup != null) {
+                    res = lookup.getPlatformResource(uri);
+                }
+            }
+            if (res == null && lookup != null) {
+                java.util.function.Function<EObject, IFile> toFile =
+                        object -> (object == null) ? null : lookup.getPlatformResource(object);
+                res = mk.provideObject(toFile);
+            }
+        } catch (Throwable t) {
+            // an object the model no longer has, or a store without the API: unjudged, not broken
+            res = null;
+        }
+        if (key != null) {
+            byObject.put(key, res);
+        }
+        return res;
+    }
+
+    /** The file's last write on disk, epoch ms; 0 when it is not there or has no location. */
+    private static long diskStamp(IResource res) {
+        return (res.getLocation() == null) ? 0L : res.getLocation().toFile().lastModified();
+    }
+
+    /**
+     * The workspace resource a narrowing addresses: the file or folder at the path when the
+     * workspace knows it, else the nearest ancestor it does know - a file new on disk has no
+     * resource yet, and its parent is where the workspace will notice it - and the project
+     * itself when nothing narrows.
+     */
+    private static IResource scopeResource(IProject p, String pathPrefix) {
+        if (pathPrefix == null || pathPrefix.isBlank()) {
+            return p;
+        }
+        IPath path = new org.eclipse.core.runtime.Path(pathPrefix.replace('\\', '/').trim());
+        while (path.segmentCount() > 0) {
+            IResource member = p.findMember(path);
+            if (member != null) {
+                return member;
+            }
+            path = path.removeLastSegments(1);
+        }
+        return p;
+    }
+
+    /**
+     * Resources the synchronization check and the refresh leave alone: the version control
+     * folders, which change on every git operation and are validated by nobody, and whatever
+     * the workspace itself marks as derived, hidden or team-private.
+     */
+    private static boolean leftAlone(IResource res) {
+        String name = res.getName();
+        return res.isDerived() || res.isHidden() || res.isTeamPrivateMember()
+                || ".git".equals(name) || ".svn".equals(name) || ".hg".equals(name);
+    }
+
+    /** Files the workspace has not read, under one scope: the first few and the full count. */
+    private static final class UnseenFiles {
+        final List<String> paths = new ArrayList<>();
+        int count;
+
+        void note(String path, String pathPrefix, String nameToken) {
+            if ((pathPrefix != null || nameToken != null)
+                    && !ProblemFilter.matchesLocation(path, pathPrefix, nameToken)) {
+                return;
+            }
+            count++;
+            if (paths.size() < UNSYNCHRONIZED_LIST_CAP) {
+                paths.add(path);
+            }
+        }
+    }
+
+    /**
+     * Files under the scope whose last write the workspace has not read: changed, deleted, or new
+     * on disk. With nothing to narrow, the scope is what validation reads - the sources folder.
+     * Each root is first asked as a whole - Eclipse walks it in one pass and stops at the first
+     * mismatch - so a tree that is in step costs one walk and no list; only a root that is off is
+     * walked file by file. A file new on disk has no resource to visit: it shows as a name its
+     * folder lists on disk and the workspace does not.
+     */
+    private static UnseenFiles unseenFiles(IProject p, String pathPrefix, String nameToken)
+            throws CoreException {
+        UnseenFiles found = new UnseenFiles();
+        IResource scope = scopeResource(p, pathPrefix);
+        List<IResource> roots = (scope == p) ? validatedRoots(p) : List.of(scope);
+        for (IResource root : roots) {
+            if (root.isSynchronized(IResource.DEPTH_INFINITE)) {
+                continue;
+            }
+            root.accept(res -> {
+                if (res != root && leftAlone(res)) {
+                    return false;
+                }
+                if (res.getType() == IResource.FILE) {
+                    if (!res.isSynchronized(IResource.DEPTH_ZERO)) {
+                        found.note(res.getProjectRelativePath().toString(), pathPrefix, nameToken);
+                    }
+                    return false;
+                }
+                noteNewOnDisk((IContainer) res, found, pathPrefix, nameToken);
+                return true;
+            });
+        }
+        return found;
+    }
+
+    /**
+     * What validation reads of a whole project: its sources folder. The rest of the tree has no
+     * marker to go stale - the build output of an external object project (bin/, rewritten by EDT
+     * around the workspace on every dump) was reported as unsynchronized before this, and the
+     * hint then told the caller to revalidate a file nobody validates. A project laid out without
+     * a sources folder falls back to every member that is not left alone.
+     */
+    private static List<IResource> validatedRoots(IProject p) throws CoreException {
+        IResource sources = p.findMember("src");
+        if (sources != null) {
+            return List.of(sources);
+        }
+        List<IResource> roots = new ArrayList<>();
+        for (IResource member : p.members()) {
+            if (!leftAlone(member)) {
+                roots.add(member);
+            }
+        }
+        return roots;
+    }
+
+    /** Names a folder lists on disk and the workspace has no resource for: files new on disk. */
+    private static void noteNewOnDisk(IContainer folder, UnseenFiles found, String pathPrefix,
+            String nameToken) {
+        if (folder.getLocation() == null) {
+            return;
+        }
+        String[] onDisk = folder.getLocation().toFile().list();
+        if (onDisk == null) {
+            return;
+        }
+        for (String name : onDisk) {
+            if (folder.findMember(name) == null && !".git".equals(name) && !".svn".equals(name)
+                    && !".hg".equals(name)) {
+                found.note(folder.getProjectRelativePath().append(name).toString() + " (new on disk)",
+                        pathPrefix, nameToken);
+            }
+        }
+    }
+
+    /** Outcome of {@link #refreshScope}: what was re-read from disk and what the rebuild cost. */
+    public static final class RefreshResult {
+        /** What was refreshed: a project-relative path, or the project name for a whole project. */
+        public List<String> resources = new ArrayList<>();
+        public long refreshMs;
+        public long buildMs;
+        public long waitMs;
+        /** Whether the problem count settled within the wait - see ValidationSettle. */
+        public boolean settled;
+        /** Whether validation was seen running at all while waiting. */
+        public boolean sawValidation;
+        public String warning;
+    }
+
+    /**
+     * Re-read the narrowed scope from disk and validate it in place: the point fix for a stale
+     * marker. {@code refreshLocal} tells the workspace about the files that changed under it, an
+     * INCREMENTAL build lets EDT's builders process exactly those, and the wait is the one that
+     * follows a clean - the checks run after the build, not in it. Seconds for one module, where
+     * {@link #cleanProject} rebuilds everything for minutes. With nothing to narrow, the project's
+     * sources folder is refreshed - what validation reads.
+     *
+     * <p>A project with no build state yet - never built in this session - gets a full build from
+     * the same call: that is how Eclipse answers an incremental request it cannot honour.
+     *
+     * @param projectName project, or null for every open project
+     * @param fqn         object narrowing, as for {@link #reportProblems}
+     * @param modulePath  path narrowing, as for {@link #reportProblems}
+     * @param waitSeconds how long to wait for validation to settle after the build
+     */
+    public RefreshResult refreshScope(String projectName, String fqn, String modulePath,
+            int waitSeconds) throws CoreException {
+        RefreshResult r = new RefreshResult();
+        List<IProject> projects = selectProjects(projectName);
+        String pathPrefix = locationPrefix(fqn, modulePath);
+        IProgressMonitor monitor = new NullProgressMonitor();
+        boolean several = projects.size() > 1;
+        long started = System.currentTimeMillis();
+        for (IProject p : projects) {
+            IResource scope = scopeResource(p, pathPrefix);
+            if (scope == p) {
+                // Depth one first, so a sources folder new at the root is discovered; then what
+                // validation reads, in full - the same roots the synchronization check walks.
+                p.refreshLocal(IResource.DEPTH_ONE, monitor);
+                for (IResource root : validatedRoots(p)) {
+                    root.refreshLocal(IResource.DEPTH_INFINITE, monitor);
+                }
+                r.resources.add(p.getName());
+            } else {
+                scope.refreshLocal(IResource.DEPTH_INFINITE, monitor);
+                String path = scope.getProjectRelativePath().toString();
+                r.resources.add(several ? p.getName() + "/" + path : path);
+            }
+        }
+        r.refreshMs = System.currentTimeMillis() - started;
+        long building = System.currentTimeMillis();
+        try {
+            for (IProject p : projects) {
+                p.build(IncrementalProjectBuilder.INCREMENTAL_BUILD, monitor);
+            }
+            Job.getJobManager().join(ResourcesPlugin.FAMILY_MANUAL_BUILD, monitor);
+            Job.getJobManager().join(ResourcesPlugin.FAMILY_AUTO_BUILD, monitor);
+        } catch (CoreException | InterruptedException | RuntimeException e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            r.warning = "build failed: " + GatewaySupport.describeCause(e);
+        }
+        r.buildMs = System.currentTimeMillis() - building;
+        ValidationSettle settle = new ValidationSettle();
+        long waiting = System.currentTimeMillis();
+        r.settled = awaitSettle(projectName, settle, (waitSeconds > 0 ? waitSeconds : 120) * 1000L, 1000L);
+        r.waitMs = System.currentTimeMillis() - waiting;
+        r.sawValidation = settle.sawWork();
+        if (!r.settled) {
+            r.warning = (r.warning == null ? "" : r.warning + "; ")
+                    + "validation was still running when the wait ran out - re-read in a moment";
+        }
+        return r;
+    }
+
+    /**
+     * Poll the problem count until it settles or the time runs out; true when it settled. See
+     * {@link ValidationSettle} for why a count that merely stopped changing is not enough.
+     */
+    private boolean awaitSettle(String projectName, ValidationSettle settle, long limitMs,
+            long pollMs) {
+        long started = System.currentTimeMillis();
+        while (System.currentTimeMillis() - started < limitMs) {
+            boolean idle = Job.getJobManager().isIdle();
+            if (settle.poll(countProblems(projectName), idle)) {
+                return true;
+            }
+            try {
+                Thread.sleep(pollMs);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return false;
     }
 
 
@@ -240,6 +667,13 @@ public final class ProjectGateway {
                 pr.location = mk.getLocation();
                 pr.resource = mk.getObjectPresentation();
                 pr.line = parseLine(mk.getLocation());
+                try {
+                    pr.markerCreatedAt = mk.getCreatedAt();
+                } catch (Throwable noTime) {
+                    // older marker store - judged by synchronization alone
+                    pr.markerCreatedAt = 0;
+                }
+                pr.edtMarker = mk;
                 pr.source = "edt-check";
                 out.add(pr);
             });
@@ -427,22 +861,9 @@ public final class ProjectGateway {
         // families joined above, so a count that merely stopped changing proves nothing: right after
         // a clean it sits at zero because nothing has been reported yet. Waiting for the workspace to
         // go idle as well is what tells "not started" apart from "done".
-        int limit = (waitSeconds > 0 ? waitSeconds : 120) * 1000;
-        io.github.keyfire.edtbridge.core.ValidationSettle settle =
-                new io.github.keyfire.edtbridge.core.ValidationSettle();
-        while (System.currentTimeMillis() - started < limit) {
-            boolean idle = org.eclipse.core.runtime.jobs.Job.getJobManager().isIdle();
-            if (settle.poll(countProblems(projectName), idle)) {
-                r.settled = true;
-                break;
-            }
-            try {
-                Thread.sleep(2000L);
-            } catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
-                break;
-            }
-        }
+        long limit = (waitSeconds > 0 ? waitSeconds : 120) * 1000L;
+        ValidationSettle settle = new ValidationSettle();
+        r.settled = awaitSettle(projectName, settle, limit, 2000L);
         r.sawValidation = settle.sawWork();
         r.problemsAfter = settle.problems();
         r.elapsedMs = System.currentTimeMillis() - started;
