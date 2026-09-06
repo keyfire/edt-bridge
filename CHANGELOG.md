@@ -8,6 +8,18 @@ that day are named in the heading. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
+## [Unreleased]
+
+### Added
+- **`edt_project_errors` says when a marker is older than its file.** A marker is a snapshot
+  that outlives the code it was written for, and a report built from old markers read exactly
+  like a fresh one – the only way to know was `edt_clean_project` with a full rebuild, minutes
+  on a large configuration, for one module. Every listed problem now carries `stale` when the
+  marker predates the file's last change on disk and `unsynchronized` when the workspace has
+  not even read that change; the summary counts them and a `hint` says what to do.
+  `refresh=true` re-reads the narrowed scope and runs an incremental build before the markers
+  are read: seconds, in place, where the clean rebuilt everything.
+
 ## 2026-09-05 – 0.20.0
 
 ### Fixed
