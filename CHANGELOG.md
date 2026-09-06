@@ -8,7 +8,7 @@ that day are named in the heading. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
-## [Unreleased]
+## 2026-09-06 – 0.21.0
 
 ### Added
 - **`edt_project_errors` says when a marker is older than its file.** A marker is a snapshot
