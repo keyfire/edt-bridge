@@ -18,6 +18,7 @@ package io.github.keyfire.edtbridge.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -95,13 +96,32 @@ class PlatformSelectionTest {
     }
 
     @Test
-    @DisplayName("a running tool serves a pinned request only when it is that build")
-    void runningTool() {
+    @DisplayName("the disk filter: a build admits only itself, a line admits every version")
+    void diskFilter() {
         assertTrue(PlatformSelection.accepts("8.5.1.1302", "8.5.1.1302"));
         assertFalse(PlatformSelection.accepts("8.5.1.1464", "8.5.1.1302"));
-        // A line asks for no more than a fresh start would have given, so anything running serves.
+        // A line is a preference the ordering expresses, and descending to another line is the
+        // fallback for a line with no install. Reuse of a RUNNING agent is a different question,
+        // decided in the gateway against what a fresh start would have chosen.
         assertTrue(PlatformSelection.accepts("8.3.24.1548", "8.5.1"));
         assertTrue(PlatformSelection.accepts("8.5.1.1464", null));
+    }
+
+    @Test
+    @DisplayName("a shape that is neither a build nor a line is refused, not read as a line")
+    void malformedIsRefused() {
+        assertNull(PlatformSelection.problem("8.5.1.1302"));
+        assertNull(PlatformSelection.problem("8.5.1"));
+        assertNull(PlatformSelection.problem("8.5"));
+        assertNull(PlatformSelection.problem("8"));
+        assertNull(PlatformSelection.problem(null));
+        assertNull(PlatformSelection.problem("  "));
+        // Without the guard both of these read as line 8.5.1 - that is, as the newest build.
+        assertNotNull(PlatformSelection.problem("8.5.1.1302.1"));
+        assertNotNull(PlatformSelection.problem("8.5.1.1302-x64"));
+        assertNotNull(PlatformSelection.problem("8.5.1.*"));
+        assertNotNull(PlatformSelection.problem("восемь"));
+        assertTrue(PlatformSelection.problem("8.5.1.1302.1").contains("8.5.1.1302.1"));
     }
 
     @Test
@@ -122,10 +142,14 @@ class PlatformSelectionTest {
     }
 
     @Test
-    @DisplayName("a running agent of another build is refused by naming both builds")
-    void runningRefusalNamesBoth() {
-        String m = PlatformSelection.alreadyRunning("8.5.1.1464", "8.5.1.1302");
-        assertTrue(m.contains("8.5.1.1464"), m);
-        assertTrue(m.contains("8.5.1.1302"), m);
+    @DisplayName("a running agent of another build is refused, and a line is named as a line")
+    void runningRefusal() {
+        String pinned = PlatformSelection.alreadyRunning("8.5.1.1464", "8.5.1.1302", "8.5.1.1302");
+        assertTrue(pinned.contains("8.5.1.1464"), pinned);
+        assertTrue(pinned.contains("8.5.1.1302 was pinned"), pinned);
+
+        String line = PlatformSelection.alreadyRunning("8.3.24.1548", "8.5.1", "8.5.1.1464");
+        assertTrue(line.contains("8.3.24.1548"), line);
+        assertTrue(line.contains("line 8.5.1 resolves to 8.5.1.1464"), line);
     }
 }

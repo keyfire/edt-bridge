@@ -208,6 +208,11 @@ public final class DesignerAgentGateway {
      */
     public AgentResult start(String infobase, String user, String password, String platformVersion) {
         AgentResult r = new AgentResult();
+        String malformed = PlatformSelection.problem(platformVersion);
+        if (malformed != null) {
+            r.message = malformed;
+            return r;
+        }
         Address resolved = resolveAddress(infobase);
         if (resolved.address == null) {
             r.message = resolved.problem;
@@ -216,14 +221,23 @@ public final class DesignerAgentGateway {
         String connection = resolved.address;
         Agent running = AGENTS.get(connection);
         if (running != null && running.process != null && running.process.isAlive()) {
-            // A pinned build is the whole point of pinning: handing back an agent of another build
-            // would fail at the server exactly as an unpinned start did, one step later. A LINE asks
-            // for no more than a fresh start would have given (it descends to other lines anyway),
-            // so the running agent serves it - PlatformSelection.accepts draws that line once.
-            if (!PlatformSelection.accepts(running.platformVersion, platformVersion)) {
-                r.message = PlatformSelection.alreadyRunning(running.platformVersion,
-                        platformVersion);
-                return r;
+            // Reuse exactly what a fresh start would have produced, and nothing else. Deciding this
+            // by PlatformSelection.accepts would be too weak: a LINE accepts every version, so an
+            // agent of 8.3.24 would answer a request for 8.5.1 with 8.5.1 sitting on disk - and the
+            // server refuses that with the same "Несоответствие версий клиента и сервера" the pin
+            // exists to prevent. A caller who asked for nothing still takes whatever runs.
+            if (platformVersion != null && !platformVersion.isBlank()) {
+                PlatformGateway.DiskPlatform wanted = findDesignerInstall(platformVersion);
+                if (wanted == null) {
+                    r.message = PlatformSelection.unavailable("full install with a configurator",
+                            platformVersion, platform.versionsCarrying("1cv8.exe", "1cv8"));
+                    return r;
+                }
+                if (!wanted.version.equals(running.platformVersion)) {
+                    r.message = PlatformSelection.alreadyRunning(running.platformVersion,
+                            platformVersion, wanted.version);
+                    return r;
+                }
             }
             r.ok = true;
             r.agents.add(running);

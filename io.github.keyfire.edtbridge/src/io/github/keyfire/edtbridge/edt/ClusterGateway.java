@@ -430,6 +430,11 @@ public final class ClusterGateway {
             r.message = "a cluster server is required, e.g. srv.example.test (optionally with a port)";
             return null;
         }
+        String malformed = PlatformSelection.problem(platformVersion);
+        if (malformed != null) {
+            r.message = malformed;
+            return null;
+        }
         for (PlatformGateway.DiskPlatform dp : platform.discoverFullPlatforms(platformVersion)) {
             Path exe = PlatformGateway.firstExisting(dp.binDir, "rac.exe", "rac");
             if (exe != null) {

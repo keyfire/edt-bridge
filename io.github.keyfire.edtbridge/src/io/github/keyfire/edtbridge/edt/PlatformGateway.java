@@ -672,6 +672,11 @@ public final class PlatformGateway {
         CreateInfobaseResult r = new CreateInfobaseResult();
         r.name = name;
         r.path = path;
+        String malformed = PlatformSelection.problem(platformVersion);
+        if (malformed != null) {
+            r.message = malformed;
+            return r;
+        }
         r.platform = (platformVersion == null || platformVersion.isBlank()) ? "(auto)" : platformVersion.trim();
         if (name == null || name.isBlank()) {
             r.message = "name is required";
@@ -1173,6 +1178,11 @@ public final class PlatformGateway {
         }
         r.extensionName = extName;
         Version version = GatewaySupport.projectVersion(p);
+        String malformed = PlatformSelection.problem(platformVersion);
+        if (malformed != null) {
+            r.message = malformed;
+            return r;
+        }
         String requested = (platformVersion != null && !platformVersion.isBlank())
                 ? platformVersion : String.valueOf(version);
         DiskPlatform ib = findIbcmdInstall(requested);
@@ -1415,6 +1425,11 @@ public final class PlatformGateway {
         List<String> conn = new ArrayList<>(target.dbArgs);
         r.infobase = target.label;
 
+        String malformed = PlatformSelection.problem(platformVersion);
+        if (malformed != null) {
+            r.message = malformed;
+            return r;
+        }
         DiskPlatform ib = findIbcmdInstall(platformVersion);
         if (ib == null) {
             r.message = PlatformSelection.unavailable("full install carrying ibcmd", platformVersion,

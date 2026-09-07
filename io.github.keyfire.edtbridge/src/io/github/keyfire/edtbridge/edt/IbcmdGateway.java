@@ -77,6 +77,10 @@ public final class IbcmdGateway {
      */
     public Tool resolve(String platformVersion) {
         Tool tool = new Tool();
+        tool.problem = PlatformSelection.problem(platformVersion);
+        if (tool.problem != null) {
+            return tool;
+        }
         PlatformGateway.DiskPlatform install = platform.findIbcmdInstall(platformVersion);
         if (install == null) {
             tool.problem = PlatformSelection.unavailable("full install carrying ibcmd", platformVersion,

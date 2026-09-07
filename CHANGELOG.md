@@ -18,9 +18,12 @@ that day are named in the heading. The format follows
   thing a caller could not ask for, and there was no way around it from a session. A four-digit
   request now admits that build and nothing else; three digits (`8.5.1`) still mean the line and
   take its newest build. The rule holds for the configurator agent, for `rac` (`edt_infobase_sessions`,
-  `edt_infobase_maintenance`) and for `ibcmd` alike, and a running agent of another build no longer
-  answers a pinned request in silence. When the pinned build is absent the refusal names what IS
-  installed instead of saying "not found".
+  `edt_infobase_maintenance`) and for `ibcmd` alike. Reuse of a running agent is decided against the
+  build a fresh start would have chosen, so a line request no longer inherits an agent of another
+  line while its own line is installed - the server refuses that mismatch with the very same error.
+  A request that is neither a build nor a line (`8.5.1.1302.1`, a suffix, a typo) is refused rather
+  than read as a line, which would have meant the newest build installed. When the requested build
+  is absent the refusal names what IS installed instead of saying "not found".
 
 ## 2026-09-06 – 0.21.0
 

@@ -38,6 +38,9 @@ public final class PlatformSelection {
     /** A full build number - the only shape that pins. */
     private static final Pattern BUILD = Pattern.compile("\\d+\\.\\d+\\.\\d+\\.\\d+");
 
+    /** Everything a request may say: one to four groups of digits, and nothing else. */
+    private static final Pattern REQUEST = Pattern.compile("\\d+(\\.\\d+){0,3}");
+
     private PlatformSelection() {
     }
 
@@ -62,14 +65,16 @@ public final class PlatformSelection {
     }
 
     /**
-     * Whether an installed version may serve the request AT ALL. A requested build admits only
-     * itself; a requested line admits everything, because there the line is a preference that the
-     * ordering expresses and descending to another line is a deliberate fallback.
+     * Whether an installed version may serve the request AT ALL - the filter over what is on disk.
+     * A requested build admits only itself; a requested line admits everything, because there the
+     * line is a preference that the ordering expresses and descending to another line is a
+     * deliberate fallback for when that line has no install.
      *
-     * <p>The same verdict answers "may this ALREADY RUNNING tool serve the request": being stricter
-     * about a running build than about one a fresh start would have picked refuses work for no
-     * reason, while handing back a build other than the one pinned is the failure this class exists
-     * to stop.
+     * <p>This is NOT the rule for reusing an ALREADY RUNNING tool. A line admits every version
+     * here, so reuse decided by this method would hand back an agent of 8.3.24 to a request for
+     * 8.5.1 even when 8.5.1 is installed and a fresh start would have taken it - and the server
+     * would refuse that with the very error the pin exists to prevent. Reuse compares the running
+     * build against what a fresh start would actually have chosen; see DesignerAgentGateway.start.
      */
     public static boolean accepts(String installed, String requested) {
         return !isBuild(requested)
@@ -106,10 +111,36 @@ public final class PlatformSelection {
         return "no " + what + " on disk for version line " + line(requested) + " (" + have + ").";
     }
 
-    /** Why an agent already running cannot serve the request: its build against the pinned one. */
-    public static String alreadyRunning(String running, String requested) {
-        return "an agent of build " + running + " is already running for this infobase, and "
-                + requested.trim() + " was pinned. Stop it (edt_designer_agent action=stop) or ask "
-                + "without platformVersion to use the running one.";
+    /**
+     * Why a request cannot be read as a build or a line, or {@code null} when it can. A shape
+     * outside both - five groups, a suffix, a typo - must not be waved through: everything that is
+     * not four digits reads as a line, so {@code 8.5.1.1302.1} would quietly resolve to the newest
+     * build installed. That is the substitution this class exists to stop, with a slip of the
+     * keyboard for a trigger.
+     */
+    public static String problem(String requested) {
+        if (requested == null || requested.isBlank()) {
+            return null;
+        }
+        String asked = requested.trim();
+        if (REQUEST.matcher(asked).matches()) {
+            return null;
+        }
+        return "\"" + asked + "\" is neither a build (8.5.1.1302) nor a line (8.5.1). Read as a "
+                + "line it would resolve to the newest build installed, which is the silent "
+                + "substitution a pinned build exists to prevent.";
+    }
+
+    /**
+     * Why an agent already running cannot serve the request: its build against the one the request
+     * resolves to here. A line is named as a line - saying it was "pinned" would misdescribe it.
+     */
+    public static String alreadyRunning(String running, String requested, String wanted) {
+        String asked = isBuild(requested)
+                ? requested.trim() + " was pinned"
+                : "line " + line(requested) + " resolves to " + wanted + " here";
+        return "an agent of build " + running + " is already running for this infobase, and " + asked
+                + ". Stop it (edt_designer_agent action=stop) or ask without platformVersion to use "
+                + "the running one.";
     }
 }
