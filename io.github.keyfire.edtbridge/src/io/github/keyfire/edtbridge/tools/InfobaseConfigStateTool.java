@@ -51,8 +51,11 @@ public final class InfobaseConfigStateTool {
         props.add("infobaseUser", strProp("1C infobase user, e.g. Администратор. The agent "
                 + "authenticates AS THIS USER; leave empty for an infobase without users."));
         props.add("infobasePassword", strProp("That user's password (optional). Never echoed back."));
-        props.add("platformVersion", strProp("Platform version line for the configurator, e.g. "
-                + "8.5.1.1423. It has to match the server the infobase runs on. Optional."));
+        props.add("platformVersion", strProp("Platform build for the configurator, e.g. "
+                + "8.5.1.1302. FOUR digits pin that exact build and nothing else is started - a "
+                + "configurator of another build is refused by the server (\"Несоответствие версий "
+                + "клиента и сервера\"), so pin the stand's own build. Three digits (8.5.1) mean "
+                + "the line: the newest installed build of it. Optional."));
 
         JsonArray required = new JsonArray();
         required.add("infobase");

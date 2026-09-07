@@ -77,8 +77,9 @@ public final class InfobaseSessionsTool {
                 + "one: a bare call then answers that the user lacks rights on the infobase."));
         props.add("infobasePassword", strProp("That administrator's password. Never echoed back."));
         props.add("reason", strProp("Message shown to the user whose session is ended."));
-        props.add("platformVersion", strProp("Platform version line to pick rac from, e.g. 8.5.1. "
-                + "Optional."));
+        props.add("platformVersion", strProp("Platform build to pick rac from, e.g. 8.5.1.1302. "
+                + "FOUR digits pin that exact build - rac talks to a ras of its own build; three "
+                + "digits (8.5.1) mean the line: the newest installed build of it. Optional."));
         props.add("action", action);
         props.add("apply", boolProp("terminate: false (default) reports what would be ended."));
         props.add("force", boolProp("terminate: required on top of apply - ending a session interrupts "

@@ -8,6 +8,20 @@ that day are named in the heading. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
+## [Unreleased]
+
+### Fixed
+- **`platformVersion` pins a build when it is written out in full.** Four digits were truncated
+  to the line before anything was looked up, so `8.5.1.1302` resolved to the newest 8.5.1 build
+  installed – 8.5.1.1464 – and the configurator died at the stand with "Несоответствие версий
+  клиента и сервера (8.5.1.1464 - 8.5.1.1302)". The build a server infobase requires was the one
+  thing a caller could not ask for, and there was no way around it from a session. A four-digit
+  request now admits that build and nothing else; three digits (`8.5.1`) still mean the line and
+  take its newest build. The rule holds for the configurator agent, for `rac` (`edt_infobase_sessions`,
+  `edt_infobase_maintenance`) and for `ibcmd` alike, and a running agent of another build no longer
+  answers a pinned request in silence. When the pinned build is absent the refusal names what IS
+  installed instead of saying "not found".
+
 ## 2026-09-06 – 0.21.0
 
 ### Added

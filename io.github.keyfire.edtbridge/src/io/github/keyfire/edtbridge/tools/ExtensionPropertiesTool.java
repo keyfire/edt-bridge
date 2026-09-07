@@ -73,8 +73,10 @@ public final class ExtensionPropertiesTool {
         props.add("projectName", strProp("Optional extension project in the workspace - when given, "
                 + "the result also says whether it changes methods, i.e. whether the two flags above "
                 + "have to be off."));
-        props.add("platform", strProp("Optional platform version line to pick the ibcmd install, e.g. "
-                + "8.5.1; it must match the infobase version"));
+        props.add("platform", strProp("Optional platform build for ibcmd (or, on the agent route, "
+                + "for the configurator), e.g. 8.5.1.1302. FOUR digits pin that exact build - which a "
+                + "server infobase requires, it refuses a client of another build; three digits "
+                + "(8.5.1) mean the line: the newest installed build of it."));
         props.add("apply", boolProp("false (default) = report current properties and the planned "
                 + "change. true = perform the update, then read the properties back."));
 

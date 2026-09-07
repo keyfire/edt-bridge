@@ -68,8 +68,11 @@ public final class UpdateInfobaseTool {
                 + "Empty for an infobase without users."));
         props.add("infobasePassword", strProp("agent transport: that user's password. Never echoed "
                 + "back."));
-        props.add("platformVersion", strProp("agent transport: platform version line for the "
-                + "configurator, e.g. 8.5.1.1423. It has to match the server the infobase runs on."));
+        props.add("platformVersion", strProp("agent transport: platform build for the configurator, "
+                + "e.g. 8.5.1.1302. FOUR digits pin that exact build and nothing else is started - a "
+                + "configurator of another build is refused by the server (\"Несоответствие версий "
+                + "клиента и сервера\"), so pin the build the stand runs. Three digits (8.5.1) mean "
+                + "the line: the newest installed build of it."));
         props.add("extension", strProp("agent transport: load the project as this extension of the "
                 + "infobase. Left out, an extension project is recognised by its adopted root and its "
                 + "own name is used; a configuration project loads as the configuration."));

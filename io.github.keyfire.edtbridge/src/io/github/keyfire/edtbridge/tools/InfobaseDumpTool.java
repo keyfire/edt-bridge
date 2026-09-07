@@ -54,8 +54,10 @@ public final class InfobaseDumpTool {
         props.add("infobaseUser", strProp("1C infobase user, e.g. Администратор. Required when the "
                 + "infobase authenticates its users."));
         props.add("infobasePassword", strProp("1C infobase password (optional). Never echoed back."));
-        props.add("platformVersion", strProp("Platform version line to prefer when picking the ibcmd "
-                + "install, e.g. 8.5.1.1302. Optional."));
+        props.add("platformVersion", strProp("Platform build to pick the ibcmd install from, e.g. "
+                + "8.5.1.1302. FOUR digits pin that exact build (ibcmd is missing from some builds "
+                + "of a line); three digits (8.5.1) mean the line: the newest installed build of "
+                + "it. Optional."));
         props.add("apply", boolProp("false (default) = dry-run: resolve ibcmd, check the destination "
                 + "and return the plan, write nothing. true = take the dump."));
 

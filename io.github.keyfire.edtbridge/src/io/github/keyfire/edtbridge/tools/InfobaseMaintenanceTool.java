@@ -92,8 +92,9 @@ public final class InfobaseMaintenanceTool {
         props.add("infobaseUser", strProp("Infobase administrator - the flags and the narrowed "
                 + "session list need it; a bare call answers \"Недостаточно прав пользователя\"."));
         props.add("infobasePassword", strProp("That user's password. Never echoed back."));
-        props.add("platformVersion", strProp("Platform version line to pick rac from, e.g. 8.5.1. "
-                + "Optional."));
+        props.add("platformVersion", strProp("Platform build to pick rac from, e.g. 8.5.1.1302. "
+                + "FOUR digits pin that exact build - rac talks to a ras of its own build; three "
+                + "digits (8.5.1) mean the line: the newest installed build of it. Optional."));
         props.add("apply", boolProp("begin/end: false (default) reports the plan and changes "
                 + "nothing. The flags are reversible, so force is not required."));
 
