@@ -38,6 +38,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import io.github.keyfire.edtbridge.core.AgentIdle;
 import io.github.keyfire.edtbridge.core.AgentRecord;
+import io.github.keyfire.edtbridge.core.PlatformSelection;
 
 import com._1c.g5.designer.ssh.client.DesignerClient;
 import com._1c.g5.designer.ssh.client.IDesignerSession;
@@ -200,12 +201,18 @@ public final class DesignerAgentGateway {
      * @param infobase        registered infobase name or uuid
      * @param user            infobase user; empty for an infobase without users
      * @param password        that user's password
-     * @param platformVersion version line to prefer for the configurator (optional). It must match the
-     *                        server the infobase runs on - a designer of a different build is refused
-     *                        by the server, not by us.
+     * @param platformVersion the build to start the configurator from (optional). Four digits pin
+     *                        that build, which is what a server infobase needs - a designer of a
+     *                        different build is refused by the server, not by us; three digits mean
+     *                        the line and take its newest installed build.
      */
     public AgentResult start(String infobase, String user, String password, String platformVersion) {
         AgentResult r = new AgentResult();
+        String malformed = PlatformSelection.problem(platformVersion);
+        if (malformed != null) {
+            r.message = malformed;
+            return r;
+        }
         Address resolved = resolveAddress(infobase);
         if (resolved.address == null) {
             r.message = resolved.problem;
@@ -214,6 +221,24 @@ public final class DesignerAgentGateway {
         String connection = resolved.address;
         Agent running = AGENTS.get(connection);
         if (running != null && running.process != null && running.process.isAlive()) {
+            // Reuse exactly what a fresh start would have produced, and nothing else. Deciding this
+            // by PlatformSelection.accepts would be too weak: a LINE accepts every version, so an
+            // agent of 8.3.24 would answer a request for 8.5.1 with 8.5.1 sitting on disk - and the
+            // server refuses that with the same "Несоответствие версий клиента и сервера" the pin
+            // exists to prevent. A caller who asked for nothing still takes whatever runs.
+            if (platformVersion != null && !platformVersion.isBlank()) {
+                PlatformGateway.DiskPlatform wanted = findDesignerInstall(platformVersion);
+                if (wanted == null) {
+                    r.message = PlatformSelection.unavailable("full install with a configurator",
+                            platformVersion, platform.versionsCarrying("1cv8.exe", "1cv8"));
+                    return r;
+                }
+                if (!wanted.version.equals(running.platformVersion)) {
+                    r.message = PlatformSelection.alreadyRunning(running.platformVersion,
+                            platformVersion, wanted.version);
+                    return r;
+                }
+            }
             r.ok = true;
             r.agents.add(running);
             r.message = "an agent for " + resolved.label + " is already running on port " + running.port;
@@ -227,8 +252,8 @@ public final class DesignerAgentGateway {
         List<String> swept = sweep(false);
         PlatformGateway.DiskPlatform install = findDesignerInstall(platformVersion);
         if (install == null) {
-            r.message = "no on-disk full install with a configurator was found"
-                    + (platformVersion == null ? "" : " for version line " + platformVersion);
+            r.message = PlatformSelection.unavailable("full install with a configurator", platformVersion,
+                    platform.versionsCarrying("1cv8.exe", "1cv8"));
             return r;
         }
         Path exe = PlatformGateway.firstExisting(install.binDir, "1cv8.exe", "1cv8");
@@ -1495,13 +1520,13 @@ public final class DesignerAgentGateway {
         String problem;
     }
 
-    /** Find or start the agent for an infobase. */
+    /**
+     * Find or start the agent for an infobase. Always through {@link #start}, which returns a
+     * running agent as it is - going around it via {@link #lookup} would hand back an agent whose
+     * build the caller pinned against, the one thing the pin exists to prevent.
+     */
     private Ensured ensure(String infobase, String user, String password, String platformVersion) {
         Ensured e = new Ensured();
-        e.agent = lookup(infobase);
-        if (e.agent != null) {
-            return e;
-        }
         AgentResult started = start(infobase, user, password, platformVersion);
         if (!started.ok || started.agents.isEmpty()) {
             e.problem = started.message;
@@ -1573,8 +1598,7 @@ public final class DesignerAgentGateway {
 
     /** A full install carrying the configurator (the thick client executable). */
     private PlatformGateway.DiskPlatform findDesignerInstall(String platformVersion) {
-        String line = PlatformGateway.platformLine(platformVersion);
-        for (PlatformGateway.DiskPlatform dp : platform.discoverFullPlatforms(line)) {
+        for (PlatformGateway.DiskPlatform dp : platform.discoverFullPlatforms(platformVersion)) {
             if (PlatformGateway.firstExisting(dp.binDir, "1cv8.exe", "1cv8") != null) {
                 return dp;
             }

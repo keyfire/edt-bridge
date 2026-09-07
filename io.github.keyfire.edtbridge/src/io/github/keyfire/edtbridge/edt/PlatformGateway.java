@@ -47,6 +47,8 @@ import com._1c.g5.v8.dt.platform.services.core.infobases.sync.IInfobaseUpdateCal
 import com._1c.g5.v8.dt.platform.services.core.infobases.sync.IInfobaseUpdateConflictResolver;
 import com._1c.g5.v8.dt.platform.services.core.infobases.sync.InfobaseConflictResolution;
 import io.github.keyfire.edtbridge.core.IbcmdArgs;
+import io.github.keyfire.edtbridge.core.PlatformSelection;
+import io.github.keyfire.edtbridge.core.Versions;
 import com._1c.g5.v8.dt.platform.services.model.FileConnectionString;
 import com._1c.g5.v8.dt.platform.services.model.InfobaseReference;
 import com._1c.g5.v8.dt.platform.services.model.ServerConnectionString;
@@ -609,18 +611,18 @@ public final class PlatformGateway {
                 java.util.Map<String, String> newestFullPerLine = new java.util.HashMap<>();
                 for (RuntimeInstallation ri : current) {
                     if (isFullInstall(ri)) {
-                        String line = platformLine(ri.getVersionWithBuild());
+                        String line = PlatformSelection.line(ri.getVersionWithBuild());
                         String have = newestFullPerLine.get(line);
-                        // compareVersionsDesc(v, have) < 0  ==>  v is newer than have
-                        if (have == null || compareVersionsDesc(ri.getVersionWithBuild(), have) < 0) {
+                        if (have == null || Versions.compare(ri.getVersionWithBuild(), have) > 0) {
                             newestFullPerLine.put(line, ri.getVersionWithBuild());
                         }
                     }
                 }
                 for (RuntimeInstallation ri : current) {
-                    String newestFull = newestFullPerLine.get(platformLine(ri.getVersionWithBuild()));
+                    String newestFull = newestFullPerLine.get(
+                            PlatformSelection.line(ri.getVersionWithBuild()));
                     if (!isFullInstall(ri) && newestFull != null
-                            && compareVersionsDesc(ri.getVersionWithBuild(), newestFull) < 0) {
+                            && Versions.compare(ri.getVersionWithBuild(), newestFull) > 0) {
                         r.removed.add(ri.getVersionWithBuild());  // thin build newer than the newest full
                     }
                 }
@@ -670,6 +672,11 @@ public final class PlatformGateway {
         CreateInfobaseResult r = new CreateInfobaseResult();
         r.name = name;
         r.path = path;
+        String malformed = PlatformSelection.problem(platformVersion);
+        if (malformed != null) {
+            r.message = malformed;
+            return r;
+        }
         r.platform = (platformVersion == null || platformVersion.isBlank()) ? "(auto)" : platformVersion.trim();
         if (name == null || name.isBlank()) {
             r.message = "name is required";
@@ -735,7 +742,7 @@ public final class PlatformGateway {
         }
         // 2) Fallback: EDT has no registered install with a thick client for this version. Find a full
         //    install on disk (highest matching version first), create the base with its own client,
-        //    and register it in EDT. Honours the requested version line, then descends.
+        //    and register it in EDT. Honours a pinned build exactly, a line first, then descends.
         return createInfobaseViaDiskPlatform(r, name, dir, platform, edtFailure);
     }
 
@@ -752,16 +759,17 @@ public final class PlatformGateway {
     /**
      * Fallback used by {@link #createInfobase} when EDT has no registered install carrying a thick
      * client: discover a full install on disk, create the file base with its own {@code 1cv8}
-     * client, then register the base in EDT. Selection order matches the owner's rule – the requested
-     * version line first (highest build), then all other versions descending – erroring out clearly
-     * when no suitable full install exists anywhere.
+     * client, then register the base in EDT. Selection follows {@link PlatformSelection} – a pinned
+     * build and nothing else, or the requested line first (highest build) then all other versions
+     * descending – erroring out clearly when no suitable full install exists.
      */
     private CreateInfobaseResult createInfobaseViaDiskPlatform(CreateInfobaseResult r, String name,
             java.nio.file.Path dir, String platformVersion, Throwable edtFailure) {
-        List<DiskPlatform> candidates = discoverFullPlatforms(platformLine(platformVersion));
+        List<DiskPlatform> candidates = discoverFullPlatforms(platformVersion);
         if (candidates.isEmpty()) {
             r.applied = false;
-            r.message = "no suitable full (thick-client) 1C:Enterprise install found on disk"
+            r.message = PlatformSelection.unavailable("full (thick-client) 1C:Enterprise install",
+                            platformVersion, versionsCarrying("1cv8.exe", "1cv8"))
                     + (edtFailure != null ? " (EDT could not either: " + GatewaySupport.describeCause(edtFailure) + ")" : "")
                     + " – install a full 1C:Enterprise platform (the thin client / training editions do "
                     + "not include the components needed to create an infobase).";
@@ -827,9 +835,9 @@ public final class PlatformGateway {
         return false;
     }
 
-    /** The best full install on disk for a version line, or {@code null} when there is none. */
-    String diskPlatformFor(String versionLine) {
-        for (DiskPlatform dp : discoverFullPlatforms(platformLine(versionLine))) {
+    /** The best full install on disk for a requested build or line, or {@code null} when none fits. */
+    String diskPlatformFor(String requested) {
+        for (DiskPlatform dp : discoverFullPlatforms(requested)) {
             if (firstExisting(dp.binDir, "1cv8.exe", "1cv8") != null) {
                 return dp.version;
             }
@@ -851,7 +859,7 @@ public final class PlatformGateway {
      */
     String dumpExternalObjectViaDisk(EObject root, java.nio.file.Path target, Version version,
             java.nio.file.Path logPath, StringBuilder methodOut) {
-        String line = platformLine(String.valueOf(version));
+        String line = PlatformSelection.line(String.valueOf(version));
         List<DiskPlatform> candidates = discoverFullPlatforms(line);
         if (candidates.isEmpty()) {
             return "no full (thick-client) 1C:Enterprise install found on disk for line " + line;
@@ -949,26 +957,15 @@ public final class PlatformGateway {
         }
     }
 
-    /** The major.minor.release line of a version (first three parts), or {@code null} if not given. */
-    static String platformLine(String version) {
-        if (version == null || version.isBlank()) {
-            return null;
-        }
-        String[] p = version.trim().split("\\.");
-        if (p.length >= 3) {
-            return p[0] + "." + p[1] + "." + p[2];
-        }
-        return version.trim();
-    }
-
     /**
      * Scan the platform install roots for full installs that carry a thick client (a {@code 1cv8}
-     * executable in {@code bin}). Ordered best-first: entries whose version starts with
-     * {@code preferredLine} (highest build first), then every other version descending. Roots are
-     * derived from installs EDT already resolved (so it works wherever the distributions live, incl.
-     * macOS) plus the standard Windows locations.
+     * executable in {@code bin}). What {@code requested} admits and how the rest is ordered is
+     * {@link PlatformSelection}'s rule: a four-digit build is a pin and leaves only itself, a line
+     * comes first (highest build) and lets other versions follow descending, and nothing requested
+     * leaves everything. Roots are derived from installs EDT already resolved (so it works wherever
+     * the distributions live, incl. macOS) plus the standard Windows locations.
      */
-    List<DiskPlatform> discoverFullPlatforms(String preferredLine) {
+    List<DiskPlatform> discoverFullPlatforms(String requested) {
         java.util.LinkedHashSet<java.nio.file.Path> roots = new java.util.LinkedHashSet<>();
         try {
             IResolvableRuntimeInstallationManager rm =
@@ -1018,40 +1015,24 @@ public final class PlatformGateway {
                 // unreadable root; skip
             }
         }
-        found.sort((a, b) -> {
-            boolean pa = matchesLine(a.version, preferredLine);
-            boolean pb = matchesLine(b.version, preferredLine);
-            if (pa != pb) {
-                return pa ? -1 : 1;
-            }
-            return compareVersionsDesc(a.version, b.version);
-        });
+        found.removeIf(dp -> !PlatformSelection.accepts(dp.version, requested));
+        found.sort((a, b) -> PlatformSelection.compare(a.version, b.version, requested));
         return found;
     }
 
-    private static boolean matchesLine(String version, String line) {
-        return line != null && (version.equals(line) || version.startsWith(line + "."));
-    }
-
-    private static int compareVersionsDesc(String a, String b) {
-        String[] pa = a.split("\\.");
-        String[] pb = b.split("\\.");
-        for (int i = 0; i < Math.max(pa.length, pb.length); i++) {
-            int va = i < pa.length ? parseIntSafe(pa[i]) : 0;
-            int vb = i < pb.length ? parseIntSafe(pb[i]) : 0;
-            if (va != vb) {
-                return Integer.compare(vb, va); // descending
+    /**
+     * Versions of every on-disk full install carrying one of {@code executables}, best-first. This
+     * is what a refusal quotes: naming the build that is missing without naming the ones that are
+     * there leaves the reader guessing at the very fact that decides what to do next.
+     */
+    List<String> versionsCarrying(String... executables) {
+        List<String> out = new ArrayList<>();
+        for (DiskPlatform dp : discoverFullPlatforms(null)) {
+            if (firstExisting(dp.binDir, executables) != null) {
+                out.add(dp.version);
             }
         }
-        return 0;
-    }
-
-    private static int parseIntSafe(String s) {
-        try {
-            return Integer.parseInt(s);
-        } catch (NumberFormatException e) {
-            return 0;
-        }
+        return out;
     }
 
     static java.nio.file.Path firstExisting(java.nio.file.Path dir, String... names) {
@@ -1197,13 +1178,18 @@ public final class PlatformGateway {
         }
         r.extensionName = extName;
         Version version = GatewaySupport.projectVersion(p);
-        String line = platformLine((platformVersion != null && !platformVersion.isBlank())
-                ? platformVersion : String.valueOf(version));
-        DiskPlatform ib = findIbcmdInstall(line);
+        String malformed = PlatformSelection.problem(platformVersion);
+        if (malformed != null) {
+            r.message = malformed;
+            return r;
+        }
+        String requested = (platformVersion != null && !platformVersion.isBlank())
+                ? platformVersion : String.valueOf(version);
+        DiskPlatform ib = findIbcmdInstall(requested);
         if (ib == null) {
-            r.message = "no on-disk full install carrying ibcmd was found"
-                    + (line != null ? " for version line " + line : "")
-                    + " – a full 1C:Enterprise install (with ibcmd) matching the base version is required.";
+            r.message = PlatformSelection.unavailable("full install carrying ibcmd", requested,
+                            versionsCarrying("ibcmd.exe", "ibcmd"))
+                    + " A full 1C:Enterprise install (with ibcmd) matching the base version is required.";
             return r;
         }
         r.platform = ib.version;
@@ -1439,11 +1425,16 @@ public final class PlatformGateway {
         List<String> conn = new ArrayList<>(target.dbArgs);
         r.infobase = target.label;
 
-        DiskPlatform ib = findIbcmdInstall(platformLine(platformVersion));
+        String malformed = PlatformSelection.problem(platformVersion);
+        if (malformed != null) {
+            r.message = malformed;
+            return r;
+        }
+        DiskPlatform ib = findIbcmdInstall(platformVersion);
         if (ib == null) {
-            r.message = "no on-disk full install carrying ibcmd was found"
-                    + (platformVersion == null ? "" : " for version line " + platformVersion)
-                    + " - a full 1C:Enterprise install (with ibcmd) is required.";
+            r.message = PlatformSelection.unavailable("full install carrying ibcmd", platformVersion,
+                            versionsCarrying("ibcmd.exe", "ibcmd"))
+                    + " A full 1C:Enterprise install (with ibcmd) is required.";
             return r;
         }
         r.platform = ib.version;
@@ -1595,9 +1586,9 @@ public final class PlatformGateway {
         return run.ok ? run.output : null;
     }
 
-    /** Best on-disk full install that carries {@code ibcmd}, preferring {@code line} then descending. */
-    DiskPlatform findIbcmdInstall(String preferredLine) {
-        for (DiskPlatform dp : discoverFullPlatforms(preferredLine)) {
+    /** Best on-disk full install that carries {@code ibcmd} for the requested build or line. */
+    DiskPlatform findIbcmdInstall(String requested) {
+        for (DiskPlatform dp : discoverFullPlatforms(requested)) {
             if (firstExisting(dp.binDir, "ibcmd.exe", "ibcmd") != null) {
                 return dp;
             }

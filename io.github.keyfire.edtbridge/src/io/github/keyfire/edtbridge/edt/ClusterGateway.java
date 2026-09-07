@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 
 import io.github.keyfire.edtbridge.core.MaintenanceWindow;
+import io.github.keyfire.edtbridge.core.PlatformSelection;
 import io.github.keyfire.edtbridge.core.RacOutput;
 
 /**
@@ -421,15 +422,20 @@ public final class ClusterGateway {
 
     /**
      * Find {@code rac} on disk. Any full install carries it, and unlike ibcmd it is not missing from
-     * some builds - so the newest full install of the preferred line will do.
+     * some builds - so the newest full install of the preferred line will do. A pinned build (four
+     * digits) is honoured to the digit: rac talks to ras of its own build and no other.
      */
     private Rac resolve(String server, String platformVersion, SessionsResult r) {
         if (server == null || server.isBlank()) {
             r.message = "a cluster server is required, e.g. srv.example.test (optionally with a port)";
             return null;
         }
-        for (PlatformGateway.DiskPlatform dp
-                : platform.discoverFullPlatforms(PlatformGateway.platformLine(platformVersion))) {
+        String malformed = PlatformSelection.problem(platformVersion);
+        if (malformed != null) {
+            r.message = malformed;
+            return null;
+        }
+        for (PlatformGateway.DiskPlatform dp : platform.discoverFullPlatforms(platformVersion)) {
             Path exe = PlatformGateway.firstExisting(dp.binDir, "rac.exe", "rac");
             if (exe != null) {
                 Rac rac = new Rac();
@@ -441,8 +447,8 @@ public final class ClusterGateway {
                 return rac;
             }
         }
-        r.message = "no on-disk install carrying rac was found"
-                + (platformVersion == null ? "" : " for version line " + platformVersion);
+        r.message = PlatformSelection.unavailable("install carrying rac", platformVersion,
+                platform.versionsCarrying("rac.exe", "rac"));
         return null;
     }
 

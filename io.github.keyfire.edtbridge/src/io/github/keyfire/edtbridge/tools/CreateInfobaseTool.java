@@ -45,8 +45,12 @@ public final class CreateInfobaseTool {
         props.add("name", strProp("Infobase display name (as it appears in EDT's infobases list)"));
         props.add("path", strProp("Absolute folder for the file infobase, e.g. D:\\Bases\\test1 "
                 + "(created if missing)"));
-        props.add("platform", strProp("Optional platform version to pin, e.g. 8.3.24 – omit to let EDT "
-                + "resolve the installation itself"));
+        props.add("platform", strProp("Optional platform build or line, e.g. 8.5.1.1302 or 8.3.24 – "
+                + "omit to let EDT resolve the installation itself. FOUR digits name one build, three "
+                + "or fewer a line (its newest installed build, then other lines descending). The "
+                + "pin binds the on-disk fallback, which creates the base with its own client; the "
+                + "EDT route hands the string to EDT's own resolver, and what that picks is EDT's "
+                + "decision, not ours - the result reports the build actually used."));
         props.add("cf", strProp("Optional path to a .cf file to load as the initial configuration – "
                 + "omit for a blank base"));
         props.add("apply", boolProp("false (default) = dry-run: validate the request only. true = "

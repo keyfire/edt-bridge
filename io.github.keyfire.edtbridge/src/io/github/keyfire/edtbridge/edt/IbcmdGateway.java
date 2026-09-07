@@ -34,6 +34,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
 import io.github.keyfire.edtbridge.core.IbcmdArgs;
+import io.github.keyfire.edtbridge.core.PlatformSelection;
 
 /**
  * Talking to an infobase through {@code ibcmd}, the platform's stand-alone management utility.
@@ -70,18 +71,21 @@ public final class IbcmdGateway {
     }
 
     /**
-     * Find an on-disk full install carrying ibcmd, preferring the line of {@code platformVersion}
-     * (ibcmd ships in 8.5.1.1302 but is absent from 8.5.1.1317, so the newest install is not always
-     * the right one).
+     * Find an on-disk full install carrying ibcmd for {@code platformVersion} - four digits pin that
+     * build, fewer prefer its line (ibcmd ships in 8.5.1.1302 but is absent from 8.5.1.1317, so the
+     * newest install is not always the right one, and the pin is how a caller says which is).
      */
     public Tool resolve(String platformVersion) {
         Tool tool = new Tool();
-        PlatformGateway.DiskPlatform install =
-                platform.findIbcmdInstall(PlatformGateway.platformLine(platformVersion));
+        tool.problem = PlatformSelection.problem(platformVersion);
+        if (tool.problem != null) {
+            return tool;
+        }
+        PlatformGateway.DiskPlatform install = platform.findIbcmdInstall(platformVersion);
         if (install == null) {
-            tool.problem = "no on-disk full install carrying ibcmd was found"
-                    + (platformVersion == null ? "" : " for version line " + platformVersion)
-                    + " - a full 1C:Enterprise install (with ibcmd) is required.";
+            tool.problem = PlatformSelection.unavailable("full install carrying ibcmd", platformVersion,
+                            platform.versionsCarrying("ibcmd.exe", "ibcmd"))
+                    + " A full 1C:Enterprise install (with ibcmd) is required.";
             return tool;
         }
         tool.exe = PlatformGateway.firstExisting(install.binDir, "ibcmd.exe", "ibcmd");
