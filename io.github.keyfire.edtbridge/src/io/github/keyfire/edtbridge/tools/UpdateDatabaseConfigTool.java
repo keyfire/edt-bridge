@@ -74,6 +74,11 @@ public final class UpdateDatabaseConfigTool {
                 + "configurator of another build is refused by the server (\"Несоответствие версий "
                 + "клиента и сервера\"), so pin the stand's own build. Three digits (8.5.1) mean "
                 + "the line: the newest installed build of it. Optional."));
+        props.add("answer", strProp("Which option to give when the platform stops and asks - the "
+                + "value it offered (or the label). Left out, the question comes back in \"question\" "
+                + "with its options and NOTHING is answered: one option ends other users' sessions "
+                + "and another applies the change dynamically on live sessions, so the choice is "
+                + "yours to make, not this tool's. Ask once, read the options, call again with answer."));
         props.add("apply", apply);
 
         JsonArray required = new JsonArray();
@@ -121,6 +126,7 @@ public final class UpdateDatabaseConfigTool {
                     getStr(args, "infobaseUser"),
                     getStr(args, "infobasePassword"),
                     getStr(args, "platformVersion"),
+                    getStr(args, "answer"),
                     getBool(args, "apply"));
             JsonObject o = new JsonObject();
             o.addProperty("ok", res.ok);
@@ -135,6 +141,15 @@ public final class UpdateDatabaseConfigTool {
                 o.addProperty("extension", res.extension);
             }
             o.addProperty("sessionTermination", res.sessionTermination);
+            if (res.answer != null) {
+                o.addProperty("answer", res.answer);
+            }
+            if (res.question != null) {
+                o.addProperty("question", res.question);
+                JsonArray opts = new JsonArray();
+                res.questionOptions.forEach(opts::add);
+                o.add("questionOptions", opts);
+            }
             o.addProperty("changeCount", res.changes.size());
             if (!res.changes.isEmpty()) {
                 JsonArray changes = new JsonArray();

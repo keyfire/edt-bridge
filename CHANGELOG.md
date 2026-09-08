@@ -23,6 +23,18 @@ that day are named in the heading. The format follows
   optional and the EDT synchronization route has always filled it in from the project, but the agent
   route answered a well-formed call with "an infobase name, uuid or address is required".
 
+- **The platform's questions are answered - by the caller.** The bridge registered no question
+  handler, so when the platform stopped to ask ("the database is locked: Cancel / Retry", and for a
+  change touching no table structure a third option, applying it dynamically while sessions keep
+  running), the operation died with "question delegate has not been specified" - identically under
+  every `sessionTermination`, because that setting feeds a different branch. Dynamic update was
+  unreachable and a code-only change needed a maintenance window. A handler is now set on every
+  session: without `answer` the question comes back with its options and nothing is answered, and
+  `answer=<value>` picks one. The bridge does not choose: one option ends other users' sessions.
+- **`edt_infobase_config_state` no longer reports "up to date" from structure changes alone.** A
+  change that alters no table reports no structure changes, so an empty list said the database
+  configuration was applied while sessions still ran the old code. The answer now says what was
+  actually measured.
 ## 2026-09-09 – 0.23.0, 0.24.0, 0.25.0
 
 ### Added
