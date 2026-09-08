@@ -190,7 +190,12 @@ MESSAGES = {
 Jar применится при следующем запуске EDT. Обвязка заменяется прямо в site-packages;
 exe в Scripts не трогаются, поэтому запущенные edt-bridge-mcp надо перезапустить.
 Плагины обновляются через pip из своего источника установки (git-репозиторий или
-реестр пакетов; реестру можно указать адрес переменной EDT_BRIDGE_PLUGIN_INDEX).""",
+реестр пакетов; реестру можно указать адрес переменной EDT_BRIDGE_PLUGIN_INDEX).
+
+коды возврата:
+  0    всё, что просили, обновилось
+  1    не обновился сам мост (jar или обвязка) либо не обновилось ничего
+  2    мост обновлён, не встал только плагин обвязки""",
         "en": """usage: edt-bridge-mcp self-update [options]
 
 Refresh the plugin jar in EDT's dropins, this wrapper in its own environment, and
@@ -206,7 +211,12 @@ options:
 The jar applies on EDT's next restart. The wrapper is replaced inside site-packages;
 the exes in Scripts are left alone, so restart any running edt-bridge-mcp afterwards.
 Plugins are updated through pip from the source they were installed from (a git
-repository or a package index; set EDT_BRIDGE_PLUGIN_INDEX to name the index).""",
+repository or a package index; set EDT_BRIDGE_PLUGIN_INDEX to name the index).
+
+exit codes:
+  0    every step asked for succeeded
+  1    the bridge itself did not update (jar or wrapper), or nothing did
+  2    the bridge is current and only a wrapper plugin is not""",
     },
 }
 

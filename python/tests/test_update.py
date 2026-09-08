@@ -391,3 +391,41 @@ def test_pip_command_falls_back_to_the_venv_python(tmp_path, monkeypatch):
     monkeypatch.setattr(update.shutil, "which", lambda _name: None)
     command = update._pip_command(site)
     assert command is not None and command[1:] == ["-m", "pip"]
+
+
+# -- the verdict: a partial failure has to be told apart from a total one --------
+#
+# Reported after the 0.22.0 release: the jar and the wrapper both reached 0.22.0 and only the
+# plugin step failed, on a source host that was unreachable - and the call exited 1, exactly
+# like a run that updated nothing at all.
+
+
+def test_a_failed_addon_does_not_read_like_a_failed_update():
+    lines = []
+    code = update.verdict(
+        [("plugin jar", True), ("wrapper", True), ("wrapper plugins", False)], emit=lines.append)
+
+    assert code == update.EXIT_ADDON_FAILED
+    assert any("wrapper plugins" in line and "failed" in line for line in lines)
+    assert any("up to date" in line for line in lines)
+
+
+def test_a_failed_core_step_is_still_a_failure():
+    for steps in (
+        [("plugin jar", False), ("wrapper", True), ("wrapper plugins", True)],
+        [("plugin jar", True), ("wrapper", False), ("wrapper plugins", True)],
+        [("plugin jar", False), ("wrapper", False), ("wrapper plugins", False)],
+    ):
+        assert update.verdict(steps, emit=lambda _msg: None) == 1
+
+
+def test_a_lone_step_that_failed_is_not_a_partial_success():
+    # --plugins-only: the plugins were the whole job, so there is no "core is fine" to report
+    assert update.verdict([("wrapper plugins", False)], emit=lambda _msg: None) == 1
+
+
+def test_everything_succeeding_is_zero_and_says_so():
+    lines = []
+    assert update.verdict([("plugin jar", True), ("wrapper", True)], emit=lines.append) == 0
+    assert any("all done" in line for line in lines)
+    assert update.verdict([], emit=lambda _msg: None) == 0

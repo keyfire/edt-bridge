@@ -68,6 +68,11 @@ restarts its own headless instance on the next auto-start.
 released yet, without a full `pipx install --force` (which rebuilds the venv and replaces the exe the
 running client holds).
 
+The exit code separates the bridge from its add-ons: `0` when every step asked for succeeded, `1`
+when the bridge itself did not update (the jar or the wrapper) or nothing did, and `2` when the
+bridge is current and only a wrapper plugin is not – a plugin installs from its own source, and that
+source being unreachable is not the bridge failing to update.
+
 The wrapper updates itself by unpacking, not through an installer: it downloads the wheel from PyPI
 (or copies the package out of the checkout given to `--from`) and replaces the package inside
 `site-packages` using the standard library alone. No pip, no pipx, no build backend – which matters,

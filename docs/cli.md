@@ -218,6 +218,11 @@ usage: edt-bridge-mcp self-update [options]
 | `--plugins-only` | only the wrapper plugins |
 | `--from <path>` | install the wrapper from a checkout instead of PyPI |
 | `-h, --help` | show this message |
+| `0` | every step asked for succeeded |
+| `1` | the bridge itself did not update (jar or wrapper), or nothing did |
+| `2` | the bridge is current and only a wrapper plugin is not |
 
 The jar applies on EDT's next restart. The wrapper is replaced inside site-packages; the exes in Scripts are left alone, so restart any running edt-bridge-mcp afterwards. Plugins are updated through pip from the source they were installed from (a git repository or a package index; set EDT_BRIDGE_PLUGIN_INDEX to name the index).
+
+exit codes:
 

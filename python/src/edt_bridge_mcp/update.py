@@ -30,6 +30,11 @@ Plugin update:
   repository URL, a registry install by project name (honouring ``EDT_BRIDGE_PLUGIN_INDEX`` as
   the index URL). pip itself is reached the way the environment allows: ``pipx runpip`` for a
   pipx venv (works even though a uv-built venv has no pip module), the venv's own pip otherwise.
+
+Exit codes:
+- ``0`` every step asked for succeeded;
+- ``1`` the bridge itself did not update (the jar or the wrapper), or nothing did;
+- ``2`` the bridge is current and only a wrapper plugin is not.
 """
 
 from __future__ import annotations
@@ -571,6 +576,43 @@ def update_plugins(emit=log) -> bool:
     return ok
 
 
+# -- the verdict -------------------------------------------------------------------------------
+
+#: Exit code for "the bridge itself is current, an add-on is not" - see :func:`verdict`.
+EXIT_ADDON_FAILED = 2
+
+#: The steps that ARE edt-bridge. A wrapper plugin is somebody else's package, installed from
+#: somebody else's source, and it failing says nothing about the bridge.
+CORE_STEPS = ("plugin jar", "wrapper")
+
+
+def verdict(steps: list[tuple[str, bool]], emit=log) -> int:
+    """Exit code for the steps that ran, and a closing line naming each one's outcome.
+
+    One code for every failure could not answer the question a caller actually has. A release
+    where the jar and the wrapper both reached 0.22.0 and only the plugin step failed - its
+    source was an unreachable host - exited 1, exactly like a run that updated nothing at all,
+    and nothing in the code said which had happened. So the core and the add-ons are graded
+    apart: 0 when every step asked for succeeded, 1 when a part of the bridge itself did not
+    (or when the failure is all there was), and 2 when the bridge is current and only a wrapper
+    plugin is not - a state worth acting on, but not one to fail a deployment over.
+    """
+    if not steps:
+        return 0
+    failed = [name for name, ok in steps if not ok]
+    done = [name for name, ok in steps if ok]
+    if not failed:
+        emit("all done: " + ", ".join(done))
+        return 0
+    emit("failed: " + ", ".join(failed)
+         + ("; updated: " + ", ".join(done) if done else "; nothing was updated"))
+    if not done or any(name in CORE_STEPS for name in failed):
+        return 1
+    emit("the bridge itself is up to date - only the add-on above is not (exit "
+         f"{EXIT_ADDON_FAILED})")
+    return EXIT_ADDON_FAILED
+
+
 def run(argv: list[str]) -> int:
     if "-h" in argv or "--help" in argv:
         # Without this, asking for help would perform the update - the flags are parsed by
@@ -587,11 +629,11 @@ def run(argv: list[str]) -> int:
             log("--from needs a path to a checkout, e.g. --from <repo>/python")
             return 1
         source = argv[index + 1]
-    ok = True
+    steps: list[tuple[str, bool]] = []
     if not pip_only and not plugins_only:
-        ok = update_jar() and ok
+        steps.append(("plugin jar", update_jar()))
     if not jar_only and not plugins_only:
-        ok = update_wrapper(source) and ok
+        steps.append(("wrapper", update_wrapper(source)))
     if not jar_only and not pip_only:
-        ok = update_plugins() and ok
-    return 0 if ok else 1
+        steps.append(("wrapper plugins", update_plugins()))
+    return verdict(steps)
