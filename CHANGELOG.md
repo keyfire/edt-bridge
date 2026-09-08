@@ -8,6 +8,44 @@ that day are named in the heading. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
+## [Unreleased]
+
+### Fixed
+- **A running agent of the requested LINE is no longer turned away.** Reuse measured the agent
+  against the newest build installed of that line, so a stand pinned to 8.5.1.1302 with 8.5.1.1464
+  also on disk refused its own agent for a request for `8.5.1` – and the refusal advised a restart
+  first, which would have started 8.5.1.1464, the one build that stand's server rejects. A line is
+  now served by any build of that line, a build still only by itself, and every refusal that remains
+  is one where a restart really does produce something else; the message says which build that is.
+  The reuse path also stops walking the install roots: an agent that already serves is answered
+  without touching the disk.
+- **The install roots are walked once per call.** `rac`, `ibcmd` and the configurator agent each
+  scanned twice on a miss – once to pick nothing, once to name what IS installed for the refusal –
+  and the agent scanned even when reusing a live one. The scan is taken once and both questions are
+  asked of it.
+- **`edt_infobase_maintenance action=end` lowers `sessions-deny` as well.** It came down only when
+  the `end` call was told `sessionsDeny` again – yet `end` is the other half of a `begin` made in
+  another call, and nothing carries that call's arguments across. A plain `end` reported "denial
+  flags lowered" over a stand that stayed shut to everybody, and the only field saying otherwise was
+  `flags`. `end` now takes down every flag a `begin` can put up, and when one survives anyway the
+  report says so instead of summarising it away.
+- **An SSH login refused because the infobase is held elsewhere says so.** The login authenticates an
+  INFOBASE user, so an agent that never opened the infobase has nobody to check it against and
+  answers "Auth fail" – a message about credentials for a failure that is not about them. With
+  another configurator holding the configuration lock, `edt_update_infobase transport=agent` failed
+  as a bare `AuthenticationException` while the platform's own explanation sat in the agent's `/Out`
+  log, unread. The log is now read on a refused login, the lock refusal in it is named for what it
+  is, and the thick-client processes running beside us are listed – one of them holds it.
+- **An `fqn` narrowing by FORM no longer answers with the object's other forms.** An EDT check marker
+  is addressed by object presentation, and the name filter knew the object's name alone, so "is the
+  form Контроль clean" came back with the findings of the form Форма – a report about the wrong code
+  that reads exactly like a report about the right one. A form is matched by both names at once.
+- **`self-update` tells a failed add-on from a failed update.** The jar and the wrapper reaching
+  0.22.0 while the plugin step failed on an unreachable source exited 1, exactly like a run that
+  updated nothing: the exit code could not answer the question a caller has. It now separates them –
+  `0` everything asked for, `1` the bridge itself did not update (or nothing did), `2` the bridge is
+  current and only a wrapper plugin is not – and closes with a line naming each step's outcome.
+
 ## 2026-09-08 – 0.22.0
 
 ### Fixed
