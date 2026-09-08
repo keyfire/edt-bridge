@@ -112,6 +112,42 @@ public final class PlatformMessages {
     }
 
     /**
+     * The platform naming the culprit outright: the second sentence of its configuration-lock
+     * refusal, which says the infobase is open in a Configurator already. Both wordings come from
+     * the platform's own bundles ({@code backend_ru.res}, {@code backend_root.res}):
+     * "Возможно, информационная база уже открыта Конфигуратором." and "Infobase may already be in
+     * use by Designer."
+     */
+    public static boolean isHeldByConfigurator(String message) {
+        return message != null
+                && (message.contains("информационная база уже открыта Конфигуратором")
+                        || message.contains("Infobase may already be in use by Designer"));
+    }
+
+    /**
+     * What an agent's own {@code /Out} log says about a refused SSH login, or {@code null} when it
+     * says nothing recognisable.
+     *
+     * <p>The SSH login authenticates an INFOBASE user, so an agent that could not open the infobase
+     * has nobody to authenticate against and answers "Auth fail" - a message about credentials for a
+     * failure that has nothing to do with them. That is how a foreign configurator holding the
+     * configuration lock reached the caller as {@code AuthenticationException: Auth fail}, with the
+     * real reason sitting in a log nothing read. The log is the only place the platform explains
+     * itself here, so the diagnosis is read from it.
+     */
+    public static String authRefusalCause(String agentLog) {
+        if (agentLog == null || agentLog.isBlank()) {
+            return null;
+        }
+        if (isHeldByConfigurator(agentLog) || isConfigurationLockRefusal(agentLog)) {
+            return "the agent could not lock the infobase for configuring - another Configurator "
+                    + "holds it, so there was no infobase session to authenticate against and the "
+                    + "login was refused as if the credentials were wrong";
+        }
+        return null;
+    }
+
+    /**
      * A hint for a platform refusal whose cause is regularly NOT what the text suggests, or
      * {@code null} when there is nothing to add. The one known so far: the configuration-lock
      * refusal reads as if somebody were configuring the infobase right now, while the usual

@@ -118,5 +118,34 @@ class PlatformMessagesTest {
         assertTrue(PlatformMessages.isAlreadyConnectedReply(
                 "Designer (agent mode) is already connected to the infobase"));
         assertFalse(PlatformMessages.isAlreadyConnectedReply("Пользователь не идентифицирован"));
+
+        // the second sentence of the same refusal, where the platform names the culprit outright;
+        // both wordings are quoted from backend_ru.res / backend_root.res of the distribution
+        assertTrue(PlatformMessages.isHeldByConfigurator(
+                "Ошибка блокировки информационной базы для конфигурирования.\n"
+                        + "Возможно, информационная база уже открыта Конфигуратором."));
+        assertTrue(PlatformMessages.isHeldByConfigurator(
+                "Error locking infobase for configuration.\n"
+                        + "Infobase may already be in use by Designer."));
+        assertFalse(PlatformMessages.isHeldByConfigurator("Пользователь не идентифицирован"));
+        assertFalse(PlatformMessages.isHeldByConfigurator(null));
+    }
+
+    @Test
+    @DisplayName("an SSH refusal is read off the agent's own log, where the real reason is")
+    void authRefusalIsDiagnosedFromTheAgentLog() {
+        // The reported bug: a foreign configurator held the configuration lock, so the agent never
+        // opened the infobase and had nobody to authenticate the login against - and the caller was
+        // told "Auth fail", a message about credentials for a failure that is not about them.
+        String log = "Ошибка блокировки информационной базы для конфигурирования.\n"
+                + "Возможно, информационная база уже открыта Конфигуратором.";
+        String cause = PlatformMessages.authRefusalCause(log);
+        assertTrue(cause != null && cause.contains("another Configurator"), cause);
+        assertTrue(PlatformMessages.authRefusalCause(
+                "Error locking infobase for configuration.") != null);
+        // a log that says nothing recognisable must not be dressed up as a diagnosis
+        assertEquals(null, PlatformMessages.authRefusalCause("Пользователь не идентифицирован"));
+        assertEquals(null, PlatformMessages.authRefusalCause("   "));
+        assertEquals(null, PlatformMessages.authRefusalCause(null));
     }
 }

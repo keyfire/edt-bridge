@@ -80,6 +80,9 @@ public final class DesignerAgentGateway {
     private static final int FIRST_PORT = 1543;
     private static final int LAST_PORT = 1600;
 
+    /** The agent's {@code /Out} log inside its base directory - where it explains its own failures. */
+    private static final String AGENT_LOG = "agent.log";
+
     /** How long to wait for a freshly started agent to accept connections. */
     private static final int START_TIMEOUT_SECONDS = 120;
 
@@ -285,7 +288,7 @@ public final class DesignerAgentGateway {
         try {
             baseDir = Files.createTempDirectory(AgentRecord.BASE_DIR_PREFIX);
             agent.baseDir = baseDir.toString();
-            Path log = baseDir.resolve("agent.log");
+            Path log = baseDir.resolve(AGENT_LOG);
             // The parameters are glued to their values (/FD:\base, /AgentPort1543): that is the
             // platform's own convention, and a shell that rewrites slash-arguments into paths (git
             // bash does) breaks the launch silently - the process starts and does nothing.
@@ -1406,7 +1409,8 @@ public final class DesignerAgentGateway {
                 agent.session = session;
                 return session;
             } catch (com._1c.g5.designer.ssh.client.AuthenticationException refused) {
-                throw refused;
+                closeQuietly(client, null);
+                throw authRefused(agent, refused);
             } catch (Exception notReadyYet) {
                 // An open TCP port is not a ready SSH server: right after the agent binds, a
                 // connection is accepted and then dropped, and that surfaces as a
@@ -1650,6 +1654,72 @@ public final class DesignerAgentGateway {
             }
         }
         return false;
+    }
+
+    /**
+     * Why the agent refused the SSH login, as far as anything on this machine can say.
+     *
+     * <p>"Auth fail" is a message about credentials, and the failure it reports need not be about
+     * credentials at all: the login authenticates an INFOBASE user, so an agent that never opened
+     * the infobase has nobody to check the login against. That is how a foreign configurator holding
+     * the configuration lock arrived as a bare {@code AuthenticationException} - the platform did
+     * explain itself, in the {@code /Out} log nothing was reading. So the log is read here, the
+     * lock refusal in it is named for what it is, and the configurator processes running beside us
+     * are listed, since the one holding the lock is among them.
+     */
+    private static Exception authRefused(Agent agent, Exception refused) {
+        String log = (agent.baseDir == null) ? ""
+                : readAgentLog(Path.of(agent.baseDir).resolve(AGENT_LOG));
+        String cause = io.github.keyfire.edtbridge.core.PlatformMessages.authRefusalCause(log);
+        StringBuilder said = new StringBuilder("the agent refused the SSH login");
+        if (cause != null) {
+            said.append(": ").append(cause);
+            String others = configuratorProcesses();
+            if (others != null) {
+                said.append(". Thick-client processes running now (one of them holds it): ")
+                        .append(others);
+            }
+        } else {
+            said.append(". The login here IS the infobase user, so an infobase with users wants "
+                    + "its own name and password and one without users wants an empty pair");
+        }
+        if (!log.isBlank()) {
+            said.append(". The agent's own log says: ").append(
+                    io.github.keyfire.edtbridge.core.PlatformMessages.condense(log));
+        }
+        return new Exception(said.toString(), refused);
+    }
+
+    /**
+     * Thick-client processes alive on this machine that are not agents of ours, as pid and
+     * executable. That is everything the OS will give up about somebody else's process on Windows,
+     * where a command line is not readable from outside - so the reader gets the candidates and the
+     * builds they run, not a single culprit. Null when there are none.
+     */
+    private static String configuratorProcesses() {
+        Set<Long> ours = new HashSet<>();
+        for (Agent a : AGENTS.values()) {
+            if (a.pid > 0) {
+                ours.add(a.pid);
+            }
+        }
+        List<String> found = new ArrayList<>();
+        for (ProcessHandle handle : ProcessHandle.allProcesses().toList()) {
+            if (ours.contains(handle.pid())) {
+                continue;
+            }
+            String command = handle.info().command().orElse("");
+            if (command.isEmpty()) {
+                continue;
+            }
+            String file = Path.of(command).getFileName().toString().toLowerCase();
+            // The thick client alone - the thin and the server executables share the prefix and
+            // neither of them can hold a configuration lock.
+            if (file.equals("1cv8.exe") || file.equals("1cv8")) {
+                found.add("pid " + handle.pid() + " " + command);
+            }
+        }
+        return found.isEmpty() ? null : String.join("; ", found);
     }
 
     /**
