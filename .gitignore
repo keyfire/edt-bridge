@@ -22,3 +22,6 @@ docs/changelog.md
 docs/changelog.ru.md
 docs/onboarding.md
 docs/onboarding.ru.md
+
+# Настройки Claude Code: разрешения и хуки принадлежат рабочему месту, а не проекту.
+.claude/
