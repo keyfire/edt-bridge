@@ -836,6 +836,24 @@ public final class PlatformGateway {
         return false;
     }
 
+    /**
+     * The infobase EDT associates with this project, or {@code null} when it has none. The EDT
+     * synchronization route has always substituted it for a caller who named no infobase; this is
+     * the same lookup, so the agent route can keep the promise its description makes.
+     */
+    String associatedInfobase(IProject p) {
+        IInfobaseAssociationManager am = ServiceAccess.get(IInfobaseAssociationManager.class);
+        if (am == null) {
+            return null;
+        }
+        try {
+            InfobaseReference ref = am.getAssociation(p).map(a -> a.getDefaultInfobase()).orElse(null);
+            return (ref == null) ? null : ref.getName();
+        } catch (Exception noAssociation) {
+            return null;
+        }
+    }
+
     /** The best full install on disk for a requested build or line, or {@code null} when none fits. */
     String diskPlatformFor(String requested) {
         for (DiskPlatform dp : discoverFullPlatforms(requested)) {

@@ -38,6 +38,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import io.github.keyfire.edtbridge.core.AgentIdle;
 import io.github.keyfire.edtbridge.core.AgentRecord;
+import io.github.keyfire.edtbridge.core.AgentUser;
 import io.github.keyfire.edtbridge.core.PlatformSelection;
 
 import com._1c.g5.designer.ssh.client.DesignerClient;
@@ -224,6 +225,13 @@ public final class DesignerAgentGateway {
         String connection = resolved.address;
         Agent running = AGENTS.get(connection);
         if (running != null && running.process != null && running.process.isAlive()) {
+            // The identity is bound to the agent at start and the SSH session uses it, so a user
+            // named here would never reach authentication. Handing the agent back anyway would do
+            // the work as somebody else - or, with no user bound, die in a bare "Auth fail".
+            if (!AgentUser.serves(running.user, user)) {
+                r.message = AgentUser.mismatch(running.user, user);
+                return r;
+            }
             // A build is honoured to the digit; a LINE is served by any build OF THAT LINE. Measuring
             // the running agent against the newest build of the line instead turned away the very
             // agent the caller wanted: on a stand pinned to 8.5.1.1302, with 8.5.1.1464 also on disk,
@@ -1229,6 +1237,19 @@ public final class DesignerAgentGateway {
         }
         r.extension = (extension != null && !extension.isBlank()) ? extension.trim()
                 : (root.adopted ? root.name : null);
+
+        // Named no infobase, take the project's own - what the tool's description promises and what
+        // the EDT synchronization route has always done. Without this the agent route answered a
+        // perfectly well-formed call with "an infobase name, uuid or address is required".
+        if (infobase == null || infobase.isBlank()) {
+            infobase = platform.associatedInfobase(p);
+            if (infobase == null) {
+                r.message = "the project has no associated infobase - pass the infobase name or uuid "
+                        + "(see edt_infobases)";
+                return r;
+            }
+        }
+        r.infobase = infobase;
 
         Ensured ensured = ensure(infobase, user, password, platformVersion);
         if (ensured.agent == null) {

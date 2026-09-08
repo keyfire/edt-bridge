@@ -93,6 +93,22 @@ class PlatformMessagesTest {
         // ordinary refusals carry no hint
         assertEquals(null, PlatformMessages.hint("Пользователь не идентифицирован"));
         assertEquals(null, PlatformMessages.hint(null));
+
+        // The agent's SSH refusal, both ways the chain spells it: the hint says that credentials
+        // bind at start, which is the one fact the bare "Auth fail" never carries.
+        String authFail = "AuthenticationException: Authentication failure while establishing SSH "
+                + "session with Desginer agent. <- JSchException: Auth fail";
+        String authHint = PlatformMessages.hint(authFail);
+        assertTrue(authHint != null && authHint.contains("action=stop"), authHint);
+        assertTrue(PlatformMessages.hint("JSchException: Auth fail") != null);
+
+        // Both at once - a foreign configurator held the lock, so the agent had nobody to
+        // authenticate against: the lock is the reason, and the credentials hint must not
+        // contradict the diagnosis the agent's own log already gave.
+        String both = "AuthenticationException: Auth fail <- Ошибка блокировки информационной "
+                + "базы для конфигурирования";
+        assertTrue(PlatformMessages.hint(both).contains("edt_infobase_sessions"),
+                "the lock outranks the bare Auth fail");
     }
 
     @Test
