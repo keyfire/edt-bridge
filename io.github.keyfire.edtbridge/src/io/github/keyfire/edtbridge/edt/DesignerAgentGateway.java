@@ -1684,11 +1684,22 @@ public final class DesignerAgentGateway {
                     + "its own name and password and one without users wants an empty pair");
         }
         if (!log.isBlank()) {
-            said.append(". The agent's own log says: ").append(
-                    io.github.keyfire.edtbridge.core.PlatformMessages.condense(log));
+            // The tail, not the whole file: the log accumulates over the agent's life and the
+            // failure being explained is the last thing in it.
+            String text = io.github.keyfire.edtbridge.core.PlatformMessages.condense(log);
+            if (text.length() > AGENT_LOG_TAIL) {
+                text = "(... earlier lines omitted) "
+                        + text.substring(text.length() - AGENT_LOG_TAIL);
+            }
+            said.append(". The agent's own log says: ").append(text);
         }
+        // The original exception stays the cause: the SSH client's own type and frame are what a
+        // reader compares against the platform's documentation when this diagnosis turns out wrong.
         return new Exception(said.toString(), refused);
     }
+
+    /** How much of the agent's log a refusal quotes. */
+    private static final int AGENT_LOG_TAIL = 1500;
 
     /**
      * Thick-client processes alive on this machine that are not agents of ours, as pid and
