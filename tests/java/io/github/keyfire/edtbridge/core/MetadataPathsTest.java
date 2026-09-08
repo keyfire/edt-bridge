@@ -21,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.List;
 import java.util.Map;
 
 import org.junit.jupiter.api.DisplayName;
@@ -74,7 +75,7 @@ class MetadataPathsTest {
     @Test
     void nullFqnIsHandled() {
         assertNull(MetadataPaths.objectFolder(null));
-        assertNull(MetadataPaths.nameToken(null));
+        assertEquals(List.of(), MetadataPaths.nameTokens(null));
         assertNull(MetadataPaths.singleModulePath(null));
         assertFalse(MetadataPaths.hasSingleModule(null));
     }
@@ -107,11 +108,24 @@ class MetadataPathsTest {
     @CsvSource({
         "Catalog.Товары,                Товары",
         "HTTPService.Payments,          Payments",
-        "Catalog.Товары.Form.Список,    Товары",
+        "CommonForm.Настройки,          Настройки",
     })
     @DisplayName("the name token is the segment after the type prefix")
     void nameToken(String fqn, String expected) {
-        assertEquals(expected, MetadataPaths.nameToken(fqn));
+        assertEquals(List.of(expected), MetadataPaths.nameTokens(fqn));
+    }
+
+    @Test
+    @DisplayName("a form is named by BOTH names - the object's and its own")
+    void formCarriesItsOwnName() {
+        // The defect a live run caught: with the object name alone, asking about one form of an
+        // object answered with the findings of its other forms.
+        assertEquals(List.of("Товары", "Список"),
+                MetadataPaths.nameTokens("Catalog.Товары.Form.Список"));
+        assertEquals(List.of("Товары", "Контроль"),
+                MetadataPaths.nameTokens("Catalog.Товары.Form.Контроль"));
+        // A common form has no owning object; its own name is the whole address.
+        assertEquals(List.of("Настройки"), MetadataPaths.nameTokens("CommonForm.Настройки"));
     }
 
     @Test

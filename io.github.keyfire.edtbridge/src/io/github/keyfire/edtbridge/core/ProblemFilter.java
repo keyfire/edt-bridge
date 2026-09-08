@@ -24,9 +24,11 @@ package io.github.keyfire.edtbridge.core;
  * PRESENTATION ("HTTPСервис.Payments.Модуль"). A location filter therefore matches a path prefix,
  * and falls back to the object name for the presentation case.
  *
- * <p>That fallback is where a live check caught a defect worth keeping a test for: matching the name
+ * <p>That fallback is where two live checks caught defects worth keeping tests for. Matching the name
  * as a plain substring made a request for one object return the problems of a differently-named
- * neighbour (Payments also matches Payments_v2). The name must match a whole identifier segment.
+ * neighbour (Payments also matches Payments_v2): the name must match a whole identifier segment.
+ * And matching by the OBJECT name alone made a request for one form return the problems of the
+ * object's other forms: a form is addressed by both names at once.
  *
  * <p>No EDT or Eclipse types here on purpose - it compiles and is tested without the SDK.
  */
@@ -38,18 +40,32 @@ public final class ProblemFilter {
     /**
      * Whether a problem at {@code resource} is in scope.
      *
+     * <p>The name half takes SEVERAL tokens and demands every one of them, because one was not enough
+     * to address a form: a form's marker is presented as "Справочник.Товары.Форма.Контроль.Модуль", so
+     * a filter that knew only the object name accepted the markers of its OTHER forms as well. The
+     * object name and the form name together name one form; either alone names a family.
+     *
      * @param resource   the problem's resource - a project-relative path, or an object presentation
      * @param pathPrefix project-relative path or folder prefix to keep, or null
-     * @param nameToken  object name to accept in a presentation, or null
+     * @param nameTokens names that must ALL appear in a presentation, or empty/null for no name filter
      */
-    public static boolean matchesLocation(String resource, String pathPrefix, String nameToken) {
+    public static boolean matchesLocation(String resource, String pathPrefix,
+            java.util.List<String> nameTokens) {
         String value = normalize(resource);
         if (pathPrefix != null && !pathPrefix.isBlank() && !value.isEmpty()
                 && value.startsWith(normalize(pathPrefix))) {
             return true;
         }
-        return nameToken != null && !nameToken.isBlank()
-                && namesSegment(value, nameToken.trim().toLowerCase());
+        if (nameTokens == null || nameTokens.isEmpty()) {
+            return false;
+        }
+        for (String token : nameTokens) {
+            if (token == null || token.isBlank()
+                    || !namesSegment(value, token.trim().toLowerCase())) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**

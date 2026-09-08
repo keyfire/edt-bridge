@@ -16,6 +16,7 @@
  */
 package io.github.keyfire.edtbridge.core;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -148,12 +149,25 @@ public final class MetadataPaths {
     }
 
     /**
-     * The object-name segment of an FQN - the part after the type prefix. Used to match an EDT check
-     * marker, which names its object by presentation instead of by path.
+     * The name segments an FQN narrowing has to see in an EDT check marker, which names its object by
+     * PRESENTATION ("Справочник.Товары.Форма.Контроль.Модуль") instead of by path. The object's own
+     * name for an ordinary FQN; the object's name AND the form's for a form. Empty when the FQN names
+     * nothing.
+     *
+     * <p>The form half is not decoration. A live check caught the defect it closes: the narrowing took
+     * the OBJECT name alone, so every form of that object was in scope and the question "is the form
+     * Контроль clean" came back with the findings of the form Форма - a report about the wrong code
+     * that reads exactly like a report about the right one. Both segments must be there.
      */
-    public static String nameToken(String fqn) {
+    public static List<String> nameTokens(String fqn) {
         String[] parts = split(fqn);
-        return (parts != null && parts.length >= 2 && !parts[1].isBlank()) ? parts[1] : null;
+        if (parts == null || parts.length < 2 || parts[1].isBlank()) {
+            return List.of();
+        }
+        if (isForm(fqn) && parts.length >= 4 && !parts[parts.length - 1].isBlank()) {
+            return List.of(parts[1], parts[parts.length - 1]);
+        }
+        return List.of(parts[1]);
     }
 
     /** Split an FQN into its dot-separated parts, or null when there is nothing to split. */

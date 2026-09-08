@@ -184,8 +184,10 @@ public final class ProjectGateway {
      * ({@code severity}: "ERROR", "ERROR,WARNING", ...), and/or
      * ask for {@code countOnly} (the counts, no list). The location filter matches a problem's
      * project-relative resource path, so it targets the Eclipse syntax/build markers precisely; an EDT
-     * check marker is addressed by object presentation, so an {@code fqn} filter also matches its name
-     * loosely, while {@code modulePath} (a file path) does not reach it. Everything is optional; with no
+     * check marker is addressed by object presentation, so an {@code fqn} filter also matches by name -
+     * by the object's name, and for {@code ...Form.<Name>} by the form's name as well, or the object's
+     * other forms would answer too - while {@code modulePath} (a file path) does not reach it. Everything
+     * is optional; with no
      * filter and {@code countOnly=false} the behaviour matches the old tool, but the list is capped at
      * {@code limit} to keep a large configuration's output bounded.
      */
@@ -209,7 +211,7 @@ public final class ProjectGateway {
                     p.getLocation() == null ? null : p.getLocation().toOSString());
         }
         String pathPrefix = locationPrefix(fqn, modulePath);
-        String nameToken = locationName(fqn, modulePath);
+        java.util.List<String> nameTokens = locationNames(fqn, modulePath);
         java.util.Set<String> sevFilter = ProblemFilter.severities(severity);
         int cap = (limit > 0) ? limit : 1000;
         ProblemReport r = new ProblemReport();
@@ -218,12 +220,12 @@ public final class ProjectGateway {
         r.limit = cap;
         r.totalBeforeFilter = all.size();
         r.locations = locations;
-        boolean locationFilter = pathPrefix != null || nameToken != null;
+        boolean locationFilter = pathPrefix != null || !nameTokens.isEmpty();
         for (Problem p : all) {
             if (!ProblemFilter.matchesSeverity(p.severity, sevFilter)) {
                 continue;
             }
-            if (locationFilter && !ProblemFilter.matchesLocation(p.resource, pathPrefix, nameToken)) {
+            if (locationFilter && !ProblemFilter.matchesLocation(p.resource, pathPrefix, nameTokens)) {
                 continue;
             }
             r.total++;
@@ -263,7 +265,7 @@ public final class ProjectGateway {
         java.util.Set<String> unseen = new java.util.LinkedHashSet<>();
         int unseenCount = 0;
         for (IProject p : projects) {
-            UnseenFiles files = unseenFiles(p, pathPrefix, nameToken);
+            UnseenFiles files = unseenFiles(p, pathPrefix, nameTokens);
             unseenCount += files.count;
             for (String path : files.paths) {
                 unseen.add(several ? p.getName() + "/" + path : path);
@@ -309,12 +311,15 @@ public final class ProjectGateway {
         return null;
     }
 
-    /** The object name an fqn narrowing also matches by presentation; null for a path narrowing. */
-    private static String locationName(String fqn, String modulePath) {
+    /**
+     * The names an fqn narrowing also matches by presentation - the object's, plus the form's when the
+     * fqn names one; empty for a path narrowing, which reaches no presentation at all.
+     */
+    private static java.util.List<String> locationNames(String fqn, String modulePath) {
         if (modulePath != null && !modulePath.isBlank()) {
-            return null;
+            return java.util.List.of();
         }
-        return (fqn != null && !fqn.isBlank()) ? MetadataPaths.nameToken(fqn) : null;
+        return (fqn != null && !fqn.isBlank()) ? MetadataPaths.nameTokens(fqn) : java.util.List.of();
     }
 
     /**
@@ -438,9 +443,9 @@ public final class ProjectGateway {
         final List<String> paths = new ArrayList<>();
         int count;
 
-        void note(String path, String pathPrefix, String nameToken) {
-            if ((pathPrefix != null || nameToken != null)
-                    && !ProblemFilter.matchesLocation(path, pathPrefix, nameToken)) {
+        void note(String path, String pathPrefix, java.util.List<String> nameTokens) {
+            if ((pathPrefix != null || !nameTokens.isEmpty())
+                    && !ProblemFilter.matchesLocation(path, pathPrefix, nameTokens)) {
                 return;
             }
             count++;
@@ -458,7 +463,8 @@ public final class ProjectGateway {
      * walked file by file. A file new on disk has no resource to visit: it shows as a name its
      * folder lists on disk and the workspace does not.
      */
-    private static UnseenFiles unseenFiles(IProject p, String pathPrefix, String nameToken)
+    private static UnseenFiles unseenFiles(IProject p, String pathPrefix,
+            java.util.List<String> nameTokens)
             throws CoreException {
         UnseenFiles found = new UnseenFiles();
         IResource scope = scopeResource(p, pathPrefix);
@@ -473,11 +479,11 @@ public final class ProjectGateway {
                 }
                 if (res.getType() == IResource.FILE) {
                     if (!res.isSynchronized(IResource.DEPTH_ZERO)) {
-                        found.note(res.getProjectRelativePath().toString(), pathPrefix, nameToken);
+                        found.note(res.getProjectRelativePath().toString(), pathPrefix, nameTokens);
                     }
                     return false;
                 }
-                noteNewOnDisk((IContainer) res, found, pathPrefix, nameToken);
+                noteNewOnDisk((IContainer) res, found, pathPrefix, nameTokens);
                 return true;
             });
         }
@@ -507,7 +513,7 @@ public final class ProjectGateway {
 
     /** Names a folder lists on disk and the workspace has no resource for: files new on disk. */
     private static void noteNewOnDisk(IContainer folder, UnseenFiles found, String pathPrefix,
-            String nameToken) {
+            java.util.List<String> nameTokens) {
         if (folder.getLocation() == null) {
             return;
         }
@@ -519,7 +525,7 @@ public final class ProjectGateway {
             if (folder.findMember(name) == null && !".git".equals(name) && !".svn".equals(name)
                     && !".hg".equals(name)) {
                 found.note(folder.getProjectRelativePath().append(name).toString() + " (new on disk)",
-                        pathPrefix, nameToken);
+                        pathPrefix, nameTokens);
             }
         }
     }

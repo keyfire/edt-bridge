@@ -19,6 +19,8 @@ package io.github.keyfire.edtbridge.core;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.List;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -32,8 +34,29 @@ class ProblemFilterTest {
     void neighbourIsNotDraggedIn() {
         // Found on a live model: asking for one service returned a problem belonging to <name>_v2,
         // because the name was matched as a substring.
-        assertFalse(ProblemFilter.matchesLocation("HTTPСервис.Payments_v2.Модуль", null, "Payments"));
-        assertTrue(ProblemFilter.matchesLocation("HTTPСервис.Payments.Модуль", null, "Payments"));
+        assertFalse(ProblemFilter.matchesLocation("HTTPСервис.Payments_v2.Модуль", null, List.of("Payments")));
+        assertTrue(ProblemFilter.matchesLocation("HTTPСервис.Payments.Модуль", null, List.of("Payments")));
+    }
+
+    @Test
+    @DisplayName("another form of the same object is NOT in scope - every token has to match")
+    void anotherFormOfTheSameObjectIsNotDraggedIn() {
+        // Found on a live model: asking about one form of a catalog answered with the findings of
+        // its other form, because the filter knew the OBJECT name and nothing else.
+        List<String> control = List.of("Товары", "Контроль");
+        assertTrue(ProblemFilter.matchesLocation("Справочник.Товары.Форма.Контроль.Модуль", null,
+                control));
+        assertFalse(ProblemFilter.matchesLocation("Справочник.Товары.Форма.Форма.Модуль", null,
+                control));
+        // ... and the object's own markers are not a form's either.
+        assertFalse(ProblemFilter.matchesLocation("Справочник.Товары.МодульОбъекта", null, control));
+    }
+
+    @Test
+    @DisplayName("a form of ANOTHER object with the same form name stays out")
+    void sameFormNameOnAnotherObjectStaysOut() {
+        assertFalse(ProblemFilter.matchesLocation("Документ.Заказ.Форма.Контроль.Модуль", null,
+                List.of("Товары", "Контроль")));
     }
 
     // -- severities: one grade is not enough -----------------------------------------------------
@@ -74,7 +97,7 @@ class ProblemFilterTest {
     @Test
     void segmentMatchIsCaseInsensitive() {
         assertTrue(ProblemFilter.namesSegment("Справочник.Товары.Модуль", "товары"));
-        assertTrue(ProblemFilter.matchesLocation("HTTPСервис.Payments.Модуль", null, "payments"));
+        assertTrue(ProblemFilter.matchesLocation("HTTPСервис.Payments.Модуль", null, List.of("payments")));
     }
 
     // -- Eclipse markers, addressed by path ------------------------------------------------------
@@ -85,7 +108,8 @@ class ProblemFilterTest {
         assertTrue(ProblemFilter.matchesLocation(
                 "src/CommonModules/Общий/Module.bsl", "src/CommonModules/Общий", null));
         assertTrue(ProblemFilter.matchesLocation(
-                "src/HTTPServices/Payments/Module.bsl", "src/HTTPServices/Payments/Module.bsl", null));
+                "src/HTTPServices/Payments/Module.bsl", "src/HTTPServices/Payments/Module.bsl",
+                null));
     }
 
     @Test
@@ -112,12 +136,15 @@ class ProblemFilterTest {
 
     @Test
     void blankFiltersAreIgnoredRatherThanMatchingEverything() {
-        assertFalse(ProblemFilter.matchesLocation("src/CommonModules/Общий/Module.bsl", "  ", "  "));
+        assertFalse(ProblemFilter.matchesLocation("src/CommonModules/Общий/Module.bsl", "  ",
+                List.of("  ")));
+        assertFalse(ProblemFilter.matchesLocation("src/CommonModules/Общий/Module.bsl", "  ",
+                List.of()));
     }
 
     @Test
     void nullResourceIsSafe() {
-        assertFalse(ProblemFilter.matchesLocation(null, "src/CommonModules/Общий", "Общий"));
+        assertFalse(ProblemFilter.matchesLocation(null, "src/CommonModules/Общий", List.of("Общий")));
         assertFalse(ProblemFilter.namesSegment(null, "Общий"));
         assertFalse(ProblemFilter.namesSegment("Справочник.Товары", null));
     }
@@ -126,8 +153,9 @@ class ProblemFilterTest {
     @DisplayName("either address may match - a path filter and a presentation filter are alternatives")
     void eitherAddressMatches() {
         assertTrue(ProblemFilter.matchesLocation(
-                "HTTPСервис.Payments.Модуль", "src/HTTPServices/Payments", "Payments"));
+                "HTTPСервис.Payments.Модуль", "src/HTTPServices/Payments", List.of("Payments")));
         assertTrue(ProblemFilter.matchesLocation(
-                "src/HTTPServices/Payments/Module.bsl", "src/HTTPServices/Payments", "Payments"));
+                "src/HTTPServices/Payments/Module.bsl", "src/HTTPServices/Payments",
+                List.of("Payments")));
     }
 }
