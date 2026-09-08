@@ -221,23 +221,24 @@ public final class DesignerAgentGateway {
         String connection = resolved.address;
         Agent running = AGENTS.get(connection);
         if (running != null && running.process != null && running.process.isAlive()) {
-            // Reuse exactly what a fresh start would have produced, and nothing else. Deciding this
-            // by PlatformSelection.accepts would be too weak: a LINE accepts every version, so an
-            // agent of 8.3.24 would answer a request for 8.5.1 with 8.5.1 sitting on disk - and the
-            // server refuses that with the same "Несоответствие версий клиента и сервера" the pin
-            // exists to prevent. A caller who asked for nothing still takes whatever runs.
-            if (platformVersion != null && !platformVersion.isBlank()) {
-                PlatformGateway.DiskPlatform wanted = findDesignerInstall(platformVersion);
+            // A build is honoured to the digit; a LINE is served by any build OF THAT LINE. Measuring
+            // the running agent against the newest build of the line instead turned away the very
+            // agent the caller wanted: on a stand pinned to 8.5.1.1302, with 8.5.1.1464 also on disk,
+            // a request for the line 8.5.1 refused the running 8.5.1.1302 and advised a restart -
+            // which would have started 8.5.1.1464, the build that stand's server refuses. And the
+            // disk is not touched at all when the running agent already serves.
+            if (!PlatformSelection.reusable(running.platformVersion, platformVersion)) {
+                List<PlatformGateway.DiskPlatform> scanned = platform.scanFullPlatforms();
+                PlatformGateway.DiskPlatform wanted = findDesignerInstall(scanned, platformVersion);
                 if (wanted == null) {
                     r.message = PlatformSelection.unavailable("full install with a configurator",
-                            platformVersion, platform.versionsCarrying("1cv8.exe", "1cv8"));
+                            platformVersion,
+                            PlatformGateway.versionsCarrying(scanned, "1cv8.exe", "1cv8"));
                     return r;
                 }
-                if (!wanted.version.equals(running.platformVersion)) {
-                    r.message = PlatformSelection.alreadyRunning(running.platformVersion,
-                            platformVersion, wanted.version);
-                    return r;
-                }
+                r.message = PlatformSelection.alreadyRunning(running.platformVersion,
+                        platformVersion, wanted.version);
+                return r;
             }
             r.ok = true;
             r.agents.add(running);
@@ -250,10 +251,11 @@ public final class DesignerAgentGateway {
         // process - an agent can also die while the bridge that started it lives on, and that is
         // precisely the case a once-per-process sweep would never reach.
         List<String> swept = sweep(false);
-        PlatformGateway.DiskPlatform install = findDesignerInstall(platformVersion);
+        List<PlatformGateway.DiskPlatform> scanned = platform.scanFullPlatforms();
+        PlatformGateway.DiskPlatform install = findDesignerInstall(scanned, platformVersion);
         if (install == null) {
             r.message = PlatformSelection.unavailable("full install with a configurator", platformVersion,
-                    platform.versionsCarrying("1cv8.exe", "1cv8"));
+                    PlatformGateway.versionsCarrying(scanned, "1cv8.exe", "1cv8"));
             return r;
         }
         Path exe = PlatformGateway.firstExisting(install.binDir, "1cv8.exe", "1cv8");
@@ -1596,9 +1598,14 @@ public final class DesignerAgentGateway {
                 reg.kind, reg.filePath, reg.server, reg.reference);
     }
 
-    /** A full install carrying the configurator (the thick client executable). */
-    private PlatformGateway.DiskPlatform findDesignerInstall(String platformVersion) {
-        for (PlatformGateway.DiskPlatform dp : platform.discoverFullPlatforms(platformVersion)) {
+    /**
+     * A full install carrying the configurator (the thick client executable), picked out of a scan
+     * the caller already has - the walk of the install roots costs the same whether one question or
+     * two are asked of it, so it is done once per call.
+     */
+    private static PlatformGateway.DiskPlatform findDesignerInstall(
+            List<PlatformGateway.DiskPlatform> scanned, String platformVersion) {
+        for (PlatformGateway.DiskPlatform dp : PlatformGateway.admitting(scanned, platformVersion)) {
             if (PlatformGateway.firstExisting(dp.binDir, "1cv8.exe", "1cv8") != null) {
                 return dp;
             }

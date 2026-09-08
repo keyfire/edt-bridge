@@ -81,10 +81,13 @@ public final class IbcmdGateway {
         if (tool.problem != null) {
             return tool;
         }
-        PlatformGateway.DiskPlatform install = platform.findIbcmdInstall(platformVersion);
+        // One walk of the install roots for both the pick and the list a refusal quotes.
+        List<PlatformGateway.DiskPlatform> scanned = platform.scanFullPlatforms();
+        PlatformGateway.DiskPlatform install =
+                PlatformGateway.findIbcmdInstall(scanned, platformVersion);
         if (install == null) {
             tool.problem = PlatformSelection.unavailable("full install carrying ibcmd", platformVersion,
-                            platform.versionsCarrying("ibcmd.exe", "ibcmd"))
+                            PlatformGateway.versionsCarrying(scanned, "ibcmd.exe", "ibcmd"))
                     + " A full 1C:Enterprise install (with ibcmd) is required.";
             return tool;
         }

@@ -435,7 +435,10 @@ public final class ClusterGateway {
             r.message = malformed;
             return null;
         }
-        for (PlatformGateway.DiskPlatform dp : platform.discoverFullPlatforms(platformVersion)) {
+        // One walk of the install roots for both the pick and the list a refusal quotes: a miss
+        // used to scan the disk twice, once to fail and once to say what IS there.
+        List<PlatformGateway.DiskPlatform> scanned = platform.scanFullPlatforms();
+        for (PlatformGateway.DiskPlatform dp : PlatformGateway.admitting(scanned, platformVersion)) {
             Path exe = PlatformGateway.firstExisting(dp.binDir, "rac.exe", "rac");
             if (exe != null) {
                 Rac rac = new Rac();

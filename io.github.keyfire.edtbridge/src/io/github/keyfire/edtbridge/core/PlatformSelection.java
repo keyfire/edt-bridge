@@ -73,8 +73,8 @@ public final class PlatformSelection {
      * <p>This is NOT the rule for reusing an ALREADY RUNNING tool. A line admits every version
      * here, so reuse decided by this method would hand back an agent of 8.3.24 to a request for
      * 8.5.1 even when 8.5.1 is installed and a fresh start would have taken it - and the server
-     * would refuse that with the very error the pin exists to prevent. Reuse compares the running
-     * build against what a fresh start would actually have chosen; see DesignerAgentGateway.start.
+     * would refuse that with the very error the pin exists to prevent. Reuse has its own rule in
+     * {@link #reusable}.
      */
     public static boolean accepts(String installed, String requested) {
         return !isBuild(requested)
@@ -132,15 +132,48 @@ public final class PlatformSelection {
     }
 
     /**
-     * Why an agent already running cannot serve the request: its build against the one the request
-     * resolves to here. A line is named as a line - saying it was "pinned" would misdescribe it.
+     * Whether a tool ALREADY RUNNING at build {@code running} serves a request for {@code requested}.
+     *
+     * <p>A build is honoured to the digit, as everywhere. A LINE is satisfied by any build OF THAT
+     * LINE, and this is the half that had to be learned: measuring the running agent against the
+     * newest build of the line instead turned a perfectly good agent away. On a stand pinned to
+     * 8.5.1.1302 with 8.5.1.1464 also installed, a request for the line 8.5.1 refused the running
+     * 8.5.1.1302 and advised a restart - which would have started 8.5.1.1464, the one build that
+     * stand's server refuses. A line means "this line", not "the newest build I could find of it".
+     *
+     * <p>{@link #accepts} would be too weak here and {@link #compare}'s first candidate too strict;
+     * this is the rule in the middle, and the only one under which every refusal it produces leaves
+     * a restart as the sensible next step.
+     */
+    public static boolean reusable(String running, String requested) {
+        if (requested == null || requested.isBlank()) {
+            return true;   // a caller who asked for nothing takes whatever runs
+        }
+        String asked = requested.trim();
+        if (isBuild(asked)) {
+            return running != null && running.trim().equals(asked);
+        }
+        return matchesLine(running == null ? null : running.trim(), line(asked));
+    }
+
+    /**
+     * Why an agent already running cannot serve the request, and what a restart would give instead.
+     *
+     * <p>The advice is ordered by what actually helps, which was worth a fix of its own: the stop is
+     * named first only because {@link #reusable} has already established that a restart WOULD serve
+     * the request. While reuse was measured against the newest build of the line, the same message
+     * led with "stop it" for a running agent that was the only right one - and the restart it advised
+     * would have produced the build the server refuses.
+     *
+     * @param wanted the build a fresh start would take - a line is named as a line, since calling it
+     *               "pinned" would misdescribe it
      */
     public static String alreadyRunning(String running, String requested, String wanted) {
         String asked = isBuild(requested)
                 ? requested.trim() + " was pinned"
-                : "line " + line(requested) + " resolves to " + wanted + " here";
+                : "line " + line(requested) + " was asked for, which the running build is not in";
         return "an agent of build " + running + " is already running for this infobase, and " + asked
-                + ". Stop it (edt_designer_agent action=stop) or ask without platformVersion to use "
-                + "the running one.";
+                + ". Stop it (edt_designer_agent action=stop) to start " + wanted
+                + " instead, or ask without platformVersion to use the running one.";
     }
 }

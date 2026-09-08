@@ -18,6 +18,7 @@ package io.github.keyfire.edtbridge.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -150,6 +151,63 @@ class PlatformSelectionTest {
 
         String line = PlatformSelection.alreadyRunning("8.3.24.1548", "8.5.1", "8.5.1.1464");
         assertTrue(line.contains("8.3.24.1548"), line);
-        assertTrue(line.contains("line 8.5.1 resolves to 8.5.1.1464"), line);
+        assertTrue(line.contains("line 8.5.1 was asked for"), line);
+        assertTrue(line.contains("to start 8.5.1.1464"), line);
+    }
+
+    // -- reuse of a RUNNING agent ----------------------------------------------------------------
+
+    @Test
+    @DisplayName("the reported bug: a line is served by ANY build of that line, not only the newest")
+    void aLineIsServedByItsOwnBuild() {
+        // The stand runs 8.5.1.1302 and 8.5.1.1464 is also installed. Measuring the running agent
+        // against the newest build of the line refused it - and the restart that refusal advised
+        // would have started 8.5.1.1464, which that stand's server rejects.
+        assertTrue(PlatformSelection.reusable("8.5.1.1302", "8.5.1"));
+        assertTrue(PlatformSelection.reusable("8.5.1.1464", "8.5.1"));
+        assertTrue(PlatformSelection.reusable("8.5.1.1302", "8.5"));
+    }
+
+    @Test
+    @DisplayName("a running agent of another line is still refused - that is what the check is for")
+    void anotherLineIsNotReused() {
+        assertFalse(PlatformSelection.reusable("8.3.24.1548", "8.5.1"));
+        assertFalse(PlatformSelection.reusable(null, "8.5.1"));
+    }
+
+    @Test
+    @DisplayName("a pinned build is honoured to the digit when reusing, as everywhere else")
+    void pinnedBuildIsReusedOnlyByItself() {
+        assertTrue(PlatformSelection.reusable("8.5.1.1302", "8.5.1.1302"));
+        assertTrue(PlatformSelection.reusable("  8.5.1.1302 ", " 8.5.1.1302 "));
+        assertFalse(PlatformSelection.reusable("8.5.1.1464", "8.5.1.1302"));
+    }
+
+    @Test
+    @DisplayName("asking for nothing takes whatever runs")
+    void noRequestReusesAnything() {
+        assertTrue(PlatformSelection.reusable("8.3.24.1548", null));
+        assertTrue(PlatformSelection.reusable("8.3.24.1548", "  "));
+    }
+
+    @Test
+    @DisplayName("every refusal reuse produces leaves a restart as the sensible next step")
+    void aRefusalMeansARestartWouldHelp() {
+        // The refusal advises stopping the agent first, which is only sound advice when a fresh
+        // start would resolve to something ELSE than what runs. Over the installs of a working
+        // machine, that has to hold for every request shape.
+        for (String requested : List.of("8.5.1", "8.3.24", "8.5.1.1464", "8.5.1.1302")) {
+            for (String running : INSTALLED) {
+                if (PlatformSelection.reusable(running, requested)) {
+                    continue;
+                }
+                List<String> candidates = select(INSTALLED, requested);
+                assertFalse(candidates.isEmpty(),
+                        "refused " + running + " for " + requested + " with nothing to start");
+                assertNotEquals(running, candidates.get(0),
+                        "refused " + running + " for " + requested
+                                + ", yet a restart would produce the very same build");
+            }
+        }
     }
 }

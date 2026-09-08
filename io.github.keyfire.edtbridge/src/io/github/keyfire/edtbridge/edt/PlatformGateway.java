@@ -765,11 +765,12 @@ public final class PlatformGateway {
      */
     private CreateInfobaseResult createInfobaseViaDiskPlatform(CreateInfobaseResult r, String name,
             java.nio.file.Path dir, String platformVersion, Throwable edtFailure) {
-        List<DiskPlatform> candidates = discoverFullPlatforms(platformVersion);
+        List<DiskPlatform> scanned = scanFullPlatforms();
+        List<DiskPlatform> candidates = admitting(scanned, platformVersion);
         if (candidates.isEmpty()) {
             r.applied = false;
             r.message = PlatformSelection.unavailable("full (thick-client) 1C:Enterprise install",
-                            platformVersion, versionsCarrying("1cv8.exe", "1cv8"))
+                            platformVersion, versionsCarrying(scanned, "1cv8.exe", "1cv8"))
                     + (edtFailure != null ? " (EDT could not either: " + GatewaySupport.describeCause(edtFailure) + ")" : "")
                     + " – install a full 1C:Enterprise platform (the thin client / training editions do "
                     + "not include the components needed to create an infobase).";
@@ -958,14 +959,23 @@ public final class PlatformGateway {
     }
 
     /**
-     * Scan the platform install roots for full installs that carry a thick client (a {@code 1cv8}
-     * executable in {@code bin}). What {@code requested} admits and how the rest is ordered is
-     * {@link PlatformSelection}'s rule: a four-digit build is a pin and leaves only itself, a line
-     * comes first (highest build) and lets other versions follow descending, and nothing requested
-     * leaves everything. Roots are derived from installs EDT already resolved (so it works wherever
-     * the distributions live, incl. macOS) plus the standard Windows locations.
+     * As {@link #scanFullPlatforms}, narrowed and ordered for one request - a convenience for a caller
+     * that needs the pick and nothing else. A caller that ALSO names what is installed (every refusal
+     * does) scans once with {@link #scanFullPlatforms} and narrows that list with {@link #admitting}:
+     * the walk touches every version directory of every install root, and doing it twice to answer one
+     * question was measurable on a machine carrying thirty builds.
      */
     List<DiskPlatform> discoverFullPlatforms(String requested) {
+        return admitting(scanFullPlatforms(), requested);
+    }
+
+    /**
+     * Every full install on disk that carries a thick client (a {@code 1cv8} executable in
+     * {@code bin}), newest build first - ONE walk of the install roots, which are derived from
+     * installs EDT already resolved (so it works wherever the distributions live, incl. macOS)
+     * plus the standard Windows locations.
+     */
+    List<DiskPlatform> scanFullPlatforms() {
         java.util.LinkedHashSet<java.nio.file.Path> roots = new java.util.LinkedHashSet<>();
         try {
             IResolvableRuntimeInstallationManager rm =
@@ -1015,19 +1025,31 @@ public final class PlatformGateway {
                 // unreadable root; skip
             }
         }
+        found.sort((a, b) -> PlatformSelection.compare(a.version, b.version, null));
+        return found;
+    }
+
+    /**
+     * The installs of a scan that may serve {@code requested}, best first. The rule is
+     * {@link PlatformSelection}'s: a four-digit build is a pin and leaves only itself, a line comes
+     * first (highest build) and lets other versions follow descending, and nothing requested leaves
+     * everything.
+     */
+    static List<DiskPlatform> admitting(List<DiskPlatform> scanned, String requested) {
+        List<DiskPlatform> found = new ArrayList<>(scanned);
         found.removeIf(dp -> !PlatformSelection.accepts(dp.version, requested));
         found.sort((a, b) -> PlatformSelection.compare(a.version, b.version, requested));
         return found;
     }
 
     /**
-     * Versions of every on-disk full install carrying one of {@code executables}, best-first. This
-     * is what a refusal quotes: naming the build that is missing without naming the ones that are
-     * there leaves the reader guessing at the very fact that decides what to do next.
+     * Versions in a scan carrying one of {@code executables}, best-first. This is what a refusal
+     * quotes: naming the build that is missing without naming the ones that are there leaves the
+     * reader guessing at the very fact that decides what to do next.
      */
-    List<String> versionsCarrying(String... executables) {
+    static List<String> versionsCarrying(List<DiskPlatform> scanned, String... executables) {
         List<String> out = new ArrayList<>();
-        for (DiskPlatform dp : discoverFullPlatforms(null)) {
+        for (DiskPlatform dp : scanned) {
             if (firstExisting(dp.binDir, executables) != null) {
                 out.add(dp.version);
             }
@@ -1185,10 +1207,11 @@ public final class PlatformGateway {
         }
         String requested = (platformVersion != null && !platformVersion.isBlank())
                 ? platformVersion : String.valueOf(version);
-        DiskPlatform ib = findIbcmdInstall(requested);
+        List<DiskPlatform> scanned = scanFullPlatforms();
+        DiskPlatform ib = findIbcmdInstall(scanned, requested);
         if (ib == null) {
             r.message = PlatformSelection.unavailable("full install carrying ibcmd", requested,
-                            versionsCarrying("ibcmd.exe", "ibcmd"))
+                            versionsCarrying(scanned, "ibcmd.exe", "ibcmd"))
                     + " A full 1C:Enterprise install (with ibcmd) matching the base version is required.";
             return r;
         }
@@ -1430,10 +1453,11 @@ public final class PlatformGateway {
             r.message = malformed;
             return r;
         }
-        DiskPlatform ib = findIbcmdInstall(platformVersion);
+        List<DiskPlatform> scanned = scanFullPlatforms();
+        DiskPlatform ib = findIbcmdInstall(scanned, platformVersion);
         if (ib == null) {
             r.message = PlatformSelection.unavailable("full install carrying ibcmd", platformVersion,
-                            versionsCarrying("ibcmd.exe", "ibcmd"))
+                            versionsCarrying(scanned, "ibcmd.exe", "ibcmd"))
                     + " A full 1C:Enterprise install (with ibcmd) is required.";
             return r;
         }
@@ -1587,8 +1611,8 @@ public final class PlatformGateway {
     }
 
     /** Best on-disk full install that carries {@code ibcmd} for the requested build or line. */
-    DiskPlatform findIbcmdInstall(String requested) {
-        for (DiskPlatform dp : discoverFullPlatforms(requested)) {
+    static DiskPlatform findIbcmdInstall(List<DiskPlatform> scanned, String requested) {
+        for (DiskPlatform dp : admitting(scanned, requested)) {
             if (firstExisting(dp.binDir, "ibcmd.exe", "ibcmd") != null) {
                 return dp;
             }
