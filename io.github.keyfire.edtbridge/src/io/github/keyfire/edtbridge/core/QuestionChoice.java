@@ -74,6 +74,21 @@ public final class QuestionChoice {
                 + "\"" + (isDefault ? " (default)" : "");
     }
 
+    /**
+     * The platform asked, the answer was given, and the operation failed anyway. Reported apart
+     * from {@link #notOffered} because the two look identical from the outside and mean opposite
+     * things: there the choice never reached the platform, here it did and did not help. Saying
+     * "not among the offered" for this case sends the reader hunting for a typo in an answer that
+     * was accepted.
+     */
+    public static String answeredAndFailed(String answer, String failure) {
+        return "answered \"" + (answer == null ? "" : answer.trim()) + "\" and the operation still "
+                + "failed: " + failure + ". On a lively infobase \"Повторить\" cannot win - background "
+                + "jobs reconnect faster than the update takes the lock; raise a maintenance window "
+                + "with edt_infobase_maintenance (it denies scheduled jobs and lets them drain) "
+                + "instead of retrying or ending sessions.";
+    }
+
     /** Why an answer the caller named could not be used: it was not among the offered ones. */
     public static String notOffered(String requested, List<String> options) {
         return "answer \"" + (requested == null ? "" : requested.trim()) + "\" is not among the ones "

@@ -18,6 +18,7 @@ package io.github.keyfire.edtbridge.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
@@ -78,6 +79,18 @@ class QuestionChoiceTest {
         String m = QuestionChoice.report(null, List.of());
         assertTrue(m.contains("(no text)"), m);
         assertTrue(m.contains("(no options offered)"), m);
+    }
+
+    @Test
+    @DisplayName("answered-and-still-failed is told apart from answer-not-offered")
+    void answeredAndFailed() {
+        String m = QuestionChoice.answeredAndFailed("Повторить", "DatabaseRestructureException: ...");
+        assertTrue(m.contains("Повторить"), m);
+        assertTrue(m.contains("DatabaseRestructureException"), m);
+        // The two cases must not read alike: this one never claims the answer was unavailable.
+        assertFalse(m.contains("not among"), m);
+        // And it points at what actually settles a lively infobase.
+        assertTrue(m.contains("edt_infobase_maintenance"), m);
     }
 
     @Test

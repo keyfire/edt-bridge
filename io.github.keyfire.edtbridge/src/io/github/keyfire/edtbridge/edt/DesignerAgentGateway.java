@@ -137,6 +137,8 @@ public final class DesignerAgentGateway {
         volatile String answer;
         volatile String question;
         volatile List<String> questionOptions = List.of();
+        /** Whether the handler actually gave the platform an answer - see QuestionChoice. */
+        volatile boolean answered;
 
         /** The trace this agent leaves for a later bridge process. Carries no credentials. */
         AgentRecord record() {
@@ -1059,6 +1061,7 @@ public final class DesignerAgentGateway {
         agent.answer = r.answer;
         agent.question = null;
         agent.questionOptions = List.of();
+        agent.answered = false;
         try {
             return withSession(agent, s -> {
                 List<String> collected = new ArrayList<>();
@@ -1118,14 +1121,21 @@ public final class DesignerAgentGateway {
             if (agent.question != null) {
                 r.question = agent.question;
                 r.questionOptions.addAll(agent.questionOptions);
-                r.message = (r.answer == null)
-                        ? QuestionChoice.report(agent.question, agent.questionOptions)
-                        : QuestionChoice.notOffered(r.answer, agent.questionOptions);
+                if (agent.answered) {
+                    // The choice DID reach the platform. Blaming the answer here would be a lie the
+                    // reader cannot check, and it hides the platform's own error.
+                    r.message = QuestionChoice.answeredAndFailed(r.answer, describe(ex));
+                } else if (r.answer == null) {
+                    r.message = QuestionChoice.report(agent.question, agent.questionOptions);
+                } else {
+                    r.message = QuestionChoice.notOffered(r.answer, agent.questionOptions);
+                }
             } else {
                 r.message = "the update failed: " + describe(ex);
             }
         } finally {
             agent.answer = null;
+            agent.answered = false;
             agent.lock.unlock();
         }
         return r;
@@ -1464,6 +1474,7 @@ public final class DesignerAgentGateway {
                     agent.questionOptions = options;
                     for (com._1c.g5.designer.ssh.client.QuestionAnswer a : q.getAnswers()) {
                         if (QuestionChoice.matches(a.getAnswer(), a.getLabel(), agent.answer)) {
+                            agent.answered = true;
                             return java.util.Optional.of(a);
                         }
                     }

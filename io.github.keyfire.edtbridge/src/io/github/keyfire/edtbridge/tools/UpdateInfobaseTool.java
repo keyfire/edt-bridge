@@ -85,7 +85,10 @@ public final class UpdateInfobaseTool {
                 + "and another applies the change dynamically on live sessions, so the choice is "
                 + "yours to make, not this tool's. Ask once, read the options, call again with answer."));
         props.add("sessionTermination", strProp("agent transport: disable (default), prompt or force - "
-                + "what to do when applying needs an exclusive lock and sessions hold the infobase."));
+                + "what to do when applying needs an exclusive lock and sessions hold the infobase. "
+                + "On a lively infobase force does not settle it - BackgroundJob sessions respawn "
+                + "within a minute and the update loses the race; raise a maintenance window with "
+                + "edt_infobase_maintenance first."));
 
         JsonArray req = new JsonArray();
         req.add("projectName");
