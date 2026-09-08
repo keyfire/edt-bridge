@@ -68,8 +68,30 @@ class MaintenanceWindowTest {
     void lowerArgs() {
         assertEquals(List.of("--scheduled-jobs-deny=off", "--sessions-deny=off"),
                 MaintenanceWindow.denyArgs(false, true, "1234", "maintenance"));
-        assertEquals(List.of("--scheduled-jobs-deny=off"),
+    }
+
+    @Test
+    @DisplayName("the reported bug: a plain end lowers sessions-deny too, not only scheduled jobs")
+    void lowerTakesDownEverythingARaiseCanPutUp() {
+        // `end` is the other half of a `begin` made in another call, and nothing carries that
+        // call's arguments across. While it lowered sessions-deny only when told sessionsDeny
+        // again, a plain end reported "denial flags lowered" over a stand shut to everybody.
+        assertEquals(List.of("--scheduled-jobs-deny=off", "--sessions-deny=off"),
                 MaintenanceWindow.denyArgs(false, false, null, null));
+    }
+
+    @Test
+    @DisplayName("the second guard: a flag the cluster still holds up is named, not summarised away")
+    void stillRaised() {
+        assertEquals(List.of("sessions-deny"), MaintenanceWindow.stillRaised(
+                Map.of("scheduled-jobs-deny", "off", "sessions-deny", "on")));
+        assertEquals(List.of("scheduled-jobs-deny", "sessions-deny"), MaintenanceWindow.stillRaised(
+                Map.of("scheduled-jobs-deny", "on", "sessions-deny", "On")));
+        assertEquals(List.of(), MaintenanceWindow.stillRaised(
+                Map.of("scheduled-jobs-deny", "off", "sessions-deny", "off")));
+        // A flag the report does not carry at all is not "raised" - and neither is a null report.
+        assertEquals(List.of(), MaintenanceWindow.stillRaised(Map.of("permission-code", "1234")));
+        assertEquals(List.of(), MaintenanceWindow.stillRaised(null));
     }
 
     @Test

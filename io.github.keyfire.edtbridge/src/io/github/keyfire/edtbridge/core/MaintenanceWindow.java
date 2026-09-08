@@ -66,9 +66,17 @@ public final class MaintenanceWindow {
     /**
      * The flag arguments of {@code rac infobase update} for one end of the window.
      *
-     * @param raise          true to raise the flags (begin), false to lower them (end)
-     * @param sessionsDeny   also deny NEW sessions, not only scheduled jobs. The permission code
-     *                       then keeps a door open for whoever runs the update.
+     * <p>Raising is selective and lowering is NOT, and that asymmetry is the whole point. A raise
+     * takes only what the caller asked for. A lower takes down EVERY flag a raise can put up,
+     * whatever this particular call was told - because {@code end} is the other half of a
+     * {@code begin} that happened in a different call, possibly in a different session, and nothing
+     * carries its arguments across. While {@code end} lowered {@code sessions-deny} only when told
+     * {@code sessionsDeny} again, the plain {@code end} reported "denial flags lowered" over a stand
+     * left shut to everybody, and the one place that said otherwise was the {@code flags} field.
+     *
+     * @param raise          true to raise the flags (begin), false to lower them all (end)
+     * @param sessionsDeny   raise only: also deny NEW sessions, not only scheduled jobs. The
+     *                       permission code then keeps a door open for whoever runs the update.
      * @param permissionCode pass-code written with the raise; ignored on lower and without
      *                       {@code sessionsDeny}
      * @param deniedMessage  message shown to a refused session; same scope as the code
@@ -76,18 +84,44 @@ public final class MaintenanceWindow {
     public static List<String> denyArgs(boolean raise, boolean sessionsDeny, String permissionCode,
             String deniedMessage) {
         List<String> args = new ArrayList<>();
-        String value = raise ? "on" : "off";
-        args.add("--scheduled-jobs-deny=" + value);
+        if (!raise) {
+            args.add("--scheduled-jobs-deny=off");
+            args.add("--sessions-deny=off");
+            return args;
+        }
+        args.add("--scheduled-jobs-deny=on");
         if (sessionsDeny) {
-            args.add("--sessions-deny=" + value);
-            if (raise && permissionCode != null && !permissionCode.isBlank()) {
+            args.add("--sessions-deny=on");
+            if (permissionCode != null && !permissionCode.isBlank()) {
                 args.add("--permission-code=" + permissionCode.trim());
             }
-            if (raise && deniedMessage != null && !deniedMessage.isBlank()) {
+            if (deniedMessage != null && !deniedMessage.isBlank()) {
                 args.add("--denied-message=" + deniedMessage.trim());
             }
         }
         return args;
+    }
+
+    /** The two denial flags themselves, apart from the window's descriptive fields. */
+    public static final List<String> DENY_FLAGS = List.of("scheduled-jobs-deny", "sessions-deny");
+
+    /**
+     * Which denial flags are still up, read off {@link #flags}. The second guard on the report of an
+     * {@code end}: the arguments say what was ASKED for, this says what the cluster now holds, and a
+     * flag that survived the lower must be named rather than covered by a cheerful summary.
+     */
+    public static List<String> stillRaised(Map<String, String> flags) {
+        List<String> raised = new ArrayList<>();
+        if (flags == null) {
+            return raised;
+        }
+        for (String flag : DENY_FLAGS) {
+            String value = flags.get(flag);
+            if (value != null && "on".equalsIgnoreCase(value.trim())) {
+                raised.add(flag);
+            }
+        }
+        return raised;
     }
 
     /** The denial-window fields of one {@code rac infobase info} record, in report order. */

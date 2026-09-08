@@ -51,7 +51,8 @@ public final class InfobaseMaintenanceTool {
         JsonObject action = new JsonObject();
         action.addProperty("type", "string");
         action.addProperty("description", "status (default): report the flags and the sessions. "
-                + "begin: raise the flags, then watch the sessions drain. end: lower the flags.");
+                + "begin: raise the flags, then watch the sessions drain. end: lower BOTH denial "
+                + "flags, whatever this call asks for - it undoes a begin made in another call.");
         JsonArray actions = new JsonArray();
         actions.add("status");
         actions.add("begin");
@@ -79,9 +80,9 @@ public final class InfobaseMaintenanceTool {
                 + "belong to one infobase."));
         props.add("action", action);
         props.add("allowedAppIds", allowedAppIds);
-        props.add("sessionsDeny", boolProp("begin/end: also deny NEW sessions, not only scheduled "
+        props.add("sessionsDeny", boolProp("begin: also deny NEW sessions, not only scheduled "
                 + "jobs. Mind that this can lock out the updater too - set permissionCode to keep "
-                + "a door open."));
+                + "a door open. end ignores it and lowers both flags either way."));
         props.add("permissionCode", strProp("begin with sessionsDeny: the pass-code that lets a "
                 + "session in while sessions are denied."));
         props.add("deniedMessage", strProp("begin with sessionsDeny: message shown to a refused "
@@ -113,7 +114,8 @@ public final class InfobaseMaintenanceTool {
                 "A maintenance window around a database-configuration update, through rac: begin "
                 + "raises scheduled-jobs-deny (and optionally sessions-deny with a permission code), "
                 + "watches the session list until only the allowed applications remain and reports "
-                + "\"clear to update\"; end lowers the flags; status just reports. The point: on a "
+                + "\"clear to update\"; end lowers BOTH flags - the sessions-deny a begin in another "
+                + "call raised included - and says so when one stays up; status just reports. The point: on a "
                 + "lively base BackgroundJob sessions respawn every minute, so terminating them is "
                 + "useless - with the flag up they drain by themselves and nothing has to be killed. "
                 + "Needs the infobase administrator. The flags live in the cluster: the configurator "
@@ -123,7 +125,9 @@ public final class InfobaseMaintenanceTool {
                 "Окно обслуживания вокруг обновления конфигурации базы данных, через rac: begin "
                 + "поднимает scheduled-jobs-deny (и, по запросу, sessions-deny с кодом доступа), "
                 + "ждёт, пока в списке сеансов останутся только разрешённые приложения, и отвечает "
-                + "\"clear to update\"; end опускает флаги; status только отчитывается. Смысл: на "
+                + "\"clear to update\"; end опускает ОБА флага, включая sessions-deny, поднятый "
+                + "вызовом begin, и сообщает, если флаг остался поднятым; status только "
+                + "отчитывается. Смысл: на "
                 + "живой базе сеансы BackgroundJob пересоздаются каждую минуту, и завершать их "
                 + "бесполезно – с поднятым флагом они иссякают сами, убивать никого не нужно. Нужен "
                 + "администратор информационной базы. Флаги живут в кластере: у агента конфигуратора "

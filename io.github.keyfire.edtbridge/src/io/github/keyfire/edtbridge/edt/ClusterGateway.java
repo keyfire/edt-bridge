@@ -228,7 +228,8 @@ public final class ClusterGateway {
      * <p>{@code begin} raises {@code scheduled-jobs-deny} (and, when asked, {@code sessions-deny}
      * with a permission code), then watches the session list until only the allowed applications
      * remain - BackgroundJob sessions are short and drain by themselves within a minute once
-     * nothing respawns them, so nothing has to be terminated. {@code end} lowers the same flags.
+     * nothing respawns them, so nothing has to be terminated. {@code end} lowers BOTH flags,
+     * whatever this call was told: it is the other half of a begin made in another call.
      * {@code status} reports the flags and the sessions without touching anything.
      *
      * <p>The flags are infobase properties in the cluster, so {@code rac} needs the infobase
@@ -339,7 +340,12 @@ public final class ClusterGateway {
                             + "terminate the stubborn ones with edt_infobase_sessions, or wait and "
                             + "re-call with action=status";
         } else if (end) {
-            r.message = "denial flags lowered - scheduled jobs may start again";
+            List<String> stuck = MaintenanceWindow.stillRaised(r.flags);
+            r.message = stuck.isEmpty()
+                    ? "denial flags lowered - scheduled jobs may start again"
+                    : "the lower did not take: " + String.join(" and ", stuck) + " is still on, so "
+                            + "the infobase stays closed. Check the cluster and the rights of the "
+                            + "infobase administrator, and see the flags field below";
         } else {
             r.message = (r.clearToUpdate ? "no blocking sessions" : r.blockers.size()
                     + " session(s) would block an update");
@@ -451,7 +457,7 @@ public final class ClusterGateway {
             }
         }
         r.message = PlatformSelection.unavailable("install carrying rac", platformVersion,
-                platform.versionsCarrying("rac.exe", "rac"));
+                PlatformGateway.versionsCarrying(scanned, "rac.exe", "rac"));
         return null;
     }
 
