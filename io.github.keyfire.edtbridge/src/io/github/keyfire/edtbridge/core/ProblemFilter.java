@@ -40,14 +40,19 @@ public final class ProblemFilter {
     /**
      * Whether a problem at {@code resource} is in scope.
      *
-     * <p>The name half takes SEVERAL tokens and demands every one of them, because one was not enough
-     * to address a form: a form's marker is presented as "Справочник.Товары.Форма.Контроль.Модуль", so
-     * a filter that knew only the object name accepted the markers of its OTHER forms as well. The
-     * object name and the form name together name one form; either alone names a family.
+     * <p>The name half takes SEVERAL tokens and demands them CONSECUTIVELY, because neither one token
+     * nor an unordered set was enough to address a form. A form's marker is presented as
+     * "Справочник.Товары.Форма.Контроль.Модуль": knowing only the object name accepted the markers of
+     * its OTHER forms, and knowing both names in any position still did - for a form named Форма,
+     * which is the platform's default name, because the presentation says Форма about every form of
+     * the object. The object name, the form word and the form name STANDING NEXT TO EACH OTHER name
+     * exactly one form.
      *
      * @param resource   the problem's resource - a project-relative path, or an object presentation
      * @param pathPrefix project-relative path or folder prefix to keep, or null
-     * @param nameTokens names that must ALL appear in a presentation, or empty/null for no name filter
+     * @param nameTokens segments that must appear in this order, side by side, or empty/null for no
+     *                   name filter; {@link MetadataPaths#FORM_WORD} stands for any spelling of the
+     *                   word for a form
      */
     public static boolean matchesLocation(String resource, String pathPrefix,
             java.util.List<String> nameTokens) {
@@ -59,13 +64,56 @@ public final class ProblemFilter {
         if (nameTokens == null || nameTokens.isEmpty()) {
             return false;
         }
-        for (String token : nameTokens) {
-            if (token == null || token.isBlank()
-                    || !namesSegment(value, token.trim().toLowerCase())) {
-                return false;
+        return namesSequence(value, nameTokens);
+    }
+
+    /**
+     * Spellings a location can use for the form part: two languages, singular in a presentation
+     * ("Форма.Контроль") and plural in a path ("Forms/Контроль").
+     */
+    private static final java.util.Set<String> FORM_WORDS =
+            java.util.Set.of("форма", "формы", "form", "forms");
+
+    /**
+     * True when {@code tokens} appear in {@code text} as identifier segments standing NEXT TO EACH
+     * OTHER, in the given order: "Товары", the form word, "Контроль" is inside
+     * "Справочник.Товары.Форма.Контроль.Модуль" but not inside "Справочник.Товары.Форма.Форма.Модуль",
+     * where the same three words are all present yet name a different form.
+     */
+    public static boolean namesSequence(String text, java.util.List<String> tokens) {
+        if (text == null || tokens == null || tokens.isEmpty()) {
+            return false;
+        }
+        String[] parts = segments(text);
+        for (int start = 0; start + tokens.size() <= parts.length; start++) {
+            boolean all = true;
+            for (int i = 0; i < tokens.size(); i++) {
+                if (!matchesToken(parts[start + i], tokens.get(i))) {
+                    all = false;
+                    break;
+                }
+            }
+            if (all) {
+                return true;
             }
         }
-        return true;
+        return false;
+    }
+
+    /** One segment against one token: the form-word placeholder accepts any of its spellings. */
+    private static boolean matchesToken(String segment, String token) {
+        if (token == null || token.isBlank()) {
+            return false;
+        }
+        if (MetadataPaths.FORM_WORD.equals(token)) {
+            return FORM_WORDS.contains(segment.toLowerCase());
+        }
+        return segment.equalsIgnoreCase(token.trim());
+    }
+
+    /** Identifier segments of a location: everything a 1C name cannot contain is a delimiter. */
+    private static String[] segments(String text) {
+        return text.split("[^\\p{L}\\p{N}_]+");
     }
 
     /**
@@ -78,7 +126,7 @@ public final class ProblemFilter {
         if (text == null || name == null || name.isEmpty()) {
             return false;
         }
-        for (String segment : text.split("[^\\p{L}\\p{N}_]+")) {
+        for (String segment : segments(text)) {
             if (segment.equalsIgnoreCase(name)) {
                 return true;
             }

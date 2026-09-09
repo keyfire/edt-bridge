@@ -8,6 +8,18 @@ that day are named in the heading. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
+## Unreleased
+
+### Fixed
+- **Narrowing to a form named `Форма` no longer answers for the object's other forms.** An EDT check
+  marker names its object by presentation ("ВнешняяОбработка.Проба.Форма.Контроль.Форма.Модуль"), and
+  the narrowing demanded the object name and the form name as whole segments in any position. For the
+  platform's DEFAULT form name that is every sibling's presentation: the form word itself answers to
+  the name. Measured live: a processor with the forms `Форма` and `Контроль`, one error planted in
+  each, returned 7 of the 8 problems for `...Form.Форма`, four of them belonging to `Контроль`. The
+  segments are now required side by side and in order - object, the word for a form, the form's name -
+  with the word matched in either language and in the plural a path uses.
+
 ## 2026-09-09 – 0.23.0
 
 ### Fixed

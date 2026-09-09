@@ -43,7 +43,7 @@ class ProblemFilterTest {
     void anotherFormOfTheSameObjectIsNotDraggedIn() {
         // Found on a live model: asking about one form of a catalog answered with the findings of
         // its other form, because the filter knew the OBJECT name and nothing else.
-        List<String> control = List.of("Товары", "Контроль");
+        List<String> control = MetadataPaths.nameTokens("Catalog.Товары.Form.Контроль");
         assertTrue(ProblemFilter.matchesLocation("Справочник.Товары.Форма.Контроль.Модуль", null,
                 control));
         assertFalse(ProblemFilter.matchesLocation("Справочник.Товары.Форма.Форма.Модуль", null,
@@ -56,7 +56,29 @@ class ProblemFilterTest {
     @DisplayName("a form of ANOTHER object with the same form name stays out")
     void sameFormNameOnAnotherObjectStaysOut() {
         assertFalse(ProblemFilter.matchesLocation("Документ.Заказ.Форма.Контроль.Модуль", null,
-                List.of("Товары", "Контроль")));
+                MetadataPaths.nameTokens("Catalog.Товары.Form.Контроль")));
+    }
+
+    @Test
+    @DisplayName("a form named Форма keeps its object's other forms out - the name that broke this")
+    void defaultFormNameDoesNotWiden() {
+        // Measured on a live model (2026-09-09), which is how the half-fix was caught: an external
+        // data processor with the forms Форма and Контроль, one error planted in each. Narrowing to
+        // Форма returned 7 of the 8 problems - the form word of every marker answered to the form's
+        // own name, so both names were "present" in a sibling's presentation. Consecutive segments
+        // are the fix, and this pair of assertions is the measurement.
+        List<String> defaultName =
+                MetadataPaths.nameTokens("ExternalDataProcessor.Проба.Form.Форма");
+        assertTrue(ProblemFilter.matchesLocation("ВнешняяОбработка.Проба.Форма.Форма.Форма.Модуль",
+                null, defaultName));
+        assertFalse(ProblemFilter.matchesLocation(
+                "ВнешняяОбработка.Проба.Форма.Контроль.Форма.Модуль", null, defaultName));
+        // The English spelling of the same presentation is the same case.
+        List<String> english = MetadataPaths.nameTokens("ExternalDataProcessor.Проба.Form.Форма");
+        assertTrue(ProblemFilter.matchesLocation("ExternalDataProcessor.Проба.Form.Форма.Form.Module",
+                null, english));
+        assertFalse(ProblemFilter.matchesLocation(
+                "ExternalDataProcessor.Проба.Form.Контроль.Form.Module", null, english));
     }
 
     // -- severities: one grade is not enough -----------------------------------------------------

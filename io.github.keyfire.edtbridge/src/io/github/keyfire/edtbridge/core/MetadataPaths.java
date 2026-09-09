@@ -149,15 +149,27 @@ public final class MetadataPaths {
     }
 
     /**
-     * The name segments an FQN narrowing has to see in an EDT check marker, which names its object by
-     * PRESENTATION ("Справочник.Товары.Форма.Контроль.Модуль") instead of by path. The object's own
-     * name for an ordinary FQN; the object's name AND the form's for a form. Empty when the FQN names
-     * nothing.
+     * Stands, inside {@link #nameTokens}, for whatever word the location uses between an object and
+     * its form: a marker spells it in the project's own language (Форма / Form) and a path spells it
+     * in the plural (Forms), so the narrowing cannot demand one spelling. Not a name a source can
+     * carry - the control character keeps it apart from any identifier.
+     */
+    public static final String FORM_WORD = "\u0001form";
+
+    /**
+     * The segments an FQN narrowing has to see, IN THIS ORDER AND NEXT TO EACH OTHER, in an EDT check
+     * marker - which names its object by PRESENTATION ("Справочник.Товары.Форма.Контроль.Модуль")
+     * instead of by path. The object's own name for an ordinary FQN; the object's name, the word for
+     * a form and the form's name for a form. Empty when the FQN names nothing.
      *
-     * <p>The form half is not decoration. A live check caught the defect it closes: the narrowing took
-     * the OBJECT name alone, so every form of that object was in scope and the question "is the form
-     * Контроль clean" came back with the findings of the form Форма - a report about the wrong code
-     * that reads exactly like a report about the right one. Both segments must be there.
+     * <p>The form half is not decoration, and neither is the order. A live check caught the first
+     * defect: the narrowing took the OBJECT name alone, so every form of that object was in scope and
+     * the question "is the form Контроль clean" came back with the findings of the form Форма. Asking
+     * for both names in any position closed that case but not the one that matters most - a form
+     * NAMED Форма, the platform's default name: its own name is also the word the presentation uses
+     * for the form part ("...Форма.Контроль.Форма.Модуль"), so every sibling form matched again.
+     * Measured live on 2026-09-09: narrowing to the form Форма returned 7 of the object's 8 problems,
+     * 4 of them belonging to the form Контроль. Consecutive segments are what names one form.
      */
     public static List<String> nameTokens(String fqn) {
         String[] parts = split(fqn);
@@ -165,7 +177,7 @@ public final class MetadataPaths {
             return List.of();
         }
         if (isForm(fqn) && parts.length >= 4 && !parts[parts.length - 1].isBlank()) {
-            return List.of(parts[1], parts[parts.length - 1]);
+            return List.of(parts[1], FORM_WORD, parts[parts.length - 1]);
         }
         return List.of(parts[1]);
     }

@@ -120,10 +120,13 @@ class MetadataPathsTest {
     void formCarriesItsOwnName() {
         // The defect a live run caught: with the object name alone, asking about one form of an
         // object answered with the findings of its other forms.
-        assertEquals(List.of("Товары", "Список"),
+        assertEquals(List.of("Товары", MetadataPaths.FORM_WORD, "Список"),
                 MetadataPaths.nameTokens("Catalog.Товары.Form.Список"));
-        assertEquals(List.of("Товары", "Контроль"),
+        assertEquals(List.of("Товары", MetadataPaths.FORM_WORD, "Контроль"),
                 MetadataPaths.nameTokens("Catalog.Товары.Form.Контроль"));
+        // The word between them is a placeholder, not a spelling: a presentation says Форма or Form,
+        // a path says Forms, and the narrowing must not demand one of the three.
+        assertEquals(3, MetadataPaths.nameTokens("Catalog.Товары.Form.Форма").size());
         // A common form has no owning object; its own name is the whole address.
         assertEquals(List.of("Настройки"), MetadataPaths.nameTokens("CommonForm.Настройки"));
     }
