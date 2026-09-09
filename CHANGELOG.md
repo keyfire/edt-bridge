@@ -8,7 +8,7 @@ that day are named in the heading. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
-## Unreleased
+## 2026-09-09 – 0.23.0, 0.24.0
 
 ### Fixed
 - **Narrowing to a form named `Форма` no longer answers for the object's other forms.** An EDT check
@@ -19,10 +19,6 @@ that day are named in the heading. The format follows
   each, returned 7 of the 8 problems for `...Form.Форма`, four of them belonging to `Контроль`. The
   segments are now required side by side and in order - object, the word for a form, the form's name -
   with the word matched in either language and in the plural a path uses.
-
-## 2026-09-09 – 0.23.0
-
-### Fixed
 - **A running agent of the requested LINE is no longer turned away.** Reuse measured the agent
   against the newest build installed of that line, so a stand pinned to 8.5.1.1302 with 8.5.1.1464
   also on disk refused its own agent for a request for `8.5.1` – and the refusal advised a restart
