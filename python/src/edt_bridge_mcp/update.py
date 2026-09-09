@@ -119,6 +119,37 @@ def purge_stale_jars(dropins: Path | None, emit=log) -> int:
     return removed
 
 
+def installed_jar(dropins: Path | None = None) -> tuple[str, Path] | None:
+    """The newest edt-bridge jar in dropins as (version, path), or None when there is none.
+
+    The version is the part of the file name after the bundle id - `0.24.0.202609090627`, the
+    release plus the build timestamp. It is what EDT will load NEXT time it starts, which is not
+    necessarily what the bridge answering right now is running.
+    """
+    dropins = dropins if dropins is not None else _find_dropins()
+    if not dropins or not dropins.is_dir():
+        return None
+    jars = sorted(dropins.glob(JAR_PREFIX + "*.jar"), key=lambda p: p.name)
+    if not jars:
+        return None
+    return jars[-1].name[len(JAR_PREFIX):-len(".jar")], jars[-1]
+
+
+def running_bridge_version() -> str | None:
+    """The version of the bridge answering right now; None when none is up (or it will not say).
+
+    Imported where it is used: the wrapper must stay importable without a bridge, and the module
+    graph runs the other way round (server imports cli, cli imports this).
+    """
+    try:
+        from .server import Backend
+
+        status = Backend().status()
+    except Exception:  # a bridge that is down is not an error here, it is the answer
+        return None
+    return (status or {}).get("version")
+
+
 def has_jar(dropins: Path | None) -> bool:
     """Whether an edt-bridge plugin jar is present. Also collapses dropins to a single newest jar,
     so a stale copy next to the current one never gets loaded by mistake."""
@@ -215,6 +246,12 @@ def update_jar() -> bool:
     ok = install_latest_jar(dropins)
     if ok:
         log("a running EDT (GUI or headless) keeps the old code until restarted")
+        # Named, not just warned about: the running bridge answered 0.21.0 while 0.22.0 lay in
+        # dropins, and nothing said so - the session went on believing it ran the new code.
+        jar, live = installed_jar(dropins), running_bridge_version()
+        if jar and live and not jar[0].startswith(live):
+            log(f"the bridge answering now is {live}, the jar in dropins is {jar[0]} - "
+                f"restart EDT (edt-bridge-mcp shutdown) to run it")
     return ok
 
 

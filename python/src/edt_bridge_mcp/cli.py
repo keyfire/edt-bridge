@@ -259,6 +259,29 @@ def _shutdown(backend, args: argparse.Namespace) -> int:
     return 1
 
 
+def _with_jar_on_disk(status: dict) -> dict:
+    """The bridge's own status plus the jar lying in dropins - the code it would load next.
+
+    A headless session that started before the jar was replaced keeps answering with the old
+    version, and nothing said so: `/status` reported 0.21.0 while 0.22.0 lay in dropins, and the
+    session went on believing the new tools were there. The jar is read here, in the wrapper -
+    the running bridge cannot see what replaced its own file. `current` is false when the two
+    differ, which is the sign to restart EDT (`edt-bridge-mcp shutdown`).
+    """
+    from .update import installed_jar
+
+    found = installed_jar()
+    if found is None:
+        return status
+    version, path = found
+    live = status.get("version")
+    return {**status, "jarOnDisk": {
+        "version": version,
+        "path": str(path),
+        "current": bool(live) and version.startswith(str(live)),
+    }}
+
+
 def run(command: str, argv: list[str]) -> int:
     try:
         return _run(command, argv)
@@ -300,7 +323,14 @@ def _run(command: str, argv: list[str]) -> int:
         if status is None:
             print("no bridge is running in the scanned port range", file=sys.stderr)
             return 1
+        status = _with_jar_on_disk(status)
         _emit(json.dumps(status, ensure_ascii=False, indent=2))
+        jar = status.get("jarOnDisk")
+        if jar and not jar["current"]:
+            # A false flag inside a long json is easy to read past; the sentence is not.
+            print(f"the jar in dropins is {jar['version']}, the bridge answering is "
+                  f"{status.get('version')} - restart EDT (edt-bridge-mcp shutdown) to load it",
+                  file=sys.stderr)
         return 0
 
     if command == "shutdown":

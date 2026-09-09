@@ -10,6 +10,23 @@ that day are named in the heading. The format follows
 
 ## 2026-09-09 – 0.23.0, 0.24.0
 
+### Added
+- **`status` names the jar lying in dropins next to the version answering.** A headless session
+  that started before the jar was replaced keeps running the old code, and nothing said so:
+  `/status` answered 0.21.0 while 0.22.0 lay in dropins, and the session went on believing the new
+  tools were there - the bridge cannot see what replaced its own file, so the wrapper reads it.
+  The answer carries `jarOnDisk` (version, path and `current`), and when the two differ the run
+  says in words that EDT has to be restarted. `self-update` names both versions for the same
+  reason.
+
+### Fixed
+- **The shared options are accepted before the command, as the help promises.**
+  `edt-bridge-mcp --port 8770 status` answered "unrecognized arguments: status" - the command was
+  looked for in the first position only, while the help says the connection options belong to the
+  server mode and to every command, which reads as "in any order". The command is now found
+  wherever it stands; an option that takes a value is skipped together with its value, so a port
+  number is never mistaken for a command name.
+
 ### Fixed
 - **Narrowing to a form named `Форма` no longer answers for the object's other forms.** An EDT check
   marker names its object by presentation ("ВнешняяОбработка.Проба.Форма.Контроль.Форма.Модуль"), and

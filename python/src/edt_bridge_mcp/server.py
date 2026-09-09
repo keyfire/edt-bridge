@@ -1006,13 +1006,47 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+ALL_COMMANDS = (*cli.COMMANDS, "self-update")
+
+
+def split_command(argv: list[str]) -> tuple[str | None, list[str]]:
+    """The command and the arguments to give it, with the shared options on EITHER side.
+
+    The help says the connection options belong to the server mode and to every command, which
+    reads as "in any order" - but the command used to be looked for in the first position only,
+    so ``--port 8770 status`` answered "unrecognized arguments: status". An option that TAKES a
+    value is skipped together with its value, or the port number would be read as the command;
+    the option names come from the parser itself, so a new one is covered without a list here.
+    """
+    takes_value = {
+        name
+        for action in cli.build_parser("call")._actions
+        if action.nargs != 0
+        for name in action.option_strings
+    }
+    skip = False
+    for i, token in enumerate(argv):
+        if skip:
+            skip = False
+            continue
+        if token.startswith("-") and token != "-":
+            skip = "=" not in token and token in takes_value
+            continue
+        if token in ALL_COMMANDS:
+            return token, argv[:i] + argv[i + 1:]
+        # A bare word that is no command: the server parser says so in its own words.
+        return None, argv
+    return None, argv
+
+
 def main() -> int:
     force_utf8_streams()
-    if len(sys.argv) > 1 and sys.argv[1] == "self-update":
+    command, rest = split_command(sys.argv[1:])
+    if command == "self-update":
         from . import update
-        return update.run(sys.argv[2:])
-    if len(sys.argv) > 1 and sys.argv[1] in cli.COMMANDS:
-        return cli.run(sys.argv[1], sys.argv[2:])
+        return update.run(rest)
+    if command:
+        return cli.run(command, rest)
     args = build_parser().parse_args()
     apply_connection_options(args)
 

@@ -110,7 +110,7 @@ usage: edt-bridge-mcp tools [-h] [--raw] [--workspace WORKSPACE] [--edt-dir EDT_
 
 ## `edt-bridge-mcp status`
 
-Report the running bridge (does not start one).
+Report the running bridge (does not start one) and the version of the jar in dropins - the code EDT will load next time it starts.
 
 ```bash
 usage: edt-bridge-mcp status [-h] [--workspace WORKSPACE] [--edt-dir EDT_DIR]

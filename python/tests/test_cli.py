@@ -10,7 +10,7 @@ import sys
 
 import pytest
 
-from edt_bridge_mcp import cli
+from edt_bridge_mcp import cli, server
 
 
 def _call(argv):
@@ -82,6 +82,64 @@ def test_every_command_parses_the_connection_flags():
         args = cli._parse(command, argv + ["--port", "8899", "--no-autostart"])
         assert args.port == 8899
         assert args.no_autostart is True
+
+
+# -- the jar on disk next to the running bridge --------------------------------
+
+
+def test_status_names_the_jar_that_would_load_next(monkeypatch, tmp_path):
+    """A headless session started before the jar was replaced keeps answering the old version."""
+    from edt_bridge_mcp import update
+
+    jar = tmp_path / (update.JAR_PREFIX + "0.24.0.202609090627.jar")
+    jar.write_bytes(b"")
+    monkeypatch.setattr(update, "_find_dropins", lambda: tmp_path)
+
+    same = cli._with_jar_on_disk({"name": "edt-bridge", "version": "0.24.0"})
+    assert same["jarOnDisk"]["version"] == "0.24.0.202609090627"
+    assert same["jarOnDisk"]["current"] is True
+
+    behind = cli._with_jar_on_disk({"name": "edt-bridge", "version": "0.23.0"})
+    assert behind["jarOnDisk"]["current"] is False  # the sign to restart EDT
+
+
+def test_status_says_nothing_about_a_jar_it_cannot_find(monkeypatch, tmp_path):
+    """No dropins (EDT installed elsewhere, a foreign machine) is not a finding to report."""
+    from edt_bridge_mcp import update
+
+    monkeypatch.setattr(update, "_find_dropins", lambda: tmp_path)
+    assert cli._with_jar_on_disk({"version": "0.24.0"}) == {"version": "0.24.0"}
+
+
+# -- where the command may stand ----------------------------------------------
+
+
+def test_the_shared_options_are_accepted_before_the_command():
+    """The help promises the connection options belong to every command; order is not a rule.
+
+    `edt-bridge-mcp --port 8770 status` used to answer "unrecognized arguments: status" - the
+    command was looked for in the first position only.
+    """
+    assert server.split_command(["--port", "8770", "status"]) == ("status", ["--port", "8770"])
+    assert server.split_command(["--port=8770", "status"]) == ("status", ["--port=8770"])
+    assert server.split_command(["--no-autostart", "tools"]) == ("tools", ["--no-autostart"])
+
+
+def test_the_command_still_takes_its_own_arguments_after_it():
+    assert server.split_command(["call", "edt_projects", "--raw"]) == (
+        "call", ["edt_projects", "--raw"])
+    assert server.split_command(["--port", "1", "self-update"]) == ("self-update", ["--port", "1"])
+
+
+def test_a_port_number_is_not_mistaken_for_a_command():
+    """Every command name would do as a value; the option is skipped with its value, not scanned."""
+    assert server.split_command(["--workspace", "status"]) == (None, ["--workspace", "status"])
+
+
+def test_no_command_leaves_the_server_parser_to_speak():
+    assert server.split_command([]) == (None, [])
+    assert server.split_command(["--version"]) == (None, ["--version"])
+    assert server.split_command(["stat"]) == (None, ["stat"])  # a typo, not a command
 
 
 # -- output and the pipe contract ---------------------------------------------

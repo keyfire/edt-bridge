@@ -110,8 +110,10 @@ MESSAGES = {
         "en": "List the tools the running bridge serves.",
     },
     "status.description": {
-        "ru": "Состояние запущенного моста (сам его не поднимает).",
-        "en": "Report the running bridge (does not start one).",
+        "ru": "Состояние запущенного моста (сам его не поднимает) и версия jar в dropins - "
+              "кода, который EDT загрузит при следующем запуске.",
+        "en": "Report the running bridge (does not start one) and the version of the jar in "
+              "dropins - the code EDT will load next time it starts.",
     },
     "shutdown.description": {
         "ru": "Штатно завершить EDT, обслуживающую мост, - вместо taskkill по процессам. "

@@ -110,7 +110,7 @@ usage: edt-bridge-mcp tools [-h] [--raw] [--workspace WORKSPACE] [--edt-dir EDT_
 
 ## `edt-bridge-mcp status`
 
-Состояние запущенного моста (сам его не поднимает).
+Состояние запущенного моста (сам его не поднимает) и версия jar в dropins - кода, который EDT загрузит при следующем запуске.
 
 ```bash
 usage: edt-bridge-mcp status [-h] [--workspace WORKSPACE] [--edt-dir EDT_DIR]
