@@ -20,6 +20,14 @@ that day are named in the heading. The format follows
   reason.
 
 ### Fixed
+- **A slow tool no longer holds the requests behind it.** The wrapper read one frame from stdin,
+  ran it to the end and only then read the next: while `edt_project_errors` refreshed a project,
+  built it and waited for validation to settle, everything the client sent meanwhile sat unread
+  and timed out - even though the bridge itself was answering other calls in under a second
+  (measured: light calls returned in 0.4-1.4 s throughout a 15-second run over the Service
+  Manager configuration). Requests are now served on a small pool (8 at a time). Measured on the
+  same configuration: `edt_project_errors` took 11.5 s while `edt_projects` answered in 0.34 s
+  and `ping` in 0.30 s, both of them behind it in the stream.
 - **The shared options are accepted before the command, as the help promises.**
   `edt-bridge-mcp --port 8770 status` answered "unrecognized arguments: status" - the command was
   looked for in the first position only, while the help says the connection options belong to the

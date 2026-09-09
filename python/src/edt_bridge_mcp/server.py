@@ -39,6 +39,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from . import __version__
@@ -752,6 +753,12 @@ def unknown_arguments(name: str, arguments: dict, tools: list[dict] | None = Non
             + (", ".join(sorted(declared)) or "(none)"))
 
 
+# How many requests the wrapper serves at once. Enough that a slow tool does not block the
+# session, small enough that a client which fires everything it has does not start a headless
+# EDT thread per call.
+MAX_INFLIGHT = 8
+
+
 class StdioServer:
     """Newline-delimited JSON-RPC over stdio; forwards to the Backend."""
 
@@ -958,22 +965,39 @@ class StdioServer:
 
     # -- main loop -------------------------------------------------------
 
+    def _serve(self, message: dict) -> None:
+        try:
+            self.handle(message)
+        except Exception as exc:  # keep serving no matter what one request does
+            log(f"handler crashed: {exc!r}")
+            if message.get("id") is not None:
+                self._error(message.get("id"), -32000, f"internal error: {exc}")
+
     def run(self) -> int:
-        for raw in sys.stdin:
-            raw = raw.strip()
-            if not raw:
-                continue
-            try:
-                message = json.loads(raw)
-            except ValueError:
-                log(f"dropping a non-JSON line ({len(raw)} chars)")
-                continue
-            try:
-                self.handle(message)
-            except Exception as exc:  # keep serving no matter what one request does
-                log(f"handler crashed: {exc!r}")
-                if message.get("id") is not None:
-                    self._error(message.get("id"), -32000, f"internal error: {exc}")
+        # Requests are served on a small pool, not one after another on the reading thread. A
+        # long tool held the whole wrapper: edt_project_errors refreshes the project, builds it
+        # and waits for validation to settle - minutes on a large configuration - and every
+        # later request sat unread on stdin until it returned, so the client timed them out
+        # while the bridge itself was answering other calls in under a second. JSON-RPC matches
+        # an answer to its request by id, so replies may come back out of order; writing them
+        # is already serialized by _out_lock, and a headless start by the backend's own lock.
+        pool = ThreadPoolExecutor(max_workers=MAX_INFLIGHT, thread_name_prefix="edt-bridge")
+        try:
+            for raw in sys.stdin:
+                raw = raw.strip()
+                if not raw:
+                    continue
+                try:
+                    message = json.loads(raw)
+                except ValueError:
+                    log(f"dropping a non-JSON line ({len(raw)} chars)")
+                    continue
+                pool.submit(self._serve, message)
+        finally:
+            # stdin is closed: the client is gone. What was already accepted still runs to the
+            # end (the interpreter waits for the pool at exit) - a request is not dropped just
+            # because it was the last one read.
+            pool.shutdown(wait=False)
         return 0
 
 
