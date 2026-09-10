@@ -43,7 +43,6 @@ to the code and the reasoning behind it.
   that may still hold a Designer session on the infobase's configuration lock. The bridge remembers
   the directories it created, so a leftover now says which it is (`origin` in the answer), and the
   two kinds are counted apart in the message. ([`1795fc6`](https://github.com/keyfire/edt-bridge/commit/1795fc6))
-
 - **The platform's questions are answered - by the caller.** The bridge registered no question
   handler, so when the platform stopped to ask ("the database is locked: Cancel / Retry", and for a
   change touching no table structure a third option, applying it dynamically while sessions keep
