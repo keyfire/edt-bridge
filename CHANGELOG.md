@@ -8,10 +8,10 @@ that day are named in the heading. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
-Every entry ends with a link to the change it describes - the pull request it came from
-(`([#12](https://github.com/keyfire/edt-bridge/pull/12))`), or the commit when there was no
-pull request. An entry without such a link is unfinished: the reader has no way from the line
-to the code behind it.
+Every entry ends with a link to the pull request it came from -
+`([#12](https://github.com/keyfire/edt-bridge/pull/12))`. That is why changes come in through pull
+requests: an entry without such a link is unfinished, because the reader has no way from the line
+to the code and the reasoning behind it.
 
 ## [Unreleased]
 
