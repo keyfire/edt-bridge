@@ -13,7 +13,7 @@ Every entry ends with a link to the pull request it came from -
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
-## [Unreleased]
+## 2026-09-10 – 0.26.0
 
 ### Fixed
 - **An agent already running is no longer served for a different infobase user.** Credentials bind
