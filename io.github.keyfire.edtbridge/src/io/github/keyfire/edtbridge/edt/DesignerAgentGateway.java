@@ -40,6 +40,7 @@ import io.github.keyfire.edtbridge.core.AgentIdle;
 import io.github.keyfire.edtbridge.core.AgentLeftovers;
 import io.github.keyfire.edtbridge.core.AgentRecord;
 import io.github.keyfire.edtbridge.core.AgentUser;
+import io.github.keyfire.edtbridge.core.QuestionChoice;
 import io.github.keyfire.edtbridge.core.PlatformSelection;
 import io.github.keyfire.edtbridge.core.TreeRemoval;
 
@@ -146,6 +147,16 @@ public final class DesignerAgentGateway {
         boolean infobaseConnected;
         /** Set when stopping had to kill the process - then its cluster session needs ending too. */
         boolean killed;
+        /**
+         * The answer the CALLER chose for a platform question, and the question that actually came.
+         * Both belong to the operation in flight, which holds {@link #lock} - so one field each is
+         * enough, and both are cleared around the call rather than left to leak into the next one.
+         */
+        volatile String answer;
+        volatile String question;
+        volatile List<String> questionOptions = List.of();
+        /** Whether the handler actually gave the platform an answer - see QuestionChoice. */
+        volatile boolean answered;
 
         /** The trace this agent leaves for a later bridge process. Carries no credentials. */
         AgentRecord record() {
@@ -210,6 +221,9 @@ public final class DesignerAgentGateway {
         public String platform;
         public String extension;
         public String sessionTermination;
+        public String answer;
+        public String question;
+        public final List<String> questionOptions = new ArrayList<>();
         public final List<String> changes = new ArrayList<>();
         public String plan;
         public String message;
@@ -918,8 +932,14 @@ public final class DesignerAgentGateway {
                 r.pendingChangeCount = collected.size();
                 r.databaseConfigUpToDate = collected.isEmpty();
                 r.ok = true;
+                // "Nothing to apply" is read off the STRUCTURE changes, and a change that touches no
+                // table reports none of them - so an empty list is not proof that sessions run the
+                // current code. Saying "up to date" flat out would be the same overclaim the
+                // equality note warns about one level up.
                 r.message = collected.isEmpty()
-                        ? "the database configuration is up to date - the platform reports nothing to apply"
+                        ? "no STRUCTURE changes are pending. That is not proof the code is applied: a "
+                          + "change that alters no table structure reports nothing here, and the "
+                          + "platform offers to apply it dynamically only when the update is run."
                         : "an update is PENDING: " + collected.size() + " structure change(s) are waiting, so "
                           + "sessions still execute the previous configuration. Nothing was applied.";
                 return r;
@@ -1089,11 +1109,17 @@ public final class DesignerAgentGateway {
      *                           when an exclusive lock is needed and sessions hold the infobase. This
      *                           is the whole "deny sessions, kick everyone out, apply, allow again"
      *                           procedure in one option, and {@code force} really does end other
-     *                           people's sessions.
+     *                           people's sessions. It does NOT cover the questions the platform asks
+     *                           on its own - those go to {@code answer}.
+     * @param answer             which option to give when the platform stops and asks (the value or
+     *                           the label it offered). Left out, the question is reported with its
+     *                           options and nothing is answered: one of them can end other users'
+     *                           sessions and another applies the change dynamically, and that is not
+     *                           a choice this code may make for the caller.
      */
     public UpdateResult updateDatabaseConfiguration(String infobase, String extension,
             String sessionTermination, String terminationMessage, String user, String password,
-            String platformVersion, boolean apply) {
+            String platformVersion, String answer, boolean apply) {
         UpdateResult r = new UpdateResult();
         r.infobase = infobase;
         r.extension = extension;
@@ -1109,7 +1135,12 @@ public final class DesignerAgentGateway {
                 + (extension == null ? "" : ", extension " + extension)
                 + " (sessionTermination=" + r.sessionTermination + ")";
 
+        r.answer = (answer == null || answer.isBlank()) ? null : answer.trim();
         agent.lock.lock();
+        agent.answer = r.answer;
+        agent.question = null;
+        agent.questionOptions = List.of();
+        agent.answered = false;
         try {
             return withSession(agent, s -> {
                 List<String> collected = new ArrayList<>();
@@ -1163,8 +1194,27 @@ public final class DesignerAgentGateway {
             dropSession(agent, ex);
             r.ok = false;
             r.applied = false;
-            r.message = "the update failed: " + describe(ex);
+            // A question that nobody answered is the likely cause, and the raw exception hides it.
+            // Report what was asked instead: that is the whole difference between "it failed" and
+            // "here is the decision waiting for you".
+            if (agent.question != null) {
+                r.question = agent.question;
+                r.questionOptions.addAll(agent.questionOptions);
+                if (agent.answered) {
+                    // The choice DID reach the platform. Blaming the answer here would be a lie the
+                    // reader cannot check, and it hides the platform's own error.
+                    r.message = QuestionChoice.answeredAndFailed(r.answer, describe(ex));
+                } else if (r.answer == null) {
+                    r.message = QuestionChoice.report(agent.question, agent.questionOptions);
+                } else {
+                    r.message = QuestionChoice.notOffered(r.answer, agent.questionOptions);
+                }
+            } else {
+                r.message = "the update failed: " + describe(ex);
+            }
         } finally {
+            agent.answer = null;
+            agent.answered = false;
             agent.lock.unlock();
         }
         return r;
@@ -1257,7 +1307,7 @@ public final class DesignerAgentGateway {
 
         if (updateDatabaseConfig) {
             UpdateResult update = updateDatabaseConfiguration(infobase, null, null, null, user, password,
-                    platformVersion, true);
+                    platformVersion, null, true);
             r.message = r.message + "; " + update.message;
             r.ok = update.ok;
         }
@@ -1277,6 +1327,9 @@ public final class DesignerAgentGateway {
         public final List<String> databaseChanges = new ArrayList<>();
         public String plan;
         public String message;
+        /** A platform question the database-configuration step stopped on, if any. */
+        public String question;
+        public final List<String> questionOptions = new ArrayList<>();
     }
 
     /**
@@ -1299,7 +1352,7 @@ public final class DesignerAgentGateway {
      */
     public LoadProjectResult loadProject(String projectName, String infobase, String extension,
             String sessionTermination, String user, String password, String platformVersion,
-            boolean updateDatabaseConfig, boolean apply) {
+            String answer, boolean updateDatabaseConfig, boolean apply) {
         LoadProjectResult r = new LoadProjectResult();
         r.project = projectName;
         r.infobase = infobase;
@@ -1410,8 +1463,10 @@ public final class DesignerAgentGateway {
 
         if (updateDatabaseConfig) {
             UpdateResult update = updateDatabaseConfiguration(infobase, r.extension, sessionTermination,
-                    null, user, password, platformVersion, true);
+                    null, user, password, platformVersion, answer, true);
             r.databaseConfigUpdated = update.applied;
+            r.question = update.question;
+            r.questionOptions.addAll(update.questionOptions);
             r.databaseChanges.addAll(update.changes);
             r.message = r.message + "; " + update.message;
             r.ok = update.ok;
@@ -1484,6 +1539,26 @@ public final class DesignerAgentGateway {
             try {
                 client.connect("127.0.0.1", agent.port, agent.user, agent.password);
                 IDesignerSession session = client.openSession();
+                // Every session gets it, not just the DB update: an unanswered question kills
+                // whatever operation is running, and until now it did so without saying what was
+                // asked. The handler answers only what the caller named and otherwise declines,
+                // which fails the operation exactly as before - but with the question in hand.
+                session.setAbstractQuestionHandler(q -> {
+                    List<String> options = new ArrayList<>();
+                    for (com._1c.g5.designer.ssh.client.QuestionAnswer a : q.getAnswers()) {
+                        options.add(QuestionChoice.option(a.getAnswer(), a.getLabel(),
+                                a.isDefaultAnswer()));
+                    }
+                    agent.question = q.getMessage();
+                    agent.questionOptions = options;
+                    for (com._1c.g5.designer.ssh.client.QuestionAnswer a : q.getAnswers()) {
+                        if (QuestionChoice.matches(a.getAnswer(), a.getLabel(), agent.answer)) {
+                            agent.answered = true;
+                            return java.util.Optional.of(a);
+                        }
+                    }
+                    return java.util.Optional.empty();
+                });
                 if (!agent.infobaseConnected) {
                     // Only ONCE per agent: the infobase connection outlives the SSH session, and
                     // asking a second time is refused with "Ошибка блокировки информационной базы для

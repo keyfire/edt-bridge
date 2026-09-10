@@ -79,8 +79,16 @@ public final class UpdateInfobaseTool {
         props.add("updateDatabaseConfig", boolProp("agent transport: apply the database configuration "
                 + "after loading (default true). Off leaves the infobase holding new code and running "
                 + "the old one until edt_update_database_config is called."));
+        props.add("answer", strProp("agent transport: which option to give when the platform stops and asks - the "
+                + "value it offered (or the label). Left out, the question comes back in \"question\" "
+                + "with its options and NOTHING is answered: one option ends other users' sessions "
+                + "and another applies the change dynamically on live sessions, so the choice is "
+                + "yours to make, not this tool's. Ask once, read the options, call again with answer."));
         props.add("sessionTermination", strProp("agent transport: disable (default), prompt or force - "
-                + "what to do when applying needs an exclusive lock and sessions hold the infobase."));
+                + "what to do when applying needs an exclusive lock and sessions hold the infobase. "
+                + "On a lively infobase force does not settle it - BackgroundJob sessions respawn "
+                + "within a minute and the update loses the race; raise a maintenance window with "
+                + "edt_infobase_maintenance first."));
 
         JsonArray req = new JsonArray();
         req.add("projectName");
@@ -204,6 +212,7 @@ public final class UpdateInfobaseTool {
                     getStr(args, "infobaseUser"),
                     getStr(args, "infobasePassword"),
                     getStr(args, "platformVersion"),
+                    getStr(args, "answer"),
                     !args.has("updateDatabaseConfig") || args.get("updateDatabaseConfig").isJsonNull()
                             || args.get("updateDatabaseConfig").getAsBoolean(),
                     apply);
@@ -228,6 +237,12 @@ public final class UpdateInfobaseTool {
                 o.add("issues", issues);
             }
             o.addProperty("databaseConfigUpdated", res.databaseConfigUpdated);
+            if (res.question != null) {
+                o.addProperty("question", res.question);
+                JsonArray opts = new JsonArray();
+                res.questionOptions.forEach(opts::add);
+                o.add("questionOptions", opts);
+            }
             if (!res.databaseChanges.isEmpty()) {
                 o.addProperty("databaseChangeCount", res.databaseChanges.size());
                 JsonArray changes = new JsonArray();

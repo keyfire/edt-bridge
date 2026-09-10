@@ -39,6 +39,25 @@ that day are named in the heading. The format follows
   the directories it created, so a leftover now says which it is (`origin` in the answer), and the
   two kinds are counted apart in the message.
 
+- **The platform's questions are answered - by the caller.** The bridge registered no question
+  handler, so when the platform stopped to ask ("the database is locked: Cancel / Retry", and for a
+  change touching no table structure a third option, applying it dynamically while sessions keep
+  running), the operation died with "question delegate has not been specified" - identically under
+  every `sessionTermination`, because that setting feeds a different branch. Dynamic update was
+  unreachable and a code-only change needed a maintenance window. A handler is now set on every
+  session: without `answer` the question comes back with its options and nothing is answered, and
+  `answer=<value>` picks one. The bridge does not choose: one option ends other users' sessions.
+- **A question that WAS answered is no longer reported as an answer that was not offered.** When the
+  platform asked, the answer reached it and the operation failed anyway, the refusal claimed the
+  chosen option had not been among the offered ones - sending the reader after a typo in an answer
+  the platform had accepted, and hiding the platform's own error. The two cases are now told apart,
+  and the second names the real failure. Where `sessionTermination` is chosen it now says what this
+  case taught: on a lively infobase `force` cannot settle it, because background jobs respawn within
+  a minute and take the lock back - a maintenance window (`edt_infobase_maintenance`) is what works.
+- **`edt_infobase_config_state` no longer reports "up to date" from structure changes alone.** A
+  change that alters no table reports no structure changes, so an empty list said the database
+  configuration was applied while sessions still ran the old code. The answer now says what was
+  actually measured.
 ## 2026-09-09 – 0.23.0, 0.24.0, 0.25.0
 
 ### Added

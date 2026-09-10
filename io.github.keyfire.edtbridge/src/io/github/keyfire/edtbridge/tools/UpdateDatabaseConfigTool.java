@@ -47,7 +47,11 @@ public final class UpdateDatabaseConfigTool {
         termination.addProperty("type", "string");
         termination.addProperty("description", "What to do when an exclusive lock is needed and "
                 + "sessions hold the infobase: disable (default - fail instead), prompt, or force "
-                + "(END other people's sessions).");
+                + "(END other people's sessions). On a LIVELY infobase force does not settle it: "
+                + "BackgroundJob sessions respawn within a minute, so the update loses the race and "
+                + "the platform keeps asking to retry. There, raise a maintenance window first with "
+                + "edt_infobase_maintenance - it denies scheduled jobs and lets the sessions drain, "
+                + "and nothing has to be killed.");
         JsonArray modes = new JsonArray();
         modes.add("disable");
         modes.add("prompt");
@@ -74,6 +78,11 @@ public final class UpdateDatabaseConfigTool {
                 + "configurator of another build is refused by the server (\"Несоответствие версий "
                 + "клиента и сервера\"), so pin the stand's own build. Three digits (8.5.1) mean "
                 + "the line: the newest installed build of it. Optional."));
+        props.add("answer", strProp("Which option to give when the platform stops and asks - the "
+                + "value it offered (or the label). Left out, the question comes back in \"question\" "
+                + "with its options and NOTHING is answered: one option ends other users' sessions "
+                + "and another applies the change dynamically on live sessions, so the choice is "
+                + "yours to make, not this tool's. Ask once, read the options, call again with answer."));
         props.add("apply", apply);
 
         JsonArray required = new JsonArray();
@@ -94,7 +103,9 @@ public final class UpdateDatabaseConfigTool {
                 + "route answering 404 looks like. The dry-run starts the same operation and refuses "
                 + "its confirmation, so it reports exactly the structure changes that would be applied. "
                 + "sessionTermination=force ends other people's sessions when an exclusive lock is "
-                + "needed - the whole deny-sessions / terminate / apply procedure in one call. Driven "
+                + "needed, but on a lively infobase that is not enough on its own - background jobs "
+                + "respawn within a minute and take the lock back, so raise a maintenance window with "
+                + "edt_infobase_maintenance first. Driven "
                 + "through a configurator agent, so a server infobase that authenticates its users is "
                 + "reachable.");
         t.addProperty("descriptionRu",
@@ -105,7 +116,9 @@ public final class UpdateDatabaseConfigTool {
                 + "HTTP-сервиса, отвечающий 404. Dry-run запускает ту же операцию и отказывается её "
                 + "подтверждать, поэтому показывает точный список изменений структуры. "
                 + "sessionTermination=force завершает чужие сеансы, когда нужна монопольная блокировка, "
-                + "– вся процедура блокировки, завершения сеансов и применения одним вызовом. Работает "
+                + "но на живой базе одного этого мало: фоновые задания переподключаются за минуту и "
+                + "забирают блокировку обратно, поэтому сначала поднимите окно обслуживания через "
+                + "edt_infobase_maintenance. Работает "
                 + "через агент конфигуратора, поэтому доступна и серверная база с аутентификацией 1С.");
         t.add("inputSchema", schema);
         return t;
@@ -121,6 +134,7 @@ public final class UpdateDatabaseConfigTool {
                     getStr(args, "infobaseUser"),
                     getStr(args, "infobasePassword"),
                     getStr(args, "platformVersion"),
+                    getStr(args, "answer"),
                     getBool(args, "apply"));
             JsonObject o = new JsonObject();
             o.addProperty("ok", res.ok);
@@ -135,6 +149,15 @@ public final class UpdateDatabaseConfigTool {
                 o.addProperty("extension", res.extension);
             }
             o.addProperty("sessionTermination", res.sessionTermination);
+            if (res.answer != null) {
+                o.addProperty("answer", res.answer);
+            }
+            if (res.question != null) {
+                o.addProperty("question", res.question);
+                JsonArray opts = new JsonArray();
+                res.questionOptions.forEach(opts::add);
+                o.add("questionOptions", opts);
+            }
             o.addProperty("changeCount", res.changes.size());
             if (!res.changes.isEmpty()) {
                 JsonArray changes = new JsonArray();
