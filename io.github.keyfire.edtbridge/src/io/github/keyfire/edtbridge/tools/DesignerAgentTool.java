@@ -45,10 +45,11 @@ public final class DesignerAgentTool {
     public JsonObject descriptor() {
         JsonObject action = new JsonObject();
         action.addProperty("type", "string");
-        action.addProperty("description", "list (default), start, stop or sweep. sweep clears what an "
-                + "earlier bridge process left behind: the orphaned Designer session of an agent whose "
-                + "process is gone - the one that holds the infobase's configuration lock - and its "
-                + "temporary directory. A start sweeps once by itself.");
+        action.addProperty("description", "list (default), start, stop or sweep. sweep clears what a "
+                + "dead agent left behind: the orphaned Designer session of one whose process is gone "
+                + "- the session that holds the infobase's configuration lock - and its temporary "
+                + "directory. list says of each leftover whether this bridge process or an earlier "
+                + "one left it. A start sweeps once by itself.");
         JsonArray values = new JsonArray();
         values.add("list");
         values.add("start");
@@ -93,7 +94,7 @@ public final class DesignerAgentTool {
                 + "demand by the tools that need them; stopping one frees the session it holds on the "
                 + "server. An agent that has been idle too long is stopped on its own "
                 + "(EDT_BRIDGE_AGENT_IDLE_MINUTES, 30 by default, \"off\" to keep agents forever), and "
-                + "what an earlier bridge process left behind is swept - see action=sweep.");
+                + "what a dead agent left behind is swept - see action=sweep.");
         t.addProperty("descriptionRu",
                 "Управление агентами конфигуратора, через которые мост обращается к информационным "
                 + "базам: список, запуск для базы, остановка. Агент – это конфигуратор в режиме "
@@ -101,7 +102,7 @@ public final class DesignerAgentTool {
                 + "БАЗЫ, поэтому доступен и серверной базе с аутентификацией 1С. Агенты поднимаются по "
                 + "требованию тех инструментов, которым нужны; остановка освобождает сеанс на сервере. "
                 + "Простаивающий агент останавливается сам (EDT_BRIDGE_AGENT_IDLE_MINUTES, по умолчанию "
-                + "30, \"off\" – держать вечно), а остатки прежнего запуска моста подчищает action=sweep.");
+                + "30, \"off\" – держать вечно), а остатки умершего агента подчищает action=sweep.");
         t.add("inputSchema", schema);
         return t;
     }

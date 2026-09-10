@@ -22,6 +22,22 @@ that day are named in the heading. The format follows
 - **`transport=agent` substitutes the project's associated infobase.** `infobase` is documented as
   optional and the EDT synchronization route has always filled it in from the project, but the agent
   route answered a well-formed call with "an infobase name, uuid or address is required".
+- **Stopping an agent no longer leaves its directory behind.** An agent whose SSH session the
+  platform had torn down – the infobase refuses the configuration lock, and the refusal arrives as a
+  disconnect – was killed on `stop`, and its base directory was removed in the same breath: the
+  record file went, the `agent.log` the dying process still held did not, and `%TEMP%` kept an
+  `edtbridge-agent-*` directory with a 0-byte log and nothing left in it to say whose it was.
+  Measured on the same infobase: the record was deleted while the process was still alive, and the
+  process disappeared 150 ms later – a race a single delete cannot win. A killed agent is now waited
+  out before its trace is touched, and the removal retries for up to five seconds instead of trying
+  once. Verified by repeating the scene: the directory is gone by the time the stop returns.
+- **A listing no longer calls the bridge's own leftovers somebody else's.** Every leftover directory
+  was reported as "left over from an earlier bridge process", which reads as a crash that happened
+  before this run and sends the reader to tidy up after somebody else. A directory THIS process
+  created and could not remove means the opposite: a stop that did not finish here, and an agent
+  that may still hold a Designer session on the infobase's configuration lock. The bridge remembers
+  the directories it created, so a leftover now says which it is (`origin` in the answer), and the
+  two kinds are counted apart in the message.
 
 ## 2026-09-09 – 0.23.0, 0.24.0, 0.25.0
 

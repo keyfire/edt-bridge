@@ -28,13 +28,12 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Stream;
 
 import io.github.keyfire.edtbridge.core.IbcmdArgs;
 import io.github.keyfire.edtbridge.core.PlatformSelection;
+import io.github.keyfire.edtbridge.core.TreeRemoval;
 
 /**
  * Talking to an infobase through {@code ibcmd}, the platform's stand-alone management utility.
@@ -333,21 +332,12 @@ public final class IbcmdGateway {
         return trimmed.length() > 2000 ? trimmed.substring(trimmed.length() - 2000) : trimmed;
     }
 
-    /** Remove a throwaway directory tree, best effort. */
+    /**
+     * Remove a throwaway directory tree, best effort. One pass: nothing here is held by a process on
+     * its way out - that case, and the waiting it needs, belongs to the configurator agent's trace
+     * (see {@link TreeRemoval}).
+     */
     static void deleteRecursively(Path root) {
-        if (root == null || !Files.exists(root)) {
-            return;
-        }
-        try (Stream<Path> walk = Files.walk(root)) {
-            walk.sorted(Comparator.reverseOrder()).forEach(path -> {
-                try {
-                    Files.deleteIfExists(path);
-                } catch (IOException ignore) {
-                    // best-effort cleanup
-                }
-            });
-        } catch (IOException ignore) {
-            // best-effort cleanup
-        }
+        TreeRemoval.delete(root);
     }
 }

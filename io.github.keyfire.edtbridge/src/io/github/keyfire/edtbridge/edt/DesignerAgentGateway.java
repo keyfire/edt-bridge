@@ -37,9 +37,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 
 import io.github.keyfire.edtbridge.core.AgentIdle;
+import io.github.keyfire.edtbridge.core.AgentLeftovers;
 import io.github.keyfire.edtbridge.core.AgentRecord;
 import io.github.keyfire.edtbridge.core.AgentUser;
 import io.github.keyfire.edtbridge.core.PlatformSelection;
+import io.github.keyfire.edtbridge.core.TreeRemoval;
 
 import com._1c.g5.designer.ssh.client.DesignerClient;
 import com._1c.g5.designer.ssh.client.IDesignerSession;
@@ -96,8 +98,24 @@ public final class DesignerAgentGateway {
     /** How long a stopping agent is given to leave on its own before it is killed. */
     private static final int SHUTDOWN_WAIT_SECONDS = 20;
 
+    /**
+     * How long a killed agent is given to actually disappear. A kill is a request: on Windows it
+     * returns while the process is still tearing down, and the files it holds - its own log among
+     * them - go only when it does.
+     */
+    private static final int KILL_WAIT_SECONDS = 5;
+
     /** Running agents, keyed by the infobase connection string they were started for. */
     private static final Map<String, Agent> AGENTS = new ConcurrentHashMap<>();
+
+    /**
+     * Base directories THIS bridge process created, until they are removed again.
+     *
+     * <p>Kept apart from {@link #AGENTS} because it has to outlive the agent: a directory that
+     * survives a stop is this run's unfinished business, and calling it the remains of an earlier
+     * bridge process - which is what a directory found on disk otherwise means - hides that.
+     */
+    private static final Set<String> OWN_TRACES = ConcurrentHashMap.newKeySet();
 
     /** Started with the first agent; stops the ones that go idle. */
     private static ScheduledExecutorService reaper;
@@ -295,6 +313,7 @@ public final class DesignerAgentGateway {
         Path baseDir = null;
         try {
             baseDir = Files.createTempDirectory(AgentRecord.BASE_DIR_PREFIX);
+            OWN_TRACES.add(baseDir.toAbsolutePath().toString());
             agent.baseDir = baseDir.toString();
             Path log = baseDir.resolve(AGENT_LOG);
             // The parameters are glued to their values (/FD:\base, /AgentPort1543): that is the
@@ -317,7 +336,7 @@ public final class DesignerAgentGateway {
             if (!awaitPort(port, agent.process)) {
                 String why = readAgentLog(log);
                 agent.process.destroyForcibly();
-                IbcmdGateway.deleteRecursively(baseDir);
+                removeTrace(baseDir);
                 r.message = "the agent did not start listening on port " + port
                         + (why.isBlank() ? "" : ": " + why);
                 return r;
@@ -326,7 +345,7 @@ public final class DesignerAgentGateway {
             if (agent.process != null) {
                 agent.process.destroyForcibly();
             }
-            IbcmdGateway.deleteRecursively(baseDir);
+            removeTrace(baseDir);
             r.message = "could not start the agent: " + GatewaySupport.describeCause(ex);
             return r;
         }
@@ -351,10 +370,11 @@ public final class DesignerAgentGateway {
         r.agents.addAll(AGENTS.values());
         r.leftovers.addAll(inspectLeftovers());
         long idle = idleMinutes();
+        String leftovers = AgentLeftovers.summary(countLeftovers(r, AgentLeftovers.FROM_THIS_PROCESS),
+                countLeftovers(r, AgentLeftovers.FROM_EARLIER_PROCESS));
         r.message = (r.agents.isEmpty() ? "no agent is running" : r.agents.size() + " agent(s) running")
                 + (idle > 0 ? ", idle timeout " + idle + " min" : ", idle timeout off")
-                + (r.leftovers.isEmpty() ? "" : ", " + r.leftovers.size()
-                        + " left over from an earlier bridge process (action=sweep clears them)");
+                + (leftovers.isEmpty() ? "" : ", " + leftovers);
         return r;
     }
 
@@ -372,6 +392,17 @@ public final class DesignerAgentGateway {
         r.leftovers.addAll(inspectLeftovers());
         r.message = done.isEmpty() ? "nothing to sweep" : String.join("; ", done);
         return r;
+    }
+
+    /** How many of the reported leftovers came from where. */
+    private static int countLeftovers(AgentResult r, String origin) {
+        int count = 0;
+        for (Map<String, Object> leftover : r.leftovers) {
+            if (origin.equals(leftover.get("origin"))) {
+                count++;
+            }
+        }
+        return count;
     }
 
     /** Stop the agent for an infobase - politely first ({@code common shutdown}), then for real. */
@@ -432,6 +463,15 @@ public final class DesignerAgentGateway {
         if (agent.process.isAlive()) {
             agent.process.destroyForcibly();
         }
+        // A kill is a request, not a fact: it returns while the process is still going, and the
+        // process holds its own log file. Removing the base directory before it has really gone
+        // leaves that log - and with it the directory - behind, which is how a stop used to end in a
+        // trace nobody had asked for.
+        try {
+            agent.process.waitFor(KILL_WAIT_SECONDS, TimeUnit.SECONDS);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        }
         // It had to be killed, so its session is where a crash would have left it. We know which one.
         agent.killed = true;
     }
@@ -443,8 +483,25 @@ public final class DesignerAgentGateway {
             new DesignerAgentGateway().endRecordedSession(agent.record());
         }
         if (agent.baseDir != null) {
-            IbcmdGateway.deleteRecursively(Path.of(agent.baseDir));
+            removeTrace(Path.of(agent.baseDir));
         }
+    }
+
+    /**
+     * Remove an agent's base directory, waiting out a process that is still letting go of it.
+     *
+     * <p>A directory that survives even the wait stays in {@link #OWN_TRACES}, so a later listing
+     * calls it what it is - this run's leftover - instead of blaming an earlier bridge process.
+     */
+    private static boolean removeTrace(Path baseDir) {
+        if (baseDir == null) {
+            return true;
+        }
+        boolean gone = TreeRemoval.deleteWaiting(baseDir);
+        if (gone) {
+            OWN_TRACES.remove(baseDir.toAbsolutePath().toString());
+        }
+        return gone;
     }
 
     /**
@@ -460,7 +517,7 @@ public final class DesignerAgentGateway {
         }
     }
 
-    // ── remains of earlier bridge processes ─────────────────────────────────────────────────────
+    // ── remains left on disk ────────────────────────────────────────────────────────────────────
 
     /**
      * A crash - an exception, a dropped MCP connection, a killed process - takes the agent with it and
@@ -478,22 +535,26 @@ public final class DesignerAgentGateway {
     private List<String> sweep(boolean stopRunning) {
         List<String> report = new ArrayList<>();
         int withoutRecord = 0;
+        int stubborn = 0;
         Set<String> ours = ownBaseDirs();
         for (Path dir : leftoverDirs(ours)) {
             AgentRecord record = AgentRecord.read(dir);
             if (record == null) {
-                // A directory without a record: left by a bridge older than this feature, or by an
-                // agent that died between creating the directory and writing the file. Nothing here
-                // identifies a session, so say so instead of guessing at one - and count them rather
-                // than name them, because years of crashes add up to a page of noise.
+                // A directory without a record: left by a bridge older than this feature, by an agent
+                // that died between creating the directory and writing the file, or by a stop whose
+                // removal took the record and stopped at the log. Nothing here identifies a session,
+                // so say so instead of guessing at one - and count them rather than name them,
+                // because years of crashes add up to a page of noise.
                 withoutRecord++;
-                IbcmdGateway.deleteRecursively(dir);
+                if (!removeTrace(dir)) {
+                    stubborn++;
+                }
                 continue;
             }
             boolean alive = agentProcessAlive(record);
             if (alive && !stopRunning) {
-                report.add("agent for " + record.label + " (pid " + record.pid
-                        + ") is still running from an earlier bridge process - left alone");
+                report.add("agent for " + record.label + " (pid " + record.pid + ") is still running"
+                        + " from " + origin(dir) + " - left alone");
                 continue;
             }
             if (alive) {
@@ -501,22 +562,29 @@ public final class DesignerAgentGateway {
                 report.add("stopped the agent for " + record.label + " (pid " + record.pid + ")");
             }
             report.add(endRecordedSession(record));
-            IbcmdGateway.deleteRecursively(dir);
+            if (!removeTrace(dir)) {
+                stubborn++;
+            }
         }
         if (withoutRecord > 0) {
             report.add(withoutRecord + " base director" + (withoutRecord == 1 ? "y" : "ies")
-                    + " without a record removed (nothing in them identifies a session)");
+                    + " without a record swept (nothing in them identifies a session)");
+        }
+        if (stubborn > 0) {
+            report.add(stubborn + " base director" + (stubborn == 1 ? "y" : "ies")
+                    + " could not be removed - something still holds a file inside");
         }
         return report;
     }
 
-    /** What is left on disk from earlier bridge processes, as plain maps for the tool layer. */
+    /** What is left on disk, as plain maps for the tool layer, each saying whose remains it is. */
     private List<Map<String, Object>> inspectLeftovers() {
         List<Map<String, Object>> out = new ArrayList<>();
         Set<String> ours = ownBaseDirs();
         for (Path dir : leftoverDirs(ours)) {
             Map<String, Object> m = new java.util.LinkedHashMap<>();
             m.put("baseDir", dir.toString());
+            m.put("origin", origin(dir));
             AgentRecord record = AgentRecord.read(dir);
             if (record == null) {
                 m.put("state", "no record");
@@ -531,6 +599,17 @@ public final class DesignerAgentGateway {
             out.add(m);
         }
         return out;
+    }
+
+    /**
+     * Whose remains this directory is. Ours when this process created it and has not managed to take
+     * it away again - which is knowledge, not a guess, and the difference matters to the reader: a
+     * trace of this run means a stop that did not finish here, not somebody else's crash.
+     */
+    private static String origin(Path dir) {
+        return OWN_TRACES.contains(dir.toAbsolutePath().toString())
+                ? AgentLeftovers.FROM_THIS_PROCESS
+                : AgentLeftovers.FROM_EARLIER_PROCESS;
     }
 
     /** Base directories in the temporary area that are not those of an agent this process runs. */
