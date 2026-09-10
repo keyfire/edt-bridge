@@ -8,6 +8,11 @@ that day are named in the heading. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
+Every entry ends with a link to the change it describes - the pull request it came from
+(`([#12](https://github.com/keyfire/edt-bridge/pull/12))`), or the commit when there was no
+pull request. An entry without such a link is unfinished: the reader has no way from the line
+to the code behind it.
+
 ## [Unreleased]
 
 ### Fixed
@@ -18,10 +23,10 @@ that day are named in the heading. The format follows
   A call asking for another user is now refused, saying which identity is running and how to change
   it; asking for nobody in particular still takes whatever runs, as nearly every call does. The
   authentication failure itself carries the missing fact as a hint - unless the agent's log
-  already named the configuration lock as the reason, where credentials are not the story.
+  already named the configuration lock as the reason, where credentials are not the story. ([#4](https://github.com/keyfire/edt-bridge/pull/4))
 - **`transport=agent` substitutes the project's associated infobase.** `infobase` is documented as
   optional and the EDT synchronization route has always filled it in from the project, but the agent
-  route answered a well-formed call with "an infobase name, uuid or address is required".
+  route answered a well-formed call with "an infobase name, uuid or address is required". ([#4](https://github.com/keyfire/edt-bridge/pull/4))
 - **Stopping an agent no longer leaves its directory behind.** An agent whose SSH session the
   platform had torn down – the infobase refuses the configuration lock, and the refusal arrives as a
   disconnect – was killed on `stop`, and its base directory was removed in the same breath: the
@@ -30,14 +35,14 @@ that day are named in the heading. The format follows
   Measured on the same infobase: the record was deleted while the process was still alive, and the
   process disappeared 150 ms later – a race a single delete cannot win. A killed agent is now waited
   out before its trace is touched, and the removal retries for up to five seconds instead of trying
-  once. Verified by repeating the scene: the directory is gone by the time the stop returns.
+  once. Verified by repeating the scene: the directory is gone by the time the stop returns. ([`1795fc6`](https://github.com/keyfire/edt-bridge/commit/1795fc6))
 - **A listing no longer calls the bridge's own leftovers somebody else's.** Every leftover directory
   was reported as "left over from an earlier bridge process", which reads as a crash that happened
   before this run and sends the reader to tidy up after somebody else. A directory THIS process
   created and could not remove means the opposite: a stop that did not finish here, and an agent
   that may still hold a Designer session on the infobase's configuration lock. The bridge remembers
   the directories it created, so a leftover now says which it is (`origin` in the answer), and the
-  two kinds are counted apart in the message.
+  two kinds are counted apart in the message. ([`1795fc6`](https://github.com/keyfire/edt-bridge/commit/1795fc6))
 
 - **The platform's questions are answered - by the caller.** The bridge registered no question
   handler, so when the platform stopped to ask ("the database is locked: Cancel / Retry", and for a
@@ -46,25 +51,25 @@ that day are named in the heading. The format follows
   every `sessionTermination`, because that setting feeds a different branch. Dynamic update was
   unreachable and a code-only change needed a maintenance window. A handler is now set on every
   session: without `answer` the question comes back with its options and nothing is answered, and
-  `answer=<value>` picks one. The bridge does not choose: one option ends other users' sessions.
+  `answer=<value>` picks one. The bridge does not choose: one option ends other users' sessions. ([#6](https://github.com/keyfire/edt-bridge/pull/6))
 - **A question that WAS answered is no longer reported as an answer that was not offered.** When the
   platform asked, the answer reached it and the operation failed anyway, the refusal claimed the
   chosen option had not been among the offered ones - sending the reader after a typo in an answer
   the platform had accepted, and hiding the platform's own error. The two cases are now told apart,
   and the second names the real failure. Where `sessionTermination` is chosen it now says what this
   case taught: on a lively infobase `force` cannot settle it, because background jobs respawn within
-  a minute and take the lock back - a maintenance window (`edt_infobase_maintenance`) is what works.
+  a minute and take the lock back - a maintenance window (`edt_infobase_maintenance`) is what works. ([#6](https://github.com/keyfire/edt-bridge/pull/6))
 - **`edt_infobase_config_state` no longer reports "up to date" from structure changes alone.** A
   change that alters no table reports no structure changes, so an empty list said the database
   configuration was applied while sessions still ran the old code. The answer now says what was
-  actually measured.
+  actually measured. ([#6](https://github.com/keyfire/edt-bridge/pull/6))
 - **The dashboard runs tools again on a bridge that requires a token.** The tool list was fetched
   once at page load - before a token could be typed - and the 401 that came back was turned into an
   empty list without a word, so the capabilities section held nothing but "Expand all" / "Collapse
   all" and those buttons had nothing to expand. Typing the token only set a variable, and reloading
   the page started from the same place, which left the runner unusable whenever a token was
   configured. The token field now reloads the list, and an HTTP refusal is reported as a refusal
-  instead of passing for an empty answer.
+  instead of passing for an empty answer. ([#5](https://github.com/keyfire/edt-bridge/pull/5))
 
 ## 2026-09-09 – 0.23.0, 0.24.0, 0.25.0
 
