@@ -33,6 +33,17 @@ import java.util.regex.Pattern;
  */
 public final class PlatformMessages {
 
+    /**
+     * The SSH refusal of the agent. The platform spells it two ways in one chain - its own
+     * "Authentication failure ..." (with "Desginer" misspelt at the source) and JSch's bare
+     * "Auth fail" - so both are matched rather than the prettier one alone.
+     */
+    static boolean isAuthenticationFailure(String message) {
+        return message.contains("AuthenticationException")
+                || message.contains("Authentication failure")
+                || message.contains("Auth fail");
+    }
+
     /** Hardware-inventory lines of the licensing dump; pure bulk, never the diagnosis. */
     private static final Pattern INVENTORY = Pattern.compile(
             "^(?:Phys mem_\\d+|CPU_\\d+|HASP_\\d+|Sys name_\\d+|DISK_\\d+):.*");
@@ -162,6 +173,15 @@ public final class PlatformMessages {
             return "(hint: a Designer session may still hold the configuration lock - a "
                     + "configurator agent that died leaves its session in the cluster; list them "
                     + "with edt_infobase_sessions appId=Designer and terminate the orphan)";
+        }
+        // After the lock, not before it: an SSH refusal caused by a foreign configurator carries
+        // BOTH the lock text and "Auth fail", and there the lock is the reason - pointing at
+        // credentials would contradict the diagnosis the agent's own log already gave.
+        if (isAuthenticationFailure(message)) {
+            return "(hint: the agent authenticates with the credentials it was STARTED with, so "
+                    + "infobaseUser/infobasePassword passed to a later call are not applied to a "
+                    + "running agent - stop it with edt_designer_agent action=stop and call again "
+                    + "with the right ones)";
         }
         return null;
     }

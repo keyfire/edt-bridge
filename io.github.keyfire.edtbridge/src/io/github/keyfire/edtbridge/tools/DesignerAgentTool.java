@@ -68,7 +68,9 @@ public final class DesignerAgentTool {
         props.add("infobase", strProp("Infobase registered in EDT - name or uuid. Required for start "
                 + "and stop."));
         props.add("infobaseUser", strProp("1C infobase user the agent authenticates as, e.g. "
-                + "Администратор. Empty for an infobase without users."));
+                + "Администратор. Empty for an infobase without users. Bound to the agent AT START: "
+                + "an agent already running keeps the identity it was started with, and a call "
+                + "naming a different user is refused rather than served as somebody else."));
         props.add("infobasePassword", strProp("That user's password (optional). Never echoed back."));
         props.add("platformVersion", strProp("Platform build for the configurator, e.g. "
                 + "8.5.1.1302. FOUR digits pin that exact build and nothing else is started - a "

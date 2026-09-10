@@ -8,6 +8,21 @@ that day are named in the heading. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
+## [Unreleased]
+
+### Fixed
+- **An agent already running is no longer served for a different infobase user.** Credentials bind
+  to the agent when it starts and the SSH session uses those, so `infobaseUser` passed to a later
+  call reached nothing: the work was done as whoever the agent was started as, and when it had been
+  started without a user at all the call died with a bare `Auth fail` naming neither user nor cause.
+  A call asking for another user is now refused, saying which identity is running and how to change
+  it; asking for nobody in particular still takes whatever runs, as nearly every call does. The
+  authentication failure itself carries the missing fact as a hint - unless the agent's log
+  already named the configuration lock as the reason, where credentials are not the story.
+- **`transport=agent` substitutes the project's associated infobase.** `infobase` is documented as
+  optional and the EDT synchronization route has always filled it in from the project, but the agent
+  route answered a well-formed call with "an infobase name, uuid or address is required".
+
 ## 2026-09-09 – 0.23.0, 0.24.0, 0.25.0
 
 ### Added
