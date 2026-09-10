@@ -58,6 +58,14 @@ that day are named in the heading. The format follows
   change that alters no table reports no structure changes, so an empty list said the database
   configuration was applied while sessions still ran the old code. The answer now says what was
   actually measured.
+- **The dashboard runs tools again on a bridge that requires a token.** The tool list was fetched
+  once at page load - before a token could be typed - and the 401 that came back was turned into an
+  empty list without a word, so the capabilities section held nothing but "Expand all" / "Collapse
+  all" and those buttons had nothing to expand. Typing the token only set a variable, and reloading
+  the page started from the same place, which left the runner unusable whenever a token was
+  configured. The token field now reloads the list, and an HTTP refusal is reported as a refusal
+  instead of passing for an empty answer.
+
 ## 2026-09-09 – 0.23.0, 0.24.0, 0.25.0
 
 ### Added
