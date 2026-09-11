@@ -27,7 +27,7 @@ to the code and the reasoning behind it.
   process holds the infobase and may therefore own a cluster session that only a polite exit takes
   with it – and reopening a session for it gets two attempts, not fifteen. An agent that never reached
   its infobase has no session to orphan and is killed at once, the wait going with the request that
-  was never sent. Reproduced and measured before and after the change: 35.6 s, then 0.1 s.
+  was never sent. Reproduced and measured before and after the change: 35.6 s, then 0.1 s. ([#8](https://github.com/keyfire/edt-bridge/pull/8))
 
 ## 2026-09-10 – 0.26.0
 
