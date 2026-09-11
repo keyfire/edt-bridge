@@ -16,19 +16,26 @@
  */
 package io.github.keyfire.edtbridge.core;
 
+import java.util.List;
+
 /**
- * What stopping a configurator agent is worth spending on being polite about.
+ * What stopping a configurator agent is worth spending on being polite about, and what the answer
+ * says when there was no agent to stop.
  *
- * <p>A stop asks the agent to shut itself down before killing it, and that politeness is not for its
- * own sake: a killed agent leaves its Designer session in the cluster, where it holds the infobase's
- * configuration lock. But the request needs a live SSH session, and opening one costs the reconnect
- * loop - fifteen attempts, a second apart - which an agent whose session is already dead spends in
- * full and gains nothing by.
+ * <p><b>Whether the polite round pays.</b> A stop asks the agent to shut itself down before killing
+ * it, and that politeness is not for its own sake: a killed agent leaves its Designer session in the
+ * cluster, where it holds the infobase's configuration lock. But the request needs a live SSH session,
+ * and opening one costs the reconnect loop - fifteen attempts, a second apart - which an agent whose
+ * session is already dead spends in full and gains nothing by. Nothing, because in that state there
+ * is nothing to protect: an agent that never got its infobase connection opened no session in the
+ * cluster, so killing it leaves no orphan. The bill for finding that out the expensive way was a
+ * minute and a half per stop, every second of it the loop and the wait that follows it.
  *
- * <p>Nothing, because in that state there is nothing to protect: an agent that never got its infobase
- * connection opened no session in the cluster, so killing it leaves no orphan. The bill for finding
- * that out the expensive way was a minute and a half per stop, every second of it the loop and the
- * wait that follows it.
+ * <p><b>What "no agent is running" leaves out.</b> An agent whose process has died is dropped from
+ * the registry the moment anything looks it up, and a stop then answered that nothing was running -
+ * while the base directory it left, carrying the record that names the cluster session it opened, sat
+ * on disk until some later sweep. "Nothing to stop" is only true when nothing is left of one, so the
+ * answer now says which of the two it means.
  */
 public final class AgentStop {
 
@@ -62,5 +69,27 @@ public final class AgentStop {
             return 1;
         }
         return infobaseConnected ? REOPEN_ATTEMPTS : 0;
+    }
+
+    /** Nothing was running and nothing was left behind. */
+    public static String noAgent(String label) {
+        return "no agent is running for " + label;
+    }
+
+    /** Nothing was running, but the agent that died left remains - and these were cleared. */
+    public static String remainsSwept(String label, List<String> what) {
+        String detail = (what == null || what.isEmpty()) ? "" : ": " + String.join("; ", what);
+        return "no agent is running for " + label + " - the remains of one that died were swept"
+                + detail;
+    }
+
+    /**
+     * Nothing of THIS bridge process is running, but a process from another one still is. Left alone
+     * on purpose: it may be in use, and ending somebody's live session is not a side effect to hide.
+     */
+    public static String remainsRunning(String label, long pid, String origin) {
+        return "no agent of this bridge process is running for " + label + ", but the agent "
+                + origin + " started is still alive (pid " + pid + ")"
+                + " - action=sweep with stopRunning ends it";
     }
 }

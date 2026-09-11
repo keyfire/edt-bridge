@@ -28,6 +28,17 @@ to the code and the reasoning behind it.
   with it – and reopening a session for it gets two attempts, not fifteen. An agent that never reached
   its infobase has no session to orphan and is killed at once, the wait going with the request that
   was never sent. Reproduced and measured before and after the change: 35.6 s, then 0.1 s. ([#8](https://github.com/keyfire/edt-bridge/pull/8))
+- **Stopping an agent that has died now clears what it left, instead of saying there was nothing to
+  stop.** An agent whose process is gone is dropped from the registry the moment anything looks it up,
+  so `stop` answered "no agent is running for X" – while the base directory that agent left, with the
+  record naming the Designer session it had opened, stayed on disk until some later `sweep` or
+  `start`. That record is there on purpose: the sweep ends the orphaned session by it, and the session
+  is what holds the infobase's configuration lock. But the caller was told the infobase was clear when
+  it was not. A `stop` for an infobase with no live agent now looks for the remains of THAT infobase's
+  agent, ends the session they name, removes the directory, and says what it did; with nothing left
+  behind the answer is the plain "no agent is running" it always was. Remains of a still-running agent
+  from another bridge process are reported and left alone – ending somebody's live session is not a
+  side effect to hide. ([#9](https://github.com/keyfire/edt-bridge/pull/9))
 
 ## 2026-09-10 – 0.26.0
 
