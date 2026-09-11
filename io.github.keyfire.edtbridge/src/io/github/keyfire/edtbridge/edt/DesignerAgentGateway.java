@@ -39,6 +39,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import io.github.keyfire.edtbridge.core.AgentIdle;
 import io.github.keyfire.edtbridge.core.AgentLeftovers;
 import io.github.keyfire.edtbridge.core.AgentRecord;
+import io.github.keyfire.edtbridge.core.AgentStop;
 import io.github.keyfire.edtbridge.core.AgentUser;
 import io.github.keyfire.edtbridge.core.QuestionChoice;
 import io.github.keyfire.edtbridge.core.PlatformSelection;
@@ -454,21 +455,39 @@ public final class DesignerAgentGateway {
      * the sweep exists for - and the process holds its own log file open, so the base directory
      * survives too. Measured: an agent killed straight after the shutdown request left a live session
      * behind; one given time to leave took its session with it.
+     *
+     * <p>But it is offered, not paid for blindly. Asking needs a live SSH session, and an agent that
+     * has lost its own makes the bridge reopen one through the full reconnect loop - fifteen attempts
+     * against a door that is not going to open. That is the minute and a half a stop used to take in
+     * exactly the state where the politeness buys nothing: no infobase connection means no session in
+     * the cluster, so there is no orphan to avoid. {@link AgentStop#connectAttempts} decides; when it
+     * says nothing is worth asking, the wait that follows goes too - a request never sent has nothing
+     * to be waited out.
      */
     private static void stopLocked(Agent agent) {
-        try {
-            session(agent).common().shutdown().exec(Duration.ofMinutes(1));
-        } catch (Exception politeFailed) {
-            // the process is going away regardless
+        int attempts = AgentStop.connectAttempts(agent.session != null, agent.infobaseConnected);
+        boolean asked = false;
+        if (attempts > 0) {
+            try {
+                IDesignerSession live = session(agent, attempts);
+                // Reached the agent, so the request goes out: whether its answer comes back is
+                // another matter, and either way the agent has heard it and is worth waiting for.
+                asked = true;
+                live.common().shutdown().exec(Duration.ofMinutes(1));
+            } catch (Exception politeFailed) {
+                // the process is going away regardless
+            }
         }
         dropSession(agent);
         if (agent.process == null) {
             return;
         }
-        try {
-            agent.process.waitFor(SHUTDOWN_WAIT_SECONDS, TimeUnit.SECONDS);
-        } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
+        if (asked) {
+            try {
+                agent.process.waitFor(SHUTDOWN_WAIT_SECONDS, TimeUnit.SECONDS);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
         }
         if (!agent.process.isAlive()) {
             return;
@@ -1529,11 +1548,26 @@ public final class DesignerAgentGateway {
      * how the production CI drives it.
      */
     private static IDesignerSession session(Agent agent) throws Exception {
+        return session(agent, CONNECT_ATTEMPTS);
+    }
+
+    /**
+     * The same session, with a caller-set budget for OPENING one.
+     *
+     * <p>The fifteen attempts above are for an agent that has just been started and is still coming
+     * up. A stop is the opposite case and says so with a budget of its own - see {@link AgentStop}.
+     * A budget of nothing is not a budget: a caller that has decided against connecting at all must
+     * not call this, and saying so here beats the bare failure the loop would give it.
+     */
+    private static IDesignerSession session(Agent agent, int connectAttempts) throws Exception {
         if (agent.session != null) {
             return agent.session;
         }
+        if (connectAttempts < 1) {
+            throw new IllegalArgumentException("opening a session needs at least one attempt");
+        }
         Exception last = null;
-        for (int attempt = 0; attempt < CONNECT_ATTEMPTS; attempt++) {
+        for (int attempt = 0; attempt < connectAttempts; attempt++) {
             DesignerClient client = new DesignerClient();
             client.setTimeout(120_000);
             try {
