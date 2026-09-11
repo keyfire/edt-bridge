@@ -13,6 +13,37 @@ Every entry ends with a link to the pull request it came from -
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
+## Unreleased
+
+### Fixed
+- **Two processes were read as text and decoded with whatever code page the machine had.** The
+  POSIX half of the process lookup – the one that decides whether a GUI EDT is holding the
+  workspace – and the pip run behind a plugin update both asked for text and named no encoding.
+  The Windows half of that same lookup carries a comment about exactly this failure: `tasklist`
+  prints in the console OEM code page, `text=True` decoded it as UTF-8, the decode raised inside
+  the reader thread, the output came back EMPTY and the guard read that emptiness as "no such
+  process". Both calls now name `encoding="utf-8"` and, where the output reaches a human,
+  `errors="replace"`. ([#11](https://github.com/keyfire/edt-bridge/pull/11))
+
+### Added
+- **The convention itself is now a test.** `python/tests/test_conventions.py` fails on a process
+  read as text without an encoding, anywhere under `python/` or `scripts/`, and the reading comes
+  from the shared [docsguard](https://github.com/keyfire/docsguard) package – the same one the
+  documentation guard already uses, so the engine and elemctl are held to the rule in the same
+  words. It parses with `ast` rather than matching text, because the shape that started this
+  elsewhere is `(run or subprocess.run)(...)`: a search for the head of a call looks straight past
+  it. The suite also provokes the shared check on sources of its own, so a pinned version that had
+  stopped judging cannot look like a repository in order.
+  ([#11](https://github.com/keyfire/edt-bridge/pull/11))
+
+### Changed
+- **The shared guard is installed by TAG, not from `@main`.** On a branch pin, a commit in
+  `docsguard` reaches a run here in the middle of unrelated work – a red run caused by no commit of
+  ours is a red run nobody reads – and it left the order of merging, the shared package first and
+  this repository second, to be remembered rather than written down. `ci` now installs
+  `docsguard@v0.4.0`, and raising that pin is a pull request of its own.
+  ([#11](https://github.com/keyfire/edt-bridge/pull/11))
+
 ## 2026-09-11 – 0.27.0
 
 ### Fixed

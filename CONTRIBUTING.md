@@ -81,6 +81,23 @@ That script puts nothing but JUnit on the classpath, so a dependency on the SDK 
 fails the build instead of quietly making the suite unrunnable. Logic that needs the live model
 belongs in the gateways under `...edtbridge.edt` and is verified against a real EDT, as above.
 
+### Starting a process
+
+A process started from the wrapper or from a script is read as TEXT, and the text is decoded
+explicitly: `capture_output=True, text=True, encoding="utf-8"` – plus `errors="replace"` wherever
+the output goes to a human. Without `encoding` Python decodes with the code page of the machine,
+and the failure is silent in the worst way: the output comes back as replacement characters, or
+the decode raises inside the reader thread and leaves the output EMPTY – while the exit code goes
+on saying the run went well. That is how the guard which refuses a headless start while a GUI EDT
+holds the workspace came to never fire. A call that asks for no text at all – bytes in, bytes out,
+decoded by hand afterwards, the way the `tasklist` lookup does – decodes nothing and needs neither.
+
+`python/tests/test_conventions.py` fails on a process read as text without an encoding, the
+`(run or subprocess.run)(...)` shape of a runner seam included – which is the shape a search for
+the text of a call looks straight past. The reading itself comes from the shared
+[docsguard](https://github.com/keyfire/docsguard) package, pinned to a tag by the `ci` workflow;
+what stays here is the list of folders.
+
 ## Code style
 
 - **Java 17**, standard Eclipse / OSGi conventions. Keep all IDE-model access inside the gateway

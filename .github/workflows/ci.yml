@@ -36,7 +36,13 @@ jobs:
       - name: Install the wrapper with its test extra
         run: |
           python -m pip install .[test]
-          python -m pip install "git+https://github.com/keyfire/docsguard@main"
+          # The shared guard is pinned to a TAG. On `@main` a commit in that repository reaches
+          # a run here in the middle of unrelated work - a red run caused by no commit of ours
+          # is a red run nobody reads - and it leaves the order of merging, the shared package
+          # first and this repository second, to be remembered rather than written down.
+          # Raising the pin: docsguard tags `v<version>` after its own merge, and the line below
+          # goes up here in a pull request of its own.
+          python -m pip install "git+https://github.com/keyfire/docsguard@v0.4.0"
         working-directory: python
       - name: Run the suite
         run: python -m pytest -q

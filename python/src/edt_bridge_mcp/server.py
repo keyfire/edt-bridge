@@ -274,7 +274,8 @@ class Backend:
                             pass
                 return pids
             out = subprocess.run(
-                ["pgrep", "-x", image], capture_output=True, text=True, timeout=15, check=False
+                ["pgrep", "-x", image], capture_output=True, text=True, encoding="utf-8",
+                errors="replace", timeout=15, check=False,
             ).stdout
             return [int(item) for item in out.split() if item.isdigit()]
         except OSError:
