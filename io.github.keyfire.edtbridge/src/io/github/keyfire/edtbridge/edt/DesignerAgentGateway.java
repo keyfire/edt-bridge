@@ -425,14 +425,55 @@ public final class DesignerAgentGateway {
         AgentResult r = new AgentResult();
         Agent agent = lookup(infobase);
         if (agent == null) {
-            r.ok = true;
-            r.message = "no agent is running for " + infobase;
-            return r;
+            return stopRemains(infobase, r);
         }
         stopAgent(agent);
         r.ok = true;
         r.stopped = true;
         r.message = "the agent for " + agent.infobase + " was stopped";
+        return r;
+    }
+
+    /**
+     * No agent of ours is running for this infobase - so finish what the dead one left.
+     *
+     * <p>"No agent is running" used to be the whole answer, and it was half the truth: an agent whose
+     * process has died is dropped from the registry the moment anything looks it up, but its base
+     * directory stays, and with it the record naming the Designer session it opened - the session that
+     * holds the infobase's configuration lock until some later {@code sweep} or {@code start} gets to
+     * it. The caller asked for this infobase to have no agent, and those remains are exactly what
+     * stands in the way, so they are cleared here and NAMED in the answer.
+     *
+     * <p>This infobase's remains only. A stop is not a sweep: a directory belonging to another base is
+     * none of its business, and an agent that is still ALIVE is not remains at all - it is reported
+     * and left where it is, because ending somebody's live session is not a side effect to hide.
+     */
+    private AgentResult stopRemains(String infobase, AgentResult r) {
+        r.ok = true;
+        Address resolved = resolveAddress(infobase);
+        String label = resolved.label == null ? infobase : resolved.label;
+        if (resolved.address == null) {
+            r.message = AgentStop.noAgent(label);
+            return r;
+        }
+        List<String> done = new ArrayList<>();
+        for (Path dir : leftoverDirs(ownBaseDirs())) {
+            AgentRecord record = AgentRecord.read(dir);
+            if (record == null || !resolved.address.equalsIgnoreCase(record.connectionString)) {
+                continue;
+            }
+            if (agentProcessAlive(record)) {
+                r.message = AgentStop.remainsRunning(label, record.pid, origin(dir));
+                r.leftovers.addAll(inspectLeftovers());
+                return r;
+            }
+            done.add(endRecordedSession(record));
+            done.add(removeTrace(dir)
+                    ? "removed its base directory " + dir
+                    : "could not remove its base directory " + dir + " - something still holds a file"
+                            + " inside");
+        }
+        r.message = done.isEmpty() ? AgentStop.noAgent(label) : AgentStop.remainsSwept(label, done);
         return r;
     }
 

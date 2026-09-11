@@ -49,7 +49,8 @@ public final class DesignerAgentTool {
                 + "dead agent left behind: the orphaned Designer session of one whose process is gone "
                 + "- the session that holds the infobase's configuration lock - and its temporary "
                 + "directory. list says of each leftover whether this bridge process or an earlier "
-                + "one left it. A start sweeps once by itself.");
+                + "one left it. A start sweeps once by itself, and a stop for an infobase whose agent "
+                + "has died sweeps that agent's own remains and says so.");
         JsonArray values = new JsonArray();
         values.add("list");
         values.add("start");
@@ -102,7 +103,8 @@ public final class DesignerAgentTool {
                 + "БАЗЫ, поэтому доступен и серверной базе с аутентификацией 1С. Агенты поднимаются по "
                 + "требованию тех инструментов, которым нужны; остановка освобождает сеанс на сервере. "
                 + "Простаивающий агент останавливается сам (EDT_BRIDGE_AGENT_IDLE_MINUTES, по умолчанию "
-                + "30, \"off\" – держать вечно), а остатки умершего агента подчищает action=sweep.");
+                + "30, \"off\" – держать вечно), а остатки умершего агента подчищает action=sweep – и "
+                + "stop по той же базе, если останавливать уже нечего.");
         t.add("inputSchema", schema);
         return t;
     }
