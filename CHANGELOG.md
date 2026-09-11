@@ -13,7 +13,7 @@ Every entry ends with a link to the pull request it came from -
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
-## 2026-09-11
+## 2026-09-11 – 0.27.0
 
 ### Fixed
 - **A stop no longer spends a minute and a half being polite to an agent that cannot answer.** A stop
