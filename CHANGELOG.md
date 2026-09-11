@@ -13,6 +13,22 @@ Every entry ends with a link to the pull request it came from -
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
+## 2026-09-11
+
+### Fixed
+- **A stop no longer spends a minute and a half being polite to an agent that cannot answer.** A stop
+  asks the agent to shut itself down before killing it, and that politeness pays for itself: a killed
+  agent leaves its Designer session in the cluster, where it holds the infobase's configuration lock.
+  But the request needs a live SSH session, and an agent that had lost its own sent the bridge through
+  the full reconnect loop – fifteen attempts a second apart, every one of them refused for the reason
+  the one before it was – and then twenty seconds of waiting out a shutdown nobody had heard.
+  Measured on a stand where another configurator held the base: a minute and a half, none of it of any
+  use. The round is now offered only where it can pay – the session is still in hand, or the agent's
+  process holds the infobase and may therefore own a cluster session that only a polite exit takes
+  with it – and reopening a session for it gets two attempts, not fifteen. An agent that never reached
+  its infobase has no session to orphan and is killed at once, the wait going with the request that
+  was never sent. Reproduced and measured before and after the change: 35.6 s, then 0.1 s.
+
 ## 2026-09-10 – 0.26.0
 
 ### Fixed
