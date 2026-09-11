@@ -38,7 +38,7 @@ to the code and the reasoning behind it.
   agent, ends the session they name, removes the directory, and says what it did; with nothing left
   behind the answer is the plain "no agent is running" it always was. Remains of a still-running agent
   from another bridge process are reported and left alone – ending somebody's live session is not a
-  side effect to hide.
+  side effect to hide. ([#9](https://github.com/keyfire/edt-bridge/pull/9))
 
 ## 2026-09-10 – 0.26.0
 
