@@ -595,7 +595,8 @@ def update_plugins(emit=log) -> bool:
         emit(f"updating {name} {before} from "
              + ("its repository..." if target != name else "the package index..."))
         try:
-            result = subprocess.run(argv, capture_output=True, text=True, timeout=600)
+            result = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8",
+                                    errors="replace", timeout=600)
         except (OSError, subprocess.TimeoutExpired) as failure:
             emit(f"{name}: update failed - {failure}")
             ok = False
