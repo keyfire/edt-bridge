@@ -13,17 +13,7 @@ Every entry ends with a link to the pull request it came from -
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
-## Unreleased
-
-### Fixed
-- **Two processes were read as text and decoded with whatever code page the machine had.** The
-  POSIX half of the process lookup – the one that decides whether a GUI EDT is holding the
-  workspace – and the pip run behind a plugin update both asked for text and named no encoding.
-  The Windows half of that same lookup carries a comment about exactly this failure: `tasklist`
-  prints in the console OEM code page, `text=True` decoded it as UTF-8, the decode raised inside
-  the reader thread, the output came back EMPTY and the guard read that emptiness as "no such
-  process". Both calls now name `encoding="utf-8"` and, where the output reaches a human,
-  `errors="replace"`. ([#11](https://github.com/keyfire/edt-bridge/pull/11))
+## 2026-09-12 – 0.27.1
 
 ### Added
 - **The convention itself is now a test.** `python/tests/test_conventions.py` fails on a process
@@ -43,6 +33,16 @@ to the code and the reasoning behind it.
   this repository second, to be remembered rather than written down. `ci` now installs
   `docsguard@v0.4.0`, and raising that pin is a pull request of its own.
   ([#11](https://github.com/keyfire/edt-bridge/pull/11))
+
+### Fixed
+- **Two processes were read as text and decoded with whatever code page the machine had.** The
+  POSIX half of the process lookup – the one that decides whether a GUI EDT is holding the
+  workspace – and the pip run behind a plugin update both asked for text and named no encoding.
+  The Windows half of that same lookup carries a comment about exactly this failure: `tasklist`
+  prints in the console OEM code page, `text=True` decoded it as UTF-8, the decode raised inside
+  the reader thread, the output came back EMPTY and the guard read that emptiness as "no such
+  process". Both calls now name `encoding="utf-8"` and, where the output reaches a human,
+  `errors="replace"`. ([#11](https://github.com/keyfire/edt-bridge/pull/11))
 
 ## 2026-09-11 – 0.27.0
 
