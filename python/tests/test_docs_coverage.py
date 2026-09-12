@@ -42,6 +42,22 @@ def guard():
 #: finding would then ride along with every provocation below and mean nothing in any of them.
 ROOT_DOCUMENTS = ("README.md", "python/README.ru.md")
 
+#: The folders of sources the copy carries, with the endings that travel from each. Only the
+#: files a check opens are copied: the attribution check reads comments and docstrings, so the
+#: Python and the Java go and the build output, the jars and the diagrams stay. A folder the
+#: guard names and does not find is a finding of its own, and that one would ride along with
+#: every provocation below the way a renamed catalogue would.
+SOURCE_FOLDERS = {".py": ("python", "scripts"),
+                  ".java": ("io.github.keyfire.edtbridge/src", "tests/java")}
+
+
+def _only(suffix):
+    """Copy filter: keep the folders and the files of one ending, leave everything else."""
+    def ignore(folder, names):
+        return [name for name in names
+                if not name.endswith(suffix) and not (Path(folder) / name).is_dir()]
+    return ignore
+
 
 @pytest.fixture()
 def sabotage(guard, tmp_path, monkeypatch):
@@ -50,10 +66,14 @@ def sabotage(guard, tmp_path, monkeypatch):
             without: tuple[str, ...] = ()):
         docs = tmp_path / "docs"
         shutil.copytree(ROOT / "docs", docs)
-        for name in (*ROOT_DOCUMENTS, *guard.RUSSIAN_SOURCES):
+        for suffix, folders in SOURCE_FOLDERS.items():
+            for folder in folders:
+                shutil.copytree(ROOT / folder, tmp_path / folder, ignore=_only(suffix))
+        for name in (*ROOT_DOCUMENTS, *guard.ATTRIBUTION_DOCUMENTS, *guard.RUSSIAN_SOURCES):
             target = tmp_path / name
             target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(ROOT / name, target)
+            if not target.exists():
+                shutil.copyfile(ROOT / name, target)
         for name, text in (documents or {}).items():
             target = tmp_path / name
             target.parent.mkdir(parents=True, exist_ok=True)
