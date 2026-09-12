@@ -2,8 +2,9 @@
 """Does the documentation still cover the bridge: tools, variables, images, annotations, words.
 
 What is the bridge's own business stays here - which tools the Java side registers, which
-variables the wrapper reads, how the tools page is grouped, where the Russian pages live
-and which sources hold Russian a person reads.
+variables the wrapper reads, how the tools page is grouped, where the Russian pages live,
+which sources hold Russian a person reads, and which documents and folders are read for a
+sentence that explains a change by naming who asked for it.
 Everything underneath (reading a page, the block between the injection markers, the
 annotations a repository states about itself, the gap between what the sources offer and what
 a page lists, the jargon dictionary, the runner) comes from the `docsguard` package, which
@@ -27,6 +28,8 @@ from pathlib import Path
 from docsguard import (
     Layout,
     PitchItem,
+    attribution_problems,
+    attribution_self_check,
     coverage_problems,
     front_description,
     headings,
@@ -38,6 +41,7 @@ from docsguard import (
     pyproject_description,
     run,
     site_description,
+    source_attribution_problems,
     source_jargon_problems,
 )
 
@@ -224,8 +228,57 @@ def check_jargon() -> list[str]:
     )
 
 
+#: The pages read for a sentence that credits a person: both editions. The Russian edition of
+#: the root documents lives in `docs/ru/`, the way the jargon list above says, so that folder is
+#: named here too.
+ATTRIBUTION_PAGES = ("*.md", "ru/*.md")
+
+#: The documents outside the documentation folder, English edition - their Russian twins are
+#: pages of `docs/ru/` and are read by the glob above. The wrapper's two READMEs ship to PyPI as
+#: the package card.
+ATTRIBUTION_DOCUMENTS = (
+    "README.md",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "ONBOARDING.md",
+    "ORIGIN.md",
+    "SECURITY.md",
+    "CODE_OF_CONDUCT.md",
+    "python/README.md",
+    "python/README.ru.md",
+)
+
+#: The folders whose comments and docstrings are read, and here the Java side is read with them.
+#: The jargon list above leaves Java out for a good reason - what a tool says there goes to an
+#: agent over the protocol, not to a reader - but a comment explaining a decision is written for
+#: a person whatever the language around it is, and most of the comments in this repository are
+#: Java ones.
+ATTRIBUTION_SOURCES = ("python", "scripts")
+ATTRIBUTION_JAVA = ("io.github.keyfire.edtbridge/src", "tests/java")
+
+
+def check_attribution() -> list[str]:
+    """No page and no comment explains a change by naming the person who asked for it.
+
+    The repository has one author, so a sentence about who asked gives the reader nothing to act
+    on and suggests the code was written for somebody else. What belongs there is what the
+    previous behaviour or text got wrong.
+
+    The table lives in `docsguard` and catches a turn of phrase rather than a word, because an
+    owner is a word of the subject here as much as anywhere: a form has an owner, an attribute
+    is attached to the owner's list, and `force=true` is the owner's explicit override. Those
+    sentences stay quiet; what is caught is a possessive beside a noun of deciding or asking, or
+    the word beside a verb of speaking.
+    """
+    return (attribution_self_check()
+            + attribution_problems(LAYOUT, pages=ATTRIBUTION_PAGES,
+                                   documents=ATTRIBUTION_DOCUMENTS)
+            + source_attribution_problems(LAYOUT, ATTRIBUTION_SOURCES)
+            + source_attribution_problems(LAYOUT, ATTRIBUTION_JAVA, patterns=("*.java",)))
+
+
 CHECKS = (check_tools, check_environment, check_injections, check_images, check_pitches,
-          check_jargon)
+          check_jargon, check_attribution)
 
 
 def problems() -> list[str]:
