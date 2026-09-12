@@ -288,6 +288,7 @@ class Backend:
                 raw = subprocess.run(
                     ["tasklist", "/FI", f"IMAGENAME eq {image}", "/FO", "CSV", "/NH"],
                     capture_output=True, timeout=15, check=False,
+                    stdin=subprocess.DEVNULL,
                 ).stdout
                 out = raw.decode(_CONSOLE_ENCODING, errors="replace")
                 pids = []
@@ -301,7 +302,7 @@ class Backend:
                 return pids
             out = subprocess.run(
                 ["pgrep", "-x", image], capture_output=True, text=True, encoding="utf-8",
-                errors="replace", timeout=15, check=False,
+                errors="replace", timeout=15, check=False, stdin=subprocess.DEVNULL,
             ).stdout
             return [int(item) for item in out.split() if item.isdigit()]
         except OSError:
@@ -447,7 +448,8 @@ class Backend:
         )
         try:
             raw = subprocess.run(["powershell", "-NoProfile", "-Command", query],
-                                 capture_output=True, timeout=30, check=False).stdout
+                                 capture_output=True, timeout=30, check=False,
+                                 stdin=subprocess.DEVNULL).stdout
         except (OSError, subprocess.SubprocessError):
             return []
         return [int(item) for item in raw.decode(_CONSOLE_ENCODING, errors="replace").split()
@@ -458,7 +460,8 @@ class Backend:
         try:
             if _WINDOWS:
                 subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
-                               capture_output=True, timeout=30, check=False)
+                               capture_output=True, timeout=30, check=False,
+                               stdin=subprocess.DEVNULL)
             else:
                 os.kill(pid, signal.SIGKILL)
         except (OSError, subprocess.SubprocessError):
@@ -534,7 +537,8 @@ class Backend:
                  "{ \"$($_.ProcessId) $($_.ParentProcessId)\" }")
         try:
             raw = subprocess.run(["powershell", "-NoProfile", "-Command", query],
-                                 capture_output=True, timeout=30, check=False).stdout
+                                 capture_output=True, timeout=30, check=False,
+                                 stdin=subprocess.DEVNULL).stdout
         except (OSError, subprocess.SubprocessError):
             return {}
         table = {}
