@@ -475,7 +475,9 @@ def _update_pipx_metadata(site: Path, version: str) -> None:
         main = data.get("main_package") or {}
         if main.get("package") == "edt-bridge-mcp":
             main["package_version"] = version
-            meta.write_text(json.dumps(data, indent=4), encoding="utf-8")
+            # newline="" keeps the line feeds pipx itself wrote; text mode would hand the file
+            # back with every line changed on Windows.
+            meta.write_text(json.dumps(data, indent=4), encoding="utf-8", newline="")
             log("updated pipx_metadata.json")
     except (OSError, ValueError):
         pass

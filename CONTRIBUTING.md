@@ -117,6 +117,22 @@ text of a call looks straight past. The reading itself comes from the shared
 [docsguard](https://github.com/keyfire/docsguard) package, pinned to a tag by the `ci` workflow. What
 stays here is the list of folders.
 
+### Writing a file
+
+A text file written from the wrapper or from a script names its line ending: `write_text(text,
+encoding="utf-8", newline="")`. Text mode otherwise translates every line feed into the platform's
+ending, and a generator run on Windows hands back a page with every line changed. A checkout with
+`core.autocrlf=input` normalizes that away on commit, which is what makes it easy to miss.
+
+The batch file of the Windows auto-start was caught by the same rule from the other side. Its lines
+are joined with CRLF because that is what a batch file wants, text mode translated each of those a
+second time, and every line went to disk as `\r\r\n`.
+
+`python/tests/test_conventions.py` fails on a write that leaves the line ending to the platform. It
+reads `python/src` and `scripts` and not the tests: a test writes into a temporary directory that is
+gone when the run ends, and a fixture carrying the other line ending on purpose is a test in its own
+right.
+
 ## Code style
 
 - **Java 17** and the standard Eclipse and OSGi conventions. Keep all IDE-model access inside the

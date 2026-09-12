@@ -99,6 +99,32 @@ def log(message: str) -> None:
     print(f"[edt-bridge-mcp] {message}", file=sys.stderr, flush=True)
 
 
+def write_headless_batch(path: Path, cli: Path, workspace: Path, token: str = "",
+                         allow_evaluate: str = "") -> Path:
+    """Write the batch file the Windows auto-start runs, and answer where it landed.
+
+    A batch file wants CRLF, so the lines are joined with it. The `newline=""` beside the
+    encoding is the other half of that, and it was missing: `write_text` opens in TEXT mode and
+    translates every "\\n" it is handed into the platform's ending, so on Windows each of these
+    CRLFs went to disk as "\\r\\r\\n". The stray CR sat in every line of the file for as long as
+    the auto-start existed.
+
+    Writing lives in a function of its own so a test can read the bytes back. The shape of the
+    text is the point of it: the keepalive pipe feeds 1cedtcli one command and then holds its
+    stdin open, which is what keeps the headless session alive.
+    """
+    lines = ["@echo off"]
+    if token:
+        lines.append(f'set "EDT_BRIDGE_TOKEN={token}"')
+    if allow_evaluate.strip():
+        lines.append(f'set "EDT_BRIDGE_ALLOW_EVALUATE={allow_evaluate.strip()}"')
+    lines.append(
+        f'(echo version& ping -n 999999 127.0.0.1 >nul) | "{cli}" -data "{workspace}" -nl en_US'
+    )
+    path.write_text("\r\n".join(lines) + "\r\n", encoding="ascii", newline="")
+    return path
+
+
 class Backend:
     """The HTTP side: probe / start / wait for the Java bridge, and forward requests."""
 
@@ -379,18 +405,10 @@ class Backend:
         log(f"starting headless EDT: {cli} -data {ws}")
         try:
             if os.name == "nt":
-                lines = ["@echo off"]
-                if self.token:
-                    lines.append(f'set "EDT_BRIDGE_TOKEN={self.token}"')
-                if (os.environ.get("EDT_BRIDGE_ALLOW_EVALUATE") or "").strip():
-                    lines.append(
-                        f'set "EDT_BRIDGE_ALLOW_EVALUATE={os.environ["EDT_BRIDGE_ALLOW_EVALUATE"].strip()}"'
-                    )
-                lines.append(
-                    f'(echo version& ping -n 999999 127.0.0.1 >nul) | "{cli}" -data "{ws}" -nl en_US'
+                bat = write_headless_batch(
+                    Path(tempfile.gettempdir()) / "edtbridge-headless.bat", cli, ws,
+                    self.token or "", os.environ.get("EDT_BRIDGE_ALLOW_EVALUATE") or "",
                 )
-                bat = Path(tempfile.gettempdir()) / "edtbridge-headless.bat"
-                bat.write_text("\r\n".join(lines) + "\r\n", encoding="ascii")
                 creation = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
                 subprocess.Popen(
                     ["cmd", "/c", str(bat)], cwd=str(cli.parent),
