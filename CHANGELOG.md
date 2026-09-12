@@ -18,7 +18,7 @@ to the code and the reasoning behind it.
 ### Added
 - **The conventions guard requires a process started from `python/src` to name its stdin.** The
   check reads the shipped wrapper alone. A generator and a test run from a console, and a console
-  stdin is safe to hand on.
+  stdin is safe to hand on. ([#19](https://github.com/keyfire/edt-bridge/pull/19))
 
 ### Fixed
 - **A child process of the wrapper no longer inherits the stdin the MCP client speaks over.** On
@@ -27,6 +27,7 @@ to the code and the reasoning behind it.
   lookup was never affected; pip stays, and pip is what the plugin self-update runs. Inside a live
   server `pip --version` answered in 0.3 seconds with an empty stdin and hung to the timeout
   without one. Six process starts in `python/src` pass `stdin=subprocess.DEVNULL` now.
+  ([#19](https://github.com/keyfire/edt-bridge/pull/19))
 
 ## 2026-09-12 – 0.27.1
 
