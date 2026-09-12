@@ -16,60 +16,34 @@ to the code and the reasoning behind it.
 ## 2026-09-12 – 0.27.1
 
 ### Added
-- **The convention itself is now a test.** `python/tests/test_conventions.py` fails on a process
-  read as text without an encoding, anywhere under `python/` or `scripts/`, and the reading comes
-  from the shared [docsguard](https://github.com/keyfire/docsguard) package – the same one the
-  documentation guard already uses, so the engine and elemctl are held to the rule in the same
-  words. It parses with `ast` rather than matching text, because the shape that started this
-  elsewhere is `(run or subprocess.run)(...)`: a search for the head of a call looks straight past
-  it. The suite also provokes the shared check on sources of its own, so a pinned version that had
-  stopped judging cannot look like a repository in order.
+- **`python/tests/test_conventions.py` catches a process read as text without an encoding.** It
+  parses the sources with `ast`: a text search walks past the `(run or subprocess.run)(...)` shape.
+  The check comes from the shared [docsguard](https://github.com/keyfire/docsguard).
   ([#11](https://github.com/keyfire/edt-bridge/pull/11))
 
 ### Changed
-- **The shared guard is installed by TAG, not from `@main`.** On a branch pin, a commit in
-  `docsguard` reaches a run here in the middle of unrelated work – a red run caused by no commit of
-  ours is a red run nobody reads – and it left the order of merging, the shared package first and
-  this repository second, to be remembered rather than written down. `ci` now installs
-  `docsguard@v0.4.0`, and raising that pin is a pull request of its own.
-  ([#11](https://github.com/keyfire/edt-bridge/pull/11))
+- **The shared guard is installed by tag, not from `@main`.** On a branch pin, a `docsguard` commit
+  landed in a run here in the middle of unrelated work, and a red run caused by no commit of ours is
+  one nobody reads. `ci` now installs `docsguard@v0.4.0`, and raising the pin is a pull request of
+  its own. ([#11](https://github.com/keyfire/edt-bridge/pull/11))
 
 ### Fixed
-- **Two processes were read as text and decoded with whatever code page the machine had.** The
-  POSIX half of the process lookup – the one that decides whether a GUI EDT is holding the
-  workspace – and the pip run behind a plugin update both asked for text and named no encoding.
-  The Windows half of that same lookup carries a comment about exactly this failure: `tasklist`
-  prints in the console OEM code page, `text=True` decoded it as UTF-8, the decode raised inside
-  the reader thread, the output came back EMPTY and the guard read that emptiness as "no such
-  process". Both calls now name `encoding="utf-8"` and, where the output reaches a human,
-  `errors="replace"`. ([#11](https://github.com/keyfire/edt-bridge/pull/11))
+- **Two processes read as text now name their encoding.** They are the POSIX half of the process
+  lookup and the pip run behind a plugin update. Without an encoding the decode raises inside the
+  reader thread, the output comes back empty, and the guard reads that emptiness as "no such
+  process". ([#11](https://github.com/keyfire/edt-bridge/pull/11))
 
 ## 2026-09-11 – 0.27.0
 
 ### Fixed
-- **A stop no longer spends a minute and a half being polite to an agent that cannot answer.** A stop
-  asks the agent to shut itself down before killing it, and that politeness pays for itself: a killed
-  agent leaves its Designer session in the cluster, where it holds the infobase's configuration lock.
-  But the request needs a live SSH session, and an agent that had lost its own sent the bridge through
-  the full reconnect loop – fifteen attempts a second apart, every one of them refused for the reason
-  the one before it was – and then twenty seconds of waiting out a shutdown nobody had heard.
-  Measured on a stand where another configurator held the base: a minute and a half, none of it of any
-  use. The round is now offered only where it can pay – the session is still in hand, or the agent's
-  process holds the infobase and may therefore own a cluster session that only a polite exit takes
-  with it – and reopening a session for it gets two attempts, not fifteen. An agent that never reached
-  its infobase has no session to orphan and is killed at once, the wait going with the request that
-  was never sent. Reproduced and measured before and after the change: 35.6 s, then 0.1 s. ([#8](https://github.com/keyfire/edt-bridge/pull/8))
-- **Stopping an agent that has died now clears what it left, instead of saying there was nothing to
-  stop.** An agent whose process is gone is dropped from the registry the moment anything looks it up,
-  so `stop` answered "no agent is running for X" – while the base directory that agent left, with the
-  record naming the Designer session it had opened, stayed on disk until some later `sweep` or
-  `start`. That record is there on purpose: the sweep ends the orphaned session by it, and the session
-  is what holds the infobase's configuration lock. But the caller was told the infobase was clear when
-  it was not. A `stop` for an infobase with no live agent now looks for the remains of THAT infobase's
-  agent, ends the session they name, removes the directory, and says what it did; with nothing left
-  behind the answer is the plain "no agent is running" it always was. Remains of a still-running agent
-  from another bridge process are reported and left alone – ending somebody's live session is not a
-  side effect to hide. ([#9](https://github.com/keyfire/edt-bridge/pull/9))
+- **A stop no longer spends a minute and a half being polite to an agent that cannot answer.**
+  Politeness pays: a killed agent leaves a Designer session holding the infobase lock. But the
+  request needs a live SSH session, and an agent without one took the full reconnect loop. Measured
+  before and after: 35.6 s, then 0.1 s. ([#8](https://github.com/keyfire/edt-bridge/pull/8))
+- **Stopping a dead agent clears what it left behind.** An agent whose process is gone is dropped
+  from the registry, so `stop` answered "no agent is running for X" while the directory naming its
+  Designer session stayed on disk, holding the infobase lock. `stop` now ends that session, removes
+  the directory and says what it did. ([#9](https://github.com/keyfire/edt-bridge/pull/9))
 
 ## 2026-09-10 – 0.26.0
 
