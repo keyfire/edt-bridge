@@ -22,7 +22,7 @@ to the code and the reasoning behind it.
   behaviour or text got wrong. Both editions of the pages and documents are read, and with them
   the comments of `python`, `scripts` and the Java of the plugin. The table comes from
   `docsguard@v0.10.0` and catches a turn of phrase rather than a word, so a form's owner and the
-  owner's explicit override stay quiet.
+  owner's explicit override stay quiet. ([#20](https://github.com/keyfire/edt-bridge/pull/20))
 - **The conventions guard requires a process started from `python/src` to name its stdin.** The
   check reads the shipped wrapper alone. A generator and a test run from a console, and a console
   stdin is safe to hand on. ([#19](https://github.com/keyfire/edt-bridge/pull/19))
