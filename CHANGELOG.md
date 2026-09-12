@@ -21,6 +21,7 @@ to the code and the reasoning behind it.
   number of tests goes up, because the newcomer was added. The check reads `python/tests` and names
   the line of the newcomer, which is the definition to rename. It comes from the shared
   [docsguard](https://github.com/keyfire/docsguard).
+  ([#18](https://github.com/keyfire/edt-bridge/pull/18))
 - **`scripts/changelog-link.py` writes a pull request link into both changelog editions.** It takes
   the number, links every entry of the topmost section that carries none, moves the link to a
   continuation line where the entry already fills the width, and rebuilds the mirrored pages.
@@ -52,7 +53,7 @@ to the code and the reasoning behind it.
 - **`ci` installs `docsguard@v0.9.0` instead of `v0.8.0`.** In that release the source checks read a
   file as `utf-8-sig`. Editors on Windows write a byte-order mark without being asked, `ast`
   answered it with a `SyntaxError`, and one such file took down the findings from every other file
-  with it.
+  with it. ([#18](https://github.com/keyfire/edt-bridge/pull/18))
 - **The two coverage checks of `scripts/check_docs.py` come from the shared guard.** They wrote the
   set difference out by hand, once each, and the environment copy had already lost the empty-reader
   guard the tools copy had. `coverage_problems` judges both directions and a reader that has gone
@@ -87,6 +88,7 @@ to the code and the reasoning behind it.
   stores and checks out every text file with line feeds, whatever the machine is set to.
   `newline=""` in the Python generators stops short of that: it says how a file is written, while
   `scripts/sync-docs.mjs` splices the tool catalogue of a page into both READMEs by copying bytes.
+  ([#18](https://github.com/keyfire/edt-bridge/pull/18))
 - **The batch file of the Windows auto-start gets one carriage return per line.** Its lines are
   joined with CRLF, and `write_text` in text mode translated each of those again, so every line went
   to disk as `\r\r\n`. Two writes beside it had the same shape: the pipx metadata the self-update
