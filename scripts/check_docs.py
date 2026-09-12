@@ -1,13 +1,14 @@
 #!/usr/bin/env python
-"""Does the documentation still cover the bridge: tools, variables, images, annotations.
+"""Does the documentation still cover the bridge: tools, variables, images, annotations, words.
 
 What is the bridge's own business stays here - which tools the Java side registers, which
-variables the wrapper reads, how the tools page is grouped. Everything underneath (reading a
-page, the block between the injection markers, the annotations a repository states about
-itself, the runner) comes from the `docsguard` package, which three repositories were keeping
-in triplicate until the copies drifted.
+variables the wrapper reads, how the tools page is grouped, where the Russian pages live.
+Everything underneath (reading a page, the block between the injection markers, the
+annotations a repository states about itself, the jargon dictionary, the runner) comes from
+the `docsguard` package, which three repositories were keeping in triplicate until the copies
+drifted.
 
-Run: `python scripts/docsguard.py`; the exit code is what CI reads.
+Run: `python scripts/check_docs.py`; the exit code is what CI reads.
 """
 
 from __future__ import annotations
@@ -23,6 +24,8 @@ from docsguard import (
     headings,
     image_problems,
     injection_problems,
+    jargon_problems,
+    jargon_self_check,
     pitch_problems,
     pyproject_description,
     run,
@@ -40,6 +43,18 @@ LAYOUT = Layout(
     pyproject=ROOT / "python" / "pyproject.toml",
     raw_prefix="https://raw.githubusercontent.com/keyfire/edt-bridge/main/",
 )
+
+#: The Russian pages, by glob, inside the documentation folder. `*.ru.md` is what the guard
+#: reads on its own and covers the site pages; this repository keeps the Russian edition of its
+#: root documents one level down, in `docs/ru/`, so that folder is named too. The changelog and
+#: the onboarding page of `docs/` are mirrors built by `scripts/sync-docs.mjs` and are absent
+#: from a fresh checkout - when they are there, they are read as copies of their source, which
+#: costs a second reading of a finding and nothing else.
+RUSSIAN_PAGES = ("*.ru.md", "ru/*.ru.md")
+
+#: The Russian documents outside the documentation folder. The wrapper's README ships to PyPI
+#: as the package card, so it is read by more people than most pages here.
+RUSSIAN_DOCUMENTS = ("python/README.ru.md",)
 
 _TOOL_NAME = re.compile(r'String name\(\)\s*\{\s*return\s+"(edt_[a-z_]+)"', re.S)
 #: A tool served by the wrapper itself - it has no Java class, only an entry in the local list.
@@ -150,7 +165,23 @@ def check_pitches() -> list[str]:
     )
 
 
-CHECKS = (check_tools, check_environment, check_injections, check_images, check_pitches)
+def check_jargon() -> list[str]:
+    """The Russian edition is written in Russian, and the dictionary that says so is awake.
+
+    The first half is about the guard rather than about the pages. A root that has lost a
+    letter finds nothing, and finding nothing reads exactly like a repository in order, so the
+    dictionary proves itself on its own samples before it is let near a page.
+
+    A word quoted as a word - a changelog entry saying which transliteration was replaced -
+    goes in backticks. The guard leaves backticks alone, and the reader sees the quotation.
+    """
+    return jargon_self_check() + jargon_problems(
+        LAYOUT, pages=RUSSIAN_PAGES, documents=RUSSIAN_DOCUMENTS
+    )
+
+
+CHECKS = (check_tools, check_environment, check_injections, check_images, check_pitches,
+          check_jargon)
 
 
 def problems() -> list[str]:
