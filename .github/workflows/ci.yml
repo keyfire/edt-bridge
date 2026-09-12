@@ -42,7 +42,7 @@ jobs:
           # first and this repository second, to be remembered rather than written down.
           # Raising the pin: docsguard tags `v<version>` after its own merge, and the line below
           # goes up here in a pull request of its own.
-          python -m pip install "git+https://github.com/keyfire/docsguard@v0.7.1"
+          python -m pip install "git+https://github.com/keyfire/docsguard@v0.8.0"
         working-directory: python
       - name: Run the suite
         run: python -m pytest -q
