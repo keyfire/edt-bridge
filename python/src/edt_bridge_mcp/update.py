@@ -597,8 +597,11 @@ def update_plugins(emit=log) -> bool:
         emit(f"updating {name} {before} from "
              + ("its repository..." if target != name else "the package index..."))
         try:
+            # stdin=DEVNULL: pip started from the wrapper would otherwise inherit the
+            # stdin the MCP client speaks over, and on Windows it never reaches its own exit.
             result = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8",
-                                    errors="replace", timeout=600)
+                                    errors="replace", timeout=600,
+                                    stdin=subprocess.DEVNULL)
         except (OSError, subprocess.TimeoutExpired) as failure:
             emit(f"{name}: update failed - {failure}")
             ok = False

@@ -111,11 +111,21 @@ run went well. That is how the guard which refuses a headless start while a GUI 
 workspace came to never fire. A call that asks for no text at all decodes nothing and needs neither
 setting: bytes in, bytes out, decoded by hand afterwards, the way the `tasklist` lookup does it.
 
+A process started from the wrapper also names its stdin: `stdin=subprocess.DEVNULL`. The
+wrapper is itself an MCP server, so its stdin is the pipe the client speaks over, and on Windows
+a child that inherits the handle never reaches its own exit. The work takes milliseconds, the
+parent waits out the whole timeout, and nothing is printed while it waits. Whether that hurts
+depends on the command: `tasklist`, `powershell` and `cmd` close their end and leave, while git,
+an interpreter and pip stay, and pip is what the plugin self-update runs. Nothing here ever
+writes to a child, so an empty stdin costs nothing. A call that does feed one, through `input=`
+or an `stdin=` of its own, is left alone.
+
 `python/tests/test_conventions.py` fails on a process read as text without an encoding, the
 `(run or subprocess.run)(...)` shape of a runner seam included, which is the shape a search for the
 text of a call looks straight past. The reading itself comes from the shared
 [docsguard](https://github.com/keyfire/docsguard) package, pinned to a tag by the `ci` workflow. What
-stays here is the list of folders.
+stays here is the list of folders. The stdin half is judged over `python/src` alone: a generator
+and a test run from a console, and a console stdin is safe to hand on.
 
 ### Writing a file
 
