@@ -20,6 +20,7 @@ to the code and the reasoning behind it.
   the number, links every entry of the topmost section that carries none, moves the link to a
   continuation line where the entry already fills the width, and rebuilds the mirrored pages.
   Writing that by hand into two files is how one of them ends up wrong.
+  ([#17](https://github.com/keyfire/edt-bridge/pull/17))
 - **`python/tests/test_conventions.py` fails on a text file written without `newline=""`.** Text
   mode otherwise translates every line feed into the platform's ending. The check comes from the
   shared [docsguard](https://github.com/keyfire/docsguard) and reads `python/src` and `scripts`; a
@@ -46,12 +47,12 @@ to the code and the reasoning behind it.
 - **The two coverage checks of `scripts/check_docs.py` come from the shared guard.** They wrote the
   set difference out by hand, once each, and the environment copy had already lost the empty-reader
   guard the tools copy had. `coverage_problems` judges both directions and a reader that has gone
-  quiet.
+  quiet. ([#17](https://github.com/keyfire/edt-bridge/pull/17))
 - **The variable reader also sees a name bound to a constant.** `EDT_BRIDGE_LANG` and
   `EDT_BRIDGE_PLUGIN_INDEX` are read through one, so the check had been passing them for free, and
   the installation page could have dropped either without a word. With them visible, the page is
   judged in the other direction too: a variable described there and gone from the code sends a
-  reader after a knob that does nothing.
+  reader after a knob that does nothing. ([#17](https://github.com/keyfire/edt-bridge/pull/17))
 - **`ci` installs `docsguard@v0.8.0` instead of `v0.7.1`.** That version reads the string literals
   of the sources, and that is what the version went up for. The dictionary also gained six words:
   `дашборд`, `бэкенд`, `лаунчер`, `мейнтейнер`, `топ-объект`, `легаси`.
