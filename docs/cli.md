@@ -8,11 +8,11 @@ sidebar:
 
 <!-- Собрано из вывода `edt-bridge-mcp --help` скриптом scripts/gen-cli-docs.py. Не редактировать вручную. -->
 
-The `edt-bridge-mcp` wrapper is not only a stdio server for an MCP client. The same executable drives the bridge from a shell: whether it is up, which tools it serves, and what one of them answers. That beats starting an agent when all you want is to check that things are alive.
+The `edt-bridge-mcp` wrapper serves an MCP client as a stdio server. The same executable also drives the bridge from a shell: whether it is up, which tools it serves, and what one of them answers. You do not have to start an agent for a check like that.
 
 With no command the wrapper runs as an MCP server – that is how a client launches it. The commands below address that same bridge.
 
-The exit code separates two different failures: **1** – the call never happened (no bridge, bad arguments), **2** – the tool ran and reported an error. In a script that is the difference between "the bridge is down" and "the bridge is up, but the job failed".
+The exit code tells two outcomes apart. **1** means the call never happened: no bridge, or bad arguments. **2** means the tool ran and reported an error. In a script that is the difference between "the bridge is down" and "the bridge is up, but the job failed".
 
 ## No command: running as an MCP server
 

@@ -34,14 +34,14 @@ TEXT = {
         "label": "Команды",
         "order": 5,
         "intro": (
-            "Обвязка `edt-bridge-mcp` – это не только stdio-сервер для MCP-клиента. Тем же "
-            "исполняемым файлом можно вызвать мост прямо из командной строки: посмотреть, поднят ли он, "
-            "какие инструменты отдаёт и что отвечает конкретный из них. Это удобнее, чем "
-            "поднимать агента, когда нужно всего лишь проверить, живо ли всё.\n\n"
+            "Обвязка `edt-bridge-mcp` служит MCP-клиенту stdio-сервером. Тем же исполняемым "
+            "файлом мост вызывают и прямо из командной строки: посмотреть, поднят ли он, какие "
+            "инструменты отдаёт и что отвечает один из них. Ради такой проверки поднимать агента "
+            "не нужно.\n\n"
             "Без команды обвязка работает как MCP-сервер – так её запускает клиент. Команды "
             "ниже адресуют тот же мост.\n\n"
-            "Код возврата разводит две разные беды: **1** – вызов не состоялся (мост не "
-            "поднялся, аргументы неверны), **2** – инструмент отработал и вернул ошибку. "
+            "Код возврата различает два разных исхода. **1** – вызов не состоялся: мост не "
+            "поднялся или аргументы неверны. **2** – инструмент отработал и вернул ошибку. "
             "В скриптах это разница между \"мост лежит\" и \"мост жив, но задача не выполнена\"."
         ),
         "common": "Без команды: запуск MCP-сервера",
@@ -62,14 +62,14 @@ TEXT = {
         "label": "Commands",
         "order": 5,
         "intro": (
-            "The `edt-bridge-mcp` wrapper is not only a stdio server for an MCP client. The "
-            "same executable drives the bridge from a shell: whether it is up, which tools it "
-            "serves, and what one of them answers. That beats starting an agent when all you "
-            "want is to check that things are alive.\n\n"
+            "The `edt-bridge-mcp` wrapper serves an MCP client as a stdio server. The same "
+            "executable also drives the bridge from a shell: whether it is up, which tools it "
+            "serves, and what one of them answers. You do not have to start an agent for a "
+            "check like that.\n\n"
             "With no command the wrapper runs as an MCP server – that is how a client launches "
             "it. The commands below address that same bridge.\n\n"
-            "The exit code separates two different failures: **1** – the call never happened "
-            "(no bridge, bad arguments), **2** – the tool ran and reported an error. In a "
+            "The exit code tells two outcomes apart. **1** means the call never happened: no "
+            "bridge, or bad arguments. **2** means the tool ran and reported an error. In a "
             "script that is the difference between \"the bridge is down\" and \"the bridge is "
             "up, but the job failed\"."
         ),
