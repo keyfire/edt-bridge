@@ -81,7 +81,8 @@ def render(browser: str, svg_path: Path, theme: str) -> Path:
     out = svg_path.with_suffix(".png")
     with tempfile.TemporaryDirectory() as tmp:
         staged = Path(tmp) / svg_path.name
-        staged.write_text(force_theme(svg, theme), encoding="utf-8")
+        # newline="" - the staged copy differs from the source by its palette and nothing else.
+        staged.write_text(force_theme(svg, theme), encoding="utf-8", newline="")
         subprocess.run(
             [
                 browser, "--headless=new", "--disable-gpu",
