@@ -20,8 +20,10 @@ to the code and the reasoning behind it.
   mode otherwise translates every line feed into the platform's ending. The check comes from the
   shared [docsguard](https://github.com/keyfire/docsguard) and reads `python/src` and `scripts`; a
   test writes into a temporary directory, so the test folder stays out of it.
+  ([#16](https://github.com/keyfire/edt-bridge/pull/16))
 - **`python/tests/test_headless_batch.py` reads the bytes of the batch file back.** Comparing
   strings walks straight past a doubled line ending, and that is what the file carried.
+  ([#16](https://github.com/keyfire/edt-bridge/pull/16))
 - **The jargon check now reads the wrapper's Russian help.** `scripts/check_docs.py` names the
   message catalog `python/src/edt_bridge_mcp/i18n.py` to the guard. Help text reaches a terminal the
   way a page reaches the site, and until now no check read it.
@@ -62,6 +64,7 @@ to the code and the reasoning behind it.
   joined with CRLF, and `write_text` in text mode translated each of those again, so every line went
   to disk as `\r\r\n`. Two writes beside it had the same shape: the pipx metadata the self-update
   corrects, and the staged copy of an SVG the diagram renderer hands to a browser.
+  ([#16](https://github.com/keyfire/edt-bridge/pull/16))
 - **Two processes read as text now name their encoding.** They are the POSIX half of the process
   lookup and the pip run behind a plugin update. Without an encoding the decode raises inside the
   reader thread, the output comes back empty, and the guard reads that emptiness as "no such
