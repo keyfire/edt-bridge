@@ -4,31 +4,35 @@
 
 ## Supported versions
 
-EDT-Bridge is pre-1.0 and ships fixes on the latest release line only. Please reproduce on the most
-recent release before reporting.
+EDT-Bridge has not reached 1.0 yet, and fixes ship on the latest release line only. Reproduce the
+problem on the most recent release before you report it.
 
 | Version      | Supported |
 |--------------|-----------|
 | latest `0.x` | yes       |
 | older        | no        |
 
-## Threat model (by design)
+## Threat model
 
-- The MCP server binds **`127.0.0.1` only** – never a public interface.
-- **Write tools are gated:** each requires a configured token, defaults to a dry-run (`apply=false`),
-  and acts only on your local EDT model. `edt_rename`, `edt_delete_object` and `edt_delete_method`
-  additionally require an explicit `force`; `edt_evaluate` (arbitrary BSL against a live infobase)
-  additionally requires a per-call opt-in **and** a server-side switch that is off by default.
-- Any local process can reach the port, so on shared machines set a token
-  (`EDT_BRIDGE_TOKEN` / `-Dedt.bridge.token=`).
+This is what the bridge guards by design.
 
-The README [Security](README.md#security) section has the full picture.
+- The MCP server binds **`127.0.0.1`** and nothing else. It never listens on a public interface.
+- **Write tools are guarded.** Each one requires a configured token, returns a plan until you pass
+  `apply=true`, and touches only your local EDT model. `edt_rename`, `edt_delete_object` and
+  `edt_delete_method` need an explicit `force` on top of that. `edt_evaluate` runs arbitrary BSL
+  against a live infobase, so it needs a per-call opt-in **and** a server-side switch that is off by
+  default.
+- Any local process can reach the port, so set a token on a shared machine: `EDT_BRIDGE_TOKEN` or
+  `-Dedt.bridge.token=`.
+
+The README's [Security](README.md#security) section has the full picture.
 
 ## Reporting a vulnerability
 
-**Please do not open a public issue for a security problem.** Report it privately through GitHub:
-on the repository's **Security** tab choose **Report a vulnerability** (GitHub private vulnerability
-reporting), or open <https://github.com/keyfire/edt-bridge/security/advisories/new>.
+**Do not open a public issue for a security problem.** Report it privately through GitHub: on the
+repository's **Security** tab choose **Report a vulnerability**, or open
+<https://github.com/keyfire/edt-bridge/security/advisories/new>.
 
-Include the EDT-Bridge version, your 1C:EDT version and OS, and steps to reproduce. You can expect
-an acknowledgement; fixes ship on the latest release line. Thank you for reporting responsibly.
+Include the EDT-Bridge version, your 1C:EDT version and OS, and the steps to reproduce. You will get
+an acknowledgement, and the fix ships on the latest release line. Thank you for telling us privately
+first.
