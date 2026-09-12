@@ -81,6 +81,21 @@ That script puts nothing but JUnit on the classpath. A dependency on the SDK cre
 therefore fails the build instead of quietly making the suite unrunnable. Logic that needs the live
 model belongs in the gateways under `...edtbridge.edt` and is verified against a real EDT, as above.
 
+### Documentation
+
+`python scripts/check_docs.py` reads the pages against the sources. Every tool and every
+`EDT_BRIDGE_` variable has to have a row, the blocks mirrored into the READMEs have to match the
+page they came from, and every image has to be in the repository. The wrapper suite runs the same
+script, so a page that has drifted fails `ci` along with the tests.
+
+The Russian pages are read for their wording too. The dictionary of transliterated words lives in
+the shared [docsguard](https://github.com/keyfire/docsguard), and each finding comes with the
+Russian word to write instead. A word quoted as a word goes in backticks, the way a changelog entry
+says which transliteration was replaced; the check reads backticks as a name and walks past them.
+
+`docs/changelog*.md` and `docs/onboarding*.md` are mirrors of the root documents. Rebuild them with
+`node scripts/sync-docs.mjs` and edit the source instead.
+
 ### Starting a process
 
 A process started from the wrapper or from a script is read as text, and the text is decoded

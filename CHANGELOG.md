@@ -20,9 +20,17 @@ to the code and the reasoning behind it.
   parses the sources with `ast`: a text search walks past the `(run or subprocess.run)(...)` shape.
   The check comes from the shared [docsguard](https://github.com/keyfire/docsguard).
   ([#11](https://github.com/keyfire/edt-bridge/pull/11))
+- **The Russian pages are checked for transliterated jargon.** `scripts/check_docs.py` takes the
+  dictionary from the shared guard and fails on words like `прогон` and `воркспейс`. The guard finds
+  `docs/*.ru.md` by itself, so the script names `docs/ru/*.ru.md` and `python/README.ru.md` as well.
+  A word the text quotes as a word goes in backticks, and the check walks past those.
+  ([#14](https://github.com/keyfire/edt-bridge/pull/14))
 
 ### Changed
-- **The Russian help now says "рабочая область" instead of the transliterated "воркспейс".** It
+- **`ci` installs `docsguard@v0.7.1` instead of `v0.4.0`.** The jargon dictionary arrived in that
+  version, and that is why the version went up.
+  ([#14](https://github.com/keyfire/edt-bridge/pull/14))
+- **The Russian help now says `рабочая область` instead of the transliterated `воркспейс`.** It
   covers `--workspace` and the description of the `gui` command. A person reads that text in a
   terminal, which is no place for a transliteration.
   ([#13](https://github.com/keyfire/edt-bridge/pull/13))
@@ -40,6 +48,9 @@ to the code and the reasoning behind it.
   lookup and the pip run behind a plugin update. Without an encoding the decode raises inside the
   reader thread, the output comes back empty, and the guard reads that emptiness as "no such
   process". ([#11](https://github.com/keyfire/edt-bridge/pull/11))
+- **The entry about the Russian command help now quotes both words in backticks.** It named
+  `воркспейс` while telling how that word had been replaced, and it became the first finding of the
+  new check. ([#14](https://github.com/keyfire/edt-bridge/pull/14))
 
 ## 2026-09-11 – 0.27.0
 

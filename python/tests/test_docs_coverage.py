@@ -34,24 +34,32 @@ def guard():
     return _load()
 
 
+#: The documents the guard reads from the repository root rather than from `docs/`. The copy
+#: carries them so that the fake root is a whole repository: a page of the copy names its own
+#: root when it reports a finding, and a check that reads a root document reads the copy's.
+ROOT_DOCUMENTS = ("README.md", "python/README.ru.md")
+
+
 @pytest.fixture()
 def sabotage(guard, tmp_path, monkeypatch):
-    """Run the guard over a COPY of the pages, edited by the given function."""
+    """Run the guard over a COPY of the repository, its pages edited by the given function."""
     def run(edit, *, documents: dict[str, str] | None = None):
         docs = tmp_path / "docs"
         shutil.copytree(ROOT / "docs", docs)
-        root = tmp_path if documents is not None else ROOT
-        if documents is not None:
-            for name, text in documents.items():
-                target = tmp_path / name
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text(text, encoding="utf-8")
+        for name in ROOT_DOCUMENTS:
+            target = tmp_path / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(ROOT / name, target)
+        for name, text in (documents or {}).items():
+            target = tmp_path / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(text, encoding="utf-8")
         for path in sorted(docs.glob("*.md")):
             edited = edit(path.name, path.read_text(encoding="utf-8"))
             path.write_text(edited, encoding="utf-8")
         monkeypatch.setattr(
             guard, "LAYOUT",
-            guard.Layout(root=root, docs=docs, site_config=guard.LAYOUT.site_config,
+            guard.Layout(root=tmp_path, docs=docs, site_config=guard.LAYOUT.site_config,
                          pyproject=guard.LAYOUT.pyproject, raw_prefix=guard.LAYOUT.raw_prefix),
         )
         return guard.problems()
@@ -108,6 +116,32 @@ def test_guard_notices_a_missing_image(sabotage):
             "docs/no-such-diagram.svg)\n")
     found = sabotage(lambda name, text: text + gone if name == "index.md" else text)
     assert any("no-such-diagram.svg" in problem for problem in found)
+
+
+def test_guard_notices_jargon_on_a_site_page(sabotage):
+    found = sabotage(
+        lambda name, text: text + "\nПрогон покраснел.\n" if name == "index.ru.md" else text)
+    assert any("index.ru.md" in problem and "is jargon" in problem for problem in found)
+
+
+def test_guard_reads_the_russian_pages_the_default_glob_misses(sabotage):
+    # the wiring this repository adds: the Russian edition of the root documents lives in
+    # docs/ru/, and the wrapper's README a directory away, so both are named to the check
+    found = sabotage(
+        lambda name, text: text,
+        documents={"docs/ru/ONBOARDING.ru.md": "Ворктри на каждую задачу.\n",
+                   "python/README.ru.md": "По дефолту стоит ноль.\n"},
+    )
+    assert any("docs/ru/ONBOARDING.ru.md" in problem for problem in found)
+    assert any("python/README.ru.md" in problem for problem in found)
+
+
+def test_a_jargon_word_quoted_as_a_word_is_left_alone(sabotage):
+    # how a changelog entry tells which transliteration was replaced without becoming a finding
+    found = sabotage(
+        lambda name, text: text + "\nСправка говорит `рабочая область`, а не `воркспейс`.\n"
+        if name == "index.ru.md" else text)
+    assert not any("is jargon" in problem for problem in found)
 
 
 def test_guard_notices_a_group_missing_from_one_annotation(guard, monkeypatch):
