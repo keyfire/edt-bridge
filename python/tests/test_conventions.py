@@ -1,6 +1,6 @@
 """Conventions of the sources that no single test of a feature would ever notice.
 
-A convention nobody wrote down is a convention every new file gets to rediscover, and two of
+A convention nobody wrote down is a convention every new file gets to rediscover, and three of
 them live here.
 
 The first is about a process read as TEXT: without `encoding="utf-8"` Python decodes the output
@@ -21,19 +21,27 @@ lines of its batch file with CRLF - so text mode translated each of those again 
 of the file on disk ended `\\r\\r\\n`. Two more writes had the same shape: the pipx metadata the
 self-update corrects, and the staged copy of an SVG the diagram renderer hands to a browser.
 
-The reading of the sources is not the bridge's business and does not live here: elemctl and the
-engine start processes and write their files exactly the same way and have the same failures
-waiting, so both checks and the readers under them come from the shared `docsguard` package.
-They read with `ast` rather than with a regular expression, because a check looking for the text
-`subprocess.run(` at the head of a call looks straight past a callable chosen at the call site -
-`(run or subprocess.run)(...)`, the shape a runner seam for the tests has.
+The third is the NAME of a test. A test that arrives under the name of an existing one takes its
+place: Python keeps the last definition, pytest collects what the module ended up with, and the
+number of tests goes UP, because the newcomer was added. Nothing in the run says the older test
+has stopped running. It happened in the shared package while the newline convention above was
+being written there.
 
-What stays here is the list of FOLDERS. Which of them hold code that starts processes, and which
-of them write files that outlive the run, are facts about this repository and nothing the shared
-package could know.
+The reading of the sources is not the bridge's business and does not live here: elemctl and the
+engine start processes, write their files and name their tests exactly the same way and have the
+same failures waiting, so all three checks and the readers under them come from the shared
+`docsguard` package. They read with `ast` rather than with a regular expression, because a check
+looking for the text `subprocess.run(` at the head of a call looks straight past a callable
+chosen at the call site - `(run or subprocess.run)(...)`, the shape a runner seam for the tests
+has.
+
+What stays here is the list of FOLDERS. Which of them hold code that starts processes, which of
+them write files that outlive the run, and which of them pytest collects tests from are facts
+about this repository and nothing the shared package could know.
 """
 
 import ast
+import codecs
 from pathlib import Path
 
 from docsguard import (
@@ -41,6 +49,8 @@ from docsguard import (
     process_encoding_problems,
     process_starts,
     python_sources,
+    read_text,
+    shadowed_test_problems,
     text_write_newline_problems,
     text_writes,
 )
@@ -60,6 +70,10 @@ FOLDERS = ("python", "scripts")
 #: test in its own right. What belongs here is the code whose writes OUTLIVE the run.
 WRITING_FOLDERS = ("python/src", "scripts")
 
+#: The folders of the test-name convention: the one pytest collects tests from. The Java suite
+#: under `tests/` has its own compiler to answer to and no Python in it at all.
+TEST_FOLDERS = ("python/tests",)
+
 
 def test_every_process_read_as_text_names_its_encoding():
     """The convention itself: no call decodes with whatever code page the machine has."""
@@ -71,7 +85,7 @@ def test_the_reader_finds_the_calls_it_is_meant_to_judge():
     found = [
         path.relative_to(ROOT).as_posix()
         for path in python_sources(LAYOUT, FOLDERS)
-        if process_starts(ast.parse(path.read_text(encoding="utf-8")))
+        if process_starts(ast.parse(read_text(path)))
     ]
 
     assert len(found) > 4
@@ -108,7 +122,7 @@ def test_the_writes_reader_finds_the_calls_it_is_meant_to_judge():
     found = [
         path.relative_to(ROOT).as_posix()
         for path in python_sources(LAYOUT, WRITING_FOLDERS)
-        if text_writes(ast.parse(path.read_text(encoding="utf-8")))
+        if text_writes(ast.parse(read_text(path)))
     ]
 
     assert len(found) > 3
@@ -127,3 +141,38 @@ def test_the_shared_newline_check_still_bites(tmp_path):
 
     assert len(problems) == 1
     assert "scripts/offender.py:2" in problems[0]
+
+
+def test_no_test_here_is_shadowed_by_a_namesake():
+    """The convention itself: every test this repository names is a test that still runs."""
+    assert shadowed_test_problems(LAYOUT, TEST_FOLDERS) == []
+
+
+def test_the_shared_test_name_check_still_bites(tmp_path):
+    """A pinned version that had stopped judging looks from here like a repository in order."""
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_twice.py").write_text(
+        "def test_one():\n    pass\n\n\ndef test_one():\n    pass\n",
+        encoding="utf-8", newline="")
+
+    problems = shadowed_test_problems(Layout(root=tmp_path), ("tests",))
+
+    assert len(problems) == 1
+    assert "tests/test_twice.py:5" in problems[0]
+
+
+def test_a_source_with_a_byte_order_mark_is_judged_rather_than_crashed_on(tmp_path):
+    """The readers above parse what they read, and a mark at the head of a file used to raise.
+
+    Editors on Windows write the mark without being asked and no diff shows it. Read as plain
+    `utf-8` it stays in the text as a character `ast.parse` refuses, so a single such file left
+    the whole check with no findings from any file at all.
+    """
+    (tmp_path / "python").mkdir()
+    (tmp_path / "python" / "marked.py").write_bytes(
+        codecs.BOM_UTF8 + b"import subprocess\nsubprocess.run(command, text=True)\n")
+
+    problems = process_encoding_problems(Layout(root=tmp_path), ("python",))
+
+    assert len(problems) == 1
+    assert "python/marked.py:2" in problems[0]

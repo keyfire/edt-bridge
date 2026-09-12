@@ -140,6 +140,16 @@ eol=lf` stores and checks out every text file with line feeds, whatever the mach
 `core.autocrlf=input` says the same thing about the machine, so it holds only until the first
 checkout made without it.
 
+### Naming a test
+
+A test named like an existing one takes its place. Python keeps the last definition, pytest collects
+what the module ended up with, and the number of tests goes up, because the newcomer was added.
+Nothing in the run says the older test is gone.
+
+`python/tests/test_conventions.py` runs `shadowed_test_problems` over `python/tests`, and the
+finding names the line of the newcomer, which is the definition to rename. Each namespace is judged
+on its own, so two classes are still allowed a method of the same name.
+
 ## Code style
 
 - **Java 17** and the standard Eclipse and OSGi conventions. Keep all IDE-model access inside the
