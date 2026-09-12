@@ -133,6 +133,13 @@ reads `python/src` and `scripts` and not the tests: a test writes into a tempora
 gone when the run ends, and a fixture carrying the other line ending on purpose is a test in its own
 right.
 
+`newline=""` covers half of it, because it says how a file is written. A file read with carriage
+returns already in it carries them onward, and `scripts/sync-docs.mjs` splices the tool catalogue of
+a page into both READMEs by copying bytes. The other half is `.gitattributes`. The line `* text=auto
+eol=lf` stores and checks out every text file with line feeds, whatever the machine is set to.
+`core.autocrlf=input` says the same thing about the machine, so it holds only until the first
+checkout made without it.
+
 ## Code style
 
 - **Java 17** and the standard Eclipse and OSGi conventions. Keep all IDE-model access inside the

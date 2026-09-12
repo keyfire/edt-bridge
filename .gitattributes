@@ -1,0 +1,21 @@
+# Every text file is stored and checked out with line feeds.
+#
+# `core.autocrlf=input` arrives at the same result, and it is a setting of the machine. It holds
+# until the first checkout made without it. After that a file saved with carriage returns reaches
+# a generator that moves bytes around. `scripts/sync-docs.mjs` splices the tool catalogue of a
+# site page into both READMEs, and the mixture lands in a public repository as a line-ending
+# change nobody asked for. `newline=""` in the Python generators stops short of this. It says how
+# a file is written and says nothing about what was inside the file that was read.
+#
+# `text=auto` lets git tell text from binary, and `eol=lf` says how the text ones are checked
+# out. The binaries below are named all the same. Git guesses well and can still be wrong: one
+# control byte inside a file is enough to change its mind. Pictures, fonts and the release jar
+# are here today, and the other three types are named before the first such file arrives.
+* text=auto eol=lf
+
+*.png   binary
+*.jpg   binary
+*.ico   binary
+*.woff2 binary
+*.jar   binary
+*.zip   binary

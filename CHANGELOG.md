@@ -74,6 +74,10 @@ to the code and the reasoning behind it.
   its own. ([#11](https://github.com/keyfire/edt-bridge/pull/11))
 
 ### Fixed
+- **`.gitattributes` holds the line ending for the whole repository.** The line `* text=auto eol=lf`
+  stores and checks out every text file with line feeds, whatever the machine is set to.
+  `newline=""` in the Python generators stops short of that: it says how a file is written, while
+  `scripts/sync-docs.mjs` splices the tool catalogue of a page into both READMEs by copying bytes.
 - **The batch file of the Windows auto-start gets one carriage return per line.** Its lines are
   joined with CRLF, and `write_text` in text mode translated each of those again, so every line went
   to disk as `\r\r\n`. Two writes beside it had the same shape: the pipx metadata the self-update
