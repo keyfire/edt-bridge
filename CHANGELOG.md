@@ -16,6 +16,10 @@ to the code and the reasoning behind it.
 ## 2026-09-12 – 0.27.1
 
 ### Added
+- **The jargon check now reads the wrapper's Russian help.** `scripts/check_docs.py` names the
+  message catalog `python/src/edt_bridge_mcp/i18n.py` to the guard. Help text reaches a terminal the
+  way a page reaches the site, and until now no check read it.
+  ([#15](https://github.com/keyfire/edt-bridge/pull/15))
 - **`python/tests/test_conventions.py` catches a process read as text without an encoding.** It
   parses the sources with `ast`: a text search walks past the `(run or subprocess.run)(...)` shape.
   The check comes from the shared [docsguard](https://github.com/keyfire/docsguard).
@@ -27,6 +31,10 @@ to the code and the reasoning behind it.
   ([#14](https://github.com/keyfire/edt-bridge/pull/14))
 
 ### Changed
+- **`ci` installs `docsguard@v0.8.0` instead of `v0.7.1`.** That version reads the string literals
+  of the sources, and that is what the version went up for. The dictionary also gained six words:
+  `дашборд`, `бэкенд`, `лаунчер`, `мейнтейнер`, `топ-объект`, `легаси`.
+  ([#15](https://github.com/keyfire/edt-bridge/pull/15))
 - **`ci` installs `docsguard@v0.7.1` instead of `v0.4.0`.** The jargon dictionary arrived in that
   version, and that is why the version went up.
   ([#14](https://github.com/keyfire/edt-bridge/pull/14))

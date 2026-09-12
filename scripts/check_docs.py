@@ -2,7 +2,8 @@
 """Does the documentation still cover the bridge: tools, variables, images, annotations, words.
 
 What is the bridge's own business stays here - which tools the Java side registers, which
-variables the wrapper reads, how the tools page is grouped, where the Russian pages live.
+variables the wrapper reads, how the tools page is grouped, where the Russian pages live
+and which sources hold Russian a person reads.
 Everything underneath (reading a page, the block between the injection markers, the
 annotations a repository states about itself, the jargon dictionary, the runner) comes from
 the `docsguard` package, which three repositories were keeping in triplicate until the copies
@@ -30,6 +31,7 @@ from docsguard import (
     pyproject_description,
     run,
     site_description,
+    source_jargon_problems,
 )
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -55,6 +57,18 @@ RUSSIAN_PAGES = ("*.ru.md", "ru/*.ru.md")
 #: The Russian documents outside the documentation folder. The wrapper's README ships to PyPI
 #: as the package card, so it is read by more people than most pages here.
 RUSSIAN_DOCUMENTS = ("python/README.ru.md",)
+
+#: The sources whose Russian strings a person reads. Here that is one file: every line of
+#: `--help` the wrapper prints comes out of its message catalog, and it reaches a terminal the
+#: way a page reaches the site - so the same dictionary reads both.
+#:
+#: Nothing else in the repository belongs here, and each for its own reason. The Java side
+#: writes English: what a tool says goes to an agent over the protocol, not to a reader. The
+#: Russian of `scripts/gen-cli-docs.py` is the text of `cli.ru.md`, and that page is read as a
+#: page two lines above - naming the generator as well would report one word twice, and a page
+#: that has drifted from its generator is a failure of the suite rather than of this guard. The
+#: Russian in the tests is jargon on purpose: it is what proves the guard still bites.
+RUSSIAN_SOURCES = ("python/src/edt_bridge_mcp/i18n.py",)
 
 _TOOL_NAME = re.compile(r'String name\(\)\s*\{\s*return\s+"(edt_[a-z_]+)"', re.S)
 #: A tool served by the wrapper itself - it has no Java class, only an entry in the local list.
@@ -174,9 +188,15 @@ def check_jargon() -> list[str]:
 
     A word quoted as a word - a changelog entry saying which transliteration was replaced -
     goes in backticks. The guard leaves backticks alone, and the reader sees the quotation.
+
+    The sources are read last. The help of a command is Russian too and lives in a string
+    literal rather than on a page, and it reaches a terminal the moment somebody runs the
+    wrapper - the same reader, one surface earlier.
     """
-    return jargon_self_check() + jargon_problems(
-        LAYOUT, pages=RUSSIAN_PAGES, documents=RUSSIAN_DOCUMENTS
+    return (
+        jargon_self_check()
+        + jargon_problems(LAYOUT, pages=RUSSIAN_PAGES, documents=RUSSIAN_DOCUMENTS)
+        + source_jargon_problems(LAYOUT, RUSSIAN_SOURCES)
     )
 
 

@@ -37,16 +37,20 @@ def guard():
 #: The documents the guard reads from the repository root rather than from `docs/`. The copy
 #: carries them so that the fake root is a whole repository: a page of the copy names its own
 #: root when it reports a finding, and a check that reads a root document reads the copy's.
+#: The message catalogue travels with them, for the same reason and by the name the guard
+#: itself gives it - a copy missing it is a copy the jargon check reports as renamed, and that
+#: finding would then ride along with every provocation below and mean nothing in any of them.
 ROOT_DOCUMENTS = ("README.md", "python/README.ru.md")
 
 
 @pytest.fixture()
 def sabotage(guard, tmp_path, monkeypatch):
     """Run the guard over a COPY of the repository, its pages edited by the given function."""
-    def run(edit, *, documents: dict[str, str] | None = None):
+    def run(edit, *, documents: dict[str, str] | None = None,
+            without: tuple[str, ...] = ()):
         docs = tmp_path / "docs"
         shutil.copytree(ROOT / "docs", docs)
-        for name in ROOT_DOCUMENTS:
+        for name in (*ROOT_DOCUMENTS, *guard.RUSSIAN_SOURCES):
             target = tmp_path / name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / name, target)
@@ -54,6 +58,8 @@ def sabotage(guard, tmp_path, monkeypatch):
             target = tmp_path / name
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(text, encoding="utf-8")
+        for name in without:
+            (tmp_path / name).unlink()
         for path in sorted(docs.glob("*.md")):
             edited = edit(path.name, path.read_text(encoding="utf-8"))
             path.write_text(edited, encoding="utf-8")
@@ -134,6 +140,24 @@ def test_guard_reads_the_russian_pages_the_default_glob_misses(sabotage):
     )
     assert any("docs/ru/ONBOARDING.ru.md" in problem for problem in found)
     assert any("python/README.ru.md" in problem for problem in found)
+
+
+def test_guard_notices_jargon_in_the_help_catalogue(sabotage, guard):
+    # help text is Russian the same reader reads, one surface before the site: it is printed
+    # by the wrapper in a terminal, and until now nothing read it at all
+    catalogue = guard.RUSSIAN_SOURCES[0]
+    found = sabotage(
+        lambda name, text: text,
+        documents={catalogue: 'MESSAGES = {"x": {"ru": "Фикс уехал в релиз."}}'},
+    )
+    assert any(catalogue in problem and "is jargon" in problem for problem in found)
+
+
+def test_guard_notices_a_renamed_help_catalogue(sabotage, guard):
+    # a catalogue that moved leaves the check reading nothing, and reading nothing is what a
+    # repository in order looks like
+    found = sabotage(lambda name, text: text, without=guard.RUSSIAN_SOURCES)
+    assert any("has it been renamed" in problem for problem in found)
 
 
 def test_a_jargon_word_quoted_as_a_word_is_left_alone(sabotage):
