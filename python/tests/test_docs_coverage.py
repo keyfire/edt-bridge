@@ -88,6 +88,17 @@ def test_variables_are_the_ones_the_code_reads(guard):
     variables = guard.env_variables()
     assert "EDT_BRIDGE_PORT_SCAN" in variables, "the reader misses os.environ.get calls"
     assert "EDT_BRIDGE_ALLOW_EVALUATE" in variables, "the reader misses System.getenv calls"
+    # Read through a constant bound above rather than asked for by name. The first reader saw
+    # neither, so the page could have dropped either one and the check would have said nothing.
+    assert "EDT_BRIDGE_LANG" in variables
+    assert "EDT_BRIDGE_PLUGIN_INDEX" in variables
+
+
+def test_the_pages_and_the_code_agree_on_the_whole_set(guard):
+    """Both directions now, so the two sets have to be the same set."""
+    for name in ("install.md", "install.ru.md"):
+        listed = set(guard._ENV_INLINE.findall(guard.LAYOUT.page(name)))
+        assert listed == guard.env_variables(), name
 
 
 def test_guard_notices_a_tool_without_a_row(sabotage):
@@ -98,6 +109,28 @@ def test_guard_notices_a_tool_without_a_row(sabotage):
 def test_guard_notices_an_undocumented_variable(guard, monkeypatch):
     monkeypatch.setattr(guard, "env_variables", lambda: {"EDT_BRIDGE_INVENTED"})
     assert any("EDT_BRIDGE_INVENTED" in problem for problem in guard.problems())
+
+
+def test_guard_notices_a_variable_the_code_no_longer_reads(sabotage):
+    """The direction the check was missing: a knob described on the page and gone from the code.
+
+    A reader follows the page, sets the variable and waits for something to happen.
+    """
+    found = sabotage(
+        lambda name, text: text + "\nSet `EDT_BRIDGE_RETIRED` to change nothing.\n"
+        if name.startswith("install") else text)
+    assert any("EDT_BRIDGE_RETIRED" in problem for problem in found)
+
+
+def test_guard_notices_a_reader_that_has_gone_quiet(guard, monkeypatch):
+    """An empty sources side finds nothing, and finding nothing reads as a clean repository."""
+    monkeypatch.setattr(guard, "env_variables", set)
+    assert any("has the shape the reader knows changed" in problem
+               for problem in guard.check_environment())
+
+    monkeypatch.setattr(guard, "registered_tools", set)
+    assert any("has the shape the reader knows changed" in problem
+               for problem in guard.check_tools())
 
 
 def test_guard_notices_a_stale_readme_block(sabotage):

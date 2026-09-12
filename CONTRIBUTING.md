@@ -146,6 +146,17 @@ right.
 
 - Small commits, each about one thing, with a clear subject line.
 - Open a pull request against `main` and fill in the template: what changed, how you verified it.
+- Every changelog entry ends with a link to its pull request, in both editions. The number only
+  exists once the pull request is open, so the link arrives in a commit of its own:
+
+  ```sh
+  python scripts/changelog-link.py 16
+  ```
+
+  It writes the link into every link-less entry of the topmost section of `CHANGELOG.md` and
+  `docs/ru/CHANGELOG.ru.md`, puts it on a continuation line where the entry is already the full
+  width, and rebuilds the mirrored pages. Older sections are left alone: an entry from before the
+  rule is history rather than an unfinished change.
 - Releases are cut by the maintainer from a locally built jar, since CI cannot compile the plugin, so
   a merged change ships in the next tagged release.
 

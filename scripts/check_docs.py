@@ -5,9 +5,15 @@ What is the bridge's own business stays here - which tools the Java side registe
 variables the wrapper reads, how the tools page is grouped, where the Russian pages live
 and which sources hold Russian a person reads.
 Everything underneath (reading a page, the block between the injection markers, the
-annotations a repository states about itself, the jargon dictionary, the runner) comes from
-the `docsguard` package, which three repositories were keeping in triplicate until the copies
-drifted.
+annotations a repository states about itself, the gap between what the sources offer and what
+a page lists, the jargon dictionary, the runner) comes from the `docsguard` package, which
+three repositories were keeping in triplicate until the copies drifted.
+
+One check from that package is deliberately not used here. `claim_problems` guards a statement
+that several documents and the code all have to make in the same words, and its table is worth
+writing once a correction has reached one place and left the others behind. Nothing here has
+drifted that way yet: the port the bridge listens on is spelled 8770 in all thirteen places
+that name it.
 
 Run: `python scripts/check_docs.py`; the exit code is what CI reads.
 """
@@ -21,6 +27,7 @@ from pathlib import Path
 from docsguard import (
     Layout,
     PitchItem,
+    coverage_problems,
     front_description,
     headings,
     image_problems,
@@ -73,7 +80,14 @@ RUSSIAN_SOURCES = ("python/src/edt_bridge_mcp/i18n.py",)
 _TOOL_NAME = re.compile(r'String name\(\)\s*\{\s*return\s+"(edt_[a-z_]+)"', re.S)
 #: A tool served by the wrapper itself - it has no Java class, only an entry in the local list.
 _LOCAL_TOOL = re.compile(r'"name":\s*"(edt_[a-z_]+)"')
+#: A variable is read by the code where it is asked for by name...
 _ENV_READ = re.compile(r'(?:System\.getenv\(|os\.environ\.get\()"(EDT_BRIDGE_[A-Z_]+)"')
+#: ...or where the name is bound to a constant and read through that later. Both halves are
+#: needed: `EDT_BRIDGE_LANG` and `EDT_BRIDGE_PLUGIN_INDEX` are read that way, the first reader
+#: never saw them, and a variable the reader cannot see is one the coverage check passes for
+#: free. The name has to fill the quotes on its own, so the `set "EDT_BRIDGE_TOKEN=..."` line
+#: the auto-start writes into a batch file is not mistaken for a declaration.
+_ENV_DECLARED = re.compile(r'"(EDT_BRIDGE_[A-Z_]+)"')
 _INLINE = re.compile(r"`(edt_[a-z_]+)`")
 _ENV_INLINE = re.compile(r"`(EDT_BRIDGE_[A-Z_]+)`")
 
@@ -104,37 +118,47 @@ def registered_tools() -> set[str]:
 
 
 def env_variables() -> set[str]:
-    """Every EDT_BRIDGE_ variable the code reads - on either side."""
+    """Every EDT_BRIDGE_ variable the code reads - on either side, however it is spelled."""
     found = set()
     for folder, pattern in ((JAVA_TOOLS.parent, "**/*.java"), (WRAPPER, "*.py")):
         for path in folder.glob(pattern):
-            found.update(_ENV_READ.findall(path.read_text(encoding="utf-8")))
+            text = path.read_text(encoding="utf-8")
+            found.update(_ENV_READ.findall(text))
+            found.update(_ENV_DECLARED.findall(text))
     return found
 
 
 def check_tools() -> list[str]:
-    """Every registered tool has a row on the tools page, and no page names a phantom."""
+    """Every registered tool has a row on the tools page, and no row names a tool that is gone.
+
+    Both directions and the empty reader come from `coverage_problems`: the set difference was
+    written out by hand here, once per check, and the environment copy had already lost the
+    empty-reader guard this one had. What stays is what the sources are and where the page is.
+    """
     tools = registered_tools()
-    if not tools:
-        return ["no tool found in the sources - has the layout changed?"]
-    problems = []
-    for locale, name in (("en", "tools.md"), ("ru", "tools.ru.md")):
-        listed = set(_INLINE.findall(LAYOUT.page(name)))
-        for missing in sorted(tools - listed):
-            problems.append(f"{name}: {missing} has no row ({locale})")
-        for phantom in sorted(listed - tools):
-            problems.append(f"{name}: {phantom} is documented but not registered")
+    problems: list[str] = []
+    for name in ("tools.md", "tools.ru.md"):
+        problems += coverage_problems(
+            tools, set(_INLINE.findall(LAYOUT.page(name))), what="tool", where=name,
+        )
     return problems
 
 
 def check_environment() -> list[str]:
-    """A variable the code reads and the installation page does not describe."""
+    """A variable the code reads and the installation page does not describe, and the reverse.
+
+    The other direction is judged here too, which it was not before: the page is the only place
+    a variable is described, so a name it carries and the code has no longer got sends a reader
+    after a knob that does nothing. It was safe to turn on once the reader learned to see a
+    variable read through a constant - until then those two looked like phantoms.
+    """
     variables = env_variables()
-    problems = []
+    problems: list[str] = []
     for name in ("install.md", "install.ru.md"):
-        documented = set(_ENV_INLINE.findall(LAYOUT.page(name)))
-        for missing in sorted(variables - documented):
-            problems.append(f"{name}: {missing} is read by the code and documented nowhere")
+        problems += coverage_problems(
+            variables, set(_ENV_INLINE.findall(LAYOUT.page(name))),
+            what="variable", where=name,
+        )
     return problems
 
 
