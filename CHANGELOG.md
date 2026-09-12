@@ -22,6 +22,14 @@ to the code and the reasoning behind it.
   ([#11](https://github.com/keyfire/edt-bridge/pull/11))
 
 ### Changed
+- **The Russian help now says "рабочая область" instead of the transliterated "воркспейс".** It
+  covers `--workspace` and the description of the `gui` command. A person reads that text in a
+  terminal, which is no place for a transliteration.
+  ([#13](https://github.com/keyfire/edt-bridge/pull/13))
+- **The documentation is rewritten in plain language.** Long sentences are cut up, mid-sentence
+  parentheticals and shouted words are gone, and the Russian edition drops its transliterations. The
+  English edition reads as English rather than as a translation of the Russian.
+  ([#13](https://github.com/keyfire/edt-bridge/pull/13))
 - **The shared guard is installed by tag, not from `@main`.** On a branch pin, a `docsguard` commit
   landed in a run here in the middle of unrelated work, and a red run caused by no commit of ours is
   one nobody reads. `ci` now installs `docsguard@v0.4.0`, and raising the pin is a pull request of
