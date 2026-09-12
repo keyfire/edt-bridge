@@ -93,6 +93,10 @@ the shared [docsguard](https://github.com/keyfire/docsguard), and each finding c
 Russian word to write instead. A word quoted as a word goes in backticks, the way a changelog entry
 says which transliteration was replaced; the check reads backticks as a name and walks past them.
 
+The same dictionary reads the Russian strings of `python/src/edt_bridge_mcp/i18n.py`. That is the
+message catalog every line of `--help` comes from. A file named there and missing is a finding of
+its own: otherwise a renamed catalog would leave the check reading nothing and passing.
+
 `docs/changelog*.md` and `docs/onboarding*.md` are mirrors of the root documents. Rebuild them with
 `node scripts/sync-docs.mjs` and edit the source instead.
 
