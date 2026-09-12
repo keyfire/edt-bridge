@@ -46,8 +46,8 @@ MESSAGES = {
               "       %(prog)s <command> [options]",
     },
     "server.description": {
-        "ru": "stdio-обвязка MCP для плагина edt-bridge к 1С:EDT: проксирует запросы в\n"
-              "запущенный EDT, а если ни одного нет – поднимает headless.\n\n"
+        "ru": "stdio-обвязка MCP для плагина edt-bridge к 1С:EDT: пересылает запросы в\n"
+              "запущенную EDT, а если ни одной нет – поднимает headless.\n\n"
               "Без команды обвязка говорит JSON-RPC через stdin/stdout – так её запускает\n"
               "MCP-клиент. Команды ниже адресуют тот же мост из командной строки.",
         "en": "stdio MCP front-end for the edt-bridge 1C:EDT plugin: proxies to a running\n"
@@ -81,7 +81,7 @@ MESSAGES = {
     },
     # -- connection flags, shared by the server and every command (cli.py) --
     "conn.workspace": {
-        "ru": "воркспейс EDT для автозапуска headless",
+        "ru": "рабочая область EDT для автозапуска headless",
         "en": "EDT workspace path for the headless auto-start",
     },
     "conn.edt-dir": {
@@ -131,8 +131,8 @@ MESSAGES = {
         "en": "do not wait for the bridge to go down (the default waits up to 60 seconds)",
     },
     "gui.description": {
-        "ru": "Передать воркспейс клиентской EDT: остановить headless, дождаться, пока его "
-              "процессы действительно исчезнут, и запустить окно EDT на том же воркспейсе. "
+        "ru": "Передать рабочую область клиентской EDT: остановить headless, дождаться, пока его "
+              "процессы действительно исчезнут, и запустить окно EDT на той же рабочей области. "
               "Сама обвязка headless при этом не поднимает.",
         "en": "Hand the workspace over to the GUI EDT: stop the headless one, wait until its "
               "processes are really gone, and open the EDT window on the same workspace. "
