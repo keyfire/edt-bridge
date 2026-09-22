@@ -1,20 +1,20 @@
 """stdio MCP front-end for the edt-bridge 1C:EDT plugin.
 
-The Java plugin serves plain JSON-RPC over HTTP on 127.0.0.1:8770 – but an MCP client
+The Java plugin serves plain JSON-RPC over HTTP on 127.0.0.1:8770 - but an MCP client
 configured with an HTTP URL simply loses the server whenever EDT is not running. This
 wrapper is what the client talks to instead (stdio, install via pipx):
 
 - if the bridge port is alive (a GUI EDT or a headless one), every request is forwarded;
-- if not, it AUTO-STARTS a headless EDT (1cedtcli with a keepalive pipe – the same recipe
+- if not, it AUTO-STARTS a headless EDT (1cedtcli with a keepalive pipe - the same recipe
   as scripts/run-headless.ps1) and forwards once it is ready;
 - `initialize` / `tools/list` never block a client session: while the backend is starting,
   `tools/list` returns an empty list, and a `notifications/tools/list_changed` follows as
-  soon as the backend is up – the client re-pulls the real tool list then.
+  soon as the backend is up - the client re-pulls the real tool list then.
 
 Configuration (CLI flags override the environment):
     EDT_BRIDGE_PORT           bridge port (default 8770)
     EDT_BRIDGE_TOKEN          write-tools token, forwarded as Authorization: Bearer
-    EDT_BRIDGE_WORKSPACE      EDT workspace path – required for the headless auto-start
+    EDT_BRIDGE_WORKSPACE      EDT workspace path - required for the headless auto-start
     EDT_BRIDGE_EDT_DIR        EDT install dir (.../1cedt); auto-detected when omitted
     EDT_BRIDGE_START_TIMEOUT  seconds to wait for a starting backend (default 360)
     EDT_BRIDGE_AUTOSTART      set to 0/false to never launch anything (proxy-only)
@@ -76,11 +76,11 @@ WINDOW_WAIT = int(os.environ.get("EDT_BRIDGE_WINDOW_WAIT", "90"))
 
 
 def force_utf8_streams() -> None:
-    """Pin the standard streams to UTF-8 – MCP stdio frames are UTF-8 by spec.
+    """Pin the standard streams to UTF-8 - MCP stdio frames are UTF-8 by spec.
 
     Without this, Windows opens them with the ANSI code page and a single character the
     code page cannot represent (e.g. the "→" in a tool description, under cp1251) aborts
-    the whole frame – `tools/list` then fails and the client registers no tools at all.
+    the whole frame - `tools/list` then fails and the client registers no tools at all.
     Input and diagnostics replace undecodable bytes rather than raise: a mangled request
     line is already handled as non-JSON, and a log message must never kill the process.
     """
@@ -95,7 +95,7 @@ def force_utf8_streams() -> None:
 
 
 def log(message: str) -> None:
-    """Diagnostics go to stderr – stdout carries only JSON-RPC frames."""
+    """Diagnostics go to stderr - stdout carries only JSON-RPC frames."""
     print(f"[edt-bridge-mcp] {message}", file=sys.stderr, flush=True)
 
 
@@ -246,7 +246,7 @@ class Backend:
         """Make sure a backend is reachable.
 
         wait=True blocks until ready (or timeout); wait=False only kicks off a background
-        start. Returns (ready, message) – message explains a False.
+        start. Returns (ready, message) - message explains a False.
         """
         if self.is_up():
             return True, "up"
@@ -274,7 +274,7 @@ class Backend:
         )
 
     def _pids_of(self, image: str) -> list[int]:
-        """Live pids of one EDT image – a list, not a flag: a hung process is killed by pid.
+        """Live pids of one EDT image - a list, not a flag: a hung process is killed by pid.
 
         The name is matched exactly, so asking for the GUI (1cedt) never returns the headless
         CLI (1cedtcli).
@@ -319,7 +319,7 @@ class Backend:
         return pids
 
     def _gui_edt_running(self) -> bool:
-        """True when a GUI EDT (1cedt) process exists – we then refuse to launch headless
+        """True when a GUI EDT (1cedt) process exists - we then refuse to launch headless
         (the GUI holds the workspace lock; the user likely just lacks the plugin there)."""
         return bool(self.gui_pids())
 
@@ -327,7 +327,7 @@ class Backend:
         return bool(self._pids_of(HEADLESS_IMAGES[0]))
 
     def _find_exe(self, exe: str) -> Path | None:
-        """Locate one executable of the EDT installation – the CLI and the GUI live side by side."""
+        """Locate one executable of the EDT installation - the CLI and the GUI live side by side."""
         if self.edt_dir:
             p = Path(self.edt_dir) / exe
             return p if p.exists() else None
@@ -351,7 +351,7 @@ class Backend:
 
     def _ensure_plugin_jar(self, cli_dir: Path) -> tuple[bool, str]:
         """Deliver the plugin jar into EDT's dropins when it is missing: the wrapper installs
-        from PyPI, the jar comes from the latest GitHub release – so a bare
+        from PyPI, the jar comes from the latest GitHub release - so a bare
         `pipx install edt-bridge-mcp` is enough to get a working bridge."""
         from . import update
 
@@ -456,7 +456,7 @@ class Backend:
                 if item.isdigit()]
 
     def _kill(self, pid: int) -> None:
-        """Kill one process and its children – the headless CLI is started from a keepalive shell."""
+        """Kill one process and its children - the headless CLI is started from a keepalive shell."""
         try:
             if _WINDOWS:
                 subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
@@ -519,7 +519,7 @@ class Backend:
         return False, self.headless_pids()
 
     def _clear_stale_lock(self) -> None:
-        """Drop the workspace lock left by a killed session – EDT refuses the workspace with it."""
+        """Drop the workspace lock left by a killed session - EDT refuses the workspace with it."""
         if not self.workspace:
             return
         lock = Path(self.workspace) / ".metadata" / ".lock"
@@ -898,7 +898,7 @@ class StdioServer:
         if method is None:
             return
         if req_id is None:
-            return  # unknown notification – drop
+            return  # unknown notification - drop
         if self.backend.is_up():
             self._forward_or_error(message, req_id)
         else:

@@ -1,11 +1,11 @@
 """Extension point: external packages add MCP tools the wrapper serves itself.
 
-Not everything a team runs next to the bridge belongs in a public repository –
+Not everything a team runs next to the bridge belongs in a public repository -
 reference material under somebody's license, tools wired to an internal service.
 Those live in separate private packages installed into the wrapper's environment
 (pipx inject), and this module is how the wrapper finds them: the entry-point
 group "edt_bridge.tools", the same two-layer model the xbsl linter and elemctl
-follow – a public core that only declares the socket, and plugins that fill it.
+follow - a public core that only declares the socket, and plugins that fill it.
 
 The declaration in a plugin's pyproject.toml:
 
@@ -16,10 +16,10 @@ The value is a Tool, a list of them, or a zero-argument callable returning
 either. A Tool carries the MCP descriptor (name, description, the JSON schema
 of the arguments) and the handler the wrapper calls. Plugin tools are listed
 next to the bridge's tools and dispatched by the wrapper itself, without
-touching EDT – so they answer even while no EDT is running, exactly like the
+touching EDT - so they answer even while no EDT is running, exactly like the
 wrapper's own edt_open_gui.
 
-EDT_BRIDGE_NO_PLUGINS=1 disables the discovery – a run with the wrapper's own
+EDT_BRIDGE_NO_PLUGINS=1 disables the discovery - a run with the wrapper's own
 capabilities only.
 
 A failing entry point is an error (PluginError), not a silent skip: a wrapper
@@ -80,23 +80,23 @@ class Tool:
 
     name and description go into the tool listing as they are; input_schema is
     the complete JSON schema of the arguments object ({"type": "object",
-    "properties": {...}, "required": [...]}) – the same shape the bridge's own
+    "properties": {...}, "required": [...]}) - the same shape the bridge's own
     descriptors carry. description_ru is optional and travels as descriptionRu,
     like the bridge tools do.
 
     handler is called as handler(arguments) with the arguments object of the
     MCP call. A str return becomes the text result; any other JSON-serializable
     value is pretty-printed as JSON. An exception becomes an isError result
-    with the exception's message – raise ValueError with a readable message for
+    with the exception's message - raise ValueError with a readable message for
     a deliberate refusal (a missing required argument, an unknown path).
 
-    A handler that also declares a `bridge` parameter – handler(arguments,
-    bridge) – receives a callable bridge(tool_name, arguments) -> str that
+    A handler that also declares a `bridge` parameter - handler(arguments,
+    bridge) - receives a callable bridge(tool_name, arguments) -> str that
     forwards one tools/call to the live bridge and returns the text of its
     result. The wrapper never starts an EDT for it: a plugin tool answers fast
     by contract, and minutes of a headless start inside somebody's call would
     read as a hang. With no bridge up (or the bridge tool failing) the callable
-    raises RuntimeError with a readable message – degrade to a note instead of
+    raises RuntimeError with a readable message - degrade to a note instead of
     letting it become the whole answer when the bridge is only an enrichment.
     """
 
@@ -182,7 +182,7 @@ def plugin_tools(reserved: frozenset[str] = frozenset()) -> list[Tool]:
     """The tools declared by external packages, ordered by entry-point name.
 
     reserved is the set of names the wrapper serves itself: a plugin must not
-    shadow those. Duplicates between plugins are an error too – two handlers
+    shadow those. Duplicates between plugins are an error too - two handlers
     behind one name would make the answer depend on installation order.
     """
     tools: list[Tool] = []
