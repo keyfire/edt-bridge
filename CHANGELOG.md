@@ -15,6 +15,9 @@ to the code and the reasoning behind it.
 
 ## Unreleased
 
+### Changed
+- Python comments and docstrings consistently use hyphens. Ordinary string literals remain unchanged.
+
 ### Added
 - **The documentation guard catches a sentence that explains a change by naming who asked for
   it.** The repository has one author, so that sentence gives the reader nothing to act on and

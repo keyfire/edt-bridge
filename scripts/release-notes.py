@@ -2,14 +2,14 @@
 """Extract one release's section from the changelog for the GitHub release body.
 
 The changelog groups entries by day and names the released versions in the heading
-(`## 2026-08-27 – 0.17.0`; a day may name several versions, and the VS Code extension's
+(`## 2026-08-27 - 0.17.0`; a day may name several versions, and the VS Code extension's
 changelog names the version alone: `## 0.67.1`). The section of the version being
-released becomes the release body – subscribers then see the actual "what's new" in
+released becomes the release body - subscribers then see the actual "what's new" in
 their feed instead of a bare compare link.
 
     python scripts/release-notes.py 0.17.0 CHANGELOG.md --out notes.md
 
-Exits 1 when no heading names the version – the workflow decides whether that kills
+Exits 1 when no heading names the version - the workflow decides whether that kills
 the release or falls back to the generated notes.
 """
 

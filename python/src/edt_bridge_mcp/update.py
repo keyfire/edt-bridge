@@ -9,7 +9,7 @@ Jar update:
 - puts it into ``<EDT>/dropins`` and removes older copies (two singletons of the same bundle
   make Equinox resolve an arbitrary one);
 - never touches a GUI EDT: with one running, the new jar simply applies on its next restart.
-  A running headless ``1cedtcli`` keeps the OLD jar loaded until it is restarted – the wrapper
+  A running headless ``1cedtcli`` keeps the OLD jar loaded until it is restarted - the wrapper
   restarts it automatically on the next auto-start.
 
 Wrapper update:

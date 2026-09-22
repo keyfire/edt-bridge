@@ -155,7 +155,7 @@ def esc_text(s: str) -> str:
     """Ordinary text: Markdown reads angle brackets as a tag and swallows them along with
     what is inside (`edt-bridge-mcp <command>` becomes `edt-bridge-mcp`), and the theme's
     typography glues a double hyphen into a dash - a flag mentioned in a description,
-    `--json-file`, turns into an unusable `–json-file`. Inside backticks neither happens."""
+    `--json-file`, turns into an unusable `-json-file`. Inside backticks neither happens."""
     s = s.replace("|", "\\|").replace("<", "&lt;").replace(">", "&gt;")
     return FLAG_RE.sub(r"`\1`", s)
 
