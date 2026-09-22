@@ -17,6 +17,7 @@ to the code and the reasoning behind it.
 
 ### Changed
 - Python comments and docstrings consistently use hyphens. Ordinary string literals remain unchanged.
+  ([#21](https://github.com/keyfire/edt-bridge/pull/21))
 
 ### Added
 - **The documentation guard catches a sentence that explains a change by naming who asked for
