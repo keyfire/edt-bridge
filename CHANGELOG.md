@@ -13,7 +13,7 @@ Every entry ends with a link to the pull request it came from -
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
-## Unreleased
+## 2026-09-23 – 0.27.2
 
 ### Changed
 - Python comments and docstrings consistently use hyphens. Ordinary string literals remain unchanged.
