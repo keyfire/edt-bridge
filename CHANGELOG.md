@@ -23,6 +23,7 @@ to the code and the reasoning behind it.
   "Request timed out". A port is now first checked with a plain connect limited to half a
   second, the rest of the range is probed at once, and `tools/list` kicks the background start
   off instead of waiting for it. Without a bridge the listing answers in about a second.
+  ([#22](https://github.com/keyfire/edt-bridge/pull/22))
 
 ## 2026-09-23 – 0.27.2
 
