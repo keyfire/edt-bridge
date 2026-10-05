@@ -13,6 +13,17 @@ Every entry ends with a link to the pull request it came from -
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
+## Unreleased
+
+### Fixed
+- **The wrapper no longer loses the MCP client at startup on Windows when no EDT is running.**
+  With no bridge up, `tools/list` probed the 21 ports of the scan range one after another, and
+  did it twice. Windows reports a refused connection to a closed loopback port only after about
+  two seconds, so the listing came back after ~85 s, and Claude Code dropped the server with
+  "Request timed out". A port is now first checked with a plain connect limited to half a
+  second, the rest of the range is probed at once, and `tools/list` kicks the background start
+  off instead of waiting for it. Without a bridge the listing answers in about a second.
+
 ## 2026-09-23 – 0.27.2
 
 ### Changed

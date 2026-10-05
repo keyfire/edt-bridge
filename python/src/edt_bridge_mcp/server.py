@@ -32,6 +32,7 @@ import io
 import json
 import os
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -73,6 +74,11 @@ HEADLESS_IMAGES = (CLI_IMAGE, "1cedtc.exe" if _WINDOWS else "1cedtc")
 #: person is waiting for, but a large workspace loads for minutes - waiting that out would hang
 #: the command, so a miss is reported and the next run brings the window forward.
 WINDOW_WAIT = int(os.environ.get("EDT_BRIDGE_WINDOW_WAIT", "90"))
+#: How long a port probe waits for the TCP handshake. A bridge on the loopback is answered by the
+#: kernel at once, even while EDT itself is busy, so the limit only matters for a port nobody
+#: listens on. Linux and macOS refuse such a port immediately; Windows retries the SYN and reports
+#: the refusal after about two seconds, which made one scan of the default 21 ports take ~42 s.
+PROBE_CONNECT_TIMEOUT = 0.5
 
 
 def force_utf8_streams() -> None:
@@ -143,7 +149,22 @@ class Backend:
 
     # -- probing ---------------------------------------------------------
 
+    def _listening(self, port: int) -> bool:
+        """Whether anything accepts a connection on the port, within PROBE_CONNECT_TIMEOUT.
+
+        urlopen has one timeout for connecting and reading, and a refused connection on
+        Windows does not wait for it: the refusal itself takes two seconds there. A plain
+        connect with a short limit answers the common case - nothing listens - first.
+        """
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=PROBE_CONNECT_TIMEOUT):
+                return True
+        except OSError:
+            return False
+
     def _status_on(self, port: int) -> dict | None:
+        if not self._listening(port):
+            return None
         try:
             with urllib.request.urlopen(
                 f"http://127.0.0.1:{port}/status", timeout=3
@@ -157,14 +178,24 @@ class Backend:
 
         The Java server binds the configured port or the next free one (a second EDT instance),
         so probe the configured port, then scan upward; the port that answers is remembered and
-        used for forwarding."""
+        used for forwarding.
+
+        The rest of the range is probed at once, not port after port. One by one, a range where
+        nothing listens cost a probe per port, and on Windows each probe of a closed port took
+        two seconds: with no bridge up, tools/list scanned twice and answered after ~85 s, and
+        the client dropped the server. Of the ports that answer, the lowest wins - the one the
+        upward scan used to stop at."""
         s = self._status_on(self._active_port)
         if s is not None:
             return s
-        for port in range(self.port, self.port + self.scan_range + 1):
-            if port == self._active_port:
-                continue
-            s = self._status_on(port)
+        others = [port for port in range(self.port, self.port + self.scan_range + 1)
+                  if port != self._active_port]
+        if not others:
+            return None
+        with ThreadPoolExecutor(max_workers=len(others),
+                                thread_name_prefix="edt-bridge-probe") as pool:
+            answers = list(pool.map(self._status_on, others))
+        for port, s in zip(others, answers):
             if s is not None:
                 self._active_port = port
                 return s
@@ -874,7 +905,10 @@ class StdioServer:
                 self._forward_tools_list(message, req_id)
                 self._announced_ready = True
                 return
-            self._kick_background_start()
+            # Kicked off in the background, as after notifications/initialized: ensure() probes
+            # the ports once more and may launch a headless EDT, and the answer the client is
+            # waiting for needs neither - it is the local tools, and list_changed follows.
+            threading.Thread(target=self._kick_background_start, daemon=True).start()
             self._result(req_id, {"tools": self._local_descriptors()})
             return
         if method == "tools/call":
