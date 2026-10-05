@@ -13,6 +13,14 @@ Every entry ends with a link to the pull request it came from -
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
+## Unreleased
+
+### Fixed
+- **MCP startup no longer times out on Windows when EDT is not running.** The wrapper probes
+  ports in parallel and returns the tool list while EDT starts in the background. A slow or
+  non-HTTP service on a higher port no longer delays or breaks discovery of a working bridge.
+  ([#22](https://github.com/keyfire/edt-bridge/pull/22))
+
 ## 2026-09-23 – 0.27.2
 
 ### Changed
