@@ -16,13 +16,9 @@ to the code and the reasoning behind it.
 ## Unreleased
 
 ### Fixed
-- **The wrapper no longer loses the MCP client at startup on Windows when no EDT is running.**
-  With no bridge up, `tools/list` probed the 21 ports of the scan range one after another, and
-  did it twice. Windows reports a refused connection to a closed loopback port only after about
-  two seconds, so the listing came back after ~85 s, and Claude Code dropped the server with
-  "Request timed out". A port is now first checked with a plain connect limited to half a
-  second, the rest of the range is probed at once, and `tools/list` kicks the background start
-  off instead of waiting for it. Without a bridge the listing answers in about a second.
+- **MCP startup no longer times out on Windows when EDT is not running.** The wrapper probes
+  ports in parallel and returns the tool list while EDT starts in the background. A slow or
+  non-HTTP service on a higher port no longer delays or breaks discovery of a working bridge.
   ([#22](https://github.com/keyfire/edt-bridge/pull/22))
 
 ## 2026-09-23 – 0.27.2

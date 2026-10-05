@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import csv
 import difflib
+import http.client
 import io
 import json
 import os
@@ -40,7 +41,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
 from . import __version__
@@ -170,7 +171,7 @@ class Backend:
                 f"http://127.0.0.1:{port}/status", timeout=3
             ) as resp:
                 return json.loads(resp.read().decode("utf-8"))
-        except (OSError, ValueError):
+        except (OSError, ValueError, http.client.HTTPException):
             return None
 
     def status(self) -> dict | None:
@@ -192,13 +193,31 @@ class Backend:
                   if port != self._active_port]
         if not others:
             return None
-        with ThreadPoolExecutor(max_workers=len(others),
-                                thread_name_prefix="edt-bridge-probe") as pool:
-            answers = list(pool.map(self._status_on, others))
-        for port, s in zip(others, answers):
-            if s is not None:
-                self._active_port = port
-                return s
+        def probe(port: int, answer: Future) -> None:
+            if not answer.set_running_or_notify_cancel():
+                return
+            try:
+                answer.set_result(self._status_on(port))
+            except BaseException as exc:
+                answer.set_exception(exc)
+
+        answers = []
+        try:
+            for port in others:
+                answer = Future()
+                answers.append(answer)
+                # Executor workers are joined at Python exit even after shutdown(wait=False).
+                # An unused network probe must not hold a short-lived CLI open.
+                threading.Thread(target=probe, args=(port, answer), daemon=True,
+                                 name=f"edt-bridge-probe-{port}").start()
+            for port, answer in zip(others, answers):
+                s = answer.result()
+                if s is not None:
+                    self._active_port = port
+                    return s
+        finally:
+            for answer in answers:
+                answer.cancel()
         return None
 
     def is_ready(self) -> bool:
