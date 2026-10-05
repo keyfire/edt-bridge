@@ -13,7 +13,7 @@ Every entry ends with a link to the pull request it came from -
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
-## Unreleased
+## 2026-10-05 – 0.27.3
 
 ### Fixed
 - **MCP startup no longer times out on Windows when EDT is not running.** The wrapper probes
