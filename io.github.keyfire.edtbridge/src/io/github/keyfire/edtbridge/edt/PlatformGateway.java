@@ -46,7 +46,10 @@ import com._1c.g5.v8.dt.platform.services.core.infobases.sync.IInfobaseSynchroni
 import com._1c.g5.v8.dt.platform.services.core.infobases.sync.IInfobaseUpdateCallback;
 import com._1c.g5.v8.dt.platform.services.core.infobases.sync.IInfobaseUpdateConflictResolver;
 import com._1c.g5.v8.dt.platform.services.core.infobases.sync.InfobaseConflictResolution;
+import io.github.keyfire.edtbridge.core.ArtifactBuild;
 import io.github.keyfire.edtbridge.core.IbcmdArgs;
+import io.github.keyfire.edtbridge.core.PlatformInstallations;
+import io.github.keyfire.edtbridge.core.PlatformLog;
 import io.github.keyfire.edtbridge.core.PlatformSelection;
 import io.github.keyfire.edtbridge.core.Versions;
 import com._1c.g5.v8.dt.platform.services.model.FileConnectionString;
@@ -897,6 +900,7 @@ public final class PlatformGateway {
         java.nio.file.Path tempRoot = null;
         boolean keepTemp = false;
         try {
+            ArtifactBuild.requireSeparateLog(target, logPath);
             tempRoot = java.nio.file.Files.createTempDirectory("edtbridge-epf-");
             java.nio.file.Path xmlDir = tempRoot.resolve("xml");
             java.nio.file.Files.createDirectories(xmlDir);
@@ -924,8 +928,6 @@ public final class PlatformGateway {
             if (target.getParent() != null) {
                 java.nio.file.Files.createDirectories(target.getParent());
             }
-            java.nio.file.Files.deleteIfExists(target);
-
             StringBuilder tried = new StringBuilder();
             for (DiskPlatform dp : candidates) {
                 java.nio.file.Path exe = firstExisting(dp.binDir, "1cv8.exe", "1cv8");
@@ -945,22 +947,26 @@ public final class PlatformGateway {
                     tried.append(dp.version).append(" (CREATEINFOBASE: ").append(err).append("); ");
                     continue;
                 }
-                err = runIbcmd(exe, "DESIGNER", "/F", ib.toString(),
+                java.nio.file.Files.deleteIfExists(log);
+                java.nio.file.Path sourceXml = source;
+                err = ArtifactBuild.build(target, output -> runIbcmd(exe, "DESIGNER", "/F", ib.toString(),
                         "/DisableStartupDialogs", "/DisableStartupMessages",
-                        "/LoadExternalDataProcessorOrReportFromFiles", source.toString(),
-                        target.toString(), "/Out", log.toString());
-                if (java.nio.file.Files.exists(target)) {
+                        "/LoadExternalDataProcessorOrReportFromFiles", sourceXml.toString(),
+                        output.toString(), "/Out", log.toString()));
+                if (err == null) {
                     methodOut.append("disk:").append(dp.version);
                     return null;
                 }
                 // 1cv8 says nothing on stdout - everything useful is in the /Out log, so always read it.
                 String logged = null;
                 if (java.nio.file.Files.exists(log)) {
-                    logged = java.nio.file.Files
-                            .readString(log, java.nio.charset.Charset.defaultCharset()).trim();
+                    try {
+                        logged = PlatformLog.decode(java.nio.file.Files.readAllBytes(log)).trim();
+                    } catch (java.io.IOException logError) {
+                        logged = "could not read the build log: " + GatewaySupport.describeCause(logError);
+                    }
                 }
-                String detail = (logged != null && !logged.isEmpty()) ? logged
-                        : (err != null ? err : "no file produced");
+                String detail = (logged != null && !logged.isEmpty()) ? err + ": " + logged : err;
                 keepTemp = true;
                 tried.append(dp.version).append(" (").append(detail).append("); ");
             }
@@ -989,9 +995,8 @@ public final class PlatformGateway {
 
     /**
      * Every full install on disk that carries a thick client (a {@code 1cv8} executable in
-     * {@code bin}), newest build first - ONE walk of the install roots, which are derived from
-     * installs EDT already resolved (so it works wherever the distributions live, incl. macOS)
-     * plus the standard Windows locations.
+     * {@code bin} on Windows or the version directory on Linux), newest build first. Roots come
+     * from EDT's resolved locations and the standard Windows and Linux installation directories.
      */
     List<DiskPlatform> scanFullPlatforms() {
         java.util.LinkedHashSet<java.nio.file.Path> roots = new java.util.LinkedHashSet<>();
@@ -1003,9 +1008,13 @@ public final class PlatformGateway {
                     try {
                         RuntimeInstallation ci = e.resolve(java.util.List.of(), AppArch.AUTO);
                         if (ci != null && ci.getLocation() != null && "file".equalsIgnoreCase(ci.getLocation().getScheme())) {
-                            java.nio.file.Path loc = java.nio.file.Paths.get(ci.getLocation()); // .../<version>/bin
-                            if (loc.getParent() != null && loc.getParent().getParent() != null) {
-                                roots.add(loc.getParent().getParent());
+                            java.nio.file.Path loc = java.nio.file.Paths.get(ci.getLocation());
+                            roots.add(loc);
+                            if (loc.getParent() != null) {
+                                roots.add(loc.getParent());
+                                if (loc.getParent().getParent() != null) {
+                                    roots.add(loc.getParent().getParent());
+                                }
                             }
                         }
                     } catch (RuntimeException ignore) {
@@ -1016,32 +1025,15 @@ public final class PlatformGateway {
         } catch (RuntimeException ignore) {
             // resolver unavailable; fall back to the standard locations only
         }
-        for (String p : new String[] {"C:\\Program Files\\1cv8", "C:\\Program Files (x86)\\1cv8"}) {
+        for (String p : new String[] {"C:\\Program Files\\1cv8", "C:\\Program Files (x86)\\1cv8", "/opt/1cv8"}) {
             java.nio.file.Path pp = java.nio.file.Path.of(p);
             if (java.nio.file.Files.isDirectory(pp)) {
                 roots.add(pp);
             }
         }
         List<DiskPlatform> found = new ArrayList<>();
-        java.util.Set<String> seenVersions = new java.util.HashSet<>();
-        for (java.nio.file.Path root : roots) {
-            try (java.util.stream.Stream<java.nio.file.Path> kids = java.nio.file.Files.list(root)) {
-                for (java.nio.file.Path verDir : (Iterable<java.nio.file.Path>) kids::iterator) {
-                    if (!java.nio.file.Files.isDirectory(verDir)) {
-                        continue;
-                    }
-                    String ver = verDir.getFileName().toString();
-                    if (!ver.matches("\\d+\\.\\d+\\.\\d+\\.\\d+") || !seenVersions.add(ver)) {
-                        continue;
-                    }
-                    java.nio.file.Path bin = verDir.resolve("bin");
-                    if (firstExisting(bin, "1cv8.exe", "1cv8") != null) {
-                        found.add(new DiskPlatform(bin, ver));
-                    }
-                }
-            } catch (java.io.IOException ignore) {
-                // unreadable root; skip
-            }
+        for (PlatformInstallations.Installation install : PlatformInstallations.scan(roots)) {
+            found.add(new DiskPlatform(install.binDir(), install.version()));
         }
         found.sort((a, b) -> PlatformSelection.compare(a.version, b.version, null));
         return found;
@@ -1086,7 +1078,7 @@ public final class PlatformGateway {
     }
 
     /** Run {@code 1cv8 CREATEINFOBASE} in batch mode for an empty file base; null on success, else an error. */
-    private static String runCreateInfobase(java.nio.file.Path exe, java.nio.file.Path dir) {
+    static String runCreateInfobase(java.nio.file.Path exe, java.nio.file.Path dir) {
         java.nio.file.Path out = null;
         try {
             out = java.nio.file.Files.createTempFile("edtbridge-createib-", ".log");
@@ -1125,7 +1117,7 @@ public final class PlatformGateway {
     private static String readSmall(java.nio.file.Path p) {
         try {
             byte[] b = java.nio.file.Files.readAllBytes(p);
-            String s = new String(b, java.nio.charset.StandardCharsets.UTF_8);
+            String s = PlatformLog.decode(b);
             return s.length() > 500 ? s.substring(0, 500) : s;
         } catch (java.io.IOException e) {
             return "";

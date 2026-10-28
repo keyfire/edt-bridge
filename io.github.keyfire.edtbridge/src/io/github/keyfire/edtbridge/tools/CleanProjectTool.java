@@ -94,6 +94,7 @@ public final class CleanProjectTool {
             o.addProperty("open", res.open);
             o.addProperty("rebuild", res.rebuild);
             o.addProperty("autoBuilding", res.autoBuilding);
+            o.addProperty("modelReady", res.modelReady);
             if (res.problemsBefore >= 0) {
                 o.addProperty("problemsBefore", res.problemsBefore);
             }

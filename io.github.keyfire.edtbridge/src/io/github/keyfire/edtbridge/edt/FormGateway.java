@@ -23,6 +23,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -60,6 +61,7 @@ import com._1c.g5.v8.dt.form.model.Button;
 import com._1c.g5.v8.dt.form.model.CommandHandler;
 import com._1c.g5.v8.dt.form.model.CommandHandlerContainer;
 import com._1c.g5.v8.dt.form.model.DataItem;
+import com._1c.g5.v8.dt.form.model.DynamicListExtInfo;
 import com._1c.g5.v8.dt.form.model.Decoration;
 import com._1c.g5.v8.dt.form.model.EventHandler;
 import com._1c.g5.v8.dt.form.model.FieldExtInfo;
@@ -119,6 +121,7 @@ import com._1c.g5.wiring.ServiceAccess;
  * file focused; behaviour is unchanged.
  */
 public final class FormGateway {
+    public static final int DEFAULT_QUERY_LIMIT = 20000;
     /**
      * Dedicated single thread that owns the SWT Display used for form rendering – isolated from both
      * the MCP HTTP thread and a GUI workbench's main UI thread, so {@code edt_form_render} works in
@@ -134,6 +137,7 @@ public final class FormGateway {
 
     /** A node in a form's visual items tree (a field, group, table, button, decoration, ...). */
     public static final class FormNode {
+        public int id;
         public String name;
         public String kind;       // eClass simple name (FormField, FormGroup, Table, Button, Decoration, ...)
         public String itemType;   // the Managed*Type literal (InputField, UsualGroup, ...) when applicable
@@ -158,6 +162,7 @@ public final class FormGateway {
         public Boolean choiceButton;              // an in-field choice button is shown
         public Boolean choiceButtonPicture;       // a choice-button picture is set – the button carries a glyph (the eye)
         public String choiceButtonRepresentation; // where the choice button is drawn (non-Auto only)
+        public Map<String, Object> properties = new LinkedHashMap<>();
         public List<FormNode> children = new ArrayList<>();
     }
 
@@ -174,6 +179,16 @@ public final class FormGateway {
         public String name;
         public String valueType;  // rendered TypeDescription
         public boolean main;      // the form's main attribute (Объект / Список / ...)
+        public DynamicListInfo dynamicList;
+    }
+
+    /** Dynamic-list settings belong to the exact form attribute carrying the ext-info. */
+    public static final class DynamicListInfo {
+        public boolean customQuery;
+        public String mainTable;
+        public String queryText;
+        public int queryTextLength;
+        public boolean queryTextTruncated;
     }
 
     /** A form command. */
@@ -221,6 +236,13 @@ public final class FormGateway {
      * capped at {@code itemLimit} nodes (<= 0 means no cap); {@code truncated} flags an overflow.
      */
     public FormDetails getFormStructure(String projectName, String fqn, int itemLimit) {
+        return getFormStructure(projectName, fqn, itemLimit, DEFAULT_QUERY_LIMIT);
+    }
+
+    public FormDetails getFormStructure(String projectName, String fqn, int itemLimit, int queryLimit) {
+        if (queryLimit < 1 || queryLimit > 100000) {
+            throw new IllegalArgumentException("queryLimit must be between 1 and 100000 characters per dynamic list");
+        }
         FormDetails d = new FormDetails();
         d.fqn = fqn;
         IProject p = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
@@ -282,11 +304,7 @@ public final class FormGateway {
                     // dimensions are optional
                 }
                 for (FormAttribute a : form.getAttributes()) {
-                    FormAttr fa = new FormAttr();
-                    fa.name = a.getName();
-                    fa.valueType = GatewaySupport.renderType(a.getValueType());
-                    fa.main = a.isMain();
-                    r.attributes.add(fa);
+                    r.attributes.add(attributeOf(a, queryLimit));
                 }
                 for (FormCommand c : form.getFormCommands()) {
                     FormCmd fc = new FormCmd();
@@ -315,6 +333,27 @@ public final class FormGateway {
                 return r;
             }
         });
+    }
+
+    static FormAttr attributeOf(FormAttribute attribute, int queryLimit) {
+        FormAttr result = new FormAttr();
+        result.name = attribute.getName();
+        result.valueType = GatewaySupport.renderType(attribute.getValueType());
+        result.main = attribute.isMain();
+        if (attribute.getExtInfo() instanceof DynamicListExtInfo) {
+            DynamicListExtInfo info = (DynamicListExtInfo) attribute.getExtInfo();
+            DynamicListInfo dynamic = new DynamicListInfo();
+            dynamic.customQuery = info.isCustomQuery();
+            dynamic.mainTable = info.getMainTable() == null ? null : info.getMainTable().getName();
+            String text = info.getQueryText();
+            dynamic.queryTextLength = text == null ? 0 : text.length();
+            dynamic.queryTextTruncated = text != null && text.length() > queryLimit;
+            int end = text == null ? 0 : Math.min(text.length(), queryLimit);
+            if (text != null && end > 0 && end < text.length() && Character.isHighSurrogate(text.charAt(end - 1))) { end--; }
+            dynamic.queryText = text == null ? null : text.substring(0, end);
+            result.dynamicList = dynamic;
+        }
+        return result;
     }
 
     /** The editable {@link Form} content of a resolved object: itself, or via its metadata form. */
@@ -364,9 +403,15 @@ public final class FormGateway {
         }
         counter[0]++;
         FormNode n = new FormNode();
+        n.id = item.getId();
         n.name = item.getName();
         n.kind = item.eClass().getName();
         n.itemType = itemTypeOf(item);
+        try {
+            n.properties = FormItemEdits.readSettings(item);
+        } catch (RuntimeException ignored) {
+            // An unresolved optional property must not hide the rest of the form structure.
+        }
         if (item instanceof DataItem) {
             n.dataPath = pathOf(((DataItem) item).getDataPath());
         }

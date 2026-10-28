@@ -45,7 +45,7 @@ public final class SearchModulesTool {
                 + "expression when regex=true"));
         props.add("projectName", ToolJson.strProp("Project to search. Optional - omitted searches "
                 + "every open project."));
-        props.add("regex", ToolJson.boolProp("Treat pattern as a Java regular expression. Default false."));
+        props.add("regex", ToolJson.boolProp("Treat pattern as a Java regular expression with Unicode word classes and case folding. Default false."));
         props.add("caseSensitive", ToolJson.boolProp("Match case. Default false."));
         props.add("pathFilter", ToolJson.strProp("Only modules whose project-relative path contains "
                 + "this substring, e.g. CommonModules or Catalogs/Контрагенты. Optional."));
@@ -57,13 +57,13 @@ public final class SearchModulesTool {
                 + "this method\", this answers \"where does this text appear\". Returns project, "
                 + "module path, line number and the matching line. Reading goes through Eclipse's file "
                 + "buffers, so a module open in an editor is searched as it currently stands, unsaved "
-                + "edits included - each hit says whether it came from an unsaved buffer.",
+                + "edits included - each hit says whether it came from an unsaved buffer. Query text stored in Form.form and Template.dcs is outside this BSL search.",
                 "ЧТЕНИЕ: полнотекстовый поиск по модулям BSL проекта (или всех открытых проектов) - "
                 + "тот шаг разведки, который не закрывает edt_find_references: он отвечает на вопрос "
                 + "\"кто вызывает этот метод\", а этот - \"где встречается такой текст\". Возвращает "
                 + "проект, путь модуля, номер строки и саму строку. Чтение идёт через буферы файлов "
                 + "Eclipse, поэтому модуль, открытый в редакторе, ищется в текущем виде, вместе с "
-                + "несохранёнными правками - у каждого попадания указано, из буфера оно или с диска.",
+                + "несохраненными правками - у каждого попадания указано, из буфера оно или с диска. Тексты запросов в Form.form и Template.dcs в поиск по BSL не входят.",
                 props, "pattern");
     }
 

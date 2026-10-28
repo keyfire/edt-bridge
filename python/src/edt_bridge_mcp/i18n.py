@@ -109,6 +109,14 @@ MESSAGES = {
         "ru": "Перечислить инструменты запущенного моста.",
         "en": "List the tools the running bridge serves.",
     },
+    "status.all": {
+        "ru": "проверить все порты диапазона без фильтра рабочей области и запуска EDT",
+        "en": "inspect every port in the scan range without filtering workspaces or starting EDT",
+    },
+    "status.ports": {
+        "ru": "порты для --all, через запятую или диапазон: 8770,8772-8774 (до 128 портов)",
+        "en": "ports for --all, comma-separated or ranges: 8770,8772-8774 (up to 128 ports)",
+    },
     "status.description": {
         "ru": "Состояние моста без его запуска и версия jar в dropins - "
               "кода, который EDT загрузит при следующем запуске.",

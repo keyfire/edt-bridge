@@ -131,10 +131,16 @@ need=(
   org.eclipse.osgi
   org.eclipse.equinox.common
   org.eclipse.core.resources
+  org.eclipse.core.filebuffers
+  org.eclipse.text
   org.eclipse.core.runtime
   org.eclipse.core.jobs
   org.eclipse.ui.workbench
   org.eclipse.ui
+  org.eclipse.jface
+  org.eclipse.core.commands
+  org.eclipse.equinox.preferences
+  org.osgi.service.prefs
   com.google.gson
   org.eclipse.emf.ecore
   org.eclipse.emf.common
@@ -145,22 +151,38 @@ need=(
   com._1c.g5.wiring
   com._1c.g5.v8.dt.core
   com._1c.g5.v8.dt.metadata
+  com._1c.g5.v8.dt.metadata.extension
+  com._1c.g5.v8.dt.md.extension
   com._1c.g5.v8.dt.mcore
   com._1c.g5.v8.dt.bsl.model
   com._1c.g5.v8.dt.bsl
+  com._1c.g5.v8.dt.bsl.bm.ui
   com._1c.g5.v8.dt.form.model
   com._1c.g5.v8.dt.form
   com._1c.g5.v8.dt.form.layout
   com._1c.g5.v8.dt.form.layout.model
   com._1c.g5.v8.dt.form.presentation
+  com._1c.g5.v8.dt.dcs.model
+  com._1c.g5.v8.dt.ql.model
   com._1c.g5.v8.dt.platform
+  com._1c.g5.v8.dt.export
+  org.eclipse.jface.text
+  org.eclipse.ltk.core.refactoring
+  org.eclipse.xtext.ui
+  com._1c.g5.v8.dt.import
   com._1c.g5.v8.dt.platform.services.core
   com._1c.g5.v8.dt.platform.services.model
   com._1c.g5.designer.ssh.client
+  com._1c.g5.v8.dt.validation
   com._1c.g5.v8.dt.refactoring.core
   com._1c.g5.v8.dt.md.refactoring
+  com._1c.g5.v8.derived
   com._1c.g5.v8.bm.core
   com._1c.g5.v8.bm.integration
+  org.eclipse.debug.core
+  com._1c.g5.v8.dt.debug.core
+  com._1c.g5.v8.dt.debug.model
+
 )
 
 echo "Pool: $POOL"

@@ -1,0 +1,2863 @@
+{
+  "tools": [
+    {
+      "name": "edt_project_errors",
+      "description": "List EDT validation problems for a project from the live workspace: both standard Eclipse markers (syntax/build) and EDT check results (Standards, e.g. com.e1c.v8codestyle) read from EDT's own marker store. Each problem carries source (eclipse|edt-check), severity, message, resource, line, and for EDT checks the checkId and EDT grade. Narrow with fqn / modulePath / severity, or pass countOnly for just the counts – on a large configuration the unfiltered result is thousands of problems, so filter or count instead; brief gives one text line per problem. A marker is a snapshot and can outlive the code that caused it, so every listed problem is judged against its file: stale=true when the marker predates the file's last change on disk, unsynchronized=true when the workspace has not even read that change. The summary counts them (staleCount, unsynchronized: [paths]) and a hint says what to do; refresh=true revalidates the narrowed scope in place – an incremental build, seconds – where edt_clean_project rebuilds the whole project. modelReady=false or complete=false means the counts are a partial snapshot, not a clean result. The report names the disk folder behind each validated project (locations): the model validates the REGISTERED folder, so check it against the checkout you are editing – a parallel worktree of the same sources is NOT what gets validated.",
+      "descriptionRu": "Список проблем валидации EDT по проекту из живой рабочей области: и стандартные маркеры Eclipse (синтаксис/сборка), и результаты проверок EDT (Стандарты, напр. com.e1c.v8codestyle) из собственного хранилища маркеров EDT. У каждой проблемы – источник (eclipse|edt-check), важность, сообщение, ресурс, строка, а у проверок EDT – checkId и класс важности. Сужение через fqn / modulePath / severity либо countOnly для одних счётчиков – на большой конфигурации полный список это тысячи проблем, фильтруйте или считайте; brief даёт по одной текстовой строке на проблему. Маркер – это снимок, и он может пережить код, который его вызвал, поэтому каждая выведенная проблема сверяется со своим файлом: stale=true, если маркер старше последнего изменения файла на диске, unsynchronized=true, если рабочая область это изменение ещё не прочитала. В сводке – счётчики (staleCount, unsynchronized: [пути]) и подсказка hint; refresh=true перепроверяет суженную область на месте – инкрементальная сборка, секунды, – тогда как edt_clean_project пересобирает весь проект. Отчёт называет каталог диска за каждым проверенным проектом (locations): модель проверяет ЗАРЕГИСТРИРОВАННЫЙ каталог – сверьте его с тем, что правите; параллельный worktree тех же исходников проверен НЕ будет.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name; omit for all open projects"
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Narrow to one object: CommonModule.X, Catalog.Y, HTTPService.S, or a form FQN. Matches the object's source path (and, for EDT-check markers, its name). Optional."
+          },
+          "modulePath": {
+            "type": "string",
+            "description": "Narrow to one module by project-relative path, e.g. src/CommonModules/X/Module.bsl, or a folder prefix. Includes EDT check markers traced to files; unresolved markers set complete=false and a hint. Optional."
+          },
+          "waitSeconds": {
+            "type": "integer",
+            "description": "Validation wait after refresh=true or a baseline operation, in seconds (1-600, default 120). A timeout still returns the current markers with complete=false and refreshed.settled=false."
+          },
+          "baseline": {
+            "type": "string",
+            "description": "Optional: save captures all matching problems, compare returns only new problems and resolvedProblems relative to baselineId. Snapshots last for this EDT session; project location and filters must match. Both operations refresh and wait for scoped validation to settle. Incomplete snapshots are refused."
+          },
+          "baselineId": {
+            "type": "string",
+            "description": "Snapshot id returned by baseline=save; required for baseline=compare."
+          },
+          "severity": {
+            "type": "string",
+            "description": "Keep these severities: ERROR, WARNING or INFO, one or several separated by commas (\"ERROR,WARNING\"), case-insensitive. A generated-code check wants both: EDT reports a call to a method nobody declares as a WARNING, so ERROR alone reads clean over broken code. Optional - omit for every severity."
+          },
+          "countOnly": {
+            "type": "boolean",
+            "description": "true = return only the counts (total, by severity, by source), no problem list – what a before/after baseline needs on a large configuration. The listed problems are what gets judged for staleness, so there is no staleCount here; the unsynchronized files are still named. Default false."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Max problems in the returned list (default 1000); ignored when countOnly. Excess sets truncated=true."
+          },
+          "brief": {
+            "type": "boolean",
+            "description": "true = plain text, one line per problem - severity, resource:line, message, [checkId], (stale) - under a one-line summary, instead of the full objects with extraInfo and locations: what the question \"are there errors in this object\" needs. Ignored when countOnly. Default false."
+          },
+          "refresh": {
+            "type": "boolean",
+            "description": "true = re-read the narrowed scope from disk (refreshLocal), run an INCREMENTAL build of the project and wait for validation to settle before reading the markers – the point fix for a stale marker: seconds for one module, where edt_clean_project rebuilds everything for minutes. Without fqn / modulePath the project's sources folder is refreshed – what validation reads. A project never built in this session gets a full build instead. The result carries refreshed {resources, buildMs}. Default false."
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "edt_projects",
+      "description": "READ: list the workspace projects – name, disk location, natures, open state, and whether each is a 1C:EDT project. Use it to discover what is addressable (e.g. which project name maps to which folder) before calling the other tools.",
+      "descriptionRu": "ЧТЕНИЕ: список проектов рабочей области – имя, путь на диске, natures, открыт ли, и является ли проектом 1C:EDT. Помогает понять, что вообще можно адресовать (какое имя проекта какой папке соответствует), до вызова остальных инструментов.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "edt_module_text",
+      "description": "READ: BSL source of a module (or a single method) + the module's procedure/function list with signatures, from the live workspace. Resolve by fqn (CommonModule.X, HTTPService.X, a form FQN, or an object + moduleType) or by modulePath. Pass includeMethods=false to skip the catalogue on a targeted read. If a top object has several modules and none is chosen, returns the candidates in availableModules.",
+      "descriptionRu": "ЧТЕНИЕ: исходный BSL модуля (или одного метода) + список процедур/функций модуля с сигнатурами, из живой рабочей области. Адресация по fqn (CommonModule.X, HTTPService.X, FQN формы или объект + moduleType) либо по modulePath. includeMethods=false пропускает каталог при точечном чтении. Если у объекта несколько модулей и не выбран moduleType – вернёт варианты в availableModules.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Module FQN: CommonModule.X, a form (DataProcessor.X.Form.Y / CommonForm.Y), or an object (Catalog.X) – for objects also pass moduleType. Omit if modulePath is given."
+          },
+          "moduleType": {
+            "type": "string",
+            "description": "For object FQNs: which module – ObjectModule / ManagerModule / RecordSetModule / ValueManagerModule / CommandModule. Optional."
+          },
+          "method": {
+            "type": "string",
+            "description": "Return only this procedure/function's source. Optional (the method list is still returned unless includeMethods=false)."
+          },
+          "modulePath": {
+            "type": "string",
+            "description": "Workspace-relative .bsl path (e.g. src/CommonModules/X/Module.bsl) – an alternative to fqn. Optional."
+          },
+          "includeMethods": {
+            "type": "boolean",
+            "description": "true (default) = also return the module's procedure/function catalogue with signatures. false = skip it and return only the requested text – a targeted method read on a large module then avoids re-sending the whole list (147 methods on some)."
+          }
+        },
+        "required": [
+          "projectName"
+        ]
+      }
+    },
+    {
+      "name": "edt_outgoing_calls",
+      "description": "READ: which methods a module / method / form module CALLS (one level out) – the reverse of edt_find_references. Returns distinct qualifier.method targets with a call-site count and an extApi flag (calls through the ExtAPI layer, default prefix ПрограммныйИнтерфейсСервиса). Resolve by fqn or modulePath; optional method to scope to one procedure/function.",
+      "descriptionRu": "ЧТЕНИЕ: какие методы вызывает модуль / метод / модуль формы (на один уровень наружу) – обратное к edt_find_references. Возвращает различные цели вида квалификатор.метод с числом мест вызова и флагом extApi (вызовы через слой ExtAPI, префикс по умолчанию ПрограммныйИнтерфейсСервиса). Адресация по fqn или modulePath; method – ограничить одной процедурой/функцией.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Module FQN: CommonModule.X, a form (DataProcessor.X.Form.Y / CommonForm.Y), or an object (Catalog.X) + moduleType. Omit if modulePath is given."
+          },
+          "moduleType": {
+            "type": "string",
+            "description": "For object FQNs: ObjectModule / ManagerModule / ... Optional."
+          },
+          "method": {
+            "type": "string",
+            "description": "Restrict the analysis to this procedure/function. Optional (default: the whole module)."
+          },
+          "modulePath": {
+            "type": "string",
+            "description": "Workspace-relative .bsl path – an alternative to fqn. Optional."
+          },
+          "extApiPrefix": {
+            "type": "string",
+            "description": "Module-name prefix treated as the ExtAPI layer for the extApi flag (default: ПрограммныйИнтерфейсСервиса). Optional."
+          }
+        },
+        "required": [
+          "projectName"
+        ]
+      }
+    },
+    {
+      "name": "edt_picture_export",
+      "description": "READ: a CommonPicture's content from its Picture.zip. Without variant: lists the variants (DPI / interface variant version8_2 vs version8_5 / theme / isTemplate / glyph size) + a recommended pick. With variant: that entry's bytes as base64 + contentType. Avoids going to disk and unzipping Picture.zip by hand.",
+      "descriptionRu": "ЧТЕНИЕ: содержимое CommonPicture из Picture.zip. Без variant – перечень вариантов (DPI / вариант интерфейса version8_2 или version8_5 / тема / isTemplate / размер глифа) + рекомендуемый. С variant – байты этого варианта в base64 + contentType. Избавляет от ручной распаковки Picture.zip с диска.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "fqn": {
+            "type": "string",
+            "description": "CommonPicture FQN, e.g. CommonPicture.МояКартинка"
+          },
+          "variant": {
+            "type": "string",
+            "description": "Which variant's bytes to return as base64: an exact entry name (e.g. 400.png, l, <hash>.svg), or \"svg\" (the vector master) / \"best\" (svg else the largest PNG). Omit to list variants only (no base64). Optional."
+          }
+        },
+        "required": [
+          "projectName",
+          "fqn"
+        ]
+      }
+    },
+    {
+      "name": "edt_outgoing_structures",
+      "description": "READ (best-effort): the top-level keys of the Структура passed as an argument to each outgoing (qualified) call – what data goes into the call, the companion to edt_outgoing_calls (which gives the call targets). Collects <var>.Вставить(\"key\", ...) on the argument variable and expands a same-module seed/template helper (<var> = Helper(...)) one level. Heuristic: literal keys only, flow-insensitive; partial=true flags an incomplete result. Optional qualifier filter scopes to one layer (e.g. ПрограммныйИнтерфейсСервиса for an ExtAPI wrapper). Resolve by fqn or modulePath.",
+      "descriptionRu": "ЧТЕНИЕ (best-effort): ключи верхнего уровня Структуры, передаваемой аргументом в каждый исходящий (квалифицированный) вызов – какие данные уходят в вызов, пара к edt_outgoing_calls (тот даёт цели вызовов). Собирает <Перем>.Вставить(\"ключ\", ...) по переменной-аргументу и раскрывает хелпер-шаблон того же модуля (<Перем> = Хелпер(...)) на один уровень. Эвристика: только литеральные ключи, без учёта ветвлений; partial=true – результат неполный. Необязательный фильтр qualifier ограничивает одним слоем (например ПрограммныйИнтерфейсСервиса для обвязки ExtAPI). Адресация по fqn или modulePath.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Module FQN: CommonModule.X, a form (DataProcessor.X.Form.Y / CommonForm.Y), or an object (Catalog.X) + moduleType. Omit if modulePath is given."
+          },
+          "moduleType": {
+            "type": "string",
+            "description": "For object FQNs: ObjectModule / ManagerModule / ... Optional."
+          },
+          "method": {
+            "type": "string",
+            "description": "Restrict the analysis to this procedure/function. Optional (default: the whole module)."
+          },
+          "modulePath": {
+            "type": "string",
+            "description": "Workspace-relative .bsl path – an alternative to fqn. Optional."
+          },
+          "qualifier": {
+            "type": "string",
+            "description": "Only report calls whose qualifier starts with this prefix – a module/object name (e.g. ПрограммныйИнтерфейсСервиса to scope to an ExtAPI layer, or ФоновыеЗадания). Omit = all qualified outgoing calls that pass a structure. Optional."
+          }
+        },
+        "required": [
+          "projectName"
+        ]
+      }
+    },
+    {
+      "name": "edt_metadata_details",
+      "description": "Details of a top-level metadata object from the live EDT model: core properties (type, name, uuid, comment, synonym) plus its structure grouped by feature (attributes, tabularSections, forms, commands, templates, dimensions, resources, enumValues, ...), with each attribute's value type.",
+      "descriptionRu": "Детали объекта метаданных верхнего уровня из живой модели EDT: основные свойства (тип, имя, uuid, комментарий, синоним) и структура по группам (реквизиты, табличные части, формы, команды, макеты, измерения, ресурсы, значения перечисления, ...), с типом значения каждого реквизита.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Top object FQN with English type prefix, e.g. Catalog.Контрагенты, Document.МойДокумент, CommonModule.ОбщегоНазначения"
+          }
+        },
+        "required": [
+          "projectName",
+          "fqn"
+        ]
+      }
+    },
+    {
+      "name": "edt_find_references",
+      "description": "Inbound references to a top-level metadata object (metadata membership: subsystems, the Configuration lists) from the live BM cross-reference index, plus separate queryReferences from actual QL FROM/JOIN sources in stored dynamic-list .form and DCS .dcs queries. Query scan coverage and parse failures are reported explicitly; BSL query assembly and unsaved graphical-designer edits are not covered. With method given, switches to method-caller mode: literal BSL calls to common-module and object-manager methods (module + line + call text). Query texts in Form.form and Template.dcs are not searched in either mode.",
+      "descriptionRu": "Входящие ссылки на объект метаданных верхнего уровня (членство в метаданных: подсистемы, списки Configuration) из BM-индекса перекрестных ссылок и отдельные queryReferences из источников ИЗ/СОЕДИНЕНИЕ QL-запросов динамических списков .form и наборов СКД .dcs. Покрытие и ошибки разбора явно указаны; сборка запросов BSL и несохраненные правки визуальных редакторов не учитываются. С параметром method – режим поиска мест вызова: литеральные BSL-вызовы методов общего модуля или менеджера объекта (модуль + строка + текст вызова). Тексты запросов в Form.form и Template.dcs не входят в результаты обоих режимов.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Target top object FQN (English type prefix), e.g. Catalog.Items or CommonModule.X. With method, supports common-module and object-manager literal calls."
+          },
+          "method": {
+            "type": "string",
+            "description": "Optional. When given, switches to method-caller mode: returns the BSL call sites of the method of fqn as module + line + call text. Matches X.Method(...) and manager calls such as Catalogs.X.Method(...), using the last FQN segment X as qualifier. Best-effort literal-call search; local unqualified and dynamically computed calls are excluded."
+          },
+          "moduleType": {
+            "type": "string",
+            "description": "Optional compatibility parameter; currently not used to narrow method-caller search. ManagerModule need not be supplied for object-manager literal calls."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Max references / call sites returned (default 200)"
+          }
+        },
+        "required": [
+          "projectName",
+          "fqn"
+        ]
+      }
+    },
+    {
+      "name": "edt_metadata_objects",
+      "description": "List top-level metadata objects (optionally by type and name substring) from the live EDT model. projectName is OPTIONAL: omit it to search across ALL open projects (each result is tagged with its project).",
+      "descriptionRu": "Список объектов метаданных верхнего уровня (опционально по типу и подстроке имени) из живой модели EDT. projectName НЕОБЯЗАТЕЛЕН: без него поиск по ВСЕМ открытым проектам (у каждого результата указан его проект).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name. OPTIONAL – omit to search across ALL open projects (each result is tagged with its project)."
+          },
+          "type": {
+            "type": "string",
+            "description": "Metadata type (EClass), e.g. Catalog, Document, CommonModule, InformationRegister, Enum; omit or 'all' for every top object"
+          },
+          "nameFilter": {
+            "type": "string",
+            "description": "Case-insensitive substring filter on object name"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Max objects returned (default 500)"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "edt_validate_query",
+      "description": "Validate a 1C query against the live project metadata using EDT's own QL validator: syntax plus semantics (unknown tables/fields, type errors). Returns issues with severity and position. Impossible with static parsing. Takes either the query text, or a module address (modulePath/fqn, optionally one method) - then the bridge pulls the |-framed query literals out of the live module itself and validates each one. The batch is also followed as a whole, which EDT does not do: a query reading a temporary table that no earlier query of the batch puts (ПОМЕСТИТЬ/INTO), or that an earlier query dropped, is an ERROR for queryText - the text is taken as a self-contained batch - and an INFO note for a module literal, where a shared temporary table manager or another literal may supply the table.",
+      "descriptionRu": "Проверка запроса 1С против живых метаданных проекта валидатором EDT: синтаксис и семантика (несуществующие таблицы/поля, ошибки типов). Возвращает проблемы с уровнем и позицией. Статическим разбором невозможно. Принимает либо текст запроса, либо адрес модуля (modulePath/fqn, при желании один метод) – тогда мост сам достаёт из живого модуля литералы запросов с обрамлением | и проверяет каждый. Пакет проверяется и как целое, чего EDT не делает: чтение временной таблицы, которую ни один предыдущий запрос пакета не создаёт (ПОМЕСТИТЬ/INTO) или которую предыдущий запрос уничтожил, для queryText – ошибка (текст считается самодостаточным пакетом), для литерала модуля – заметка INFO: таблицу там может давать общий менеджер временных таблиц или другой литерал.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name – supplies the metadata scope for the query"
+          },
+          "queryText": {
+            "type": "string",
+            "description": "1C query text (language of 1C:Enterprise queries), e.g. ВЫБРАТЬ Ссылка ИЗ Справочник.Контрагенты. Omit it to validate the query literals of a module instead (modulePath/fqn)"
+          },
+          "modulePath": {
+            "type": "string",
+            "description": "workspace-relative .bsl path of the module whose query literals to validate, e.g. src/Documents/Заказ/ManagerModule.bsl"
+          },
+          "fqn": {
+            "type": "string",
+            "description": "metadata FQN of the module's owner instead of modulePath, e.g. CommonModule.Обмен (with moduleType when the object has several modules)"
+          },
+          "moduleType": {
+            "type": "string",
+            "description": "module kind for fqn resolution, e.g. ObjectModule | ManagerModule | Module"
+          },
+          "method": {
+            "type": "string",
+            "description": "validate only the query literals inside this procedure/function"
+          }
+        },
+        "required": [
+          "projectName"
+        ]
+      }
+    },
+    {
+      "name": "edt_go_to_definition",
+      "description": "Resolve the definition of the BSL symbol at a position (line+column, or offset) in a module, using EDT's live semantic model: returns the target's kind, name, owning object and location. Real cross-reference resolution, not a text match.",
+      "descriptionRu": "Перейти к определению символа BSL в указанной позиции (строка+столбец или offset) модуля по живой модели EDT: возвращает вид цели, имя, объект-владелец и расположение. Настоящее разрешение ссылки, а не текстовый поиск.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "modulePath": {
+            "type": "string",
+            "description": "Module path, project-relative, e.g. src/CommonModules/ОбщегоНазначения/Module.bsl"
+          },
+          "line": {
+            "type": "integer",
+            "description": "1-based line of the position (use with column); ignored if offset is given"
+          },
+          "column": {
+            "type": "integer",
+            "description": "1-based column of the position (default 1)"
+          },
+          "offset": {
+            "type": "integer",
+            "description": "0-based character offset of the position (overrides line/column)"
+          }
+        },
+        "required": [
+          "projectName",
+          "modulePath"
+        ]
+      }
+    },
+    {
+      "name": "edt_symbol_info",
+      "description": "Type/symbol info at a position (line+column, or offset) in a BSL module, using EDT's live dynamic type system: the element under the cursor (kind, name) and the computed value type(s) of the expression. On a method-access name, types carries the DECLARED return type and invocationTypes the computed type(s) of the containing call. Impossible with static parsing.",
+      "descriptionRu": "Тип/инфо символа в позиции (строка+столбец или offset) модуля BSL по живой динамической типизации EDT: элемент под курсором (вид, имя) и вычисленные типы значения выражения. На имени вызываемого метода types несёт ОБЪЯВЛЕННЫЙ тип возврата, а invocationTypes – вычисленные типы самого вызова. Статическим разбором невозможно.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "modulePath": {
+            "type": "string",
+            "description": "Module path, project-relative, e.g. src/CommonModules/ОбщегоНазначения/Module.bsl"
+          },
+          "line": {
+            "type": "integer",
+            "description": "1-based line of the position (use with column); ignored if offset is given"
+          },
+          "column": {
+            "type": "integer",
+            "description": "1-based column of the position (default 1)"
+          },
+          "offset": {
+            "type": "integer",
+            "description": "0-based character offset of the position (overrides line/column)"
+          }
+        },
+        "required": [
+          "projectName",
+          "modulePath"
+        ]
+      }
+    },
+    {
+      "name": "edt_form_structure",
+      "description": "Structure of a managed form from the live EDT model: the visual items tree (fields, groups, tables, buttons, decorations) with their data bindings, plus the form's attributes (with value types and bounded dynamic-list customQuery/mainTable/queryText), commands, parameters and event handlers (form event -> BSL handler). Items also carry their static visible/enabled/readOnly (DESIGN values from .form – runtime BSL e.g. ПриСозданииНаСервере may override them), per-item event handlers (e.g. a table column's Selection/Выбор handler), a cellHyperlink flag, for input fields the password/choice-button design props (passwordMode / choiceButton / choiceButtonPicture – the reveal-eye secret idiom), and for buttons the wired command + representation/placement (command -> button). The form's declarative conditional appearance (УсловноеОформление: fields + filter + appearance) is returned in conditionalAppearance when present. Cleaner than parsing the serialized .form.",
+      "descriptionRu": "Структура управляемой формы из живой модели EDT: дерево элементов (поля, группы, таблицы, кнопки, декорации) с их привязками к данным, а также реквизиты формы (с типами значений и настройками динамических списков customQuery/mainTable/queryText), команды, параметры и обработчики событий (событие формы -> процедура BSL). У элементов также: обработчики уровня элемента (например, обработчик Выбор у колонки таблицы), флаг cellHyperlink, у полей ввода – design-свойства пароля/кнопки выбора (passwordMode / choiceButton / choiceButtonPicture – идиома \"глазика\" раскрытия секрета) и для кнопок – привязанная команда + представление/размещение (команда -> кнопка). Декларативное условное оформление (УсловноеОформление: поля + отбор + оформление) – в conditionalAppearance, если задано. Чище, чем разбор сериализованного файла .form.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "formFqn": {
+            "type": "string",
+            "description": "Form FQN with English type prefixes, e.g. Catalog.Контрагенты.Form.ФормаЭлемента, DataProcessor.X.Form.Форма, CommonForm.Y"
+          },
+          "fqn": {
+            "type": "string",
+            "description": "The old name of formFqn. Still accepted, so calls written before the form tools agreed on one name keep working; write formFqn in new ones."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Max items in the visual tree (default 500; <=0 means no cap)"
+          },
+          "queryLimit": {
+            "type": "integer",
+            "description": "Maximum queryText characters per dynamic-list attribute (1-100000, default 20000). The response includes queryTextLength and queryTextTruncated."
+          }
+        },
+        "required": [
+          "projectName",
+          "formFqn"
+        ]
+      }
+    },
+    {
+      "name": "edt_form_render",
+      "description": "Render a managed form to a PNG via EDT's native offscreen renderer (the form-editor WYSIWYG engine), in the chosen interface variant (TAXI 8.3 / VERSION8_5) and theme (LIGHT/DARK). Returns the saved PNG path + size. For visual review of form layout.",
+      "descriptionRu": "Отрендерить управляемую форму в PNG через нативный offscreen-рендерер EDT (движок WYSIWYG редактора форм), в выбранном варианте интерфейса (Такси 8.3 / Версия 8.5) и теме (светлая/тёмная). Возвращает путь к PNG и размер. Для визуальной оценки формы.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "formFqn": {
+            "type": "string",
+            "description": "Form FQN, e.g. CommonForm.МояФорма, Catalog.Контрагенты.Form.ФормаЭлемента"
+          },
+          "fqn": {
+            "type": "string",
+            "description": "The old name of formFqn. Still accepted, so calls written before the form tools agreed on one name keep working; write formFqn in new ones."
+          },
+          "variant": {
+            "type": "string",
+            "description": "Interface variant: TAXI (8.3) or VERSION8_5 (default VERSION8_5)"
+          },
+          "theme": {
+            "type": "string",
+            "description": "Theme: LIGHT (default) or DARK"
+          },
+          "density": {
+            "type": "string",
+            "description": "Field density: NORMAL (default) or COMPACT – COMPACT matches EDT's compact editor mode (denser fields, larger relative font)"
+          },
+          "ratio": {
+            "type": "integer",
+            "description": "Interface common ratio in percent (default 100). Raise (e.g. 125/150) to enlarge the interface – text grows relative to fields, to match a Hi-DPI editor view."
+          },
+          "width": {
+            "type": "integer",
+            "description": "Viewport width px (default 1280)"
+          },
+          "height": {
+            "type": "integer",
+            "description": "Viewport height px (default 800)"
+          },
+          "scale": {
+            "type": "integer",
+            "description": "Upscale the finished PNG by this percent (>100; default 100 = native size). E.g. 150 to roughly match a 150% display. Raster upscale – the render itself is at 100%."
+          },
+          "outPath": {
+            "type": "string",
+            "description": "Absolute PNG output path (default: <tmp>/edt_form_<...>.png)"
+          }
+        },
+        "required": [
+          "projectName",
+          "formFqn"
+        ]
+      }
+    },
+    {
+      "name": "edt_add_attribute",
+      "description": "WRITE (Phase 2): add an attribute to a metadata object. Dry-run by default – validates (owner exists, name free, type parses, reference target exists) and returns the plan WITHOUT writing. apply=true performs the write (creates the attribute and commits). Requires a configured token. Caller must verify bsl_support_status EDITABLE before any apply.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): добавить реквизит объекту метаданных. По умолчанию dry-run – проверяет (объект есть, имя свободно, тип распознан, ссылочный тип существует) и возвращает план БЕЗ записи. apply=true – реальная запись (создаёт реквизит и фиксирует). Требует токен. Перед apply вызывающий обязан проверить bsl_support_status = EDITABLE.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "ownerFqn": {
+            "type": "string",
+            "description": "Object to add the attribute to, e.g. Catalog.Контрагенты, Document.Заказ"
+          },
+          "name": {
+            "type": "string",
+            "description": "New attribute name (Cyrillic), e.g. Комментарий"
+          },
+          "type": {
+            "type": "string",
+            "description": "Value type: Строка(150), Число(15,2), Булево, Дата/ДатаВремя/Время, ХранилищеЗначения, ОпределяемыйТип.X, or a reference <kind>Ссылка.X, where <kind> is Справочник, Документ, Перечисление, ПланВидовХарактеристик, ПланСчетов, ПланВидовРасчета, БизнесПроцесс, Задача, ПланОбмена. Composite type: comma-separate parts, e.g. \"СправочникСсылка.A, СправочникСсылка.B\" or \"Строка(10), Число(5)\""
+          },
+          "synonymRu": {
+            "type": "string",
+            "description": "Russian synonym (optional)"
+          },
+          "comment": {
+            "type": "string",
+            "description": "Comment (optional)"
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = dry-run: validate + return the plan, write nothing. true = perform the write (create the attribute and commit). Verify bsl_support_status EDITABLE first."
+          }
+        },
+        "required": [
+          "projectName",
+          "ownerFqn",
+          "name",
+          "type"
+        ]
+      }
+    },
+    {
+      "name": "edt_add_route",
+      "description": "WRITE: add a route (a URL template plus one HTTP method) to an HTTPService – the write tool for HTTP service routes, next to edt_add_attribute (attributes) and edt_add_method (module code). Dry-run by default – resolves the service, checks the template name is free and the HTTP method is valid, returns the plan WITHOUT writing. apply=true creates the url template and its method through the model (uuids generated like the other writers) and serialises the .mdo; createHandler also writes a handler stub into the service module. On an ADOPTED service of an extension the plan carries a warning: in compatibility mode 8.5.1 and below the platform refuses to load an own url template on an adopted service, and EDT validation stays silent about it. Requires a configured token. Caller must verify bsl_support_status EDITABLE before any apply.",
+      "descriptionRu": "ЗАПИСЬ: добавить маршрут (шаблон URL и один HTTP-метод) в HTTPService – инструмент записи маршрутов HTTP-сервиса, рядом с edt_add_attribute (реквизиты) и edt_add_method (код модуля). По умолчанию dry-run – находит сервис, проверяет что имя шаблона свободно и HTTP-метод допустим, возвращает план БЕЗ записи. apply=true создаёт шаблон URL и его метод через модель (uuid генерируются как у прочих инструментов записи) и сериализует .mdo; createHandler ещё и пишет заглушку обработчика в модуль сервиса. На ЗАИМСТВОВАННОМ сервисе расширения план несёт предупреждение: в режиме совместимости 8.5.1 и ниже платформа откажется загрузить собственный шаблон URL у заимствованного сервиса, а валидация EDT об этом молчит. Требует токен. Перед apply вызывающий обязан проверить bsl_support_status = EDITABLE.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "serviceFqn": {
+            "type": "string",
+            "description": "HTTP service to add the route to, e.g. HTTPService.Payments"
+          },
+          "name": {
+            "type": "string",
+            "description": "URL template name – a valid 1C identifier, e.g. UserInfo. Unique within the service."
+          },
+          "template": {
+            "type": "string",
+            "description": "URL template, e.g. /userinfo or /subscribers/{id}. A leading slash is added if missing."
+          },
+          "httpMethod": {
+            "type": "string",
+            "description": "HTTP method: GET (default), POST, PUT, DELETE, PATCH, HEAD, OPTIONS, ..."
+          },
+          "handler": {
+            "type": "string",
+            "description": "Handler procedure name in the service module (a valid 1C identifier). Optional – defaults to name+httpMethod, e.g. UserInfoGET."
+          },
+          "synonymRu": {
+            "type": "string",
+            "description": "Russian synonym for the url template (optional; defaults to name)."
+          },
+          "createHandler": {
+            "type": "boolean",
+            "description": "true = also splice a handler stub Функция <handler>(Запрос) into the service module (region ОбработчикиСобытий), created via edt_add_method. Default false."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = dry-run: validate + return the plan, write nothing. true = create the url template and method and commit. Verify bsl_support_status EDITABLE first."
+          }
+        },
+        "required": [
+          "projectName",
+          "serviceFqn",
+          "name",
+          "template"
+        ]
+      }
+    },
+    {
+      "name": "edt_infobase_config_state",
+      "description": "READ: is the infobase's DATABASE configuration - the one sessions execute - up to date, or is an update still pending? Asks the platform through a configurator agent and REFUSES the confirmation, so nothing is applied; when an update is pending the answer carries the full list of structure changes that are waiting. Works for a server infobase that authenticates its users, which is where the other transports stop. Starts a configurator agent for the infobase if none is running (it is kept for later calls - edt_designer_agent lists and stops them).",
+      "descriptionRu": "ЧТЕНИЕ: применена ли КОНФИГУРАЦИЯ БАЗЫ ДАННЫХ – та, которую исполняют сеансы, – или обновление ещё ждёт? Спрашивает саму платформу через агент конфигуратора и ОТКАЗЫВАЕТСЯ подтверждать, поэтому ничего не применяется; если обновление ждёт, в ответе полный список изменений структуры. Работает и для серверной базы с аутентификацией 1С – там, где остальные транспорты бессильны. Если агент для базы не запущен, поднимает его (и оставляет для следующих вызовов – список и остановка инструментом edt_designer_agent).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "infobase": {
+            "type": "string",
+            "description": "Infobase registered in EDT - name or uuid, as edt_infobases lists them. File and server infobases are both reachable."
+          },
+          "extension": {
+            "type": "string",
+            "description": "Ask about one extension's database configuration instead of the configuration itself. Optional."
+          },
+          "infobaseUser": {
+            "type": "string",
+            "description": "1C infobase user, e.g. Администратор. The agent authenticates AS THIS USER; leave empty for an infobase without users."
+          },
+          "infobasePassword": {
+            "type": "string",
+            "description": "That user's password (optional). Never echoed back."
+          },
+          "platformVersion": {
+            "type": "string",
+            "description": "Platform build for the configurator, e.g. 8.5.1.1302. FOUR digits pin that exact build and nothing else is started - a configurator of another build is refused by the server (\"Несоответствие версий клиента и сервера\"), so pin the stand's own build. Three digits (8.5.1) mean the line: the newest installed build of it. Optional."
+          }
+        },
+        "required": [
+          "infobase"
+        ]
+      }
+    },
+    {
+      "name": "edt_infobase_dump",
+      "description": "WRITE: dump an infobase to a .dt file via ibcmd - the backup to take BEFORE applying a configuration to the database. Addresses the infobase by file path or DBMS coordinates, so a clustered infobase needs no cluster access. Dry-run by default; refuses to overwrite an existing file. Nothing in the infobase changes, but the dump reads all of its data, so a token is required.",
+      "descriptionRu": "ЗАПИСЬ: выгрузить информационную базу в файл .dt через ibcmd – резервная копия, которую стоит снять ПЕРЕД применением конфигурации к базе данных. База адресуется путём или координатами СУБД, поэтому для кластерной базы доступ к кластеру не нужен. По умолчанию dry-run; перезаписывать существующий файл отказывается. В самой базе ничего не меняется, но выгрузка читает все её данные, поэтому нужен токен.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "outputPath": {
+            "type": "string",
+            "description": "Path of the .dt file to write. Refused if it already exists."
+          },
+          "databasePath": {
+            "type": "string",
+            "description": "File infobase directory. Use this OR the DBMS coordinates."
+          },
+          "dbms": {
+            "type": "string",
+            "description": "DBMS kind: MSSQLServer, PostgreSQL, IBMDB2, OracleDatabase."
+          },
+          "dbServer": {
+            "type": "string",
+            "description": "DBMS host (optional for a local instance)."
+          },
+          "dbName": {
+            "type": "string",
+            "description": "Database name (required with dbms)."
+          },
+          "dbUser": {
+            "type": "string",
+            "description": "DBMS user (optional). The DATABASE account, not the 1C one."
+          },
+          "dbPassword": {
+            "type": "string",
+            "description": "DBMS password (optional). Never echoed back."
+          },
+          "infobaseUser": {
+            "type": "string",
+            "description": "1C infobase user, e.g. Администратор. Required when the infobase authenticates its users."
+          },
+          "infobasePassword": {
+            "type": "string",
+            "description": "1C infobase password (optional). Never echoed back."
+          },
+          "platformVersion": {
+            "type": "string",
+            "description": "Platform build to pick the ibcmd install from, e.g. 8.5.1.1302. FOUR digits pin that exact build (ibcmd is missing from some builds of a line); three digits (8.5.1) mean the line: the newest installed build of it. Optional."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = dry-run: resolve ibcmd, check the destination and return the plan, write nothing. true = take the dump."
+          }
+        },
+        "required": [
+          "outputPath"
+        ]
+      }
+    },
+    {
+      "name": "edt_designer_agent",
+      "description": "Manage the configurator agents the bridge uses to reach infobases: list them, start one for an infobase, or stop it. An agent is a configurator in /AgentMode holding an open infobase session, and it authenticates as the INFOBASE user - which is how the bridge reaches a server infobase that authenticates its users. Agents are started on demand by the tools that need them; stopping one frees the session it holds on the server. An agent that has been idle too long is stopped on its own (EDT_BRIDGE_AGENT_IDLE_MINUTES, 30 by default, \"off\" to keep agents forever), and what a dead agent left behind is swept - see action=sweep.",
+      "descriptionRu": "Управление агентами конфигуратора, через которые мост обращается к информационным базам: список, запуск для базы, остановка. Агент – это конфигуратор в режиме /AgentMode с открытым сеансом базы; он проходит аутентификацию КАК ПОЛЬЗОВАТЕЛЬ БАЗЫ, поэтому доступен и серверной базе с аутентификацией 1С. Агенты поднимаются по требованию тех инструментов, которым нужны; остановка освобождает сеанс на сервере. Простаивающий агент останавливается сам (EDT_BRIDGE_AGENT_IDLE_MINUTES, по умолчанию 30, \"off\" – держать вечно), а остатки умершего агента подчищает action=sweep – и stop по той же базе, если останавливать уже нечего.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "list (default), start, stop or sweep. sweep clears what a dead agent left behind: the orphaned Designer session of one whose process is gone - the session that holds the infobase's configuration lock - and its temporary directory. list says of each leftover whether this bridge process or an earlier one left it. A start sweeps once by itself, and a stop for an infobase whose agent has died sweeps that agent's own remains and says so.",
+            "enum": [
+              "list",
+              "start",
+              "stop",
+              "sweep"
+            ]
+          },
+          "stopRunning": {
+            "type": "boolean",
+            "description": "sweep only: also stop agents of an earlier bridge process that are STILL RUNNING. Off by default - the bridge restarts more often than the agents it started, and those agents may be in use."
+          },
+          "infobase": {
+            "type": "string",
+            "description": "Infobase registered in EDT - name or uuid. Required for start and stop."
+          },
+          "infobaseUser": {
+            "type": "string",
+            "description": "1C infobase user the agent authenticates as, e.g. Администратор. Empty for an infobase without users. Bound to the agent AT START: an agent already running keeps the identity it was started with, and a call naming a different user is refused rather than served as somebody else."
+          },
+          "infobasePassword": {
+            "type": "string",
+            "description": "That user's password (optional). Never echoed back."
+          },
+          "platformVersion": {
+            "type": "string",
+            "description": "Platform build for the configurator, e.g. 8.5.1.1302. FOUR digits pin that exact build and nothing else is started - a configurator of another build is refused by the server (\"Несоответствие версий клиента и сервера\"), so pin the stand's own build. Three digits (8.5.1) mean the line: the newest installed build of it. Optional."
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "edt_check_info",
+      "description": "READ: what an EDT validation check means - its description, the non-compliant and compliant examples, and LINKS TO THE 1C DEVELOPMENT STANDARDS it enforces. Pair it with edt_project_errors, which reports the check id of every problem: that answers \"what fired\", this answers \"why the rule exists and what the standard says\". An exact id returns the full text; anything else lists what matches, by id or by title - so pasting a problem message works when its id is a short code (SU200) whose mapping lives in the check engine rather than in these resources. Every entry says which of the two matched. The text comes from the check bundles shipped with EDT, in English or Russian.",
+      "descriptionRu": "ЧТЕНИЕ: что означает проверка EDT – её описание, примеры неправильного и правильного кода и ССЫЛКИ НА СТАНДАРТЫ РАЗРАБОТКИ 1С, которые она проверяет. Дополняет edt_project_errors, который отдаёт идентификатор проверки у каждой проблемы: тот отвечает \"что сработало\", этот – \"почему такое правило и что говорит стандарт\". Точный идентификатор возвращает полный текст, всё остальное – список того, что совпало по идентификатору или по ЗАГОЛОВКУ: поэтому работает и вставка текста проблемы, у которой идентификатор – короткий код (SU200), а его сопоставление живёт в движке проверок, а не в этих ресурсах. У каждой записи сказано, чем именно она нашлась. Текст берётся из бандлов проверок в поставке EDT, на английском или русском.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "check": {
+            "type": "string",
+            "description": "Check id, exactly as edt_project_errors reports it - the \"bundle:id\" form works as is. Text that matches no id is looked up among the TITLES, which is how a problem whose id is a short code (SU200) still finds its documentation: paste the problem message. Empty lists everything documented."
+          },
+          "language": {
+            "type": "string",
+            "description": "ru for the Russian text, en (default) otherwise. The checks ship both."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Cap on listed checks (default 50)."
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "edt_delete_extension",
+      "description": "WRITE (dry-run by default, needs force): remove an extension from an infobase through the configurator agent, which authenticates as the infobase user - so a server infobase with users is reachable. The dry-run first reads the extension's current properties, so an empty answer means the name is wrong rather than the deletion being a no-op. IRREVERSIBLE from here: the extension's configuration lives in the infobase, and only a project or a .cfe you still have can put it back.",
+      "descriptionRu": "ЗАПИСЬ (по умолчанию dry-run, нужен force): удаляет расширение из информационной базы через агент конфигуратора, который проходит аутентификацию как пользователь базы – поэтому доступна и серверная база с пользователями. Dry-run сначала читает текущие свойства расширения, поэтому пустой ответ означает неверное имя, а не то, что удалять нечего. НЕОБРАТИМО: конфигурация расширения хранится в базе, вернуть её может только проект или сохранённый .cfe.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "infobase": {
+            "type": "string",
+            "description": "Infobase registered in EDT - name or uuid - or an address: \"host\\base\" for a server infobase, the directory of a file one."
+          },
+          "name": {
+            "type": "string",
+            "description": "Extension name as the INFOBASE holds it (edt_extension_properties lists them). Required."
+          },
+          "infobaseUser": {
+            "type": "string",
+            "description": "1C infobase user, e.g. Администратор. Empty for an infobase without users."
+          },
+          "infobasePassword": {
+            "type": "string",
+            "description": "That user's password. Never echoed back."
+          },
+          "platformVersion": {
+            "type": "string",
+            "description": "Platform build for the configurator, e.g. 8.5.1.1302. FOUR digits pin that exact build and nothing else is started - a configurator of another build is refused by the server (\"Несоответствие версий клиента и сервера\"), so pin the stand's own build. Three digits (8.5.1) mean the line: the newest installed build of it. Optional."
+          },
+          "updateDatabaseConfig": {
+            "type": "boolean",
+            "description": "Apply the database configuration afterwards (default true), so sessions stop running the removed extension's code."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = report what would be deleted."
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Required on top of apply. An extension's configuration lives in the infobase, not in a project - deleting it is not something a rebuild undoes."
+          }
+        },
+        "required": [
+          "infobase",
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "edt_infobase_sessions",
+      "description": "The 1C cluster's sessions, through rac: list them (optionally for one infobase or one application) and end them. This is the one thing neither the configurator agent nor ibcmd can do - sessions live in the cluster manager, and ibcmd's session mode only addresses a stand-alone ibcmd server. Reach for it when an infobase refuses to be configured (\"Ошибка блокировки информационной базы для конфигурирования\"): a designer session that was killed rather than closed still holds the configuration lock, and it shows up here as a Designer session. Terminating is dry-run by default and needs force on top of apply. A fully applied terminate returns only the terminated ids - the pre-termination list would be stale; re-list for the current state.",
+      "descriptionRu": "Сеансы кластера 1С через rac: список (можно по одной базе или одному виду приложения) и завершение. Это единственное, чего не умеют ни агент конфигуратора, ни ibcmd – сеансы живут в менеджере кластера, а режим session у ibcmd адресует только автономный сервер ibcmd. Нужен, когда база отказывается конфигурироваться (\"Ошибка блокировки информационной базы для конфигурирования\"): убитый, а не закрытый сеанс конфигуратора продолжает держать блокировку и виден здесь как сеанс Designer. Завершение по умолчанию dry-run и требует force вдобавок к apply. Применённое завершение возвращает только идентификаторы завершённых сеансов: список был снят до завершения и устарел бы; актуальное состояние – повторным list.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "server": {
+            "type": "string",
+            "description": "Cluster host, optionally with a port (the 1C server, not the DBMS one). Required."
+          },
+          "infobase": {
+            "type": "string",
+            "description": "Infobase name IN THE CLUSTER - narrows the list to it. Optional."
+          },
+          "appId": {
+            "type": "string",
+            "description": "Keep only sessions of this application: Designer, 1CV8C, BackgroundJob, WebClient, ... Optional."
+          },
+          "sessions": {
+            "type": "array",
+            "description": "Session uuids to terminate. Omitted, terminate ends every session matching infobase and appId - which is why it also needs force.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "clusterUser": {
+            "type": "string",
+            "description": "Cluster administrator, when the cluster has one."
+          },
+          "clusterPassword": {
+            "type": "string",
+            "description": "That administrator's password. Never echoed back."
+          },
+          "infobaseUser": {
+            "type": "string",
+            "description": "Infobase administrator, when the infobase itself asks for one: a bare call then answers that the user lacks rights on the infobase."
+          },
+          "infobasePassword": {
+            "type": "string",
+            "description": "That administrator's password. Never echoed back."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Message shown to the user whose session is ended."
+          },
+          "platformVersion": {
+            "type": "string",
+            "description": "Platform build to pick rac from, e.g. 8.5.1.1302. FOUR digits pin that exact build - rac talks to a ras of its own build; three digits (8.5.1) mean the line: the newest installed build of it. Optional."
+          },
+          "action": {
+            "type": "string",
+            "description": "list (default) or terminate.",
+            "enum": [
+              "list",
+              "terminate"
+            ]
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "terminate: false (default) reports what would be ended."
+          },
+          "force": {
+            "type": "boolean",
+            "description": "terminate: required on top of apply - ending a session interrupts someone's work."
+          }
+        },
+        "required": [
+          "server"
+        ]
+      }
+    },
+    {
+      "name": "edt_infobase_maintenance",
+      "description": "A maintenance window around a database-configuration update, through rac: begin raises scheduled-jobs-deny (and optionally sessions-deny with a permission code), watches the session list until only the allowed applications remain and reports \"clear to update\"; end lowers BOTH flags - the sessions-deny a begin in another call raised included - and says so when one stays up; status just reports. The point: on a lively base BackgroundJob sessions respawn every minute, so terminating them is useless - with the flag up they drain by themselves and nothing has to be killed. Needs the infobase administrator. The flags live in the cluster: the configurator agent has no operation for them, rac is the route. Terminate what refuses to drain with edt_infobase_sessions.",
+      "descriptionRu": "Окно обслуживания вокруг обновления конфигурации базы данных, через rac: begin поднимает scheduled-jobs-deny (и, по запросу, sessions-deny с кодом доступа), ждёт, пока в списке сеансов останутся только разрешённые приложения, и отвечает \"clear to update\"; end опускает ОБА флага, включая sessions-deny, поднятый вызовом begin, и сообщает, если флаг остался поднятым; status только отчитывается. Смысл: на живой базе сеансы BackgroundJob пересоздаются каждую минуту, и завершать их бесполезно – с поднятым флагом они иссякают сами, убивать никого не нужно. Нужен администратор информационной базы. Флаги живут в кластере: у агента конфигуратора операции для них нет, путь – rac. Кто не иссяк – завершается edt_infobase_sessions.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "server": {
+            "type": "string",
+            "description": "Cluster host, optionally with a port (the 1C server, not the DBMS one). Required."
+          },
+          "infobase": {
+            "type": "string",
+            "description": "Infobase name IN THE CLUSTER. Required - the denial flags belong to one infobase."
+          },
+          "action": {
+            "type": "string",
+            "description": "status (default): report the flags and the sessions. begin: raise the flags, then watch the sessions drain. end: lower BOTH denial flags, whatever this call asks for - it undoes a begin made in another call.",
+            "enum": [
+              "status",
+              "begin",
+              "end"
+            ]
+          },
+          "allowedAppIds": {
+            "type": "array",
+            "description": "Sessions of these applications do not block the update (default: Designer). Everything else is reported as a blocker.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sessionsDeny": {
+            "type": "boolean",
+            "description": "begin: also deny NEW sessions, not only scheduled jobs. Mind that this can lock out the updater too - set permissionCode to keep a door open. end ignores it and lowers both flags either way."
+          },
+          "permissionCode": {
+            "type": "string",
+            "description": "begin with sessionsDeny: the pass-code that lets a session in while sessions are denied."
+          },
+          "deniedMessage": {
+            "type": "string",
+            "description": "begin with sessionsDeny: message shown to a refused session."
+          },
+          "waitSeconds": {
+            "type": "integer",
+            "description": "begin: how long to watch the drain before reporting (default 90; 0 looks once). BackgroundJob sessions are short - with the flag up they usually drain within a minute."
+          },
+          "clusterUser": {
+            "type": "string",
+            "description": "Cluster administrator, when the cluster has one."
+          },
+          "clusterPassword": {
+            "type": "string",
+            "description": "That administrator's password. Never echoed back."
+          },
+          "infobaseUser": {
+            "type": "string",
+            "description": "Infobase administrator - the flags and the narrowed session list need it; a bare call answers \"Недостаточно прав пользователя\"."
+          },
+          "infobasePassword": {
+            "type": "string",
+            "description": "That user's password. Never echoed back."
+          },
+          "platformVersion": {
+            "type": "string",
+            "description": "Platform build to pick rac from, e.g. 8.5.1.1302. FOUR digits pin that exact build - rac talks to a ras of its own build; three digits (8.5.1) mean the line: the newest installed build of it. Optional."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "begin/end: false (default) reports the plan and changes nothing. The flags are reversible, so force is not required."
+          }
+        },
+        "required": [
+          "server",
+          "infobase"
+        ]
+      }
+    },
+    {
+      "name": "edt_update_database_config",
+      "description": "WRITE (dry-run by default): apply an infobase's DATABASE configuration - the step that makes running sessions execute the configuration the infobase holds. Loading a project into an infobase (edt_update_infobase) does NOT do this; until it happens, every session keeps running the previous code, which is what a freshly added HTTP route answering 404 looks like. The dry-run starts the same operation and refuses its confirmation, so it reports exactly the structure changes that would be applied. sessionTermination=force ends other people's sessions when an exclusive lock is needed, but on a lively infobase that is not enough on its own - background jobs respawn within a minute and take the lock back, so raise a maintenance window with edt_infobase_maintenance first. Driven through a configurator agent, so a server infobase that authenticates its users is reachable.",
+      "descriptionRu": "ЗАПИСЬ (по умолчанию dry-run): применяет КОНФИГУРАЦИЮ БАЗЫ ДАННЫХ – шаг, после которого работающие сеансы начинают исполнять ту конфигурацию, которую хранит база. Загрузка проекта в базу (edt_update_infobase) этого НЕ делает: до применения каждый сеанс исполняет прежний код – именно так выглядит только что добавленный маршрут HTTP-сервиса, отвечающий 404. Dry-run запускает ту же операцию и отказывается её подтверждать, поэтому показывает точный список изменений структуры. sessionTermination=force завершает чужие сеансы, когда нужна монопольная блокировка, но на живой базе одного этого мало: фоновые задания переподключаются за минуту и забирают блокировку обратно, поэтому сначала поднимите окно обслуживания через edt_infobase_maintenance. Работает через агент конфигуратора, поэтому доступна и серверная база с аутентификацией 1С.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "infobase": {
+            "type": "string",
+            "description": "Infobase registered in EDT - name or uuid."
+          },
+          "extension": {
+            "type": "string",
+            "description": "Apply one extension's database configuration instead of the configuration itself. Optional."
+          },
+          "sessionTermination": {
+            "type": "string",
+            "description": "What to do when an exclusive lock is needed and sessions hold the infobase: disable (default - fail instead), prompt, or force (END other people's sessions). On a LIVELY infobase force does not settle it: BackgroundJob sessions respawn within a minute, so the update loses the race and the platform keeps asking to retry. There, raise a maintenance window first with edt_infobase_maintenance - it denies scheduled jobs and lets the sessions drain, and nothing has to be killed.",
+            "enum": [
+              "disable",
+              "prompt",
+              "force"
+            ]
+          },
+          "terminationMessage": {
+            "type": "string",
+            "description": "Message shown to users whose sessions are ended (with sessionTermination=force). Optional."
+          },
+          "infobaseUser": {
+            "type": "string",
+            "description": "1C infobase user, e.g. Администратор. The agent authenticates AS THIS USER; leave empty for an infobase without users."
+          },
+          "infobasePassword": {
+            "type": "string",
+            "description": "That user's password (optional). Never echoed back."
+          },
+          "platformVersion": {
+            "type": "string",
+            "description": "Platform build for the configurator, e.g. 8.5.1.1302. FOUR digits pin that exact build and nothing else is started - a configurator of another build is refused by the server (\"Несоответствие версий клиента и сервера\"), so pin the stand's own build. Three digits (8.5.1) mean the line: the newest installed build of it. Optional."
+          },
+          "answer": {
+            "type": "string",
+            "description": "Which option to give when the platform stops and asks - the value it offered (or the label). Left out, the question comes back in \"question\" with its options and NOTHING is answered: one option ends other users' sessions and another applies the change dynamically on live sessions, so the choice is yours to make, not this tool's. Ask once, read the options, call again with answer."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) reports what would be applied and applies nothing; true applies it."
+          }
+        },
+        "required": [
+          "infobase"
+        ]
+      }
+    },
+    {
+      "name": "edt_add_form",
+      "description": "WRITE (Phase 2): create a managed form on an existing metadata object via EDT's own form generator - the engine behind the \"New form\" wizard - so the form, its items and its module are generated the way EDT would, not hand-written as XML. Dry-run by default: validates and returns the plan WITHOUT creating. apply=true creates it (owner .mdo gains the form entry, Form.form and Module.bsl are written). Additive - no force needed - but requires a configured token. Verify bsl_support_status EDITABLE before apply.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): создать управляемую форму у существующего объекта метаданных штатным генератором EDT - тем же, что стоит за мастером \"Новая форма\", - поэтому форма, её элементы и модуль получаются такими, какими их сделала бы EDT, а не собранными руками из XML. По умолчанию dry-run: проверяет и возвращает план БЕЗ создания. apply=true создаёт (в .mdo владельца появляется форма, пишутся Form.form и Module.bsl). Аддитивно - force не нужен - но требует токен. Перед apply проверить bsl_support_status = EDITABLE.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "ownerFqn": {
+            "type": "string",
+            "description": "Object that will carry the form, with an English type prefix, e.g. Catalog.Контрагенты, Document.Заказ, DataProcessor.X, ExternalDataProcessor.Y, InformationRegister.Z, Report.R"
+          },
+          "name": {
+            "type": "string",
+            "description": "New form name (a valid 1C identifier, Cyrillic allowed), e.g. Форма, ФормаЭлемента, ФормаСписка"
+          },
+          "formType": {
+            "type": "string",
+            "description": "Form kind. A FormType name - GENERIC, OBJECT, FOLDER, LIST, CHOICE, FOLDER_CHOICE, RECORD, RECORD_SET, REPORT, REPORT_SETTINGS, REPORT_VARIANT, CONSTANTS, SEARCH, SAVE, LOAD, DYNAMIC_LIST - or a Russian alias (ФормаЭлемента, ФормаСписка, ФормаВыбора, ФормаЗаписи, ФормаНабораЗаписей, ФормаОтчета, ПроизвольнаяФорма). Optional - omitted picks the owner's usual kind (Catalog/Document -> OBJECT, InformationRegister -> RECORD, Report -> REPORT, DataProcessor -> GENERIC)."
+          },
+          "synonymRu": {
+            "type": "string",
+            "description": "Russian synonym. Optional."
+          },
+          "defaultForm": {
+            "type": "boolean",
+            "description": "Also make it the owner's default form. Optional, default false."
+          },
+          "columnCount": {
+            "type": "integer",
+            "description": "Column count passed to the generator (EDT's wizard default is 1). Optional."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = dry-run: validate (owner exists, carries forms, name free, form kind known) and return the plan, create nothing. true = create the form (BasicForm + generated Form content + Module.bsl). Verify bsl_support_status EDITABLE first."
+          }
+        },
+        "required": [
+          "projectName",
+          "ownerFqn",
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "edt_add_form_attribute",
+      "description": "WRITE (Phase 2): add an attribute to a managed form. The id comes from EDT's own form identifier service and the type from the same grammar edt_add_attribute uses, so the attribute is indistinguishable from one added in the form editor. Dry-run by default: validates and returns the plan WITHOUT writing. apply=true adds it and serializes Form.form. Additive - no force needed - but requires a configured token.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): добавить реквизит управляемой формы. Идентификатор выдаёт штатная служба идентификаторов формы, тип разбирается той же грамматикой, что у edt_add_attribute, поэтому реквизит неотличим от добавленного в редакторе формы. По умолчанию dry-run: проверяет и возвращает план БЕЗ записи. apply=true добавляет реквизит и сериализует Form.form. Аддитивно - force не нужен - но требует токен.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "formFqn": {
+            "type": "string",
+            "description": "Form FQN with English type prefixes, e.g. Catalog.Контрагенты.Form.ФормаЭлемента, DataProcessor.X.Form.Форма, CommonForm.Y"
+          },
+          "name": {
+            "type": "string",
+            "description": "New form attribute name (a valid 1C identifier)"
+          },
+          "type": {
+            "type": "string",
+            "description": "Value type: Строка(150), Число(15, 2), Булево, Дата, ТаблицаЗначений, a reference such as СправочникСсылка.Контрагенты, or an OBJECT type such as ВнешняяОбработкаОбъект.X / СправочникОбъект.X - that is what a main attribute carries, the one that reaches the object module. Comma-separate for a composite type."
+          },
+          "titleRu": {
+            "type": "string",
+            "description": "Russian title. Optional."
+          },
+          "columnOf": {
+            "type": "string",
+            "description": "Work on a COLUMN of this value-table form attribute instead of a form attribute, e.g. columnOf=Курсы addresses the columns of the Курсы attribute. Optional."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = dry-run: validate (form resolves, name free, type parses) and return the plan, write nothing. true = add the attribute and serialize Form.form."
+          }
+        },
+        "required": [
+          "projectName",
+          "formFqn",
+          "name",
+          "type"
+        ]
+      }
+    },
+    {
+      "name": "edt_modify_form_attribute",
+      "description": "WRITE (Phase 2): change an existing form attribute - value type, title or main flag. Renaming is deliberately not offered: form items address an attribute by name, so a rename is a refactoring, not a property edit. Dry-run by default; pass at least one of type / titleRu / main. Requires a configured token.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): изменить существующий реквизит формы - тип значения, заголовок или признак основного. Переименование намеренно не предлагается: элементы формы адресуют реквизит по имени, поэтому переименование - это рефакторинг, а не правка свойства. По умолчанию dry-run; задать нужно хотя бы одно из type / titleRu / main. Требует токен.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "formFqn": {
+            "type": "string",
+            "description": "Form FQN with English type prefixes, e.g. Catalog.Контрагенты.Form.ФормаЭлемента, DataProcessor.X.Form.Форма, CommonForm.Y"
+          },
+          "name": {
+            "type": "string",
+            "description": "Form attribute to change"
+          },
+          "type": {
+            "type": "string",
+            "description": "New value type, same grammar as edt_add_form_attribute. Optional - omit to keep the current one."
+          },
+          "titleRu": {
+            "type": "string",
+            "description": "New Russian title; an empty string clears it. Optional."
+          },
+          "main": {
+            "type": "boolean",
+            "description": "Whether this is the form's main attribute. Optional."
+          },
+          "columnOf": {
+            "type": "string",
+            "description": "Work on a COLUMN of this value-table form attribute instead of a form attribute, e.g. columnOf=Курсы addresses the columns of the Курсы attribute. Optional."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = dry-run: validate and return the plan, write nothing. true = apply the change and serialize Form.form."
+          }
+        },
+        "required": [
+          "projectName",
+          "formFqn",
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "edt_remove_form_attribute",
+      "description": "WRITE (Phase 2), DESTRUCTIVE: remove an attribute from a managed form. The dry-run lists every form item whose data path starts at that attribute - those bindings break when it goes. force=true required to apply; requires a configured token.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2), ДЕСТРУКТИВНО: удалить реквизит управляемой формы. Dry-run перечисляет все элементы формы, чей путь к данным начинается с этого реквизита, - их связи сломаются при удалении. Для применения нужен force=true и токен.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "formFqn": {
+            "type": "string",
+            "description": "Form FQN with English type prefixes, e.g. Catalog.Контрагенты.Form.ФормаЭлемента, DataProcessor.X.Form.Форма, CommonForm.Y"
+          },
+          "name": {
+            "type": "string",
+            "description": "Form attribute to remove"
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Required for apply: removing an attribute is destructive and any item bound to it is left dangling."
+          },
+          "columnOf": {
+            "type": "string",
+            "description": "Work on a COLUMN of this value-table form attribute instead of a form attribute, e.g. columnOf=Курсы addresses the columns of the Курсы attribute. Optional."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = dry-run: report the attribute and the items bound to it, remove nothing. true = remove it (force must also be true)."
+          }
+        },
+        "required": [
+          "projectName",
+          "formFqn",
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "edt_add_form_command",
+      "description": "WRITE (Phase 2): add a command to a managed form. The id comes from EDT's own form identifier service and the action is wired to a handler procedure in the form module; createHandler=true also writes that procedure's stub, creating the module file when the form has none. Note the command still needs a button to be reachable in the UI. Dry-run by default. Additive - no force needed - but requires a configured token.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): добавить команду управляемой формы. Идентификатор выдаёт штатная служба идентификаторов формы, действие связывается с процедурой-обработчиком модуля формы; createHandler=true дополнительно пишет заготовку этой процедуры, создавая файл модуля, если его у формы ещё нет. Учтите: чтобы команда была доступна в интерфейсе, ей нужна кнопка. По умолчанию dry-run. Аддитивно - force не нужен - но требует токен.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "formFqn": {
+            "type": "string",
+            "description": "Form FQN with English type prefixes, e.g. Catalog.Контрагенты.Form.ФормаЭлемента, DataProcessor.X.Form.Форма, CommonForm.Y"
+          },
+          "name": {
+            "type": "string",
+            "description": "New form command name (a valid 1C identifier)"
+          },
+          "titleRu": {
+            "type": "string",
+            "description": "Russian title - the button caption. Optional."
+          },
+          "toolTipRu": {
+            "type": "string",
+            "description": "Russian tooltip. Optional."
+          },
+          "handler": {
+            "type": "string",
+            "description": "Handler procedure the command calls. Optional - defaults to the command name."
+          },
+          "createHandler": {
+            "type": "boolean",
+            "description": "Also write the handler procedure's stub into the form module, creating the module file when the form has none. Optional, default false - a command pointing at a missing procedure is flagged by EDT validation."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = dry-run: validate and return the plan, write nothing. true = add the command and serialize Form.form."
+          }
+        },
+        "required": [
+          "projectName",
+          "formFqn",
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "edt_add_form_handler",
+      "description": "WRITE (Phase 2): register an event handler on a managed form or on one of its items. The procedure alone is not a handler: without the handlers entry in Form.form the platform never calls it, and validation stays silent about it. The events a target allows are asked of EDT itself, so a misspelled event is refused with the allowed list; createHandler=true also writes the stub with the signature the event declares and the right compilation directive. Dry-run by default. Additive - no force needed - but requires a configured token.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): зарегистрировать обработчик события управляемой формы или её элемента. Одной процедуры мало: без записи handlers в Form.form платформа её не вызывает, а валидация об этом молчит. Список допустимых событий берётся у самой EDT, поэтому неверно названное событие отвергается с перечнем допустимых; createHandler=true дополнительно пишет заготовку с сигнатурой, которую объявляет событие, и с нужной директивой компиляции. По умолчанию dry-run. Аддитивно - force не нужен - но требует токен.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "formFqn": {
+            "type": "string",
+            "description": "Form FQN with English type prefixes, e.g. Catalog.Контрагенты.Form.ФормаЭлемента, DataProcessor.X.Form.Форма, CommonForm.Y"
+          },
+          "event": {
+            "type": "string",
+            "description": "Event to handle, by either name: OnCreateAtServer or ПриСозданииНаСервере. An event the target does not allow is refused with the list of the ones it does."
+          },
+          "itemName": {
+            "type": "string",
+            "description": "Form item the event belongs to (a field's ПриИзменении). Optional - omitted, the event is the form's own."
+          },
+          "handler": {
+            "type": "string",
+            "description": "Handler procedure name. Optional - defaults to the event name for a form event and to itemName + event name for an item's."
+          },
+          "createHandler": {
+            "type": "boolean",
+            "description": "Also write the procedure's stub into the form module, creating the module file when the form has none. Optional, default false. The stub carries the signature the event declares and the directive its environments imply."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = dry-run: validate (form, item, event, and that the event is not handled already) and return the plan, write nothing. true = register the handler and serialize Form.form."
+          }
+        },
+        "required": [
+          "projectName",
+          "formFqn",
+          "event"
+        ]
+      }
+    },
+    {
+      "name": "edt_modify_form_command",
+      "description": "WRITE (Phase 2): change an existing form command - title, tooltip or the handler procedure its action points at. Re-pointing the handler does not rename the procedure: aim it at one that exists in the form module, or add it with edt_add_method. Dry-run by default; pass at least one of titleRu / toolTipRu / handler. Requires a token.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): изменить существующую команду формы - заголовок, подсказку или процедуру-обработчик, на которую указывает действие. Перенацеливание обработчика не переименовывает процедуру: указывайте на существующую в модуле формы либо добавьте её через edt_add_method. По умолчанию dry-run; задать нужно хотя бы одно из titleRu / toolTipRu / handler. Требует токен.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "formFqn": {
+            "type": "string",
+            "description": "Form FQN with English type prefixes, e.g. Catalog.Контрагенты.Form.ФормаЭлемента, DataProcessor.X.Form.Форма, CommonForm.Y"
+          },
+          "name": {
+            "type": "string",
+            "description": "Form command to change"
+          },
+          "titleRu": {
+            "type": "string",
+            "description": "New Russian title; an empty string clears it. Optional."
+          },
+          "toolTipRu": {
+            "type": "string",
+            "description": "New Russian tooltip; an empty string clears it. Optional."
+          },
+          "handler": {
+            "type": "string",
+            "description": "Handler procedure the command should call. Optional. The procedure itself is not renamed - point it at one that exists in the form module."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = dry-run: validate and return the plan, write nothing. true = apply the change and serialize Form.form."
+          }
+        },
+        "required": [
+          "projectName",
+          "formFqn",
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "edt_remove_form_command",
+      "description": "WRITE (Phase 2), DESTRUCTIVE: remove a command from a managed form. The dry-run lists the buttons wired to it - those references break when it goes. The handler procedure in the form module is left untouched; delete it separately with edt_delete_method if it is no longer needed. force=true required to apply; requires a configured token.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2), ДЕСТРУКТИВНО: удалить команду управляемой формы. Dry-run перечисляет кнопки, связанные с ней, - эти ссылки сломаются при удалении. Процедура-обработчик в модуле формы не трогается; если она больше не нужна, удалите её отдельно через edt_delete_method. Для применения нужен force=true и токен.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "formFqn": {
+            "type": "string",
+            "description": "Form FQN with English type prefixes, e.g. Catalog.Контрагенты.Form.ФормаЭлемента, DataProcessor.X.Form.Форма, CommonForm.Y"
+          },
+          "name": {
+            "type": "string",
+            "description": "Form command to remove"
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Required for apply: removing a command is destructive and any button wired to it is left dangling."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = dry-run: report the command and the buttons using it, remove nothing. true = remove it (force must also be true)."
+          }
+        },
+        "required": [
+          "projectName",
+          "formFqn",
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "edt_add_form_item",
+      "description": "WRITE (Phase 2): add a visual item to a managed form - field, table, button, group or decoration - through EDT's own IFormItemManagementService, the service the form editor itself calls. Naming, ids, a field's actual type and a table's auto-filled columns are decided by EDT, not assembled here. A table bound to a value-table attribute gets its columns filled in. index/beforeItem/afterItem select an exclusive insertion position. Typed group/field options and scalar choiceList are validated before writing. Dry-run by default. Additive - no force - but requires a token.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): добавить элемент управляемой формы - поле, таблицу, кнопку, группу или декорацию - через штатный IFormItemManagementService, тот самый, который вызывает редактор форм. Имена, идентификаторы, фактический вид поля и автозаполнение колонок таблицы определяет EDT, а не сборка здесь. Таблица, связанная с реквизитом типа ТаблицаЗначений, получает колонки автоматически. index/beforeItem/afterItem задают одно место вставки. Свойства групп/полей и scalar choiceList проверяются до записи. По умолчанию dry-run. Аддитивно - force не нужен - но требует токен.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "formFqn": {
+            "type": "string",
+            "description": "Form FQN with English type prefixes, e.g. Catalog.Контрагенты.Form.ФормаЭлемента, DataProcessor.X.Form.Форма, CommonForm.Y"
+          },
+          "kind": {
+            "type": "string",
+            "description": "What to add: field, table, button, group or decoration"
+          },
+          "name": {
+            "type": "string",
+            "description": "Item name. Optional - omitted lets EDT pick a unique one."
+          },
+          "parent": {
+            "type": "string",
+            "description": "Container item to place it in (a group or table). Optional - omitted puts it at the form root."
+          },
+          "dataPath": {
+            "type": "string",
+            "description": "What a field or table binds to: a form attribute, or attribute.column for a table column, e.g. ДатаКурсов or Курсы.Курс. Required for field and table."
+          },
+          "command": {
+            "type": "string",
+            "description": "Form command a button runs. Required for button."
+          },
+          "groupType": {
+            "type": "string",
+            "description": "Group kind: usual group, page, pages, command bar, button group, column group, popup (Russian names accepted). Optional, defaults to a usual group."
+          },
+          "titleRu": {
+            "type": "string",
+            "description": "Russian title. Optional."
+          },
+          "index": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Zero-based sibling index after excluding the moved item. Exclusive with beforeItem/afterItem."
+          },
+          "beforeItem": {
+            "type": "string",
+            "description": "Insert before this direct sibling in the destination. Exclusive with index/afterItem."
+          },
+          "afterItem": {
+            "type": "string",
+            "description": "Insert after this direct sibling in the destination. Exclusive with index/beforeItem."
+          },
+          "groupDirection": {
+            "type": "string",
+            "description": "Usual-group child layout: Auto, Horizontal, Vertical, HorizontalIfPossible or AlwaysHorizontal. Optional."
+          },
+          "group": {
+            "type": "string",
+            "description": "Alias of groupDirection. Do not combine the two names."
+          },
+          "representation": {
+            "type": "string",
+            "description": "Representation enum supported by the current group or button, e.g. None/WeakSeparation/StrongSeparation for a usual group. Optional."
+          },
+          "showTitle": {
+            "type": "boolean",
+            "description": "Show the usual group's title. Optional."
+          },
+          "united": {
+            "type": "boolean",
+            "description": "Keep usual-group children united. Optional."
+          },
+          "titleLocation": {
+            "type": "string",
+            "description": "Field title location (Auto/Left/Right/Top/Bottom/None), or usual-group child title location. The value must exist in the target EDT enum. Optional."
+          },
+          "maxHeight": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Maximum input-field height; disables autoMaxHeight. Requires InputField. Optional."
+          },
+          "verticalStretch": {
+            "type": "boolean",
+            "description": "Vertical stretch of a group or input field. Optional."
+          },
+          "fieldType": {
+            "type": "string",
+            "description": "Field kind. EDT initializes the matching ext-info. Optional.",
+            "enum": [
+              "InputField",
+              "RadioButtonField",
+              "CheckBoxField"
+            ]
+          },
+          "choiceList": {
+            "type": "array",
+            "description": "Replace the InputField/RadioButtonField choice list. Entries have a scalar string/number/boolean value and optional titleRu. Enum/reference/object values are not supported. An empty array clears the list.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "value": {
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean"
+                  ]
+                },
+                "titleRu": {
+                  "type": "string",
+                  "description": "Russian choice presentation. Optional."
+                }
+              },
+              "required": [
+                "value"
+              ]
+            }
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = dry-run: validate (form resolves, parent exists, name free, data path and command resolve) and return the plan, add nothing. true = add the item and serialize Form.form."
+          }
+        },
+        "required": [
+          "projectName",
+          "formFqn",
+          "kind"
+        ]
+      }
+    },
+    {
+      "name": "edt_modify_form_item",
+      "description": "WRITE (Phase 2): rename a form item or change its title, visibility or enabled state. Except for the name these are the DESIGN values stored in Form.form - runtime BSL (ПриСозданииНаСервере and friends) can still override them. Dry-run by default; pass at least one of newName/titleRu/visible/enabled or a typed group/field option. Supports fieldType and scalar choiceList replacement. Requires a configured token.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): переименовать элемент формы или изменить у него заголовок, видимость и доступность. Кроме имени это ПРОЕКТНЫЕ значения, хранящиеся в Form.form, - код (ПриСозданииНаСервере и подобные) может переопределить их в рантайме. По умолчанию dry-run; задать нужно хотя бы одно из newName / titleRu / visible / enabled или типизированное свойство группы/поля. Доступны fieldType и замена scalar choiceList. Требует токен.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "formFqn": {
+            "type": "string",
+            "description": "Form FQN with English type prefixes, e.g. Catalog.Контрагенты.Form.ФормаЭлемента, DataProcessor.X.Form.Форма, CommonForm.Y"
+          },
+          "name": {
+            "type": "string",
+            "description": "Form item to change"
+          },
+          "newName": {
+            "type": "string",
+            "description": "Rename the item to this (a valid 1C identifier, free on the form). Optional. The handler procedures keep their own names - only the item is renamed."
+          },
+          "titleRu": {
+            "type": "string",
+            "description": "New Russian title; an empty string clears it. Optional."
+          },
+          "visible": {
+            "type": "boolean",
+            "description": "Design-time visibility. Optional."
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Design-time enabled state. Optional."
+          },
+          "groupDirection": {
+            "type": "string",
+            "description": "Usual-group child layout: Auto, Horizontal, Vertical, HorizontalIfPossible or AlwaysHorizontal. Optional."
+          },
+          "group": {
+            "type": "string",
+            "description": "Alias of groupDirection. Do not combine the two names."
+          },
+          "representation": {
+            "type": "string",
+            "description": "Representation enum supported by the current group or button, e.g. None/WeakSeparation/StrongSeparation for a usual group. Optional."
+          },
+          "showTitle": {
+            "type": "boolean",
+            "description": "Show the usual group's title. Optional."
+          },
+          "united": {
+            "type": "boolean",
+            "description": "Keep usual-group children united. Optional."
+          },
+          "titleLocation": {
+            "type": "string",
+            "description": "Field title location (Auto/Left/Right/Top/Bottom/None), or usual-group child title location. The value must exist in the target EDT enum. Optional."
+          },
+          "maxHeight": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Maximum input-field height; disables autoMaxHeight. Requires InputField. Optional."
+          },
+          "verticalStretch": {
+            "type": "boolean",
+            "description": "Vertical stretch of a group or input field. Optional."
+          },
+          "fieldType": {
+            "type": "string",
+            "description": "Field kind. EDT initializes the matching ext-info. Optional.",
+            "enum": [
+              "InputField",
+              "RadioButtonField",
+              "CheckBoxField"
+            ]
+          },
+          "choiceList": {
+            "type": "array",
+            "description": "Replace the InputField/RadioButtonField choice list. Entries have a scalar string/number/boolean value and optional titleRu. Enum/reference/object values are not supported. An empty array clears the list.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "value": {
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean"
+                  ]
+                },
+                "titleRu": {
+                  "type": "string",
+                  "description": "Russian choice presentation. Optional."
+                }
+              },
+              "required": [
+                "value"
+              ]
+            }
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = dry-run: validate and return the plan, write nothing. true = apply the change and serialize Form.form."
+          }
+        },
+        "required": [
+          "projectName",
+          "formFqn",
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "edt_move_form_item",
+      "description": "WRITE: move a managed-form item by index/beforeItem/afterItem. Position selectors are exclusive. Preserves the item identity, id, children, events and properties. Cycles, invalid anchors and moves requiring item-kind/data-binding conversion are refused. Omitted parent keeps the current parent; an empty string selects the form root. Dry-run by default.",
+      "descriptionRu": "ЗАПИСЬ: перенести элемент управляемой формы по index/beforeItem/afterItem. Можно задать только один способ размещения. Сохраняет объект, id, вложенные элементы, события и свойства. Циклы, неверные соседи и переносы с преобразованием вида элемента или привязки к данным отклоняются. Без parent сохраняется текущий родитель; пустая строка выбирает корень формы. По умолчанию dry-run.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "formFqn": {
+            "type": "string",
+            "description": "Form FQN with English type prefixes, e.g. Catalog.Контрагенты.Form.ФормаЭлемента, DataProcessor.X.Form.Форма, CommonForm.Y"
+          },
+          "name": {
+            "type": "string",
+            "description": "Existing form item to move. Its name must resolve uniquely."
+          },
+          "index": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Zero-based sibling index after excluding the moved item. Exclusive with beforeItem/afterItem."
+          },
+          "beforeItem": {
+            "type": "string",
+            "description": "Insert before this direct sibling in the destination. Exclusive with index/afterItem."
+          },
+          "afterItem": {
+            "type": "string",
+            "description": "Insert after this direct sibling in the destination. Exclusive with index/beforeItem."
+          },
+          "parent": {
+            "type": "string",
+            "description": "Destination container. Omitted keeps the current parent; an empty string selects the form root. Moves that would change the item kind or table data binding are refused."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) validates and returns the destination without writing. true moves the existing item and serializes Form.form."
+          }
+        },
+        "required": [
+          "projectName",
+          "formFqn",
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "edt_remove_form_item",
+      "description": "WRITE (Phase 2), DESTRUCTIVE: remove an item from a managed form. Everything nested inside goes with it - a group takes its contents, a table its columns - and the dry-run lists exactly what that is. The form attribute or command the item was bound to is left alone. force=true required to apply; requires a configured token.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2), ДЕСТРУКТИВНО: удалить элемент управляемой формы. Всё вложенное удаляется вместе с ним - группа забирает содержимое, таблица свои колонки, - и dry-run показывает, что именно. Реквизит или команда, с которыми элемент был связан, не трогаются. Для применения нужен force=true и токен.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "formFqn": {
+            "type": "string",
+            "description": "Form FQN with English type prefixes, e.g. Catalog.Контрагенты.Form.ФормаЭлемента, DataProcessor.X.Form.Форма, CommonForm.Y"
+          },
+          "name": {
+            "type": "string",
+            "description": "Form item to remove"
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Required for apply: removing an item is destructive and takes everything nested inside it."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = dry-run: report the item and what is nested inside it, remove nothing. true = remove it (force must also be true)."
+          }
+        },
+        "required": [
+          "projectName",
+          "formFqn",
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "edt_add_method",
+      "description": "WRITE (Phase 2): add a new procedure/function to a module's BSL. A missing module file can be created only for an existing metadata owner selected by fqn and an empty typed module slot. Dry-run by default – parses the module, validates methodText is exactly one legal method with a free name, computes the insertion point from the model (region path / beforeMethod / afterMethod / server block / after the last method) and returns the plan + preview WITHOUT writing. apply=true writes the .bsl, but only if the spliced module re-parses cleanly (safety invariant – a bad methodText or offset can never corrupt the module, worst case is a refused apply). Additive (a new method is non-breaking) – no force. Requires a configured token; caller must verify bsl_support_status EDITABLE before apply (cannot add to vendor-locked modules).",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): добавить новую процедуру/функцию в BSL модуля. Отсутствующий файл создается только для существующего владельца fqn с пустым модулем известного типа. По умолчанию dry-run – парсит модуль, проверяет, что methodText – ровно один корректный метод со свободным именем, вычисляет точку вставки по модели (путь области / beforeMethod / afterMethod / серверный блок / после последнего метода) и возвращает план + предпросмотр БЕЗ записи. apply=true пишет .bsl, но только если результат парсится без ошибок (инвариант безопасности – плохой methodText или смещение не могут испортить модуль, худший случай – отказ). Аддитивно (новый метод не ломает совместимость) – без force. Требует токен; перед apply вызывающий обязан проверить bsl_support_status = EDITABLE (в vendor-locked модули добавлять нельзя).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Module owner FQN: CommonModule.X, a form (DataProcessor.X.Form.Y / CommonForm.Y), or an object + moduleType. Alternatively pass modulePath."
+          },
+          "moduleType": {
+            "type": "string",
+            "description": "For a top object with several modules: ObjectModule / ManagerModule / etc. (optional; forms and common modules resolve to Module.bsl)."
+          },
+          "modulePath": {
+            "type": "string",
+            "description": "Workspace-relative .bsl path (alternative to fqn), e.g. src/CommonModules/X/Module.bsl"
+          },
+          "methodText": {
+            "type": "string",
+            "description": "The full BSL procedure/function text (exactly ONE method), e.g. \"Процедура Имя() Экспорт ... КонецПроцедуры\". Must parse as one method."
+          },
+          "region": {
+            "type": "string",
+            "description": "Region name or full nested path, e.g. Public/Helpers. A short name must be unique. Methods are inserted directly in the chosen region."
+          },
+          "beforeMethod": {
+            "type": "string",
+            "description": "Insert before this method, including its attached documentation and pragmas. Mutually exclusive with afterMethod; must be unique in the selected scope."
+          },
+          "afterMethod": {
+            "type": "string",
+            "description": "Insert after this method. Mutually exclusive with beforeMethod; must be unique in the selected scope."
+          },
+          "serverBlock": {
+            "type": "boolean",
+            "description": "Optional: place the method inside the module's server preprocessor block (#Если Сервер ... #КонецЕсли). Combined with region = the region inside that block."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = dry-run: validate + return the plan, write nothing. true = write the .bsl (only if the result parses cleanly). Verify bsl_support_status EDITABLE, first."
+          }
+        },
+        "required": [
+          "projectName",
+          "methodText"
+        ]
+      }
+    },
+    {
+      "name": "edt_move_method",
+      "description": "WRITE: move a method within its BSL module, preserving its exact text, attached documentation and pragmas. Destination supports region paths, beforeMethod and afterMethod. Dry-run returns the insertion line, neighbors and affected file. Refuses ambiguous or missing targets and any result that fails to parse. Apply requires apply=true and force=true. Save the editor first.",
+      "descriptionRu": "ЗАПИСЬ: перенести метод внутри BSL-модуля с сохранением точного текста, комментария и директив. Место задается путем области, beforeMethod или afterMethod. Dry-run возвращает строку, соседние методы и файл. Неоднозначные, отсутствующие цели и ошибки разбора приводят к отказу. Для записи нужны apply=true и force=true. Сначала сохранить редактор.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Module owner FQN; alternatively supply modulePath."
+          },
+          "modulePath": {
+            "type": "string",
+            "description": "Project-relative BSL module path."
+          },
+          "moduleType": {
+            "type": "string",
+            "description": "ObjectModule, ManagerModule, etc. when the owner has several modules."
+          },
+          "methodName": {
+            "type": "string",
+            "description": "Unique procedure/function name to move, ignoring case."
+          },
+          "region": {
+            "type": "string",
+            "description": "Destination region name or nested path, e.g. Public/Helpers. Short names must be unique."
+          },
+          "beforeMethod": {
+            "type": "string",
+            "description": "Insert before this unique method in the selected scope; excludes afterMethod."
+          },
+          "afterMethod": {
+            "type": "string",
+            "description": "Insert after this unique method in the selected scope; excludes beforeMethod."
+          },
+          "serverBlock": {
+            "type": "boolean",
+            "description": "Select the server preprocessor block as the destination scope."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default): return the validated plan without writing. true: write the move."
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Required with apply=true because moving a method can change its compilation scope."
+          }
+        },
+        "required": [
+          "projectName",
+          "methodName"
+        ]
+      }
+    },
+    {
+      "name": "edt_delete_method",
+      "description": "WRITE (Phase 2): delete a procedure/function from a module's BSL – the inverse of edt_add_method. Dry-run by default – parses the module, locates the method by name via the model (never a regex), and returns the plan + the exact text that would be removed WITHOUT writing. apply=true cuts the method (with its adjacent leading doc comments and the blank line above) and writes the .bsl, but only if the result re-parses cleanly and loses exactly this one method (safety invariant), AND force=true (destructive; deleting an EXPORTED method breaks consumers – check callers via edt_find_references method mode and prefer deprecation). Requires a configured token; caller must verify bsl_support_status EDITABLE before apply.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): удалить процедуру/функцию из BSL модуля – обратная операция к edt_add_method. По умолчанию dry-run – парсит модуль, находит метод по имени через модель (не regex) и возвращает план + точный текст, который будет удалён, БЕЗ записи. apply=true вырезает метод (вместе с прилегающим комментарием-описанием и пустой строкой над ним) и пишет .bsl, но только если результат парсится без ошибок и теряет ровно этот один метод (инвариант безопасности), И передан force=true (деструктивно; удаление ЭКСПОРТНОГО метода ломает вызывающий код – проверьте вызовы через edt_find_references по методу, предпочитайте deprecated). Требует токен; перед apply вызывающий обязан проверить bsl_support_status = EDITABLE.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Module owner FQN: CommonModule.X, a form (DataProcessor.X.Form.Y / CommonForm.Y), or an object + moduleType. Alternatively pass modulePath."
+          },
+          "moduleType": {
+            "type": "string",
+            "description": "For a top object with several modules: ObjectModule / ManagerModule / etc. (optional; forms and common modules resolve to Module.bsl)."
+          },
+          "modulePath": {
+            "type": "string",
+            "description": "Workspace-relative .bsl path (alternative to fqn), e.g. src/CommonModules/X/Module.bsl"
+          },
+          "methodName": {
+            "type": "string",
+            "description": "Name of the procedure/function to delete (case-insensitive, as BSL names are)."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = dry-run: locate + validate + return the plan and the exact text that would be removed, write nothing. true = write the .bsl without the method (only if the result parses cleanly); also requires force=true. Verify bsl_support_status EDITABLE first."
+          },
+          "force": {
+            "type": "boolean",
+            "description": "false (default) = refuse apply (deleting code is destructive; an exported method is breaking for consumers). true = the owner's explicit override; required for any apply. Has no effect on a dry-run."
+          }
+        },
+        "required": [
+          "projectName",
+          "methodName"
+        ]
+      }
+    },
+    {
+      "name": "edt_remove_attribute",
+      "description": "WRITE (Phase 2): remove an attribute from a metadata object. DESTRUCTIVE – a schema change. Dry-run by default: checks inbound references (BM xref) and returns the plan WITHOUT removing. apply=true removes (commit + serialize); blocked if referenced unless force=true. Requires a configured token. Verify bsl_support_status EDITABLE before apply .",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): удалить реквизит объекта метаданных. ДЕСТРУКТИВНО – изменение схемы. По умолчанию dry-run: проверяет входящие ссылки (BM xref) и возвращает план БЕЗ удаления. apply=true удаляет (фиксирует + сериализует); если на реквизит ссылаются – блокируется, пока не задан force=true. Требует токен. Перед apply проверить bsl_support_status = EDITABLE.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "ownerFqn": {
+            "type": "string",
+            "description": "Object to remove the attribute from, e.g. Catalog.Контрагенты"
+          },
+          "name": {
+            "type": "string",
+            "description": "Attribute name to remove (Cyrillic)"
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = dry-run: report references + plan, remove nothing. true = perform the removal (commit + serialize). Verify bsl_support_status EDITABLE first."
+          },
+          "force": {
+            "type": "boolean",
+            "description": "false (default) = refuse if the attribute has inbound references. true = remove even if referenced (WILL break those references – last resort)."
+          }
+        },
+        "required": [
+          "projectName",
+          "ownerFqn",
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "edt_modify_attribute",
+      "description": "WRITE (Phase 2): modify an existing attribute – type, ru synonym and/or comment (provide at least one). Dry-run by default: validates and returns the current→new plan WITHOUT changing. apply=true performs the change. Changing the type may break backward compatibility (warned). Requires a configured token. Verify bsl_support_status EDITABLE before apply.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): изменить существующий реквизит – тип, синоним(ru) и/или comment (хотя бы одно). По умолчанию dry-run: проверяет и возвращает план было→стало БЕЗ изменения. apply=true применяет. Смена типа может нарушить обратную совместимость (предупреждение). Требует токен. Перед apply проверить bsl_support_status = EDITABLE.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "ownerFqn": {
+            "type": "string",
+            "description": "Object that holds the attribute, e.g. Catalog.Контрагенты"
+          },
+          "name": {
+            "type": "string",
+            "description": "Existing attribute name to modify (Cyrillic)"
+          },
+          "newType": {
+            "type": "string",
+            "description": "New value type (same syntax as edt_add_attribute). Optional – omit to keep."
+          },
+          "newSynonymRu": {
+            "type": "string",
+            "description": "New Russian synonym. Optional; empty string clears it."
+          },
+          "newComment": {
+            "type": "string",
+            "description": "New comment. Optional; empty string clears it."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = dry-run: validate + return current→new plan, change nothing. true = perform the change (commit + serialize). Verify bsl_support_status EDITABLE first."
+          }
+        },
+        "required": [
+          "projectName",
+          "ownerFqn",
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "edt_rename",
+      "description": "WRITE (Phase 2): rename a BSL method (methodName mode), metadata object or child member (attribute/dimension/resource/...) and cascade every reference in metadata AND BSL via EDT's native refactoring engine. Preview reports known file paths and nativeTextEditCount. editCount is null when model operations expose no text edits; coverageComplete=false identifies unmapped metadata items. Dry-run by default: returns the engine's change list + validation problems WITHOUT changing. apply=true performs the cascade; requires a configured token AND force=true (rename is breaking for peer configurations –, owner approval). Verify bsl_support_status EDITABLE before apply.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): переименовать метод BSL (methodName), объект метаданных или его член (реквизит/измерение/ресурс/...) с каскадным обновлением ВСЕХ ссылок в метаданных И в BSL через штатный движок рефакторинга EDT. Предпросмотр возвращает известные пути и nativeTextEditCount; editCount=null означает отсутствие текстового счетчика, coverageComplete=false отмечает неполное покрытие. По умолчанию dry-run: возвращает список изменений и проблемы БЕЗ применения. apply=true выполняет каскад; требует токен И force=true (переименование ломает обратную совместимость для конфигураций-партнёров –, нужно одобрение владельца). Перед apply проверить bsl_support_status = EDITABLE.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "targetFqn": {
+            "type": "string",
+            "description": "Object or child member to rename, by full FQN: a top object (e.g. Catalog.Контрагенты) or a child (e.g. Catalog.Контрагенты.Attribute.ИНН)"
+          },
+          "method": {
+            "type": "string",
+            "description": "Compatible method alias: a short method name with targetFqn, or a full method FQN such as CommonModule.Api.Run. Conflicting methodName/targetFqn values are refused."
+          },
+          "methodName": {
+            "type": "string",
+            "description": "BSL method mode: rename this unique procedure/function through EDT's native refactoring. Supply modulePath or targetFqn as the module owner."
+          },
+          "modulePath": {
+            "type": "string",
+            "description": "Method mode: project-relative BSL module path."
+          },
+          "moduleType": {
+            "type": "string",
+            "description": "Method mode: ObjectModule, ManagerModule, etc. when targetFqn owns several modules."
+          },
+          "newName": {
+            "type": "string",
+            "description": "New name (a valid 1C identifier, Cyrillic allowed)"
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = dry-run: build the refactoring and return the full change list + problems, perform nothing. true = perform the cascade (metadata + BSL). Verify bsl_support_status EDITABLE first."
+          },
+          "force": {
+            "type": "boolean",
+            "description": "false (default) = refuse apply (rename is breaking for peer configurations). true = the owner's explicit breaking-change override; required for any apply. Has no effect on a dry-run."
+          }
+        },
+        "required": [
+          "projectName",
+          "newName"
+        ]
+      }
+    },
+    {
+      "name": "edt_create_object",
+      "description": "WRITE (Phase 2): create a new top metadata object (Catalog/Document/Enum/InformationRegister/...) via EDT's own factory + per-type initializer, registered in the Configuration. Dry-run by default: validates and returns the plan WITHOUT creating. apply=true creates it (object .mdo + Configuration.mdo). Additive – no force needed – but requires a configured token. Verify bsl_support_status EDITABLE before apply.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): создать новый объект метаданных (Справочник/Документ/Перечисление/РегистрСведений/...) через штатную фабрику EDT + инициализатор типа, с регистрацией в Configuration. По умолчанию dry-run: проверяет и возвращает план БЕЗ создания. apply=true создаёт (object .mdo + Configuration.mdo). Аддитивно – force не нужен – но требует токен. Перед apply проверить bsl_support_status = EDITABLE.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "objectType": {
+            "type": "string",
+            "description": "Object kind (Russian): Справочник, Документ, Перечисление, РегистрСведений, РегистрНакопления, РегистрБухгалтерии, РегистрРасчета, Отчет, Обработка, ПланВидовХарактеристик, ПланСчетов, ПланВидовРасчета, БизнесПроцесс, Задача, ПланОбмена, Константа, ОбщийМодуль"
+          },
+          "name": {
+            "type": "string",
+            "description": "New object name (a valid 1C identifier, Cyrillic allowed)"
+          },
+          "synonymRu": {
+            "type": "string",
+            "description": "Russian synonym. Optional."
+          },
+          "comment": {
+            "type": "string",
+            "description": "Comment. Optional."
+          },
+          "properties": {
+            "type": "object",
+            "description": "Optional CommonModule execution flags and returnValuesReuse; same typed properties as edt_modify_object. Existing sorted Configuration lists retain alphabetic order."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = dry-run: validate (type, name free, config feature) and return the plan, create nothing. true = create the object (factory + attach + link + serialize). Verify bsl_support_status EDITABLE first."
+          }
+        },
+        "required": [
+          "projectName",
+          "objectType",
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "edt_modify_object",
+      "description": "WRITE: set typed execution properties of an owned common module, or enable the module body of an adopted common module. Dry-run by default; every property is validated before writing.",
+      "descriptionRu": "ЗАПИСЬ: изменить типизированные свойства собственного общего модуля или включить расширение заимствованного модуля. По умолчанию dry-run; все свойства проверяются до записи.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "fqn": {
+            "type": "string",
+            "description": "CommonModule FQN, e.g. CommonModule.Api"
+          },
+          "properties": {
+            "type": "object",
+            "description": "Owned CommonModule properties: global, server, externalConnection, clientManagedApplication, clientOrdinaryApplication, serverCall, privileged (boolean); returnValuesReuse (DontUse, DuringRequest, DuringSession)."
+          },
+          "extendModule": {
+            "type": "boolean",
+            "description": "true sets the adopted common module control state to Extended; preserves its module body. Default false."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false: validate all properties and show changes without writing; true: commit and export the object."
+          }
+        },
+        "required": [
+          "projectName",
+          "fqn"
+        ]
+      }
+    },
+    {
+      "name": "edt_update_subsystem",
+      "description": "WRITE: add or remove subsystem members through the live metadata model. Every reference is resolved before writing; dry-run is the default.",
+      "descriptionRu": "ЗАПИСЬ: добавить или убрать объекты из состава подсистемы через живую модель метаданных. Все ссылки проверяются до записи; по умолчанию dry-run.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Subsystem FQN; nested form: Subsystem.Parent.Subsystem.Child"
+          },
+          "add": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "add these existing top-object FQNs; duplicates do not duplicate membership"
+          },
+          "remove": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "remove these existing top-object FQNs; duplicates do not duplicate membership"
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Required with apply=true when removing existing members. Default false."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false: validate references and show before/after content; true: commit and export the subsystem."
+          }
+        },
+        "required": [
+          "projectName",
+          "fqn"
+        ]
+      }
+    },
+    {
+      "name": "edt_create_extension",
+      "description": "WRITE (Phase 2): create a new configuration-EXTENSION project extending a base configuration project, via EDT's own IExtensionProjectManager (the New Configuration Extension wizard engine). The root Configuration is the base configuration ADOPTED, exactly as the wizard does it, so the project is a valid extension an infobase will load: objectBelonging=Adopted, the extension control block, the adopted default language, inherited compatibility modes, and uuid links from every object adopted later. Dry-run by default: validates and returns the plan WITHOUT creating. apply=true creates the project and reads the Configuration back into the result. Additive – no force needed – but requires a configured token.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): создать новый проект РАСШИРЕНИЯ конфигурации к базовому проекту через штатный IExtensionProjectManager (движок мастера нового расширения). Корневая Configuration – ЗАИМСТВОВАННАЯ базовая, как это делает мастер, поэтому проект – полноценное расширение, которое примет информационная база: objectBelonging=Adopted, блок расширения, заимствованный язык, унаследованные режимы совместимости и uuid-связи у всех объектов, заимствованных позже. По умолчанию dry-run: проверяет и возвращает план БЕЗ создания. apply=true создаёт проект и вычитывает Configuration обратно в результат. Аддитивно – force не нужен – но требует токен.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "New extension project (and extension configuration) name – a valid identifier, Cyrillic allowed"
+          },
+          "baseProjectName": {
+            "type": "string",
+            "description": "Base configuration project in the workspace that the extension extends"
+          },
+          "namePrefix": {
+            "type": "string",
+            "description": "Extension name prefix stamped on its Configuration (e.g. \"Расш_\"); required"
+          },
+          "purpose": {
+            "type": "string",
+            "description": "Extension purpose: Customization/Адаптация (default), AddOn/Дополнение, Patch/Исправление. Optional."
+          },
+          "synonym": {
+            "type": "string",
+            "description": "Extension synonym – the human-readable name shown in the infobase, written for the language adopted from the base configuration. Optional."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = dry-run: validate (name free, base project has a Configuration) and return the plan, create nothing. true = create the project, then read its Configuration back and report what landed."
+          }
+        },
+        "required": [
+          "name",
+          "baseProjectName",
+          "namePrefix"
+        ]
+      }
+    },
+    {
+      "name": "edt_create_external_object",
+      "description": "WRITE (Phase 2): create a new EXTERNAL DATA PROCESSOR project via EDT's own IExternalObjectProjectManager (the wizard engine), optionally linked to a base configuration project. Dry-run by default; apply=true creates the project (model loads in background – poll edt_projects). Token-gated. Use edt_dump_external_object to compile it into an .epf afterwards.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): создать новый проект ВНЕШНЕЙ ОБРАБОТКИ через штатный IExternalObjectProjectManager (движок мастера), при необходимости привязанный к базовому проекту конфигурации. По умолчанию dry-run; apply=true создаёт проект (модель грузится в фоне – опрашивать edt_projects). Требует токен. Скомпилировать в .epf – инструментом edt_dump_external_object.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "New external data processor project (and object) name – a valid identifier, Cyrillic allowed"
+          },
+          "baseProjectName": {
+            "type": "string",
+            "description": "Configuration project the processor is developed for (links its runtime version and types context). Optional – omit for standalone."
+          },
+          "scriptVariant": {
+            "type": "string",
+            "description": "Built-in language variant: Russian or English. Optional, but EDT defaults a standalone project to English – which names generated members Object instead of Объект – so pass Russian for a Russian project."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = dry-run: validate and return the plan. true = create the project."
+          }
+        },
+        "required": [
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "edt_import_external_object",
+      "description": "WRITE: import an existing .epf/.erf into a new EDT project, optionally linked to a base configuration. Uses the platform's XML conversion and EDT's native importer, preserves the input, and removes its own partial project after failure. Handles processor/report kinds and Unicode XML. Dry-run by default; requires a token.",
+      "descriptionRu": "ЗАПИСЬ: импортировать существующую .epf/.erf в новый проект EDT с необязательной связью с базовой конфигурацией. Использует преобразование платформы в XML и штатный импорт EDT, сохраняет исходный файл и удаляет собственный незавершенный проект при ошибке. Поддерживает внешние обработки и отчеты, XML с Unicode BOM. По умолчанию dry-run; требует токен.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "string",
+            "description": "Absolute path to the input .epf or .erf; the original file is preserved"
+          },
+          "projectName": {
+            "type": "string",
+            "description": "Name of the new EDT project; an existing project or directory is refused"
+          },
+          "baseProjectName": {
+            "type": "string",
+            "description": "Optional open configuration project for metadata context and runtime version"
+          },
+          "kind": {
+            "type": "string",
+            "description": "ExternalDataProcessor or ExternalReport; inferred from .epf/.erf when omitted"
+          },
+          "route": {
+            "type": "string",
+            "description": "auto (default): EDT restorer, then full platform on disk; edt: only EDT restorer; disk: only on-disk platform. XML is imported through EDT in all modes."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false = validate input and destination only (default); true = unpack and import"
+          }
+        },
+        "required": [
+          "file",
+          "projectName"
+        ]
+      }
+    },
+    {
+      "name": "edt_dump_external_object",
+      "description": "WRITE (Phase 2): compile an external data processor/report into a binary .epf/.erf file via EDT's own IExternalObjectDumper (needs a locally installed 1C platform matching the project version). When EDT's dumper refuses, the build falls back to the platform found on disk (route pins it); a refusal also switches EDT's auto-dump generation off for the project, and the tool switches it back. Dry-run by default: resolves the object and validates dump availability; apply=true writes the file. Token-gated.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): скомпилировать внешнюю обработку/отчёт в бинарный файл .epf/.erf через штатный IExternalObjectDumper (нужна установленная платформа 1С, совместимая с версией проекта). Когда штатный маршрут отказывает, сборка уходит на платформу, найденную на диске (route задаёт маршрут явно); отказ вдобавок выключает у проекта автогенерацию выгрузок, и инструмент включает её обратно. По умолчанию dry-run: находит объект и проверяет доступность выгрузки; apply=true пишет файл. Требует токен.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "External object project name in the workspace"
+          },
+          "objectName": {
+            "type": "string",
+            "description": "The external data processor / report name inside the project (usually equals the project name)"
+          },
+          "kind": {
+            "type": "string",
+            "description": "processor (default) or report"
+          },
+          "targetPath": {
+            "type": "string",
+            "description": "Absolute path of the .epf/.erf file to write"
+          },
+          "logPath": {
+            "type": "string",
+            "description": "Where to write the platform build log. Optional - defaults to <targetPath>.log, next to the artefact. Only the on-disk build route produces a log; read it when a build fails, that is where the platform reports why."
+          },
+          "route": {
+            "type": "string",
+            "description": "Which builder to use: auto (default) = EDT's own dumper, falling back to the platform found on disk when EDT refuses; edt = EDT's dumper only; disk = the on-disk platform only. The fallback matters for an object bound to a base configuration: EDT's route then wants a developed application of an infobase, which the project does not have, while the disk route builds the file anyway."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = dry-run: resolve the object and validate that dump generation is available (local 1C platform). true = write the file."
+          }
+        },
+        "required": [
+          "projectName",
+          "objectName",
+          "targetPath"
+        ]
+      }
+    },
+    {
+      "name": "edt_infobases",
+      "description": "READ: EDT's registered infobases (name, uuid, connection string) and the open projects' infobase associations – discover targets for edt_update_infobase.",
+      "descriptionRu": "ЧТЕНИЕ: зарегистрированные информационные базы EDT (имя, uuid, строка соединения) и привязки открытых проектов к базам – выбор цели для edt_update_infobase.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "edt_update_infobase",
+      "description": "WRITE (Phase 2): update an infobase's configuration FROM an EDT project (configuration or extension) via EDT's own synchronization engine (the \"Update infobase configuration\" action). Db-structure changes auto-confirmed; a conflict aborts the update. EDT synchronization has NO per-project scope: it brings the infobase in line with EVERY workspace project associated with it - the result lists them in syncProjects, and the dry-run plan names them; to load one project only, use transport=agent. Dry-run by default; apply=true mutates the infobase – use stands you own. Token-gated.\n\ntransport=agent takes a different route entirely: the project is exported to designer XML in-process and loaded through a configurator agent (config load-config-from-files), which authenticates AS THE INFOBASE USER. That is the only way into a server infobase that has users, and it loads XML straight into the base - no throwaway base and no .cf in between, which matters for a large configuration. It then applies the database configuration unless updateDatabaseConfig=false. The full export is compared with the last successful load into the same infobase. Only changed files are loaded when the platform version and configuration generation match, no files were removed, Configuration.xml and Ext/ParentConfigurations.bin are unchanged, and no more than half the files changed. Unmet conditions require a full load; a matching export skips file loading. loadMode (full, partial, skipped) and loadReason report the selected mode and reason. fullLoad=true requests a full load. Extensions are always loaded in full.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): обновить конфигурацию информационной базы ИЗ проекта EDT (конфигурация или расширение) штатным механизмом синхронизации (действие \"Обновить конфигурацию информационной базы\"). Изменения структуры БД подтверждаются автоматически; конфликт (в базе свои изменения) прерывает обновление. У синхронизации EDT НЕТ границы \"один проект\": база приводится в соответствие ВСЕМ ассоциированным с ней проектам workspace - ответ перечисляет их в syncProjects, план dry-run называет поимённо; чтобы загрузить один проект, используйте transport=agent. По умолчанию dry-run; apply=true МЕНЯЕТ базу – использовать на своих стендах. Требует токен.\n\ntransport=agent идёт другим путём: проект выгружается в XML конфигуратора внутри процесса и загружается через агент конфигуратора (config load-config-from-files), который проходит аутентификацию КАК ПОЛЬЗОВАТЕЛЬ БАЗЫ. Только так доступна серверная база с пользователями, и XML грузится прямо в базу – без промежуточной базы и без .cf, что существенно для большой конфигурации. После загрузки применяется конфигурация базы данных, если не указано updateDatabaseConfig=false. Полная выгрузка сравнивается с последней успешной загрузкой в ту же базу. Только измененные файлы загружаются при совпадении версии платформы и поколения конфигурации, отсутствии удаленных файлов, неизмененных Configuration.xml и Ext/ParentConfigurations.bin и изменении не более половины файлов. При невыполнении условий конфигурация загружается целиком; при совпадении выгрузок загрузка файлов пропускается. loadMode (full, partial, skipped) и loadReason содержат режим и причину выбора; fullLoad=true задает полную загрузку. Расширения всегда загружаются целиком.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project to update the infobase from (a configuration or a configuration-extension project)"
+          },
+          "infobase": {
+            "type": "string",
+            "description": "Target infobase name or uuid (see edt_infobases). Optional – defaults to the project's associated infobase."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = dry-run: resolve the target and report the current project-vs-infobase state. true = update the infobase configuration."
+          },
+          "transport": {
+            "type": "string",
+            "description": "edt (default) uses EDT's own synchronization, which cannot authenticate to an infobase that has users. agent exports the project to designer XML and loads it through a configurator agent, which authenticates as the infobase user - the only way into a server infobase with users.",
+            "enum": [
+              "edt",
+              "agent"
+            ]
+          },
+          "infobaseUser": {
+            "type": "string",
+            "description": "agent transport: 1C infobase user, e.g. Администратор. Empty for an infobase without users."
+          },
+          "infobasePassword": {
+            "type": "string",
+            "description": "agent transport: that user's password. Never echoed back."
+          },
+          "platformVersion": {
+            "type": "string",
+            "description": "agent transport: platform build for the configurator, e.g. 8.5.1.1302. FOUR digits pin that exact build and nothing else is started - a configurator of another build is refused by the server (\"Несоответствие версий клиента и сервера\"), so pin the build the stand runs. Three digits (8.5.1) mean the line: the newest installed build of it."
+          },
+          "extension": {
+            "type": "string",
+            "description": "agent transport: load the project as this extension of the infobase. Left out, an extension project is recognised by its adopted root and its own name is used; a configuration project loads as the configuration."
+          },
+          "updateDatabaseConfig": {
+            "type": "boolean",
+            "description": "agent transport: apply the database configuration after loading (default true). Off leaves the infobase holding new code and running the old one until edt_update_database_config is called."
+          },
+          "fullLoad": {
+            "type": "boolean",
+            "description": "agent transport: load the whole configuration (default false). Otherwise, compare the full export with the last successful load and load only changed files when the saved infobase, platform and configuration generation match and no full-load condition applies. loadMode and loadReason report the selected mode and reason."
+          },
+          "answer": {
+            "type": "string",
+            "description": "agent transport: which option to give when the platform stops and asks - the value it offered (or the label). Left out, the question comes back in \"question\" with its options and NOTHING is answered: one option ends other users' sessions and another applies the change dynamically on live sessions, so the choice is yours to make, not this tool's. Ask once, read the options, call again with answer."
+          },
+          "sessionTermination": {
+            "type": "string",
+            "description": "agent transport: disable (default), prompt or force - what to do when applying needs an exclusive lock and sessions hold the infobase. On a lively infobase force does not settle it - BackgroundJob sessions respawn within a minute and the update loses the race; raise a maintenance window with edt_infobase_maintenance first."
+          }
+        },
+        "required": [
+          "projectName"
+        ]
+      }
+    },
+    {
+      "name": "edt_platform_installations",
+      "description": "READ: the 1C:Enterprise platform installations EDT resolves from when dumping an .epf/.erf or creating an infobase – each registered entry resolved to a concrete install carrying a thick client (name, version mask, resolved version+build, filesystem path, arch, training flag). Use it to confirm EDT picks the right full install (EDT keeps this per machine, so it also works on macOS).",
+      "descriptionRu": "ЧТЕНИЕ: установки платформы 1С:Предприятие, из которых EDT выбирает при выгрузке .epf/.erf или создании информационной базы – каждая запись разрешается до конкретной установки с толстым клиентом (имя, маска версии, разрешённая версия+сборка, путь на диске, разрядность, признак учебной). Позволяет убедиться, что EDT берёт правильную полную установку (EDT хранит это по машине, поэтому работает и на macOS).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "edt_register_platform",
+      "description": "WRITE (Phase 2): register a full 1C:Enterprise platform install into EDT so EDT's own engine (edt_dump_external_object, edt_update_infobase) can use it. Use when edt_platform_installations shows only thin-client installs registered but a full one under diskFullInstalls. target: auto (all full installs on disk), a version, or a path. Token-gated.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): зарегистрировать полную установку платформы 1С:Предприятие в EDT, чтобы штатный движок EDT (edt_dump_external_object, edt_update_infobase) мог её использовать. Нужно, когда edt_platform_installations показывает зарегистрированными только тонкие клиенты, а полная установка есть в diskFullInstalls. target: auto (все полные установки с диска), версия или путь. Требует токен.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "What to register: omit or \"auto\" = every full (thick-client) install found on disk (best-first); \"prefer-full\" = also DROP thin builds that shadow a full one in the same version line (so EDT resolves the full install for dump/update) then refresh; a version like 8.5.1.1302; or an absolute path to a version directory."
+          }
+        }
+      }
+    },
+    {
+      "name": "edt_create_infobase",
+      "description": "WRITE (Phase 2): create an EMPTY file infobase and register it in EDT's infobases list. Primary path is EDT's own IInfobaseCreationOperation. If EDT has no registered install with a thick client for the version, it FALLS BACK to a full install found on disk (highest matching version first, then descending) and creates the base with that client; if none exists anywhere it says so. Pass platform to pin a version, cf to load an initial .cf. Dry-run by default; apply=true creates it. Token-gated.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): создать ПУСТУЮ файловую информационную базу и зарегистрировать её в списке баз EDT. Основной путь – штатный IInfobaseCreationOperation. Если в EDT нет зарегистрированной установки с толстым клиентом под версию, инструмент САМ ищет полную установку на диске (сначала максимальная подходящая версия, затем по убыванию) и создаёт базу её клиентом; если подходящей нет нигде – сообщает об этом. platform фиксирует версию, cf загружает начальную .cf. По умолчанию dry-run; apply=true создаёт. Требует токен.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Infobase display name (as it appears in EDT's infobases list)"
+          },
+          "path": {
+            "type": "string",
+            "description": "Absolute folder for the file infobase, e.g. D:\\Bases\\test1 (created if missing)"
+          },
+          "platform": {
+            "type": "string",
+            "description": "Optional platform build or line, e.g. 8.5.1.1302 or 8.3.24 – omit to let EDT resolve the installation itself. FOUR digits name one build, three or fewer a line (its newest installed build, then other lines descending). The pin binds the on-disk fallback, which creates the base with its own client; the EDT route hands the string to EDT's own resolver, and what that picks is EDT's decision, not ours - the result reports the build actually used."
+          },
+          "cf": {
+            "type": "string",
+            "description": "Optional path to a .cf file to load as the initial configuration – omit for a blank base"
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = dry-run: validate the request only. true = create the infobase and register it in EDT."
+          }
+        },
+        "required": [
+          "name",
+          "path"
+        ]
+      }
+    },
+    {
+      "name": "edt_register_infobase",
+      "description": "WRITE: register an existing server infobase in EDT through its infobase manager. Dry-run by default. Refuses duplicate names or server addresses, verifies registration by UUID and updates the live list. Does not connect to the server or create/change its database. Requires a token.",
+      "descriptionRu": "ЗАПИСЬ: зарегистрировать существующую серверную ИБ через менеджер информационных баз EDT. По умолчанию dry-run. Отклоняет повторное имя или серверный адрес, проверяет регистрацию по UUID и обновляет список работающей EDT. Не подключается к серверу и не создает и не меняет его базу данных. Требует токен.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Display name in EDT's infobase list"
+          },
+          "connect": {
+            "type": "string",
+            "description": "Server address: Srvr=\"host\";Ref=\"base\"; or host\\base. Credentials are not accepted here."
+          },
+          "version": {
+            "type": "string",
+            "description": "Platform line or build, for example 8.3.27 or 8.3.27.1989"
+          },
+          "user": {
+            "type": "string",
+            "description": "Optional 1C user name stored as the launch /N parameter; no password is stored"
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false = validate only (default); true = register the existing infobase"
+          }
+        },
+        "required": [
+          "name",
+          "connect",
+          "version"
+        ]
+      }
+    },
+    {
+      "name": "edt_build_extension",
+      "description": "WRITE (Phase 2): build a configuration extension (.cfe) from an EDT extension project, bypassing EDT's platform resolver. Exports the model to designer XML in-process (no thick client), then builds the .cfe with a full on-disk 1C install via ibcmd (infobase create -> config import --extension -> config save --extension) in a throwaway temp base that is deleted afterwards. Pick platform to match the target base version. Dry-run by default; token-gated.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): собрать расширение конфигурации (.cfe) из проекта расширения EDT в обход резолвера платформы EDT. Модель выгружается в XML конструктора в процессе (толстый клиент не нужен), затем .cfe собирается полной установкой 1С с диска через ibcmd (infobase create -> config import --extension -> config save --extension) во временной базе, которая удаляется после. platform – под версию целевой базы. По умолчанию dry-run; требует токен.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "The configuration-extension project name in the workspace"
+          },
+          "outputPath": {
+            "type": "string",
+            "description": "Absolute path of the .cfe file to write"
+          },
+          "extensionName": {
+            "type": "string",
+            "description": "Extension name for ibcmd --extension; defaults to the project's Configuration name"
+          },
+          "platform": {
+            "type": "string",
+            "description": "Optional platform version to match the target base, e.g. 8.5.1 (picks an on-disk full install of that line that carries ibcmd); defaults to the project's version"
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = dry-run: resolve the project, extension name and a usable on-disk ibcmd install. true = export and build the .cfe."
+          }
+        },
+        "required": [
+          "projectName",
+          "outputPath"
+        ]
+      }
+    },
+    {
+      "name": "edt_extension_properties",
+      "description": "Read and set the properties an extension carries INSIDE an infobase - safe mode, protection from dangerous actions, active, scope. These belong to the infobase registration, not to the project: neither edt_build_extension nor edt_update_infobase decides them, and a freshly registered extension gets safe mode and dangerous-action protection ON. An extension that CHANGES METHODS of the base configuration cannot run under those, so both must be cleared - pass projectName and the result tells you whether that applies. Address the infobase by its EDT-registered name or uuid (infobase) - that goes through a configurator agent and reaches a SERVER infobase that authenticates its users - or by databasePath / DBMS coordinates, which go through ibcmd and cannot. Dry-run by default; changing requires a configured token.",
+      "descriptionRu": "Чтение и установка свойств, с которыми расширение зарегистрировано В ИНФОРМАЦИОННОЙ БАЗЕ – безопасный режим, защита от опасных действий, активность, область действия. Это свойства регистрации в базе, а не проекта: их не задают ни edt_build_extension, ни edt_update_infobase, а только что зарегистрированное расширение получает безопасный режим и защиту от опасных действий ВКЛЮЧЁННЫМИ. Расширение, которое МЕНЯЕТ МЕТОДЫ базовой конфигурации, под ними не работает, поэтому оба флага нужно снять – передайте projectName, и результат скажет, тот ли это случай. База адресуется именем или uuid из EDT (infobase) – это путь через агент конфигуратора, доступный и СЕРВЕРНОЙ базе с аутентификацией 1С, – либо databasePath / реквизитами СУБД, а это путь через ibcmd, которому такая база недоступна. По умолчанию dry-run; изменение требует токен.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "databasePath": {
+            "type": "string",
+            "description": "File infobase directory (ibcmd --database-path). Use this or the DBMS coordinates below."
+          },
+          "dbms": {
+            "type": "string",
+            "description": "DBMS kind for a server infobase: MSSQLServer, PostgreSQL, IBMDB2, OracleDatabase"
+          },
+          "dbServer": {
+            "type": "string",
+            "description": "DBMS server for a server infobase"
+          },
+          "dbName": {
+            "type": "string",
+            "description": "Database name for a server infobase"
+          },
+          "dbUser": {
+            "type": "string",
+            "description": "DBMS user"
+          },
+          "dbPassword": {
+            "type": "string",
+            "description": "DBMS password"
+          },
+          "infobase": {
+            "type": "string",
+            "description": "Name or uuid of an infobase REGISTERED IN EDT (as edt_infobases lists them), instead of spelling the address out. This routes through a configurator agent, which authenticates as the INFOBASE user - so a server infobase with users works too, and it is the way to reach one."
+          },
+          "infobaseUser": {
+            "type": "string",
+            "description": "1C infobase user, e.g. Администратор. Required when the infobase authenticates its users - this is the 1C account, not the DBMS one."
+          },
+          "infobasePassword": {
+            "type": "string",
+            "description": "1C infobase password (optional). Never echoed back."
+          },
+          "name": {
+            "type": "string",
+            "description": "Extension name as registered in the infobase; omit to list every extension. Required to change anything."
+          },
+          "safeMode": {
+            "type": "boolean",
+            "description": "Set safe mode. false for an extension that changes methods of the base configuration."
+          },
+          "unsafeActionProtection": {
+            "type": "boolean",
+            "description": "Set protection from dangerous actions. false for an extension that changes methods of the base configuration."
+          },
+          "active": {
+            "type": "boolean",
+            "description": "Set whether the extension is active"
+          },
+          "projectName": {
+            "type": "string",
+            "description": "Optional extension project in the workspace - when given, the result also says whether it changes methods, i.e. whether the two flags above have to be off."
+          },
+          "platform": {
+            "type": "string",
+            "description": "Optional platform build for ibcmd (or, on the agent route, for the configurator), e.g. 8.5.1.1302. FOUR digits pin that exact build - which a server infobase requires, it refuses a client of another build; three digits (8.5.1) mean the line: the newest installed build of it."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = report current properties and the planned change. true = perform the update, then read the properties back."
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "edt_platform_help",
+      "description": "READ: the 1C:Enterprise platform Syntax Helper bundled with EDT (real API reference – objects, methods, properties, events, Ru+En). Search by name, or read a page by its path. Use this to consult the actual API instead of guessing signatures.",
+      "descriptionRu": "ЧТЕНИЕ: Синтакс-помощник платформы 1С:Предприятие из поставки EDT (реальная справка API – объекты, методы, свойства, события, рус+англ). Поиск по имени или чтение страницы по пути. Свериться с фактическим API вместо угадывания сигнатур.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search terms (Russian or English), e.g. \"ТаблицаЗначений Добавить\" or \"ValueTable Add\". All terms must appear in the page title. Omit when reading a page."
+          },
+          "path": {
+            "type": "string",
+            "description": "Read this exact page (a `path` from a search hit) as text instead of searching."
+          },
+          "bundle": {
+            "type": "string",
+            "description": "The `bundle` of the page to read (from the search hit). Optional – resolved from the index when omitted."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Max search hits (default 15)."
+          }
+        }
+      }
+    },
+    {
+      "name": "edt_delete_object",
+      "description": "WRITE (Phase 2): delete a metadata object (top object or child member) and cascade the removal of every reference in metadata AND BSL via EDT's native refactoring engine; the engine removes the object's .mdo and updates the Configuration. Dry-run by default: returns the engine's change list + validation problems WITHOUT deleting. apply=true performs the cascade; requires a configured token AND force=true (delete is irreversible and breaking for peer configurations – owner approval). Verify bsl_support_status EDITABLE before apply. Building the cascade analyses references across every open project - in a workspace with a large configuration this can take several minutes, and it keeps running to completion even if the client gives up waiting; re-check the model before concluding it hung.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): удалить объект метаданных (объект или его член) с каскадным удалением ВСЕХ ссылок в метаданных И в BSL через штатный движок рефакторинга EDT; движок сам удаляет .mdo объекта и правит Configuration. По умолчанию dry-run: возвращает список изменений и проблемы БЕЗ удаления. apply=true выполняет каскад; требует токен И force=true (удаление необратимо и ломает обратную совместимость для конфигураций-партнёров – нужно одобрение владельца). Перед apply проверить bsl_support_status = EDITABLE. Построение каскада анализирует ссылки по всем открытым проектам: в workspace с большой конфигурацией это занимает минуты, и операция доходит до конца, даже если клиент перестал ждать; прежде чем счесть вызов зависшим, перепроверьте модель.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "targetFqn": {
+            "type": "string",
+            "description": "Object or child member to delete, by full FQN: a top object (e.g. Catalog.Контрагенты) or a child (e.g. Catalog.Контрагенты.Attribute.ИНН)"
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = dry-run: build the delete refactoring and return the full change list + problems, delete nothing. true = perform the cascade (metadata + BSL). Verify bsl_support_status EDITABLE first."
+          },
+          "force": {
+            "type": "boolean",
+            "description": "false (default) = refuse apply (delete is irreversible and breaking for peer configurations). true = the owner's explicit override; required for any apply. Has no effect on a dry-run."
+          }
+        },
+        "required": [
+          "projectName",
+          "targetFqn"
+        ]
+      }
+    },
+    {
+      "name": "edt_delete_project",
+      "description": "WRITE (Phase 2): remove a project from the workspace - the delete half of the cycle that edt_create_extension / edt_create_external_object start. Goes through the Eclipse workspace so the resource tree is updated; deleting a project folder by hand instead leaves a ghost project that comes back from the tree snapshot and keeps the name taken. deleteContent=false (default) unregisters and keeps the files, true erases them. Dry-run by default; force=true required to apply.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): удалить проект из workspace - вторая половина цикла, который открывают edt_create_extension / edt_create_external_object. Удаление идёт через workspace Eclipse, поэтому дерево ресурсов обновляется; если снести каталог проекта руками, остаётся фантом - проект возвращается из снимка дерева и держит имя занятым. deleteContent=false (по умолчанию) снимает регистрацию и оставляет файлы, true - стирает их. По умолчанию dry-run; для применения нужен force=true.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "Project to remove from the workspace"
+          },
+          "deleteContent": {
+            "type": "boolean",
+            "description": "true = also erase the project's files from disk (irreversible). false (default) = unregister the project and keep the files."
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Required for apply: deleting a project is irreversible."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = dry-run: report what would be removed (location, file count, whether it is a ghost) and delete nothing. true = perform the delete (force must also be true)."
+          }
+        },
+        "required": [
+          "projectName"
+        ]
+      }
+    },
+    {
+      "name": "edt_import_project",
+      "description": "WRITE (Phase 2): register an EXISTING project directory in the workspace - the programmatic form of \"Import existing project\". Needed whenever a second project must join the workspace: an extension in modification-and-control mode is checked against a BASE project on the target release, and that one comes from another worktree. Sources are not touched - only the workspace learns about them. Reports the declared name, the name it will take and whether that name is already busy.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): зарегистрировать в workspace СУЩЕСТВУЮЩИЙ каталог проекта - программный аналог \"Импорт существующего проекта\". Нужно, когда в workspace должен появиться второй проект: расширение в режиме изменения и контроля сверяется с БАЗОВЫМ проектом на целевом релизе, а он лежит в другом worktree. Исходники не трогаются - о них узнаёт только workspace. Возвращает объявленное имя, имя под которым проект будет зарегистрирован, и занято ли оно.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Directory holding the project (it must contain a .project file). Nothing on disk is rewritten."
+          },
+          "name": {
+            "type": "string",
+            "description": "Name to register it under. Default: the name its .project declares. Two checkouts of one repository declare the SAME name and the workspace allows a name once - overriding it here is what lets the second one in."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = dry-run: report what would be registered and under which name. true = register the project and open it."
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    },
+    {
+      "name": "edt_clean_project",
+      "description": "WRITE (Phase 2): discard a project's build results and let them be recomputed - the programmatic equivalent of EDT's \"Clean\" dialog. EDT hangs its checks off the build, so this is what makes validation actually run again: a marker can otherwise survive long after the code that caused it was fixed, and reading a stale marker is worse than reading none. Reports the problem count before and after, waiting until it stops changing. Sources are untouched, so no force is needed - but it does need a configured token. Use it before trusting edt_project_errors after an edit – or, for one module changed on disk, pass refresh=true to edt_project_errors instead: an incremental build of that scope, seconds instead of a full rebuild.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): сбросить результаты сборки проекта и дать пересчитать их заново - программный аналог диалога \"Очистить\" в EDT. Проверки EDT висят на сборке, поэтому именно это заставляет валидацию отработать снова: иначе замечание может пережить исправление кода, а читать устаревший маркер хуже, чем не читать вовсе. Возвращает число замечаний до и после, дождавшись, пока оно перестанет меняться. Исходники не трогаются, force не нужен - но нужен токен. Вызывать перед тем, как доверять edt_project_errors после правок, – либо, для одного модуля, изменённого на диске, передать edt_project_errors refresh=true: инкрементальная сборка этой области, секунды вместо полной пересборки.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "Project to clean"
+          },
+          "rebuild": {
+            "type": "boolean",
+            "description": "Also run a full build after cleaning - what the Clean dialog does when auto-build is off. Default true; without it a project with auto-build off is left unbuilt and reports no problems at all."
+          },
+          "waitSeconds": {
+            "type": "integer",
+            "description": "How long to wait for validation to settle. Default 120. Big projects need more."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = dry-run: report the current problem count and whether auto-build is on, change nothing. true = clean, rebuild and wait for the problem count to settle."
+          }
+        },
+        "required": [
+          "projectName"
+        ]
+      }
+    },
+    {
+      "name": "edt_search_modules",
+      "description": "READ: full-text search across the BSL modules of a project (or every open project) - the exploratory step that edt_find_references does not cover: it answers \"who calls this method\", this answers \"where does this text appear\". Returns project, module path, line number and the matching line. Reading goes through Eclipse's file buffers, so a module open in an editor is searched as it currently stands, unsaved edits included - each hit says whether it came from an unsaved buffer. Query text stored in Form.form and Template.dcs is outside this BSL search.",
+      "descriptionRu": "ЧТЕНИЕ: полнотекстовый поиск по модулям BSL проекта (или всех открытых проектов) - тот шаг разведки, который не закрывает edt_find_references: он отвечает на вопрос \"кто вызывает этот метод\", а этот - \"где встречается такой текст\". Возвращает проект, путь модуля, номер строки и саму строку. Чтение идёт через буферы файлов Eclipse, поэтому модуль, открытый в редакторе, ищется в текущем виде, вместе с несохраненными правками - у каждого попадания указано, из буфера оно или с диска. Тексты запросов в Form.form и Template.dcs в поиск по BSL не входят.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "description": "Text to find - a plain substring, or a regular expression when regex=true"
+          },
+          "projectName": {
+            "type": "string",
+            "description": "Project to search. Optional - omitted searches every open project."
+          },
+          "regex": {
+            "type": "boolean",
+            "description": "Treat pattern as a Java regular expression with Unicode word classes and case folding. Default false."
+          },
+          "caseSensitive": {
+            "type": "boolean",
+            "description": "Match case. Default false."
+          },
+          "pathFilter": {
+            "type": "string",
+            "description": "Only modules whose project-relative path contains this substring, e.g. CommonModules or Catalogs/Контрагенты. Optional."
+          },
+          "maxResults": {
+            "type": "integer",
+            "description": "Cap on hits returned (default 200). The result says whether it truncated."
+          }
+        },
+        "required": [
+          "pattern"
+        ]
+      }
+    },
+    {
+      "name": "edt_search_queries",
+      "description": "READ: search dynamic-list queryText in .form files and DCS dataset queries in .dcs files. Returns the form and attribute or template and dataset, query line, XML field line and source path. Reads stored XML and open text buffers; unsaved graphical-designer changes and BSL query literals are outside this scan. Parse failures and truncation make coverage incomplete and are reported explicitly.",
+      "descriptionRu": "ЧТЕНИЕ: искать текст в queryText динамических списков файлов .form и запросах наборов данных .dcs. Возвращает форму и реквизит либо макет и набор, строку запроса, строку XML-поля и путь. Читает сохраненный XML и открытые текстовые буферы; несохраненные правки визуальных редакторов и BSL-литералы сюда не входят. Ошибки разбора и усечение явно отмечаются как неполное покрытие.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "description": "Text or Java regular expression to find inside query lines"
+          },
+          "projectName": {
+            "type": "string",
+            "description": "Optional EDT project name; omitted searches every open project"
+          },
+          "regex": {
+            "type": "boolean",
+            "description": "Treat pattern as a Java regular expression; default false"
+          },
+          "caseSensitive": {
+            "type": "boolean",
+            "description": "Match case; default false with Unicode case folding"
+          },
+          "pathFilter": {
+            "type": "string",
+            "description": "Optional substring of the project-relative .form/.dcs path"
+          },
+          "kind": {
+            "type": "string",
+            "description": "all (default), dynamicList, or dcs"
+          },
+          "maxResults": {
+            "type": "integer",
+            "description": "Maximum matching lines, default 200, at most 10000"
+          }
+        },
+        "required": [
+          "pattern"
+        ]
+      }
+    },
+    {
+      "name": "edt_adopt_object",
+      "description": "WRITE (Phase 2): adopt an object of the base configuration into an extension project - the step that has to happen before the extension can intercept anything on that object, and the one that completes edt_create_extension. Runs EDT's own IModelObjectAdopter, so the adopted copy gets the correct objectBelonging, the link back to the base object's uuid and the per-property control block, and is attached to the extension's configuration - none of which is safe to hand-write. Dry-run by default; additive, so no force, but a configured token is required.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): заимствовать объект базовой конфигурации в проект расширения - шаг, без которого расширение не может ничего перехватить у этого объекта, и который достраивает edt_create_extension. Работает штатный IModelObjectAdopter EDT, поэтому заимствованная копия получает верный objectBelonging, ссылку на uuid базового объекта и блок пофайловых флагов управления свойствами, и привязывается к конфигурации расширения - писать это руками небезопасно. По умолчанию dry-run; аддитивно, force не нужен, но нужен токен.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "The EXTENSION project to adopt into"
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Object of the BASE configuration to adopt, with an English type prefix, e.g. Catalog.Контрагенты, CommonModule.ОбщегоНазначения, Document.Заказ"
+          },
+          "extendModule": {
+            "type": "boolean",
+            "description": "true sets the adopted CommonModule extension.module control to Extended; optional, default false."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = dry-run: resolve the extension, its base configuration and the object, report whether it is adoptable or already adopted, and change nothing. true = perform the adopt."
+          }
+        },
+        "required": [
+          "projectName",
+          "fqn"
+        ]
+      }
+    },
+    {
+      "name": "edt_debug_attach",
+      "description": "WRITE/SESSION (Phase 3): attach a debug session to a RUNNING infobase's debug server (dbgs). Builds a REMOTE_RUNTIME launch and launches it in debug mode; returns a sessionId for the follow-up debug tools. Requires a configured token. STAND-ONLY – target a test stand, never production. Data-area scoping not yet applied.",
+      "descriptionRu": "ЗАПИСЬ/СЕССИЯ (Фаза 3): подключить сессию отладки к debug-серверу (dbgs) ЗАПУЩЕННОЙ ИБ. Строит REMOTE_RUNTIME launch и запускает в режиме отладки; возвращает sessionId для последующих инструментов отладки. Требует токен. ТОЛЬКО СТЕНД – целиться в тестовый стенд, никогда в рабочую базу. Ограничение по областям данных пока не применяется.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name whose BSL modules map to the debugged infobase"
+          },
+          "serverUrl": {
+            "type": "string",
+            "description": "Debug server (dbgs) host of the RUNNING infobase, e.g. the tests stand. Required."
+          },
+          "serverPort": {
+            "type": "integer",
+            "description": "Debug server port. Optional (0/omit = default)."
+          },
+          "infobaseAlias": {
+            "type": "string",
+            "description": "Infobase alias on the debug server. Optional (alias OR uuid)."
+          },
+          "infobaseUuid": {
+            "type": "string",
+            "description": "Infobase UUID on the debug server. Optional (alias OR uuid)."
+          }
+        },
+        "required": [
+          "serverUrl"
+        ]
+      }
+    },
+    {
+      "name": "edt_debug_detach",
+      "description": "WRITE/SESSION (Phase 3): detach (terminate) a debug session opened by edt_debug_attach. Frees the infobase and removes the launch. Requires a configured token.",
+      "descriptionRu": "ЗАПИСЬ/СЕССИЯ (Фаза 3): отключить (завершить) сессию отладки, открытую edt_debug_attach. Освобождает ИБ и удаляет launch. Требует токен.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "description": "The debug session id returned by edt_debug_attach"
+          }
+        },
+        "required": [
+          "sessionId"
+        ]
+      }
+    },
+    {
+      "name": "edt_debug_inspect",
+      "description": "READ (Phase 3): inspect a live debug session – list its threads (debug items: background jobs, server calls, clients) and, for SUSPENDED threads, their BSL stack frames + the top frame's variables (name/value/type). Read-only. Suspend first (edt_debug_control) or wait for a breakpoint hit to see frames.",
+      "descriptionRu": "ЧТЕНИЕ (Фаза 3): осмотреть живую сессию отладки – список потоков (debug-объекты: фоновые задания, серверные вызовы, клиенты) и, для ПРИОСТАНОВЛЕННЫХ потоков, кадры стека BSL + переменные верхнего кадра (имя/значение/тип). Только чтение. Чтобы увидеть кадры, сначала приостановите (edt_debug_control) или дождитесь срабатывания точки останова.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "description": "The debug session id returned by edt_debug_attach"
+          }
+        },
+        "required": [
+          "sessionId"
+        ]
+      }
+    },
+    {
+      "name": "edt_debug_control",
+      "description": "WRITE/SESSION (Phase 3): control execution of a live debug session – suspend/resume the target, or stepOver/stepInto/stepReturn a suspended thread. Requires a configured token. Pair with edt_debug_inspect to read state after suspend/step.",
+      "descriptionRu": "ЗАПИСЬ/СЕССИЯ (Фаза 3): управление выполнением живой сессии отладки – suspend/resume цели или stepOver/stepInto/stepReturn приостановленного потока. Требует токен. Состояние после suspend/step смотрите через edt_debug_inspect.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "description": "The debug session id returned by edt_debug_attach"
+          },
+          "action": {
+            "type": "string",
+            "description": "One of: suspend, resume, stepOver, stepInto, stepReturn"
+          },
+          "threadName": {
+            "type": "string",
+            "description": "For step actions: which suspended thread (optional; default = the first suspended thread)"
+          }
+        },
+        "required": [
+          "sessionId",
+          "action"
+        ]
+      }
+    },
+    {
+      "name": "edt_evaluate",
+      "description": "EXEC (Phase 3): evaluate an ARBITRARY BSL expression in a suspended debug frame – arbitrary code execution against a live infobase. Heaviest gate: requires a configured token AND allowCodeExecution=true AND the server switch EDT_BRIDGE_ALLOW_EVALUATE=1 (off by default). STAND-ONLY, never production. Suspend a thread first (edt_debug_control) or hit a breakpoint.",
+      "descriptionRu": "ИСПОЛНЕНИЕ (Фаза 3): вычислить ПРОИЗВОЛЬНОЕ BSL-выражение в приостановленном кадре – это исполнение произвольного кода против живой ИБ. Самая жёсткая защита: нужен токен И allowCodeExecution=true И серверный переключатель EDT_BRIDGE_ALLOW_EVALUATE=1 (по умолчанию выключено). ТОЛЬКО СТЕНД, никогда не рабочая база. Сначала приостановите поток (edt_debug_control) или дождитесь точки останова.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "description": "The debug session id returned by edt_debug_attach"
+          },
+          "expression": {
+            "type": "string",
+            "description": "BSL expression to evaluate in the suspended frame (e.g. a variable name, or 1+1). Executes against the live infobase."
+          },
+          "threadName": {
+            "type": "string",
+            "description": "Which suspended thread (optional; default = first suspended)."
+          },
+          "frameLevel": {
+            "type": "integer",
+            "description": "Stack frame level to evaluate in (optional; default 0 = top)."
+          },
+          "allowCodeExecution": {
+            "type": "boolean",
+            "description": "MUST be true to run – explicit confirmation that this executes arbitrary BSL against a live infobase."
+          }
+        },
+        "required": [
+          "sessionId",
+          "expression",
+          "allowCodeExecution"
+        ]
+      }
+    }
+  ],
+  "version": "0.28.0"
+}

@@ -22,6 +22,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.eclipse.core.resources.IProject;
@@ -968,6 +969,18 @@ public final class MetadataWriteGateway {
         public boolean nameValid;     // newName is a legal 1C identifier and differs from the current name
         public boolean forced;
         public int refactoringCount;  // number of IRefactoring (base config + adopted extension counterparts)
+        public String targetPath;
+        public int affectedFileCount;
+        public int nativeChangeCount;
+        public int nativeTextEditCount;
+        public Integer editCount = 0;
+        public boolean editCountComplete = true;
+        public boolean coverageComplete = true;
+        public int selectedItemCount;
+        public int unmappedItemCount;
+        public int unknownChangeCount;
+        public List<String> unmappedItems = new ArrayList<>();
+        public List<BslRefactorGateway.AffectedFile> affectedFiles = new ArrayList<>();
         public boolean truncated;     // the item list was capped
         public List<RenameItem> items = new ArrayList<>();
         public List<RenameProblem> problems = new ArrayList<>();
@@ -1035,6 +1048,7 @@ public final class MetadataWriteGateway {
         // which also guarantees the MdObject we hand to the engine is live. perform() happens later,
         // OUTSIDE any transaction (it opens its own write transactions via a batch session).
         final List<IRefactoring> built = new ArrayList<>();
+        final List<IRefactoringItem> allItems = new ArrayList<>();
         model.executeReadonlyTask(new AbstractBmTask<Object>("edt-bridge.rename.build") {
             @Override
             public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
@@ -1062,6 +1076,12 @@ public final class MetadataWriteGateway {
                 r.targetType = md.eClass().getName();
                 r.topObject = top;
                 r.currentName = md.getName();
+                try { r.targetPath = BslRefactorGateway.resourcePath(md); }
+                catch (RuntimeException unavailable) {
+                    r.coverageComplete = false;
+                    r.editCountComplete = false;
+                    r.unmappedItems.add("Target file mapping unavailable: " + unavailable.getClass().getSimpleName());
+                }
                 if (newName.equals(r.currentName)) {
                     r.nameValid = false;
                     r.message = "newName equals the current name: " + newName;
@@ -1084,9 +1104,10 @@ public final class MetadataWriteGateway {
                             }
                         }
                         for (IRefactoringItem it : rf.getItems()) {
+                            allItems.add(it);
                             if (r.items.size() >= RENAME_ITEM_CAP) {
                                 r.truncated = true;
-                                break;
+                                continue;
                             }
                             RenameItem ri = new RenameItem();
                             ri.name = it.getName();
@@ -1094,10 +1115,25 @@ public final class MetadataWriteGateway {
                             ri.checked = it.isChecked();
                             r.items.add(ri);
                         }
-                    } catch (RuntimeException ignored) {
-                        // item/problem extraction is best-effort
+                    } catch (RuntimeException unavailable) {
+                        r.coverageComplete = false;
+                        r.editCountComplete = false;
+                        r.unmappedItems.add("Refactoring items unavailable: " + unavailable.getClass().getSimpleName());
                     }
                 }
+                BslRefactorGateway.Result preview = BslRefactorGateway.previewItems(allItems);
+                BslRefactorGateway.includeTargetPath(preview, r.targetPath);
+                r.affectedFiles = preview.affectedFiles;
+                r.affectedFileCount = preview.affectedFileCount;
+                r.nativeChangeCount = preview.changeCount;
+                r.nativeTextEditCount = preview.nativeTextEditCount;
+                r.editCountComplete &= preview.editCountComplete;
+                r.editCount = r.editCountComplete ? preview.editCount : null;
+                r.coverageComplete &= preview.coverageComplete;
+                r.selectedItemCount = preview.selectedItemCount;
+                r.unmappedItemCount = preview.unmappedItemCount;
+                r.unknownChangeCount = preview.unknownChangeCount;
+                r.unmappedItems.addAll(preview.unmappedItems);
                 return null;
             }
         });
@@ -1112,6 +1148,8 @@ public final class MetadataWriteGateway {
         r.warning = "a rename changes the metadata contract and BREAKS backward compatibility for "
                 + "dependent configurations and extensions on other deployments. The cascade touches "
                 + "metadata AND BSL across all projects. Requires explicit confirmation (force).";
+        if (!r.coverageComplete) r.warning += " Preview coverage is incomplete: paths and counts cover exposed native changes only; "
+                + r.unmappedItemCount + " selected item(s) have no native file mapping.";
         if (!r.problems.isEmpty()) {
             r.message = "refactoring engine reported " + r.problems.size() + " problem(s) – apply blocked "
                     + "(e.g. name taken, or object not editable / support-locked).";
@@ -1488,6 +1526,11 @@ public final class MetadataWriteGateway {
      */
     public CreateObjectResult createObject(String projectName, String objectType, String name,
             String synonymRu, String comment, boolean apply) {
+        return createObject(projectName, objectType, name, synonymRu, comment, java.util.Map.of(), apply);
+    }
+
+    public CreateObjectResult createObject(String projectName, String objectType, String name,
+            String synonymRu, String comment, java.util.Map<String, Object> properties, boolean apply) {
         CreateObjectResult r = new CreateObjectResult();
         r.objectType = objectType;
         r.name = name;
@@ -1518,6 +1561,15 @@ public final class MetadataWriteGateway {
             return r;
         }
         final EClass eClass = (EClass) classifier;
+        if (properties != null && !properties.isEmpty()) {
+            EObject draft = eClass.getEPackage().getEFactoryInstance().create(eClass);
+            if (!(draft instanceof com._1c.g5.v8.dt.metadata.mdclass.CommonModule module)) {
+                r.message = "properties are supported only for CommonModule";
+                return r;
+            }
+            try { CommonModuleSettings.describe(module, properties, false); }
+            catch (IllegalArgumentException invalid) { r.message = invalid.getMessage(); return r; }
+        }
         r.typeKnown = true;
         r.eClass = mdClassName;
         final String fqn = mdClassName + "." + name;
@@ -1604,23 +1656,30 @@ public final class MetadataWriteGateway {
                         EReference feat = findConfigFeature(config, eClass);
                         @SuppressWarnings("unchecked")
                         List<EObject> list = (List<EObject>) config.eGet(feat);
-                        list.add(created);
+                        int position = io.github.keyfire.edtbridge.core.MetadataOrder.insertionIndex(
+                                list.stream().map(object -> object instanceof MdObject md ? md.getName() : null).toList(), name);
+                        list.add(position, created);
+                        if (created instanceof com._1c.g5.v8.dt.metadata.mdclass.CommonModule module
+                                && properties != null && !properties.isEmpty()) {
+                            CommonModuleSettings.apply(module, properties, false);
+                        }
                         factory.fillDefaultReferences(created);
                         return null;
                     }
                 }, false);
+                r.applied = true;
                 // Serialize the new object AND the Configuration (its child list changed).
                 IDtProject dtProject = mm.getDtProject(model);
                 boolean exportedObj = dtProject != null && mm.forceExport(dtProject, fqn);
                 boolean exportedCfg = dtProject != null && mm.forceExport(dtProject, "Configuration");
-                r.applied = true;
                 r.message = "created " + objectType + " " + fqn
                         + ((exportedObj && exportedCfg) ? " (serialized: object .mdo + Configuration.mdo)"
                                 : " – WARNING: created in-memory but forceExport incomplete (object=" + exportedObj
                                         + ", configuration=" + exportedCfg + ")");
             } catch (RuntimeException ex) {
-                r.applied = false;
-                r.message = "create failed (verify the working tree – a partial object may remain): "
+                r.ok = false;
+                r.message = (r.applied ? "The object was created, but export failed: "
+                        : "Creation failed; inspect the working tree for partial changes: ")
                         + ex.getClass().getSimpleName() + (ex.getMessage() != null ? ": " + ex.getMessage() : "");
             }
         }
@@ -2156,7 +2215,12 @@ public final class MetadataWriteGateway {
      * @param apply       {@code false} validates and returns the plan; {@code true} performs the adopt
      */
     public AdoptResult adoptObject(String projectName, String fqn, boolean apply) {
+        return adoptObject(projectName, fqn, false, apply);
+    }
+
+    public AdoptResult adoptObject(String projectName, String fqn, boolean extendModule, boolean apply) {
         AdoptResult r = new AdoptResult();
+        boolean adoptionStarted = false;
         r.project = projectName;
         r.fqn = fqn;
         if (projectName == null || projectName.isBlank() || fqn == null || fqn.isBlank()) {
@@ -2216,12 +2280,17 @@ public final class MetadataWriteGateway {
             }
         });
 
+        if (extendModule && !"CommonModule".equals(r.type)) {
+            r.message = "extendModule requires a CommonModule target";
+            return r;
+        }
         if (!r.objectFound) {
             r.message = "object not found in the base configuration " + r.baseProject + ": " + fqn;
             return r;
         }
         r.ok = !Boolean.FALSE.equals(r.adoptable) && !Boolean.TRUE.equals(r.alreadyAdopted);
         r.plan = "Adopt " + fqn + " (" + r.type + ") from " + r.baseProject + " into " + projectName;
+        if (extendModule) r.plan += " and enable its module body for extension";
         if (Boolean.TRUE.equals(r.alreadyAdopted)) {
             r.message = fqn + " is already adopted into " + projectName;
         } else if (Boolean.FALSE.equals(r.adoptable)) {
@@ -2240,6 +2309,27 @@ public final class MetadataWriteGateway {
             return r;
         }
         try {
+            IBmModel extensionModel = mm.getModel(p);
+            if (extensionModel == null) throw new IllegalStateException("The extension BM model is not loaded");
+            final boolean[] alphabetic = {false};
+            extensionModel.executeReadonlyTask(new AbstractBmTask<Object>("edt-bridge.adopt.order.inspect") {
+                @Override public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
+                    EObject configuration = tx.getTopObjectByFqn("Configuration");
+                    EClass targetClass = (EClass) MdClassPackage.eINSTANCE.getEClassifier(r.type);
+                    EReference feature = configuration == null ? null : findConfigFeature(configuration, targetClass);
+                    if (feature != null) {
+                        @SuppressWarnings("unchecked") List<EObject> list = (List<EObject>) configuration.eGet(feature);
+                        java.util.List<String> names = list.stream().map(o -> ((MdObject) o).getName()).toList();
+                        alphabetic[0] = true;
+                        for (int i = 1; i < names.size(); i++) {
+                            if (names.get(i - 1) == null || names.get(i) == null
+                                    || names.get(i - 1).toLowerCase(java.util.Locale.ROOT)
+                                            .compareTo(names.get(i).toLowerCase(java.util.Locale.ROOT)) > 0) alphabetic[0] = false;
+                        }
+                    }
+                    return null;
+                }
+            });
             final EObject[] adopted = {null};
             baseModel.executeReadonlyTask(new AbstractBmTask<Object>("edt-bridge.adopt.read") {
                 @Override
@@ -2252,15 +2342,45 @@ public final class MetadataWriteGateway {
                 r.message = "the object disappeared between validation and apply";
                 return r;
             }
+            adoptionStarted = true;
             EObject result = adopter.adoptAndAttach(adopted[0], extension, new NullProgressMonitor());
             r.applied = result != null;
+            if (r.applied && (alphabetic[0] || extendModule)) {
+                extensionModel.execute(new AbstractBmTask<Object>("edt-bridge.adopt.settings.apply") {
+                    @Override public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
+                        EObject object = tx.getTopObjectByFqn(fqn);
+                        if (extendModule) CommonModuleSettings.apply(
+                                (com._1c.g5.v8.dt.metadata.mdclass.CommonModule) object, java.util.Map.of(), true);
+                        if (alphabetic[0]) {
+                            EObject configuration = tx.getTopObjectByFqn("Configuration");
+                            EReference feature = findConfigFeature(configuration, object.eClass());
+                            @SuppressWarnings("unchecked") org.eclipse.emf.common.util.EList<EObject> list =
+                                    (org.eclipse.emf.common.util.EList<EObject>) configuration.eGet(feature);
+                            java.util.List<EObject> sorted = new ArrayList<>(list);
+                            sorted.sort(java.util.Comparator.comparing(o -> ((MdObject) o).getName().toLowerCase(java.util.Locale.ROOT)));
+                            for (int i = 0; i < sorted.size(); i++) list.move(i, list.indexOf(sorted.get(i)));
+                        }
+                        return null;
+                    }
+                });
+                IDtProject targetProject = mm.getDtProject(extensionModel);
+                boolean exportedObject = targetProject != null && mm.forceExport(targetProject, fqn);
+                boolean exportedConfiguration = targetProject != null && mm.forceExport(targetProject, "Configuration");
+                if (!exportedObject || !exportedConfiguration) {
+                    r.warning = (r.warning == null ? "" : r.warning + " ")
+                            + "The model changed, but serialization was not confirmed (object=" + exportedObject
+                            + ", configuration=" + exportedConfiguration + "); inspect the working tree";
+                }
+            }
             r.message = r.applied
                     ? "adopted " + fqn + " into " + projectName
                             + " (attached to the extension's configuration)"
                     : "the adopter returned nothing for " + fqn;
         } catch (CoreException | RuntimeException ex) {
-            r.applied = false;
-            r.message = "adopt failed: " + GatewaySupport.describeCause(ex);
+            r.ok = false;
+            r.message = (r.applied ? "The object was adopted, but finalization failed: "
+                    : adoptionStarted ? "Adoption failed after execution began; inspect the project for partial changes: "
+                    : "Nothing adopted: ") + GatewaySupport.describeCause(ex);
         }
         return r;
     }
@@ -2453,6 +2573,7 @@ public final class MetadataWriteGateway {
         java.nio.file.Path log = java.nio.file.Path.of(r.logPath);
         String problem = platforms.dumpExternalObjectViaDisk(root, target, version, log, method);
         r.applied = problem == null && java.nio.file.Files.exists(target);
+        r.ok = r.applied;
         r.nativeError = nativeError;
         r.method = r.applied ? method.toString() : r.method;
         String because = nativeError != null ? "; EDT's own dumper refused first"
@@ -2530,6 +2651,12 @@ public final class MetadataWriteGateway {
      */
     TypeDescription typeDescriptionFor(IBmTransaction tx, String spec, Version version,
             boolean allowPlatformTypes) {
+        return typeDescriptionFor(tx, spec, version, allowPlatformTypes, null);
+    }
+
+    /** Resolve form reference types in the owning project's base configuration when needed. */
+    TypeDescription typeDescriptionFor(IBmTransaction tx, String spec, Version version,
+            boolean allowPlatformTypes, Function<String, EObject> baseReference) {
         ParsedType pt = parseType(spec);
         if (!pt.valid && allowPlatformTypes && spec != null && IDENT.matcher(spec.trim()).matches()) {
             // Form attributes accept platform types the metadata grammar has no business allowing -
@@ -2540,21 +2667,30 @@ public final class MetadataWriteGateway {
             pt.platformCode = spec.trim();
             pt.display = spec.trim();
         }
-        return pt.valid ? buildTypeDescription(tx, pt, version) : null;
+        return pt.valid ? buildTypeDescription(tx, pt, version, baseReference) : null;
     }
 
     private TypeDescription buildTypeDescription(IBmTransaction tx, ParsedType pt, Version version) {
+        return buildTypeDescription(tx, pt, version, null);
+    }
+
+    private TypeDescription buildTypeDescription(IBmTransaction tx, ParsedType pt, Version version,
+            Function<String, EObject> baseReference) {
         TypeDescription td = McoreFactory.eINSTANCE.createTypeDescription();
         for (ParsedType part : partsOf(pt)) {
-            addTypeItem(tx, part, version, td);
+            addTypeItem(tx, part, version, td, baseReference);
         }
         return td;
     }
 
     /** Add one type (ref/defined or platform primitive + its qualifier) to {@code td}. */
-    private void addTypeItem(IBmTransaction tx, ParsedType part, Version version, TypeDescription td) {
+    private void addTypeItem(IBmTransaction tx, ParsedType part, Version version, TypeDescription td,
+            Function<String, EObject> baseReference) {
         if (part.refFqn != null) {
             EObject target = tx.getTopObjectByFqn(part.refFqn);
+            if (!(target instanceof MdObject) && baseReference != null) {
+                target = baseReference.apply(part.refFqn);
+            }
             if (!(target instanceof MdObject)) {
                 throw new IllegalStateException("reference target not resolvable: " + part.refFqn);
             }

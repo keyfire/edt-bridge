@@ -13,19 +13,36 @@ Every entry ends with a link to the pull request it came from -
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
-## 2026-10-28 – 0.28.0
+## 2026-10-28 – 0.29.0, 0.28.0
 
 ### Added
+- Method placement accepts `beforeMethod`/`afterMethod` and nested region paths; `edt_move_method` preserves the method text, documentation and directives. Native method rename updates callers and previews affected files before applying.
+- Managed-form items can be inserted or moved by sibling position while preserving IDs, children and handlers. Group layout properties, field kinds and scalar choice lists are available through the model.
+- Common-module execution flags and result reuse can be set on create or with `edt_modify_object`. `edt_update_subsystem` edits membership; `extendModule` enables extending an adopted common module.
+- `edt_project_errors` can save a bounded validation baseline and compare new and resolved problems within the same project and filters. Line shifts and duplicate markers are handled separately.
+- `edt_register_infobase` registers an existing server infobase in EDT. `edt_import_external_object` imports an existing EPF/ERF through EDT or the platform on disk, with an optional base configuration.
+- `edt_search_queries` searches dynamic-list and DCS dataset query fields. Metadata references include a separate query-source scan; form structure returns dynamic-list settings and bounded query text.
+- `status --all` reports every detected bridge, its workspace, versions and project readiness without starting EDT. Explicit ports and ranges can be selected.
 - `edt_update_infobase` with `transport=agent` loads only changed files after checking the infobase state.
   File loading is skipped when the export is unchanged; if partial-load conditions are not met,
   the full configuration is loaded. `fullLoad=true` requests a full load.
   ([#46](https://github.com/keyfire/edt-bridge/pull/46))
 
 ### Changed
+- Creating or adopting metadata preserves an existing alphabetic Configuration list; a custom list order is retained.
+- The wrapper ships the full generated tool catalog, so the same tool schemas remain available while EDT is stopped.
 - Rewrote the Russian and English documentation and increased the article width to 960 px.
   ([#47](https://github.com/keyfire/edt-bridge/pull/47), [#48](https://github.com/keyfire/edt-bridge/pull/48))
 - Repository instructions now require the `tooling-docs-writing` skill for documentation changes.
   ([#49](https://github.com/keyfire/edt-bridge/pull/49))
+
+### Fixed
+- Generated form-item handlers include the implicit item parameter. Native command-handler rename preserves its action container on EDT 2026.2. Adding the first method to an existing empty module creates its BSL file after model and parser checks.
+- Validation no longer reports an unavailable or warming model as clean. Module paths include traced EDT-check markers; validation waits are configurable, and a timeout returns explicit partial results.
+- Regular-expression searches use Unicode word classes and case folding. Common-attribute composition and event-subscription source/event/handler fields are exposed.
+- External-object form attributes resolve reference types against their base configuration. Explicit button names survive EDT generation.
+- Disk EPF/ERF builds replace the destination only after success, preserve an existing artifact on failure and decode platform logs correctly. Full Linux platform layouts are recognized without choosing a thin client first.
+- Workspace ownership is checked independently of bridge port and install; live workspace locks are preserved. HTTP authentication failures are readable, and updates warn when EDT still refers to an older bundle.
 
 ## 2026-10-05 – 0.27.3
 

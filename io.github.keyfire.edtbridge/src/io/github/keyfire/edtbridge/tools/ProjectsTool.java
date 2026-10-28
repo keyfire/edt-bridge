@@ -66,6 +66,12 @@ public final class ProjectsTool {
                 }
                 o.addProperty("open", pi.open);
                 o.addProperty("dtProject", pi.dtProject);
+                o.addProperty("modelPresent", pi.modelPresent);
+                o.addProperty("modelReady", pi.modelReady);
+                o.addProperty("derivedDataPending", pi.derivedDataPending);
+                if (pi.modelHint != null) {
+                    o.addProperty("modelHint", pi.modelHint);
+                }
                 JsonArray nats = new JsonArray();
                 for (String n : pi.natures) {
                     nats.add(n);

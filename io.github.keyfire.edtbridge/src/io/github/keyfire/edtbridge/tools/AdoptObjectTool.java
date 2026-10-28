@@ -45,6 +45,7 @@ public final class AdoptObjectTool {
         props.add("fqn", ToolJson.strProp("Object of the BASE configuration to adopt, with an English "
                 + "type prefix, e.g. Catalog.Контрагенты, CommonModule.ОбщегоНазначения, "
                 + "Document.Заказ"));
+        props.add("extendModule", ToolJson.boolProp("true sets the adopted CommonModule extension.module control to Extended; optional, default false."));
         props.add("apply", ToolJson.boolProp("false (default) = dry-run: resolve the extension, its "
                 + "base configuration and the object, report whether it is adoptable or already "
                 + "adopted, and change nothing. true = perform the adopt."));
@@ -74,7 +75,7 @@ public final class AdoptObjectTool {
         }
         try {
             MetadataWriteGateway.AdoptResult res =
-                    gateway.adoptObject(project, fqn, ToolJson.getBool(args, "apply"));
+                    gateway.adoptObject(project, fqn, ToolJson.getBool(args, "extendModule"), ToolJson.getBool(args, "apply"));
             JsonObject o = new JsonObject();
             o.addProperty("ok", res.ok);
             o.addProperty("applied", res.applied);

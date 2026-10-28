@@ -44,6 +44,8 @@ public final class FormStructureTool {
                 + "form tools agreed on one name keep working; write formFqn in new ones."));
         props.add("limit", intProp("Max items in the visual tree (default " + DEFAULT_LIMIT + "; <=0 means no cap)"));
 
+        props.add("queryLimit", intProp("Maximum queryText characters per dynamic-list attribute (1-100000, default 20000). The response includes queryTextLength and queryTextTruncated."));
+
         JsonArray req = new JsonArray();
         req.add("projectName");
         req.add("formFqn");
@@ -58,7 +60,7 @@ public final class FormStructureTool {
         t.addProperty("description",
                 "Structure of a managed form from the live EDT model: the visual items tree "
                 + "(fields, groups, tables, buttons, decorations) with their data bindings, plus the "
-                + "form's attributes (with value types), commands, parameters and event handlers "
+                + "form's attributes (with value types and bounded dynamic-list customQuery/mainTable/queryText), commands, parameters and event handlers "
                 + "(form event -> BSL handler). Items also carry their static visible/enabled/readOnly "
                 + "(DESIGN values from .form – runtime BSL e.g. ПриСозданииНаСервере may override them), "
                 + "per-item event handlers (e.g. a table column's Selection/Выбор handler), a cellHyperlink "
@@ -70,7 +72,7 @@ public final class FormStructureTool {
         t.addProperty("descriptionRu",
                 "Структура управляемой формы из живой модели EDT: дерево элементов "
                 + "(поля, группы, таблицы, кнопки, декорации) с их привязками к данным, а также "
-                + "реквизиты формы (с типами значений), команды, параметры и обработчики событий "
+                + "реквизиты формы (с типами значений и настройками динамических списков customQuery/mainTable/queryText), команды, параметры и обработчики событий "
                 + "(событие формы -> процедура BSL). У элементов также: обработчики уровня элемента "
                 + "(например, обработчик Выбор у колонки таблицы), флаг cellHyperlink, у полей ввода – "
                 + "design-свойства пароля/кнопки выбора (passwordMode / choiceButton / choiceButtonPicture – "
@@ -90,7 +92,9 @@ public final class FormStructureTool {
         }
         int limit = getInt(args, "limit", DEFAULT_LIMIT);
         try {
-            FormGateway.FormDetails d = gateway.getFormStructure(project, fqn, limit);
+            int queryLimit = args.has("queryLimit") && !args.get("queryLimit").isJsonNull()
+                    ? args.get("queryLimit").getAsBigDecimal().intValueExact() : FormGateway.DEFAULT_QUERY_LIMIT;
+            FormGateway.FormDetails d = gateway.getFormStructure(project, fqn, limit, queryLimit);
             JsonObject o = new JsonObject();
             o.addProperty("found", d.found);
             o.addProperty("formFqn", d.fqn);
@@ -126,6 +130,9 @@ public final class FormStructureTool {
             o.addProperty("name", a.name);
             if (a.valueType != null) {
                 o.addProperty("valueType", a.valueType);
+            }
+            if (a.dynamicList != null) {
+                o.add("dynamicList", new com.google.gson.Gson().toJsonTree(a.dynamicList));
             }
             if (a.main) {
                 o.addProperty("main", true);
@@ -220,6 +227,7 @@ public final class FormStructureTool {
         }
         for (FormGateway.FormNode n : nodes) {
             JsonObject o = new JsonObject();
+            o.addProperty("id", n.id);
             o.addProperty("name", n.name);
             o.addProperty("kind", n.kind);
             if (n.itemType != null) {
@@ -263,6 +271,9 @@ public final class FormStructureTool {
             }
             if (n.placement != null) {
                 o.addProperty("placement", n.placement);
+            }
+            if (n.properties != null && !n.properties.isEmpty()) {
+                o.add("properties", new com.google.gson.Gson().toJsonTree(n.properties));
             }
             if (n.handlers != null && !n.handlers.isEmpty()) {
                 o.add("handlers", evtArray(n.handlers));

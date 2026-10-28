@@ -175,8 +175,8 @@ def test_force_kills_the_survivors_and_then_starts_the_gui():
     assert edt.launched
 
 
-def test_a_stale_workspace_lock_is_removed(tmp_path, monkeypatch):
-    """A killed session leaves .metadata/.lock behind, and EDT then refuses the workspace."""
+def test_a_free_workspace_lock_is_preserved_when_handing_over_to_gui(tmp_path, monkeypatch):
+    """The GUI locks the existing inode; replacing it could bypass another process lock."""
     lock = tmp_path / ".metadata" / ".lock"
     lock.parent.mkdir()
     lock.write_bytes(b"")
@@ -185,7 +185,8 @@ def test_a_stale_workspace_lock_is_removed(tmp_path, monkeypatch):
     _Edt(headless=[17276], keepalive=[27796]).install(backend, monkeypatch)
     ok, _lines = backend.open_gui()
     assert ok
-    assert not lock.exists()
+    assert lock.exists()
+    assert backend._workspace_locked() is False
 
 
 # -- reading the process table ------------------------------------------------
@@ -250,7 +251,7 @@ def test_the_wrapper_tool_is_offered_even_with_no_bridge_up(monkeypatch):
     stdio = _Recorder(backend)
     monkeypatch.setattr(stdio, "_kick_background_start", lambda: None)
     stdio.handle({"jsonrpc": "2.0", "id": 7, "method": "tools/list", "params": {}})
-    assert [tool["name"] for tool in stdio.sent[0]["result"]["tools"]] == ["edt_open_gui"]
+    assert "edt_open_gui" in {tool["name"] for tool in stdio.sent[0]["result"]["tools"]}
 
 
 def test_calling_the_wrapper_tool_never_starts_a_headless_edt(monkeypatch):

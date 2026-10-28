@@ -52,7 +52,7 @@ public final class ValidationSettle {
         if (!jobsIdle) {
             sawBusy = true;
         }
-        quiet = (problems == previous && jobsIdle) ? quiet + 1 : 0;
+        quiet = (problems >= 0 && problems == previous && jobsIdle) ? quiet + 1 : 0;
         previous = problems;
         return settled();
     }

@@ -33,6 +33,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import io.github.keyfire.edtbridge.core.MetadataPaths;
+import io.github.keyfire.edtbridge.core.BslPlacement;
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IFolder;
 import org.eclipse.core.resources.IMarker;
@@ -323,7 +324,7 @@ public final class BslGateway {
                 "com._1c.g5.v8.dt.ql.ui.internal.QlActivator", "com._1c.g5.v8.dt.ql.Ql");
     }
 
-    private Injector bslInjector() throws Exception {
+    Injector bslInjector() throws Exception {
         return languageInjector("com._1c.g5.v8.dt.bsl.ui",
                 "com._1c.g5.v8.dt.bsl.ui.internal.BslActivator", "com._1c.g5.v8.dt.bsl.Bsl");
     }
@@ -525,6 +526,8 @@ public final class BslGateway {
         public boolean applyPending;
         public String modulePath;
         public boolean moduleFound;
+        public boolean moduleFileMissing;
+        public boolean moduleFileCreated;
         public String methodName;        // parsed from the spliced model
         public String methodKind;        // Procedure | Function
         public Boolean export;
@@ -534,6 +537,8 @@ public final class BslGateway {
         public Boolean regionFound;
         public boolean serverBlock;      // requested
         public Boolean serverBlockFound;
+        public String previousMethod;
+        public String nextMethod;
         public String insertAfter;       // anchor description (method name / region header / <end of module>)
         public int insertLine = -1;      // 1-based line of the inserted method in the spliced text
         public String preview;           // text snippet around the insertion (dry-run)
@@ -551,7 +556,18 @@ public final class BslGateway {
      */
     public AddMethodResult addMethod(String projectName, String fqn, String moduleType, String modulePath,
             String methodText, String region, Boolean serverBlockArg, boolean apply) {
+        return addMethod(projectName, fqn, moduleType, modulePath, methodText, region,
+                serverBlockArg, null, null, apply);
+    }
+
+    public AddMethodResult addMethod(String projectName, String fqn, String moduleType, String modulePath,
+            String methodText, String region, Boolean serverBlockArg, String beforeMethod,
+            String afterMethod, boolean apply) {
         AddMethodResult r = new AddMethodResult();
+        if (beforeMethod != null && afterMethod != null) {
+            r.message = "beforeMethod and afterMethod are mutually exclusive";
+            return r;
+        }
         r.region = (region != null && !region.isBlank()) ? region : null;
         boolean serverBlock = Boolean.TRUE.equals(serverBlockArg);
         r.serverBlock = serverBlock;
@@ -570,17 +586,16 @@ public final class BslGateway {
             }
         }
         IFile file = p.getFile(relPath);
-        if (!file.exists()) {
-            r.message = "module file not found: " + relPath;
-            return r;
-        }
+        boolean missingModule = !file.exists();
+        r.moduleFileMissing = missingModule;
         r.modulePath = relPath;
         if (methodText == null || methodText.isBlank()) {
             r.message = "methodText is required";
             return r;
         }
         try {
-            String fullText = readText(file);
+            if (missingModule) requireEmptyModuleOwner(p, fqn, moduleType, r.modulePath);
+            String fullText = missingModule ? "" : readText(file);
             String eol = fullText.contains("\r\n") ? "\r\n" : "\n";
 
             // 1) parse the original module; refuse to edit a module that does not already parse cleanly.
@@ -607,85 +622,15 @@ public final class BslGateway {
                 baselineCount++;
             }
 
-            // 2) resolve the insertion scope from the model (never a regex).
-            int[] scope = new int[] {0, fullText.length()};   // [start, end)
-            EObject serverIf = null;
-            if (serverBlock) {
-                serverIf = findServerIf(module0);
-                if (serverIf == null) {
-                    r.serverBlockFound = Boolean.FALSE;
-                    r.message = "server preprocessor block (#Если Сервер ...) not found in module";
-                    return r;
-                }
-                r.serverBlockFound = Boolean.TRUE;
-                ICompositeNode sn = NodeModelUtils.getNode(serverIf);
-                scope = new int[] {sn.getOffset(), sn.getEndOffset()};
-            }
-            EObject regionEo = null;
-            if (r.region != null) {
-                regionEo = findRegion(module0, r.region, scope);
-                if (regionEo == null) {
-                    r.regionFound = Boolean.FALSE;
-                    r.message = "region not found: #Область " + r.region
-                            + (serverBlock ? " (inside the server block)" : "");
-                    return r;
-                }
-                r.regionFound = Boolean.TRUE;
-                ICompositeNode rn = NodeModelUtils.getNode(regionEo);
-                scope = new int[] {rn.getOffset(), rn.getEndOffset()};
-            }
-
-            // anchor = the textually-last method belonging to the target scope. Membership is by the
-            // MODEL, never a text-offset window: EDT nests consecutive top-level #Область regions
-            // (region B parses as a child of region A), so both an offset window AND a plain
-            // isAncestor(regionA, ...) wrongly pull in region B's methods and land the insert at the
-            // module end instead of inside region A (a wrong-location bug). For a region we
-            // therefore require the method's IMMEDIATE enclosing region to equal the target region
-            // (excludes nested regions); for a server block, any method inside it (incl. its nested
-            // regions) is in scope, so containment is correct there.
-            com._1c.g5.v8.dt.bsl.model.Method anchor = null;
-            int anchorEnd = -1;
-            for (com._1c.g5.v8.dt.bsl.model.Method m : module0.allMethods()) {
-                boolean inScope;
-                if (regionEo != null) {
-                    inScope = (immediateRegion(m) == regionEo);
-                } else if (serverIf != null) {
-                    inScope = EcoreUtil.isAncestor(serverIf, m);
-                } else {
-                    inScope = true;
-                }
-                if (!inScope) {
-                    continue;
-                }
-                ICompositeNode mn = NodeModelUtils.getNode(m);
-                if (mn == null) {
-                    continue;
-                }
-                if (mn.getEndOffset() > anchorEnd) {
-                    anchorEnd = mn.getEndOffset();
-                    anchor = m;
-                }
-            }
-
+            Insertion insertion = insertion(module0, fullText, r.region, serverBlock, beforeMethod, afterMethod);
+            r.regionFound = r.region == null ? null : Boolean.TRUE;
+            r.serverBlockFound = serverBlock ? Boolean.TRUE : null;
+            r.previousMethod = insertion.point.previousMethod();
+            r.nextMethod = insertion.point.nextMethod();
+            r.insertAfter = r.previousMethod == null ? "<scope start>" : r.previousMethod;
             String normalized = normalizeEol(methodText.strip(), eol);
-            int insertPos;
-            String block;
-            if (anchor != null) {
-                insertPos = anchorEnd;
-                block = eol + eol + normalized;
-                r.insertAfter = anchor.getName();
-            } else if (regionEo != null || serverIf != null) {
-                // Empty scope: place after the header line (#Область ... / #Если ... Тогда).
-                int nl = fullText.indexOf('\n', scope[0]);
-                insertPos = (nl < 0) ? scope[0] : nl + 1;
-                block = eol + normalized + eol;
-                r.insertAfter = (regionEo != null) ? ("#Область " + r.region + " (empty)") : "#Если Сервер (empty)";
-            } else {
-                // Whole module, no methods: append at the end.
-                insertPos = fullText.length();
-                block = (fullText.endsWith("\n") ? eol : eol + eol) + normalized + eol;
-                r.insertAfter = "<end of module>";
-            }
+            int insertPos = insertion.point.offset();
+            String block = insertionBlock(fullText, insertPos, normalized, eol);
             String spliced = fullText.substring(0, insertPos) + block + fullText.substring(insertPos);
 
             // 3) safety invariant: the spliced module must re-parse cleanly and add exactly one method.
@@ -737,7 +682,8 @@ public final class BslGateway {
             r.plan = "Insert " + r.methodKind + " " + r.methodName + (Boolean.TRUE.equals(r.export) ? " (Export)" : "")
                     + " after " + r.insertAfter + " in " + relPath
                     + (r.region != null ? " [region " + r.region + "]" : "")
-                    + (serverBlock ? " [server block]" : "");
+                    + (serverBlock ? " [server block]" : "")
+                    + (missingModule ? " [create the empty owner's module file]" : "");
 
             if (!apply) {
                 r.ok = true;
@@ -747,17 +693,262 @@ public final class BslGateway {
             }
 
             // 4) apply – atomic file write; EDT re-reads the .bsl on its next model access.
-            file.setContents(new ByteArrayInputStream(spliced.getBytes(StandardCharsets.UTF_8)),
-                    true, true, new NullProgressMonitor());
+            if (missingModule) {
+                createFirstModuleFile(p, fqn, moduleType, file, spliced, r);
+            } else {
+                file.setContents(new ByteArrayInputStream(spliced.getBytes(StandardCharsets.UTF_8)),
+                        true, true, new NullProgressMonitor());
+            }
             r.applied = true;
             r.ok = true;
             r.message = "method added to " + relPath;
             return r;
         } catch (Exception e) {
+            if (e instanceof IllegalArgumentException && e.getMessage() != null) {
+                if (e.getMessage().contains("region")) r.regionFound = Boolean.FALSE;
+                if (e.getMessage().contains("server preprocessor")) r.serverBlockFound = Boolean.FALSE;
+            }
             r.message = "add method failed: " + e.getClass().getSimpleName()
                     + (e.getMessage() != null ? ": " + e.getMessage() : "");
             return r;
         }
+    }
+
+    /** A missing source file may initialize an empty, typed module slot of an existing owner. */
+    static boolean isEmptyModuleSlot(EObject owner, String moduleFile) {
+        return emptyModuleSlotProblem(owner, moduleFile) == null;
+    }
+
+    static String emptyModuleSlotProblem(EObject owner, String moduleFile) {
+        return emptyModuleSlotProblem(owner, moduleFile, null);
+    }
+
+    static String emptyModuleSlotProblem(EObject owner, String moduleFile, URI canonicalMissingResource) {
+        if (owner == null) return "module owner was not found in the BM model";
+        if (!(owner instanceof MdObject) && !(owner instanceof AbstractForm)) return "unsupported owner type: " + owner.eClass().getName();
+        if (owner.eIsProxy()) return "module owner is an unresolved proxy: " + ((org.eclipse.emf.ecore.InternalEObject) owner).eProxyURI();
+        if (moduleFile == null || !moduleFile.matches("[A-Za-z][A-Za-z0-9]*\\.bsl")) return "unsupported module file name: " + moduleFile;
+        String stem = moduleFile.substring(0, moduleFile.length() - 4);
+        String property = Character.toLowerCase(stem.charAt(0)) + stem.substring(1);
+        EStructuralFeature slot = owner.eClass().getEStructuralFeature(property);
+        if (!(slot instanceof EReference reference)) return "module slot is absent or not a reference: " + property;
+        if (!com._1c.g5.v8.dt.bsl.model.BslPackage.Literals.MODULE.isSuperTypeOf(reference.getEReferenceType())) {
+            return "unsupported module slot type: " + reference.getEReferenceType().getName();
+        }
+        Object original = owner.eGet(slot, false);
+        if (original instanceof Module rawModule) {
+            String originalSource = moduleSourceStateProblem(rawModule);
+            if (originalSource != null) return originalSource;
+            if (canonicalMissingResource != null && rawModule.eIsProxy()) {
+                URI address = ((org.eclipse.emf.ecore.InternalEObject) rawModule).eProxyURI();
+                if (!isCanonicalMissingCommonModule(owner, moduleFile, address, canonicalMissingResource)) {
+                    return "module slot proxy does not match the canonical CommonModule source: " + address;
+                }
+            }
+        }
+        // Resolve only after preserving and checking the original reference and its source state.
+        Object existing = owner.eGet(slot, true);
+        if (existing == null) return null;
+        if (!(existing instanceof Module module)) return "unexpected module value type: " + existing.getClass().getName();
+        String sourceProblem = moduleSourceStateProblem(module);
+        if (sourceProblem != null) return sourceProblem;
+        if (module.eIsProxy()) {
+            URI proxyUri = ((org.eclipse.emf.ecore.InternalEObject) module).eProxyURI();
+            if (isCanonicalMissingCommonModule(owner, moduleFile, proxyUri, canonicalMissingResource)) {
+                Resource resource = owner.eResource();
+                String cached = cachedModuleResourceProblem(resource == null ? null : resource.getResourceSet(),
+                        canonicalMissingResource, null);
+                return cached;
+            }
+            return "module slot is an unresolved proxy: " + proxyUri;
+        }
+        return null;
+    }
+
+    private static boolean isCanonicalMissingCommonModule(EObject owner, String moduleFile,
+            URI proxy, URI expected) {
+        if (!(owner instanceof com._1c.g5.v8.dt.metadata.mdclass.CommonModule common)
+                || !"Module.bsl".equals(moduleFile) || common.getName() == null || common.getName().isBlank()
+                || expected == null || !expected.isPlatformResource() || expected.query() != null
+                || expected.fragment() != null || proxy == null || !proxy.isPlatformResource()
+                || proxy.query() != null || !"/0".equals(proxy.fragment())) return false;
+        String path = expected.toPlatformString(true);
+        return path.equals(proxy.trimFragment().toPlatformString(true))
+                && path.endsWith("/CommonModules/" + common.getName() + "/Module.bsl");
+    }
+
+    private static String moduleSourceStateProblem(Module module) {
+        if (!module.eContents().isEmpty()) {
+            List<String> contents = new ArrayList<>();
+            for (EReference containment : module.eClass().getEAllContainments()) {
+                if (!module.eIsSet(containment)) continue;
+                Object value = module.eGet(containment, false);
+                int count = value instanceof Collection<?> ? ((Collection<?>) value).size() : value == null ? 0 : 1;
+                if (count > 0) contents.add(containment.getName() + "=" + count + "(derived="
+                        + containment.isDerived() + ",transient=" + containment.isTransient() + ")");
+                if (contents.size() >= 12) break;
+            }
+            return "module contains model state: " + String.join(", ", contents);
+        }
+        ICompositeNode node = NodeModelUtils.getNode(module);
+        return node == null || node.getText().isBlank() ? null : "module contains source text (" + node.getText().length() + " characters)";
+    }
+
+    static String moduleBufferProblem(String text, boolean dirty) {
+        if (text == null) return "canonical module text buffer is unavailable";
+        if (dirty) return "canonical module has a dirty text buffer; save or close the editor first";
+        return text.isBlank() ? null : "canonical module has nonempty buffered source";
+    }
+
+    static String cachedModuleResourceProblem(org.eclipse.emf.ecore.resource.ResourceSet resources,
+            URI canonical, URI physical) {
+        if (resources == null) return null;
+        for (Resource resource : new ArrayList<>(resources.getResources())) {
+            URI address = resource.getURI();
+            if (address == null || !(address.trimFragment().equals(canonical)
+                    || physical != null && address.trimFragment().equals(physical))) continue;
+            String problem = cachedModuleSourceProblem(resource);
+            if (problem != null) return problem;
+        }
+        return null;
+    }
+
+    static String cachedModuleSourceProblem(Resource resource) {
+        if (resource == null) return "canonical module editor AST is unavailable";
+        if (resource instanceof XtextResource xtext && xtext.getParseResult() != null) {
+            if (xtext.getParseResult().hasSyntaxErrors()) return "canonical module has cached parse errors";
+            ICompositeNode root = xtext.getParseResult().getRootNode();
+            if (root != null && !root.getText().isBlank()) return "canonical module has nonempty cached source";
+        }
+        for (EObject object : new ArrayList<>(resource.getContents())) {
+            if (!(object instanceof Module module)) return "canonical module has an unsupported cached AST";
+            if (module.eIsProxy()) return "canonical module has an unresolved cached AST";
+            String problem = moduleSourceStateProblem(module);
+            if (problem != null) return "cached " + problem;
+        }
+        return null;
+    }
+
+    private static void requireNoBufferedModuleSource(IFile file) {
+        var manager = org.eclipse.core.filebuffers.FileBuffers.getTextFileBufferManager();
+        if (manager == null) throw new IllegalArgumentException("text-buffer services unavailable; cannot initialize a missing module");
+        var workspaceBuffer = manager.getTextFileBuffer(file.getFullPath(), org.eclipse.core.filebuffers.LocationKind.IFILE);
+        requireEmptyModuleBuffer(workspaceBuffer);
+        if (file.getLocation() != null) {
+            var locationBuffer = manager.getTextFileBuffer(file.getLocation(), org.eclipse.core.filebuffers.LocationKind.LOCATION);
+            if (locationBuffer != workspaceBuffer) requireEmptyModuleBuffer(locationBuffer);
+        }
+    }
+
+    private static void requireEmptyModuleBuffer(org.eclipse.core.filebuffers.ITextFileBuffer buffer) {
+        if (buffer == null) return;
+        var document = buffer.getDocument();
+        String problem = moduleBufferProblem(document == null ? null : document.get(), buffer.isDirty());
+        if (problem == null && document instanceof org.eclipse.xtext.ui.editor.model.IXtextDocument xtext) {
+            problem = xtext.readOnly(resource -> cachedModuleSourceProblem(resource));
+        }
+        if (problem != null) throw new IllegalArgumentException(problem);
+    }
+
+    private void requireEmptyModuleOwner(IProject project, String fqn, String moduleType, String path) {
+        if (fqn == null || fqn.isBlank()) {
+            throw new IllegalArgumentException("module file not found; provide the existing owner's fqn to initialize its empty module");
+        }
+        ModuleTextResult resolved = new ModuleTextResult();
+        String canonical = resolveModulePath(project, fqn, moduleType, resolved);
+        if (canonical == null || !canonical.equals(path.replace('\\', '/'))) {
+            throw new IllegalArgumentException("a missing modulePath must equal the existing owner's canonical module path");
+        }
+        IFile file = project.getFile(canonical);
+        if (!file.getParent().exists()) {
+            throw new IllegalArgumentException("the module owner's source folder is absent; export the existing metadata object first");
+        }
+        if (moduleType != null && !moduleType.isBlank()
+                && !file.getName().equals(moduleType + ".bsl")) {
+            throw new IllegalArgumentException("moduleType does not match the owner's module file");
+        }
+        IBmModelManager manager = ServiceAccess.get(IBmModelManager.class);
+        IBmModel model = manager == null ? null : manager.getModel(project);
+        if (model == null) throw new IllegalArgumentException("no BM model for project: " + project.getName());
+        var provider = FormWriteGateway.coreService(com._1c.g5.v8.dt.core.platform.IDerivedDataManagerProvider.class);
+        var derived = provider == null ? null : provider.get(project);
+        if (model.isDisposed() || manager.isLocked(project) || derived == null || !derived.isAllComputed()) {
+            throw new IllegalArgumentException("the project model is not ready; retry after modelReady=true before initializing its module file");
+        }
+        // Document locks are acquired outside the BM read transaction to avoid inverse lock ordering.
+        requireNoBufferedModuleSource(file);
+        model.executeReadonlyTask(new AbstractBmTask<Object>("edt-bridge.firstMethod.owner") {
+            @Override public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
+                EObject owner = moduleOwner(tx, fqn);
+                if (file.exists()) throw new IllegalArgumentException("module file appeared while checking its owner; retry");
+                URI expected = URI.createPlatformResourceURI(file.getFullPath().toPortableString(), true);
+                URI physical = file.getLocationURI() == null ? null : URI.createURI(file.getLocationURI().toASCIIString());
+                Resource ownerResource = owner == null ? null : owner.eResource();
+                String problem = cachedModuleResourceProblem(ownerResource == null ? null : ownerResource.getResourceSet(), expected, physical);
+                if (problem == null) problem = emptyModuleSlotProblem(owner, file.getName(), expected);
+                if (problem != null) throw new IllegalArgumentException(problem + ": " + fqn);
+                return null;
+            }
+        });
+        requireNoBufferedModuleSource(file);
+    }
+
+    static String normalizeModuleOwnerFqn(String fqn) {
+        if (fqn == null) return null;
+        String[] parts = fqn.split("\\.", -1);
+        if (parts.length == 5 && "Form".equals(parts[2]) && "Form".equals(parts[4])
+                || parts.length == 3 && "CommonForm".equals(parts[0]) && "Form".equals(parts[2])) {
+            return fqn.substring(0, fqn.length() - ".Form".length());
+        }
+        return fqn;
+    }
+
+    private static EObject moduleOwner(IBmTransaction transaction, String fqn) {
+        String canonical = normalizeModuleOwnerFqn(fqn);
+        String[] segments = canonical.split("\\.", -1);
+        if (segments.length != 2 && !(segments.length == 4 && "Form".equals(segments[2]))) return null;
+        for (String segment : segments) if (segment.isBlank()) return null;
+        EObject owner = transaction.getTopObjectByFqn(fqn);
+        if (owner == null && !canonical.equals(fqn)) owner = transaction.getTopObjectByFqn(canonical);
+        if (owner != null) return moduleOwnerContent(owner);
+        if (segments.length == 2) return null;
+        owner = transaction.getTopObjectByFqn(canonical + ".Form");
+        if (owner != null) return moduleOwnerContent(owner);
+        EObject parent = transaction.getTopObjectByFqn(segments[0] + "." + segments[1]);
+        EStructuralFeature forms = parent == null ? null : parent.eClass().getEStructuralFeature("forms");
+        Object children = forms == null ? null : parent.eGet(forms);
+        if (children instanceof Iterable<?>) {
+            for (Object child : (Iterable<?>) children) {
+                if (child instanceof NamedElement named && segments[3].equals(named.getName())) return moduleOwnerContent(named);
+            }
+        }
+        return null;
+    }
+
+    private static EObject moduleOwnerContent(EObject owner) {
+        return owner instanceof BasicForm basic ? basic.getForm() : owner;
+    }
+
+    private void createFirstModuleFile(IProject project, String fqn, String moduleType, IFile file,
+            String text, AddMethodResult result) {
+        IBmModelManager manager = ServiceAccess.get(IBmModelManager.class);
+        IBmModel model = manager == null ? null : manager.getModel(project);
+        IDtProject dtProject = model == null ? null : manager.getDtProject(model);
+        IProjectOperationApi operations = ServiceAccess.get(IProjectOperationApi.class);
+        if (operations == null || dtProject == null) {
+            throw new IllegalStateException("exclusive EDT project operation unavailable; cannot initialize a module file");
+        }
+        operations.performExclusiveOperation(() -> {
+            requireEmptyModuleOwner(project, fqn, moduleType, result.modulePath);
+            if (file.exists()) throw new IllegalStateException("module file appeared after planning; retry without overwriting it");
+            try {
+                file.create(new ByteArrayInputStream(text.getBytes(StandardCharsets.UTF_8)), false, new NullProgressMonitor());
+                result.moduleFileCreated = true;
+                result.applied = true;
+            } catch (CoreException failure) {
+                throw new IllegalStateException(failure);
+            }
+        }, ProjectPipelineJob.BUILD, new NullProgressMonitor(), dtProject);
     }
 
     // ---- Phase 2 write – delete a BSL method from a module --------------------------------------------
@@ -984,7 +1175,7 @@ public final class BslGateway {
         }
     }
 
-    private static Module firstModule(XtextResource res) {
+    static Module firstModule(XtextResource res) {
         for (EObject e : res.getContents()) {
             if (e instanceof Module) {
                 return (Module) e;
@@ -993,12 +1184,12 @@ public final class BslGateway {
         return null;
     }
 
-    private static String firstError(XtextResource res) {
+    static String firstError(XtextResource res) {
         return (res == null || res.getErrors().isEmpty()) ? "" : String.valueOf(res.getErrors().get(0).getMessage());
     }
 
     /** Parse {@code text} as the BSL module at {@code modulePath} into a transient resource (real URI for scoping). */
-    private BslContext loadBslText(String projectName, String modulePath, String text) {
+    BslContext loadBslText(String projectName, String modulePath, String text) {
         BslContext ctx = new BslContext();
         try {
             Injector injector = bslInjector();
@@ -1021,45 +1212,125 @@ public final class BslGateway {
         return ctx;
     }
 
-    /** First {@code #Если Сервер ...} preprocessor whose condition text mentions the Сервер symbol (best-effort). */
+    /** Select one server condition from parsed literals, independently of source language. */
     private static EObject findServerIf(Module module) {
-        for (java.util.Iterator<EObject> it = module.eAllContents(); it.hasNext();) {
-            EObject e = it.next();
-            if (e instanceof com._1c.g5.v8.dt.bsl.model.IfPreprocessor) {
-                ICompositeNode n = NodeModelUtils.getNode(e);
-                if (n != null && n.getText().contains("Сервер")) {
-                    return e;
-                }
+        EObject selected = null;
+        for (java.util.Iterator<EObject> iterator = module.eAllContents(); iterator.hasNext();) {
+            EObject element = iterator.next();
+            if (!(element instanceof com._1c.g5.v8.dt.bsl.model.IfPreprocessor)) continue;
+            var part = ((com._1c.g5.v8.dt.bsl.model.IfPreprocessor) element).getIfPart();
+            EObject predicate = part == null ? null : part.getPredicate();
+            if (predicate == null) continue;
+            boolean server = isServerLiteral(predicate);
+            for (var conditions = predicate.eAllContents(); conditions.hasNext();) {
+                server |= isServerLiteral(conditions.next());
+            }
+            if (server) {
+                if (selected != null) throw new IllegalArgumentException("ambiguous server preprocessor block");
+                selected = element;
             }
         }
-        return null;
+        return selected;
     }
 
-    /** Named {@code #Область} whose node lies within {@code scope} (any nesting level). */
-    private static EObject findRegion(Module module, String name, int[] scope) {
-        for (java.util.Iterator<EObject> it = module.eAllContents(); it.hasNext();) {
-            EObject e = it.next();
-            if (e instanceof com._1c.g5.v8.dt.bsl.model.RegionPreprocessor) {
-                com._1c.g5.v8.dt.bsl.model.RegionPreprocessor rp = (com._1c.g5.v8.dt.bsl.model.RegionPreprocessor) e;
-                if (name.equalsIgnoreCase(rp.getName())) {
-                    ICompositeNode n = NodeModelUtils.getNode(e);
-                    if (n != null && n.getOffset() >= scope[0] && n.getOffset() < scope[1]) {
-                        return e;
+    private static boolean isServerLiteral(EObject expression) {
+        return expression instanceof com._1c.g5.v8.dt.bsl.model.PreprocessorLiteralExpression
+                && ((com._1c.g5.v8.dt.bsl.model.PreprocessorLiteralExpression) expression).getTypeLiteral()
+                == com._1c.g5.v8.dt.bsl.model.PreprocessorLiteralExpressionType.SERVER;
+    }
+
+    static final class Insertion {
+        final BslPlacement.Point point;
+        Insertion(BslPlacement.Point point) { this.point = point; }
+    }
+
+    static Insertion insertion(Module module, String text, String region, boolean serverBlock,
+            String before, String after) {
+        int scopeStart = 0;
+        int scopeEnd = text.length();
+        if (serverBlock) {
+            EObject serverIf = findServerIf(module);
+            if (!(serverIf instanceof com._1c.g5.v8.dt.bsl.model.IfPreprocessor)) {
+                throw new IllegalArgumentException("server preprocessor block not found in module");
+            }
+            var part = ((com._1c.g5.v8.dt.bsl.model.IfPreprocessor) serverIf).getIfPart();
+            ICompositeNode node = NodeModelUtils.getNode(part);
+            if (node == null) throw new IllegalArgumentException("server block has no node range");
+            int nl = text.indexOf('\n', node.getOffset());
+            scopeStart = nl < 0 ? node.getOffset() : nl + 1;
+            scopeEnd = node.getEndOffset();
+        }
+        List<BslPlacement.Member> methods = new ArrayList<>();
+        for (var method : module.allMethods()) {
+            int[] range = methodRange(method, text);
+            methods.add(new BslPlacement.Member(method.getName(), range[0], range[1]));
+        }
+        return new Insertion(BslPlacement.choose(text.length(), regionRanges(module, text), methods,
+                scopeStart, scopeEnd, region, before, after));
+    }
+
+    /** Region bounds come from parser tokens; itemAfter is outside the region despite AST containment. */
+    static List<BslPlacement.Region> regionRanges(Module module, String text) {
+        List<BslPlacement.Region> result = new ArrayList<>();
+        java.util.ArrayDeque<Object[]> stack = new java.util.ArrayDeque<>();
+        var root = NodeModelUtils.getNode(module);
+        if (root == null) throw new IllegalArgumentException("module has no node range");
+        for (var leaf : root.getLeafNodes()) {
+            if (leaf.isHidden()) continue;
+            String token = leaf.getText().replace(" ", "").replace("\t", "");
+            if (token.equalsIgnoreCase("#Region") || token.equalsIgnoreCase("#Область")) {
+                int nl = text.indexOf('\n', leaf.getEndOffset());
+                stack.push(new Object[] {leaf.getOffset(), nl < 0 ? leaf.getEndOffset() : nl + 1, null});
+            } else if (token.equalsIgnoreCase("#EndRegion") || token.equalsIgnoreCase("#КонецОбласти")) {
+                if (stack.isEmpty()) throw new IllegalArgumentException("unbalanced region tokens");
+                Object[] start = stack.pop();
+                if (start[2] == null) throw new IllegalArgumentException("region has no name");
+                int offset = (Integer) start[0];
+                boolean insideMethod = false;
+                for (var method : module.allMethods()) {
+                    var mn = NodeModelUtils.getNode(method);
+                    if (mn != null && mn.getOffset() <= offset && offset < mn.getEndOffset()) {
+                        insideMethod = true;
+                        break;
                     }
                 }
+                if (!insideMethod) result.add(new BslPlacement.Region((String) start[2], offset,
+                        (Integer) start[1], leaf.getOffset()));
+            } else if (!stack.isEmpty() && stack.peek()[2] == null) {
+                stack.peek()[2] = leaf.getText();
             }
         }
-        return null;
+        if (!stack.isEmpty()) throw new IllegalArgumentException("unbalanced region tokens");
+        return result;
     }
 
-    /** The nearest enclosing {@code #Область} of an element, or {@code null} if it is outside any region. */
-    private static EObject immediateRegion(EObject e) {
-        for (EObject c = e.eContainer(); c != null; c = c.eContainer()) {
-            if (c instanceof com._1c.g5.v8.dt.bsl.model.RegionPreprocessor) {
-                return c;
-            }
+    /** Include attached documentation, pragmas and the final line comment without taking other code. */
+    static int[] methodRange(com._1c.g5.v8.dt.bsl.model.Method method, String text) {
+        ICompositeNode node = NodeModelUtils.getNode(method);
+        if (node == null) throw new IllegalArgumentException("method has no node range: " + method.getName());
+        int start = node.getOffset();
+        for (var pragma : method.getPragmas()) {
+            var pn = NodeModelUtils.getNode(pragma);
+            if (pn != null) start = Math.min(start, pn.getOffset());
         }
-        return null;
+        start = text.lastIndexOf('\n', Math.max(0, start - 1)) + 1;
+        while (start > 0) {
+            int previous = text.lastIndexOf('\n', Math.max(0, start - 2)) + 1;
+            if (!text.substring(previous, start).stripLeading().startsWith("//")) break;
+            start = previous;
+        }
+        int end = node.getEndOffset();
+        int nl = text.indexOf('\n', end);
+        int lineEnd = nl < 0 ? text.length() : nl;
+        String tail = text.substring(end, lineEnd).strip();
+        if (tail.isEmpty() || tail.startsWith("//")) end = lineEnd > 0 && text.charAt(lineEnd - 1) == '\r' ? lineEnd - 1 : lineEnd;
+        return new int[] {start, end};
+    }
+
+    static String insertionBlock(String text, int position, String method, String eol) {
+        String prefix = position == 0 ? "" : text.charAt(position - 1) == '\n' ? eol : eol + eol;
+        String suffix = method.endsWith("\n") ? eol : eol + eol;
+        return prefix + method + suffix;
     }
 
     private static String normalizeEol(String s, String eol) {
@@ -1079,7 +1350,8 @@ public final class BslGateway {
 
 
     /** Resolve an FQN (+ optional moduleType) to a workspace-relative .bsl path; lists candidates if ambiguous. */
-    private String resolveModulePath(IProject p, String fqn, String moduleType, ModuleTextResult r) {
+    String resolveModulePath(IProject p, String fqn, String moduleType, ModuleTextResult r) {
+        fqn = normalizeModuleOwnerFqn(fqn);
         if (fqn == null || fqn.isBlank()) {
             r.message = "provide fqn or modulePath";
             return null;
@@ -1319,8 +1591,8 @@ public final class BslGateway {
             r.message = "project not found or closed: " + projectName;
             return r;
         }
-        // The call qualifier = the called module's call-name. For CommonModule.X that is X; otherwise
-        // best-effort the last FQN segment (object-manager calls use a 2-part qualifier – out of scope).
+        // Match the last owner name in X.Method or Managers.X.Method. This is a best-effort
+        // literal-call search: the metadata kind and moduleType do not disambiguate the qualifier.
         String qualifier = null;
         if (fqn != null && !fqn.isBlank()) {
             String[] s = fqn.split("\\.");
@@ -1769,7 +2041,7 @@ public final class BslGateway {
     }
 
     /** A BSL module parsed into a transient Xtext resource, positioned at an offset. */
-    private static final class BslContext {
+    static final class BslContext {
         Injector injector;
         XtextResource resource;
         int offset;
@@ -1954,7 +2226,7 @@ public final class BslGateway {
         }
     }
 
-    private String readText(IFile file) throws Exception {
+    String readText(IFile file) throws Exception {
         try (InputStream in = file.getContents()) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         }
@@ -2102,7 +2374,7 @@ public final class BslGateway {
         Pattern compiled = null;
         if (regex) {
             try {
-                compiled = Pattern.compile(pattern, caseSensitive ? 0 : Pattern.CASE_INSENSITIVE);
+                compiled = io.github.keyfire.edtbridge.core.SearchPattern.compile(pattern, caseSensitive);
             } catch (RuntimeException ex) {
                 r.message = "pattern does not compile as a regular expression: " + ex.getMessage();
                 return r;

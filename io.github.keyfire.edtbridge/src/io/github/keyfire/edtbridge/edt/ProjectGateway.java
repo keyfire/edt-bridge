@@ -44,6 +44,7 @@ import com._1c.g5.v8.dt.validation.marker.MarkerFilter;
 import com._1c.g5.v8.dt.validation.marker.MarkerSeverity;
 import com._1c.g5.v8.dt.validation.marker.PlainEObjectMarker;
 import com._1c.g5.v8.dt.core.platform.IBmModelManager;
+import com._1c.g5.v8.dt.core.platform.IDerivedDataManagerProvider;
 import com._1c.g5.v8.dt.core.platform.IResourceLookup;
 import com._1c.g5.wiring.ServiceAccess;
 
@@ -176,6 +177,9 @@ public final class ProjectGateway {
         public String hint;
         /** The refresh that preceded this report, when the caller asked for one. */
         public RefreshResult refreshed;
+        public boolean modelReady;
+        public java.util.List<ProjInfo> modelStatus = new ArrayList<>();
+        public int unresolvedEdtMarkers;
     }
 
     /**
@@ -203,6 +207,7 @@ public final class ProjectGateway {
     public ProblemReport reportProblems(String projectName, String fqn, String modulePath,
             String severity, boolean countOnly, int limit, RefreshResult refreshed)
             throws CoreException {
+        boolean modelReadyAtStart = modelsReady(projectName);
         List<Problem> all = getProjectErrors(projectName);
         List<IProject> projects = selectProjects(projectName);
         java.util.Map<String, String> locations = new java.util.LinkedHashMap<>();
@@ -221,11 +226,25 @@ public final class ProjectGateway {
         r.totalBeforeFilter = all.size();
         r.locations = locations;
         boolean locationFilter = pathPrefix != null || !nameTokens.isEmpty();
+        boolean pathOnly = modulePath != null && !modulePath.isBlank();
+        IResourceLookup lookup = pathOnly ? FormWriteGateway.coreService(IResourceLookup.class) : null;
+        java.util.Map<String, java.util.Map<Object, IResource>> fileCache = new java.util.HashMap<>();
         for (Problem p : all) {
             if (!ProblemFilter.matchesSeverity(p.severity, sevFilter)) {
                 continue;
             }
-            if (locationFilter && !ProblemFilter.matchesLocation(p.resource, pathPrefix, nameTokens)) {
+            String resource = p.resource;
+            if (pathOnly && p.edtMarker != null) {
+                p.file = traceMarkerFile(p.edtMarker, lookup,
+                        fileCache.computeIfAbsent(p.project, ignored -> new java.util.HashMap<>()));
+                if (p.file != null) {
+                    resource = p.file.getProjectRelativePath().toString();
+                    p.filePath = resource;
+                } else {
+                    r.unresolvedEdtMarkers++;
+                }
+            }
+            if (locationFilter && !ProblemFilter.matchesLocation(resource, pathPrefix, nameTokens)) {
                 continue;
             }
             r.total++;
@@ -290,7 +309,26 @@ public final class ProjectGateway {
         }
         r.hint = MarkerFreshness.hint(Math.max(r.staleCount, 0), r.unsynchronizedCount,
                 refreshed != null);
+        for (ProjInfo pi : listProjectsDetailed()) {
+            if (pi.open && (projectName == null || projectName.isBlank() || projectName.equals(pi.name))) {
+                r.modelStatus.add(pi);
+            }
+        }
+        r.modelReady = modelReadyAtStart && !r.modelStatus.isEmpty()
+                && r.modelStatus.stream().allMatch(pi -> !pi.dtProject || pi.modelReady);
+        if (!r.modelReady) {
+            r.hint = appendHint(r.hint, "The project model or derived data is not ready. Counts are a partial "
+                    + "snapshot, not a clean validation result; check edt_projects and re-read later.");
+        }
+        if (r.unresolvedEdtMarkers > 0) {
+            r.hint = appendHint(r.hint, "Some EDT markers could not be traced to files; modulePath coverage "
+                    + "is incomplete. Use fqn to include object-presentation markers.");
+        }
         return r;
+    }
+
+    private static String appendHint(String current, String extra) {
+        return current == null ? extra : current + " " + extra;
     }
 
     /** How many unsynchronized paths a report lists; the count says the rest. */
@@ -439,9 +477,17 @@ public final class ProjectGateway {
     }
 
     /** Files the workspace has not read, under one scope: the first few and the full count. */
-    private static final class UnseenFiles {
+    static final class UnseenFiles {
         final List<String> paths = new ArrayList<>();
         int count;
+
+        void noteNew(String path, String pathPrefix, java.util.List<String> nameTokens) {
+            int before = paths.size();
+            note(path, pathPrefix, nameTokens);
+            if (paths.size() > before) {
+                paths.set(paths.size() - 1, path + " (new on disk)");
+            }
+        }
 
         void note(String path, String pathPrefix, java.util.List<String> nameTokens) {
             if ((pathPrefix != null || !nameTokens.isEmpty())
@@ -524,7 +570,7 @@ public final class ProjectGateway {
         for (String name : onDisk) {
             if (folder.findMember(name) == null && !".git".equals(name) && !".svn".equals(name)
                     && !".hg".equals(name)) {
-                found.note(folder.getProjectRelativePath().append(name).toString() + " (new on disk)",
+                found.noteNew(folder.getProjectRelativePath().append(name).toString(),
                         pathPrefix, nameTokens);
             }
         }
@@ -619,7 +665,7 @@ public final class ProjectGateway {
             long pollMs) {
         long started = System.currentTimeMillis();
         while (System.currentTimeMillis() - started < limitMs) {
-            boolean idle = Job.getJobManager().isIdle();
+            boolean idle = Job.getJobManager().isIdle() && modelsReady(projectName);
             if (settle.poll(countProblems(projectName), idle)) {
                 return true;
             }
@@ -731,6 +777,10 @@ public final class ProjectGateway {
         public boolean open;
         public boolean dtProject;          // has a 1C:EDT (DT) nature / a BM model
         public List<String> natures = new ArrayList<>();
+        public boolean modelPresent;
+        public boolean modelReady;
+        public boolean derivedDataPending;
+        public String modelHint;
     }
 
     /**
@@ -766,9 +816,38 @@ public final class ProjectGateway {
                     }
                 }
             }
+            if (pi.open && pi.dtProject) {
+                try {
+                    var model = mm == null ? null : mm.getModel(p);
+                    pi.modelPresent = model != null && !model.isDisposed();
+                    if (pi.modelPresent) {
+                        IDerivedDataManagerProvider provider =
+                                FormWriteGateway.coreService(IDerivedDataManagerProvider.class);
+                        var derived = provider == null ? null : provider.get(p);
+                        pi.derivedDataPending = derived == null || !derived.isAllComputed();
+                        pi.modelReady = !mm.isLocked(p) && !pi.derivedDataPending;
+                    }
+                    if (!pi.modelReady) {
+                        pi.modelHint = pi.modelPresent ? "Derived data is pending or the model is locked"
+                                : "The BM model is not loaded";
+                    }
+                } catch (RuntimeException e) {
+                    pi.modelHint = "Model readiness unavailable: " + GatewaySupport.describeCause(e);
+                }
+            }
             out.add(pi);
         }
         return out;
+    }
+
+    private boolean modelsReady(String projectName) {
+        List<ProjInfo> selected = new ArrayList<>();
+        for (ProjInfo pi : listProjectsDetailed()) {
+            if (pi.open && (projectName == null || projectName.isBlank() || projectName.equals(pi.name))) {
+                selected.add(pi);
+            }
+        }
+        return !selected.isEmpty() && selected.stream().allMatch(pi -> !pi.dtProject || pi.modelReady);
     }
 
     /** Outcome of {@link #cleanProject}. */
@@ -780,6 +859,7 @@ public final class ProjectGateway {
         public boolean open;
         public boolean rebuild;
         public boolean autoBuilding;
+        public boolean modelReady;
         public int problemsBefore = -1;
         public int problemsAfter = -1;
         public boolean settled;
@@ -827,6 +907,12 @@ public final class ProjectGateway {
             r.message = "project is closed: " + projectName;
             return r;
         }
+        r.modelReady = modelsReady(projectName);
+        if (!r.modelReady) {
+            r.message = "The project model or derived data is not ready; clean refused. Check edt_projects "
+                    + "and retry after modelReady=true.";
+            return r;
+        }
         r.autoBuilding = ResourcesPlugin.getWorkspace().isAutoBuilding();
         r.problemsBefore = countProblems(projectName);
         r.ok = true;
@@ -872,6 +958,7 @@ public final class ProjectGateway {
         r.settled = awaitSettle(projectName, settle, limit, 2000L);
         r.sawValidation = settle.sawWork();
         r.problemsAfter = settle.problems();
+        r.modelReady = modelsReady(projectName);
         r.elapsedMs = System.currentTimeMillis() - started;
         r.applied = true;
         r.message = "cleaned " + projectName + (rebuild ? " and rebuilt" : "")
