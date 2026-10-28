@@ -44,8 +44,14 @@ public final class ModifyAttributeTool {
     public JsonObject descriptor() {
         JsonObject props = new JsonObject();
         props.add("projectName", strProp("EDT project name"));
-        props.add("ownerFqn", strProp("Object that holds the attribute, e.g. Catalog.Контрагенты"));
-        props.add("name", strProp("Existing attribute name to modify (Cyrillic)"));
+        props.add("ownerFqn", strProp("Field owner, e.g. Catalog.Контрагенты or InformationRegister.Versions"));
+        props.add("name", strProp("Existing field name to modify"));
+        JsonObject kind = strProp("Field kind: attribute (default), resource or dimension. Resources and dimensions require a register owner.");
+        JsonArray kinds = new JsonArray();
+        kinds.add("attribute"); kinds.add("resource"); kinds.add("dimension");
+        kind.add("enum", kinds);
+        kind.addProperty("default", "attribute");
+        props.add("kind", kind);
         props.add("newType", strProp("New value type (same syntax as edt_add_attribute). Optional – omit to keep."));
         props.add("newSynonymRu", strProp("New Russian synonym. Optional; empty string clears it."));
         props.add("newComment", strProp("New comment. Optional; empty string clears it."));
@@ -65,12 +71,12 @@ public final class ModifyAttributeTool {
         JsonObject t = new JsonObject();
         t.addProperty("name", name());
         t.addProperty("description",
-                "WRITE (Phase 2): modify an existing attribute – type, ru synonym and/or comment (provide at "
+                "WRITE (Phase 2): modify an attribute, register resource or dimension – type, ru synonym and/or comment (provide at "
                 + "least one). Dry-run by default: validates and returns the current→new plan WITHOUT changing. "
                 + "apply=true performs the change. Changing the type may break backward compatibility (warned). "
                 + "Requires a configured token. Verify bsl_support_status EDITABLE before apply.");
         t.addProperty("descriptionRu",
-                "ЗАПИСЬ (Phase 2): изменить существующий реквизит – тип, синоним(ru) и/или comment (хотя бы одно). "
+                "ЗАПИСЬ (Phase 2): изменить реквизит, ресурс или измерение регистра – тип, синоним(ru) и/или comment (хотя бы одно). "
                 + "По умолчанию dry-run: проверяет и возвращает план было→стало БЕЗ изменения. apply=true применяет. "
                 + "Смена типа может нарушить обратную совместимость (предупреждение). Требует токен. Перед apply "
                 + "проверить bsl_support_status = EDITABLE.");
@@ -91,7 +97,7 @@ public final class ModifyAttributeTool {
         boolean apply = args.has("apply") && !args.get("apply").isJsonNull() && args.get("apply").getAsBoolean();
         try {
             MetadataWriteGateway.ModifyAttrResult res =
-                    gateway.modifyAttribute(project, ownerFqn, name, newType, newSynonymRu, newComment, apply);
+                    gateway.modifyAttribute(project, ownerFqn, name, newType, newSynonymRu, newComment, getStr(args, "kind"), apply);
             JsonObject o = new JsonObject();
             o.addProperty("ok", res.ok);
             o.addProperty("applied", res.applied);
@@ -101,6 +107,7 @@ public final class ModifyAttributeTool {
                 o.addProperty("ownerType", res.ownerType);
             }
             o.addProperty("name", res.name);
+            o.addProperty("kind", res.kind);
             o.addProperty("attrFound", res.attrFound);
             if (res.currentType != null) {
                 o.addProperty("currentType", res.currentType);

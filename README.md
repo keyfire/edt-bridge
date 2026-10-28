@@ -117,7 +117,7 @@ the response states the limits of the export wait and after-audit.
 | Write tool | What it does |
 |------------|--------------|
 | `edt_create_object` · `edt_delete_object` | Creates a new top-level object – Catalog, Document, Enum, InformationRegister and the rest – through EDT's factory and the per-type initializer, and registers it in the Configuration. Deletion uses EDT refactoring and requires `force`. The preview reports indexed references and possible uses in BSL, query text and form bindings. These uses can remain after deletion; the response does not promise a complete cascade. |
-| `edt_add_attribute` · `edt_modify_attribute` · `edt_remove_attribute` | Adds an attribute to a metadata object with a validated type, klass, synonym and comment; changes an existing attribute's type, synonym or comment; removes one. Removal checks the references first and refuses while any remain, unless forced. |
+| `edt_add_attribute` · `edt_modify_attribute` · `edt_remove_attribute` | Adds or changes an attribute, register resource or dimension (`kind`, default `attribute`). Addition checks the name across all three field lists. Changes support the type, Russian synonym and comment. `edt_remove_attribute` removes attributes; use `edt_delete_object` with the member FQN for resources and dimensions. |
 | `edt_rename` | Renames a method, metadata object or member and updates references through EDT's refactoring engine. The preview reports known affected files and the completeness of file and edit counts. Requires `force` because external uses of the old name may break. |
 | `edt_add_method` · `edt_delete_method` | Adds and deletes a procedure or function in a module's BSL, both guided by the model. The insert refuses any result that would not parse again. The cut takes the adjacent doc comment with it, and its plan returns the exact text that will go, which is why it needs `force`. Both address a module by FQN, `HTTPService.X` and `WebService.X` included. |
 | `edt_add_route` | Adds a route to an `HTTPService`: a URL template plus one HTTP method. It generates the `uuid` of the template and its method. It resolves the `httpMethod` enum, and with `createHandler` it splices a `Функция <handler>(Запрос)` stub into the service module. |
@@ -135,6 +135,43 @@ the response states the limits of the export wait and after-audit.
 | `edt_move_method` | Moves a method within its module, preserving its exact text, documentation and directives. Supports nested region paths and neighboring methods, checks the intermediate and final module with the EDT parser, and requires `apply=true, force=true`. |
 | `edt_move_form_item` | Moves an existing form item by sibling index or anchor while preserving identity, id, children, properties and events. Refuses cycles and moves that require converting the item kind or data binding. |
 | `edt_import_external_object` | Imports an existing `.epf` or `.erf` into a new EDT project, optionally with `baseProjectName`. Uses EDT or a full platform installation to unpack XML, then the native EDT importer. The source is preserved and the tool removes its own partial project after a failed import. |
+
+#### Register fields
+
+`edt_add_attribute` and `edt_modify_attribute` accept `kind`: `attribute` (default),
+`resource` or `dimension`. Resources and dimensions require an owner that supports
+that field list. The operations support information, accumulation, accounting and
+calculation registers. Existing calls without `kind` continue to address attributes.
+
+Addition checks names case-insensitively across the owner's `attributes`, `resources`
+and `dimensions`, including a second check in the write transaction. A collision returns
+`nameAvailable=false` and the exact `conflictingFqns`. The dry-run writes nothing.
+
+For accumulation, accounting and calculation register resources, use one explicit
+`Число` type, for example `Число(15,2)`. Non-numeric, composite, reference and defined
+types are refused for these resources before writing. Information-register resources
+retain the general type syntax. An explicit `kind` selects that list even if an old
+configuration already contains the same name in another list; duplicate names inside
+the selected list are refused.
+
+For example, preview a resource addition:
+
+```json
+{"projectName":"Demo","ownerFqn":"InformationRegister.Versions","kind":"resource","name":"Version","type":"Строка(20)"}
+```
+
+To change that field, call `edt_modify_attribute` with the same owner, name and kind,
+and at least one of `newType`, `newSynonymRu` or `newComment`. An empty synonym or
+comment clears it; omitting a property keeps it. Changing the type returns a warning
+about data and code compatibility. Both operations require `apply=true` to write.
+The response distinguishes an in-memory commit from an accepted export request;
+acceptance does not confirm that serialization has finished.
+
+`edt_remove_attribute` continues to remove attributes only. If a modify/remove call
+addresses a resource or dimension as an attribute, the response names the actual
+member FQN and suggests `kind`, `edt_delete_object` and `edt_rename`. Delete or rename
+those members through the latter tools, using `targetFqn`, for example
+`InformationRegister.Versions.Resource.Version`.
 
 ### Infobases, the cluster and the platform
 

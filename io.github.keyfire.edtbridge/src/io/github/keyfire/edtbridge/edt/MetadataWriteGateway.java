@@ -110,6 +110,8 @@ public final class MetadataWriteGateway {
         public boolean ownerFound;
         public boolean ownerSupportsAttributes;
         public String name;
+        public String kind;
+        public List<String> conflictingFqns = new ArrayList<>();
         public Boolean nameAvailable; // null if not checked (owner missing)
         public String typeInput;
         public String typeParsed;     // human-readable normalized type, null if unparseable
@@ -129,7 +131,7 @@ public final class MetadataWriteGateway {
      *   <li>{@code apply=true} – perform the write: build the {@link TypeDescription} from the type
      *       string (platform-primitive proxy via {@link IEObjectProvider}, or the target object's
      *       produced {@code Ref} type via {@link MdProducedTypesUtil}), create the attribute, set its
-     *       name/synonym/comment/type/uuid, attach it to the owner's {@code attributes}, and commit in
+     *       name/synonym/comment/type/uuid, attach it to the selected field list, and commit in
      *       a BM read-write transaction. The write is skipped when validation fails (nothing written).
      * </ul>
      * The {@code bsl_support_status = EDITABLE} gate before an apply is the caller's
@@ -137,7 +139,14 @@ public final class MetadataWriteGateway {
      */
     public AddAttrResult addAttribute(String projectName, String ownerFqnRaw, String name, String typeSpec,
             String synonymRu, String comment, boolean apply) {
+        return addAttribute(projectName, ownerFqnRaw, name, typeSpec, synonymRu, comment, null, apply);
+    }
+
+    public AddAttrResult addAttribute(String projectName, String ownerFqnRaw, String name, String typeSpec,
+            String synonymRu, String comment, String kind, boolean apply) {
+        final String fieldKind = MetadataFields.kind(kind);
         AddAttrResult r = new AddAttrResult();
+        r.kind = fieldKind;
         final String ownerFqn = normalizeOwnerFqn(ownerFqnRaw);
         r.ownerFqn = ownerFqn;
         r.name = name;
@@ -177,27 +186,16 @@ public final class MetadataWriteGateway {
                 }
                 r.ownerFound = true;
                 r.ownerType = o.eClass().getName();
-                EStructuralFeature f = o.eClass().getEStructuralFeature("attributes");
-                if (f == null) {
-                    r.message = "owner has no 'attributes' (cannot hold attributes): " + r.ownerType;
+                MetadataFields.reference(o, fieldKind);
+                r.ownerSupportsAttributes = true;
+                var conflicts = MetadataFields.matches(o, name);
+                r.nameAvailable = conflicts.isEmpty();
+                r.conflictingFqns = conflicts.stream().map(field -> field.fqn(ownerFqn)).toList();
+                if (pt.valid && !fieldTypeAllowed(o, fieldKind, typeSpec)) {
+                    r.typeValid = false;
+                    r.message = resourceTypeMessage();
                     return null;
                 }
-                r.ownerSupportsAttributes = true;
-                boolean used = false;
-                try {
-                    Object val = o.eGet(f);
-                    if (val instanceof List) {
-                        for (Object x : (List<?>) val) {
-                            if (x instanceof MdObject && name.equalsIgnoreCase(((MdObject) x).getName())) {
-                                used = true;
-                                break;
-                            }
-                        }
-                    }
-                } catch (RuntimeException ignored) {
-                    // leave nameAvailable null on failure
-                }
-                r.nameAvailable = !used;
                 if (pt.valid) {
                     String firstRef = null;
                     String unresolved = null;
@@ -228,7 +226,7 @@ public final class MetadataWriteGateway {
         if (r.message == null) {
             r.ok = r.ownerFound && r.ownerSupportsAttributes && Boolean.TRUE.equals(r.nameAvailable)
                     && r.typeValid && (r.refFqn == null || Boolean.TRUE.equals(r.refResolved));
-            r.plan = "Add attribute \"" + name + "\" of type " + (r.typeParsed != null ? r.typeParsed : typeSpec)
+            r.plan = "Add " + fieldKind + " \"" + name + "\" of type " + (r.typeParsed != null ? r.typeParsed : typeSpec)
                     + " to " + ownerFqn + (synonymRu != null && !synonymRu.isBlank() ? " (synonym: " + synonymRu + ")" : "");
             if (!r.typeValid) {
                 r.message = "type not recognized: \"" + typeSpec + "\" (supported: Строка(N), Число(N,M), "
@@ -236,7 +234,7 @@ public final class MetadataWriteGateway {
                         + "<kind>Ссылка.X where <kind> = Справочник/Документ/Перечисление/ПланВидовХарактеристик/"
                         + "ПланСчетов/ПланВидовРасчета/БизнесПроцесс/Задача/ПланОбмена)";
             } else if (Boolean.FALSE.equals(r.nameAvailable)) {
-                r.message = "attribute already exists: " + name;
+                r.message = "field already exists: " + String.join(", ", r.conflictingFqns);
             } else if (r.refFqn != null && Boolean.FALSE.equals(r.refResolved)) {
                 r.message = "reference target not found: " + r.refFqn;
             }
@@ -254,40 +252,40 @@ public final class MetadataWriteGateway {
                     @Override
                     public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
                         IBmObject o = tx.getTopObjectByFqn(ownerFqn);
-                        EReference attrsRef = (EReference) o.eClass().getEStructuralFeature("attributes");
-                        EClass attrEClass = attrsRef.getEReferenceType();
-                        EObject attr = attrEClass.getEPackage().getEFactoryInstance().create(attrEClass);
-                        MdObject md = (MdObject) attr;
-                        md.setName(name);
-                        md.setUuid(UUID.randomUUID());
-                        if (synonymRu != null && !synonymRu.isBlank()) {
-                            md.getSynonym().put("ru", synonymRu);
-                        }
-                        if (comment != null && !comment.isBlank()) {
-                            md.setComment(comment);
-                        }
-                        ((BasicFeature) attr).setType(buildTypeDescription(tx, pt, version));
-                        @SuppressWarnings("unchecked")
-                        List<EObject> attrs = (List<EObject>) o.eGet(attrsRef);
-                        attrs.add(attr);
+                        if (!fieldTypeAllowed(o, fieldKind, typeSpec)) throw new IllegalArgumentException(resourceTypeMessage());
+                        MetadataFields.add(o, fieldKind, name, buildTypeDescription(tx, pt, version), synonymRu, comment);
                         return null;
                     }
                 });
                 // BM commit mutates the in-memory model only; force the DT export so the change is
                 // serialized to the .mdo on disk (IBmModelManager.forceExport, the model->files step).
+                r.applied = true;
                 IDtProject dtProject = mm.getDtProject(model);
                 boolean exported = dtProject != null && mm.forceExport(dtProject, ownerFqn);
-                r.applied = true;
-                r.message = "written: added attribute \"" + name + "\" to " + ownerFqn
-                        + (exported ? " (serialized to .mdo)"
-                                : " – WARNING: committed in-memory but forceExport did not persist (.mdo unchanged)");
+                r.message = "written: added " + fieldKind + " \"" + name + "\" to " + ownerFqn
+                        + (exported ? " (export requested)"
+                                : " – WARNING: committed in-memory but export was not accepted");
             } catch (RuntimeException ex) {
-                r.applied = false;
-                r.message = "apply failed (nothing committed): " + ex.getClass().getSimpleName()
+                r.ok = false;
+                r.message = (r.applied ? "export failed after commit: " : "apply failed (nothing committed): ") + ex.getClass().getSimpleName()
                         + (ex.getMessage() != null ? ": " + ex.getMessage() : "");
             }
         }
         return r;
+    }
+
+    // Aggregate register resources use one explicit numeric type; information-register resources do not.
+    boolean fieldTypeAllowed(EObject owner, String kind, String typeSpec) {
+        if (!"resource".equals(MetadataFields.kind(kind))) return true;
+        String ownerType = owner.eClass().getName();
+        if (!List.of("AccumulationRegister", "AccountingRegister", "CalculationRegister").contains(ownerType)) return true;
+        ParsedType type = parseType(typeSpec);
+        return type.valid && type.composite == null && type.kind == TypeKind.NUMBER;
+    }
+
+    private static String resourceTypeMessage() {
+        return "This register resource requires one explicit numeric type, e.g. Число(15,2); "
+                + "composite, reference and defined types are not supported for this resource.";
     }
 
     // ---- Metadata write: add an HTTP service route (url template + method) -------------------------
@@ -648,7 +646,7 @@ public final class MetadataWriteGateway {
                     }
                 }
                 if (attr == null) {
-                    r.message = "attribute not found: " + name;
+                    r.message = MetadataFields.missingMessage(o, ownerFqn, "attribute", name);
                     return null;
                 }
                 r.attrFound = true;
@@ -751,6 +749,7 @@ public final class MetadataWriteGateway {
         public boolean ownerFound;
         public boolean attrFound;
         public String name;
+        public String kind;
         public String currentType;    // rendered current value type
         public boolean typeChange;
         public String newType;        // parsed display of the requested type
@@ -772,7 +771,14 @@ public final class MetadataWriteGateway {
      */
     public ModifyAttrResult modifyAttribute(String projectName, String ownerFqnRaw, String name,
             String newType, String newSynonymRu, String newComment, boolean apply) {
+        return modifyAttribute(projectName, ownerFqnRaw, name, newType, newSynonymRu, newComment, null, apply);
+    }
+
+    public ModifyAttrResult modifyAttribute(String projectName, String ownerFqnRaw, String name,
+            String newType, String newSynonymRu, String newComment, String kind, boolean apply) {
+        final String fieldKind = MetadataFields.kind(kind);
         ModifyAttrResult r = new ModifyAttrResult();
+        r.kind = fieldKind;
         final String ownerFqn = normalizeOwnerFqn(ownerFqnRaw);
         r.ownerFqn = ownerFqn;
         r.name = name;
@@ -818,28 +824,19 @@ public final class MetadataWriteGateway {
                 }
                 r.ownerFound = true;
                 r.ownerType = o.eClass().getName();
-                EStructuralFeature f = o.eClass().getEStructuralFeature("attributes");
-                if (f == null) {
-                    r.message = "owner has no 'attributes': " + r.ownerType;
-                    return null;
-                }
-                Object attr = null;
-                Object val = o.eGet(f);
-                if (val instanceof List) {
-                    for (Object x : (List<?>) val) {
-                        if (x instanceof MdObject && name.equalsIgnoreCase(((MdObject) x).getName())) {
-                            attr = x;
-                            break;
-                        }
-                    }
-                }
+                MdObject attr = MetadataFields.find(o, fieldKind, name);
                 if (attr == null) {
-                    r.message = "attribute not found: " + name;
+                    r.message = MetadataFields.missingMessage(o, ownerFqn, fieldKind, name);
                     return null;
                 }
                 r.attrFound = true;
                 if (attr instanceof BasicFeature) {
                     r.currentType = GatewaySupport.renderType(((BasicFeature) attr).getType());
+                }
+                if (wantType && pt.valid && !fieldTypeAllowed(o, fieldKind, newType)) {
+                    r.typeValid = false;
+                    r.message = resourceTypeMessage();
+                    return null;
                 }
                 if (wantType && pt.valid) {
                     for (ParsedType part : partsOf(pt)) {
@@ -864,7 +861,7 @@ public final class MetadataWriteGateway {
             return r;
         }
         r.ok = (!wantType || (r.typeValid && (r.refFqn == null || Boolean.TRUE.equals(r.refResolved))));
-        StringBuilder plan = new StringBuilder("Modify attribute \"" + name + "\" in " + ownerFqn + ":");
+        StringBuilder plan = new StringBuilder("Modify " + fieldKind + " \"" + name + "\" in " + ownerFqn + ":");
         if (wantType) {
             plan.append(" type ").append(r.currentType != null ? r.currentType : "?").append(" → ").append(r.newType);
         }
@@ -876,8 +873,8 @@ public final class MetadataWriteGateway {
         }
         r.plan = plan.toString();
         if (wantType) {
-            r.warning = "changing an attribute's type can break backward compatibility (infobase data and code).";
-            if (!r.typeValid) {
+            r.warning = "changing a field's type can break backward compatibility (infobase data and code).";
+            if (!r.typeValid && r.message == null) {
                 r.message = "type not recognized: \"" + newType + "\"";
             } else if (r.refFqn != null && Boolean.FALSE.equals(r.refResolved)) {
                 r.message = "reference target not found: " + r.refFqn;
@@ -896,45 +893,24 @@ public final class MetadataWriteGateway {
                     @Override
                     public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
                         IBmObject o = tx.getTopObjectByFqn(ownerFqn);
-                        EStructuralFeature f = o.eClass().getEStructuralFeature("attributes");
-                        Object val = o.eGet(f);
-                        Object attr = null;
-                        if (val instanceof List) {
-                            for (Object x : (List<?>) val) {
-                                if (x instanceof MdObject && name.equalsIgnoreCase(((MdObject) x).getName())) {
-                                    attr = x;
-                                    break;
-                                }
-                            }
+                        if (wantType && !fieldTypeAllowed(o, fieldKind, newType)) {
+                            throw new IllegalArgumentException(resourceTypeMessage());
                         }
-                        if (attr == null) {
-                            throw new IllegalStateException("attribute disappeared: " + name);
-                        }
-                        if (wantType) {
-                            ((BasicFeature) attr).setType(buildTypeDescription(tx, pt, version));
-                        }
-                        if (wantSyn) {
-                            if (newSynonymRu.isBlank()) {
-                                ((MdObject) attr).getSynonym().removeKey("ru");
-                            } else {
-                                ((MdObject) attr).getSynonym().put("ru", newSynonymRu);
-                            }
-                        }
-                        if (wantComment) {
-                            ((MdObject) attr).setComment(newComment);
-                        }
+                        MetadataFields.modify(o, fieldKind, name,
+                                wantType ? buildTypeDescription(tx, pt, version) : null,
+                                newSynonymRu, newComment);
                         return null;
                     }
                 });
+                r.applied = true;
                 IDtProject dtProject = mm.getDtProject(model);
                 boolean exported = dtProject != null && mm.forceExport(dtProject, ownerFqn);
-                r.applied = true;
-                r.message = "modified attribute \"" + name + "\" in " + ownerFqn
-                        + (exported ? " (serialized to .mdo)"
-                                : " – WARNING: changed in-memory but forceExport did not persist (.mdo unchanged)");
+                r.message = "modified " + fieldKind + " \"" + name + "\" in " + ownerFqn
+                        + (exported ? " (export requested)"
+                                : " – WARNING: changed in-memory but export was not accepted");
             } catch (RuntimeException ex) {
-                r.applied = false;
-                r.message = "modify failed (nothing committed): " + ex.getClass().getSimpleName()
+                r.ok = false;
+                r.message = (r.applied ? "export failed after commit: " : "modify failed (nothing committed): ") + ex.getClass().getSimpleName()
                         + (ex.getMessage() != null ? ": " + ex.getMessage() : "");
             }
         }
