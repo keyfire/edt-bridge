@@ -13,22 +13,19 @@ Every entry ends with a link to the pull request it came from -
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
-## [Unreleased]
+## 2026-10-28 – 0.28.0
 
 ### Added
-- `edt_update_infobase` with `transport=agent` can load only changed configuration files
-  (`--partial --list-file`). The full export is compared with the last successful load into the
-  same infobase. Partial loading requires a matching platform version and configuration generation,
-  no removed files, unchanged `Configuration.xml` and `Ext/ParentConfigurations.bin`, and changes
-  to no more than half of the export. Otherwise the configuration is loaded in full; unchanged files require no
-  load. Extensions are always loaded in full, and `fullLoad=true` requests a full configuration load.
-  If a partial load fails, the bridge attempts a full load.
-  The load record is stored in workspace metadata and remains available after agent and EDT
-  restarts. The response includes `loadMode`, `loadReason`, file counts, operation durations,
-  `loadRecord`, `loadRecordState` and `loadRepeated` for a load repeated after a lost connection.
-  In the author's test with about 6,600 files, loading a changed module took seconds, compared
-  with about 90 seconds for a full load; export time is additional.
+- `edt_update_infobase` with `transport=agent` loads only changed files after checking the infobase state.
+  File loading is skipped when the export is unchanged; if partial-load conditions are not met,
+  the full configuration is loaded. `fullLoad=true` requests a full load.
   ([#46](https://github.com/keyfire/edt-bridge/pull/46))
+
+### Changed
+- Rewrote the Russian and English documentation and increased the article width to 960 px.
+  ([#47](https://github.com/keyfire/edt-bridge/pull/47), [#48](https://github.com/keyfire/edt-bridge/pull/48))
+- Repository instructions now require the `tooling-docs-writing` skill for documentation changes.
+  ([#49](https://github.com/keyfire/edt-bridge/pull/49))
 
 ## 2026-10-05 – 0.27.3
 
