@@ -84,4 +84,12 @@ class ValidationSettleTest {
         assertTrue(settle.settled());
         assertFalse(settle.sawWork());
     }
+    @Test
+    void unreadableCountsNeverSettle() {
+        ValidationSettle settle = new ValidationSettle();
+        for (int i = 0; i < 10; i++) {
+            assertFalse(settle.poll(-1, true));
+        }
+    }
+
 }

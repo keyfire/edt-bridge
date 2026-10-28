@@ -8,8 +8,8 @@ wrapper is what the client talks to instead (stdio, install via pipx):
 - if not, it AUTO-STARTS a headless EDT (1cedtcli with a keepalive pipe - the same recipe
   as scripts/run-headless.ps1) and forwards once it is ready;
 - `initialize` / `tools/list` never block a client session: while the backend is starting,
-  `tools/list` returns an empty list, and a `notifications/tools/list_changed` follows as
-  soon as the backend is up - the client re-pulls the real tool list then.
+  `tools/list` returns the packaged catalog for this wrapper version, plus local tools.
+  Once EDT starts, the live bridge supplies its current descriptors.
 
 Configuration (CLI flags override the environment):
     EDT_BRIDGE_PORT           bridge port (default 8770)
@@ -32,6 +32,8 @@ import http.client
 import io
 import json
 import os
+import re
+import shlex
 import signal
 import socket
 import subprocess
@@ -107,7 +109,7 @@ def log(message: str) -> None:
 
 
 def write_headless_batch(path: Path, cli: Path, workspace: Path, token: str = "",
-                         allow_evaluate: str = "") -> Path:
+                         allow_evaluate: str = "", port: int | None = None) -> Path:
     """Write the batch file the Windows auto-start runs, and answer where it landed.
 
     A batch file wants CRLF, so the lines are joined with it. The `newline=""` beside the
@@ -121,15 +123,24 @@ def write_headless_batch(path: Path, cli: Path, workspace: Path, token: str = ""
     stdin open, which is what keeps the headless session alive.
     """
     lines = ["@echo off"]
+    if port is not None:
+        lines.append(f'set "EDT_BRIDGE_PORT={port}"')
     if token:
         lines.append(f'set "EDT_BRIDGE_TOKEN={token}"')
     if allow_evaluate.strip():
         lines.append(f'set "EDT_BRIDGE_ALLOW_EVALUATE={allow_evaluate.strip()}"')
+    vmargs = f" -vmargs -Dedt.bridge.port={port}" if port is not None else ""
     lines.append(
-        f'(echo version& ping -n 999999 127.0.0.1 >nul) | "{cli}" -data "{workspace}" -nl en_US'
+        f'(echo version& ping -n 999999 127.0.0.1 >nul) | "{cli}" -data "{workspace}" -nl en_US{vmargs}'
     )
     path.write_text("\r\n".join(lines) + "\r\n", encoding="ascii", newline="")
     return path
+
+
+def request_failure(error: Exception) -> str:
+    if isinstance(error, urllib.error.HTTPError) and error.code == 401:
+        return cli._TOKEN_HINT
+    return str(error)
 
 
 class Backend:
@@ -186,7 +197,7 @@ class Backend:
         two seconds: with no bridge up, tools/list scanned twice and answered after ~85 s, and
         the client dropped the server. Of the ports that answer, the lowest wins - the one the
         upward scan used to stop at."""
-        s = self._status_on(self._active_port)
+        s = self._target_status(self._active_port)
         if s is not None:
             return s
         others = [port for port in range(self.port, self.port + self.scan_range + 1)
@@ -197,7 +208,7 @@ class Backend:
             if not answer.set_running_or_notify_cancel():
                 return
             try:
-                answer.set_result(self._status_on(port))
+                answer.set_result(self._target_status(port))
             except BaseException as exc:
                 answer.set_exception(exc)
 
@@ -220,6 +231,69 @@ class Backend:
                 answer.cancel()
         return None
 
+    def status_all(self, ports: list[int] | None = None) -> list[dict]:
+        """Inspect every target without changing forwarding state, filtering workspaces, or starting EDT."""
+        from concurrent.futures import ThreadPoolExecutor
+        targets = sorted(set(ports if ports is not None else
+                             range(self.port, min(65535, self.port + self.scan_range) + 1)))
+        if len(targets) > 128 or any(not 1 <= port <= 65535 for port in targets):
+            raise ValueError("status --all accepts up to 128 ports in the range 1..65535")
+        with ThreadPoolExecutor(max_workers=min(32, len(targets) or 1)) as pool:
+            return list(pool.map(self._status_snapshot, targets))
+
+    def _status_snapshot(self, port: int) -> dict:
+        row = {"port": port}
+        if not self._listening(port):
+            return {**row, "state": "unavailable"}
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/status", timeout=3) as response:
+                raw = response.read(1 << 20)
+            try:
+                status = json.loads(raw.decode("utf-8"))
+            except (ValueError, UnicodeError):
+                return {**row, "state": "foreign_http"}
+            if (not isinstance(status, dict) or status.get("name") != "edt-bridge"
+                    or not isinstance(status.get("version"), str)
+                    or not isinstance(status.get("workspace"), str)):
+                return {**row, "state": "foreign_http"}
+            row = {**status, "port": port, "state": "bridge"}
+            if "projects" not in row:
+                # Old bridges expose only open project names on /status. Unknown is not ready.
+                row["projects"] = [{"name": name, "modelReady": None}
+                                   for name in status.get("openProjects", [])]
+                row["modelStatusHint"] = "This bridge does not report per-project model readiness"
+            row.setdefault("edtVersion", None)
+            row.setdefault("bridgeBundleVersion", None)
+            return row
+        except urllib.error.HTTPError as error:
+            return {**row, "state": "http_error", "httpStatus": error.code}
+        except http.client.HTTPException:
+            return {**row, "state": "non_http"}
+        except (OSError, ValueError):
+            return {**row, "state": "unresponsive"}
+
+    def _target_status(self, port: int) -> dict | None:
+        status = self._status_on(port)
+        if status is not None and self.workspace:
+            actual = status.get("workspace")
+            if not actual or self._path_key(actual) != self._path_key(self.workspace):
+                return None
+        return status
+
+    @staticmethod
+    def _path_key(path: str) -> str:
+        return os.path.normcase(os.path.realpath(os.path.expanduser(path)))
+
+    def start_hint(self) -> str:
+        command = ["edt-bridge-mcp", "call", "edt_projects", "--workspace",
+                   self.workspace or "<workspace>", "--port", str(self.port)]
+        if self.edt_dir:
+            command += ["--edt-dir", self.edt_dir]
+        formatted = subprocess.list2cmdline(command) if _WINDOWS else shlex.join(command)
+        return ("Start EDT with the bridge plugin, or run " + formatted
+                + " with EDT_BRIDGE_AUTOSTART=1 in its environment. "
+                + "For a token-protected bridge, set EDT_BRIDGE_TOKEN to the token in EDT preferences.")
+
     def is_ready(self) -> bool:
         """Ready = server up AND the model serves at least one open project."""
         s = self.status()
@@ -239,7 +313,16 @@ class Backend:
         req = urllib.request.Request(
             f"http://127.0.0.1:{self._active_port}/mcp", data=data, headers=headers, method="POST"
         )
-        with urllib.request.urlopen(req, timeout=600) as resp:
+        timeout = 600
+        params = payload.get("params") or {}
+        arguments = params.get("arguments") or {}
+        if (payload.get("method") == "tools/call"
+                and params.get("name") == "edt_project_errors"
+                and (arguments.get("refresh") is True or arguments.get("baseline") in ("save", "compare"))):
+            wait = arguments.get("waitSeconds", 120)
+            if type(wait) is int and 1 <= wait <= 600:
+                timeout += wait
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             return json.loads(resp.read().decode("utf-8"))
 
     def call_tool(self, name: str, arguments: dict) -> str:
@@ -253,14 +336,13 @@ class Backend:
         """
         if not self.is_up():
             raise RuntimeError(
-                "no EDT bridge is running - start one (any bridge tool autostarts it) "
-                "or call the bridge tool directly"
+                "no EDT bridge is running. " + self.start_hint()
             )
         try:
             answer = self.forward({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
                                    "params": {"name": name, "arguments": arguments}})
         except (OSError, ValueError) as exc:
-            raise RuntimeError(f"the bridge did not answer: {exc}") from exc
+            raise RuntimeError(f"the bridge did not answer: {request_failure(exc)}") from exc
         error = answer.get("error")
         if error is not None:
             message = error.get("message") if isinstance(error, dict) else None
@@ -371,10 +453,95 @@ class Backend:
     def _gui_edt_running(self) -> bool:
         """True when a GUI EDT (1cedt) process exists - we then refuse to launch headless
         (the GUI holds the workspace lock; the user likely just lacks the plugin there)."""
+        if self.workspace or self.edt_dir:
+            return any(self._process_matches(process, GUI_IMAGE) for process in self._edt_processes())
         return bool(self.gui_pids())
 
+    def _edt_processes(self) -> list[dict]:
+        """Read executable and arguments together; process names alone do not identify a workspace."""
+        try:
+            if _WINDOWS:
+                query = ("[Console]::OutputEncoding = [Text.UTF8Encoding]::new(); "
+                         "Get-CimInstance Win32_Process | Where-Object { "
+                         "$_.Name -in @('1cedt.exe','1cedtcli.exe','1cedtc.exe') } | "
+                         "Select-Object ProcessId,ExecutablePath,CommandLine | ConvertTo-Json -Compress")
+                raw = subprocess.run(["powershell", "-NoProfile", "-Command", query],
+                                     capture_output=True, timeout=30, check=False,
+                                     stdin=subprocess.DEVNULL).stdout
+                rows = json.loads(raw.decode("utf-8", errors="replace") or "[]")
+                return rows if isinstance(rows, list) else [rows]
+            out = subprocess.run(["ps", "-eo", "pid=,args="], capture_output=True, text=True,
+                                 encoding="utf-8", errors="replace", timeout=15, check=False,
+                                 stdin=subprocess.DEVNULL).stdout
+            return [{"ProcessId": int(pid), "CommandLine": command}
+                    for line in out.splitlines() if len(parts := line.strip().split(None, 1)) == 2
+                    for pid, command in [parts] if pid.isdigit()]
+        except (OSError, ValueError, subprocess.SubprocessError):
+            return []
+
+    def _process_matches(self, process: dict, image: str, match_port: bool = False,
+                         match_install: bool = True) -> bool:
+        command = process.get("CommandLine") or ""
+        try:
+            args = ([part.strip('"') for part in re.findall(r'"[^"]*"|\S+', command)]
+                    if _WINDOWS else shlex.split(command))
+        except ValueError:
+            return False
+        if not args:
+            return False
+        executable = process.get("ExecutablePath") or args[0]
+        if Path(executable).name.lower() != image.lower():
+            return False
+        if (match_install and self.edt_dir
+                and self._path_key(str(Path(executable).parent)) != self._path_key(self.edt_dir)):
+            return False
+        if self.workspace:
+            try:
+                actual_workspace = args[args.index("-data") + 1]
+            except (ValueError, IndexError):
+                return False
+            if self._path_key(actual_workspace) != self._path_key(self.workspace):
+                return False
+        if match_port:
+            port_arg = next((arg.split("=", 1)[1] for arg in args
+                             if arg.startswith("-Dedt.bridge.port=")), "8770")
+            if port_arg != str(self.port):
+                return False
+        return True
+
     def _headless_cli_running(self) -> bool:
-        return bool(self._pids_of(HEADLESS_IMAGES[0]))
+        return any(self._process_matches(process, CLI_IMAGE, match_port=True)
+                   for process in self._edt_processes())
+
+    def _workspace_owner(self) -> dict | None:
+        """A workspace can be owned by any EDT version or port."""
+        if self.workspace:
+            for process in self._edt_processes():
+                if any(self._process_matches(process, image, match_install=False)
+                       for image in (GUI_IMAGE, *HEADLESS_IMAGES)):
+                    return process
+        return None
+
+    def _workspace_locked(self) -> bool:
+        """Probe Eclipse's first-byte OS lock without replacing its file or inode."""
+        if not self.workspace:
+            return False
+        lock = Path(self.workspace) / ".metadata" / ".lock"
+        try:
+            with lock.open("r+b", buffering=0) as handle:
+                if os.name == "nt":
+                    import msvcrt
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.lockf(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB, 1)
+                    fcntl.lockf(handle.fileno(), fcntl.LOCK_UN, 1)
+        except FileNotFoundError:
+            return False
+        except OSError:
+            return True
+        return False
 
     def _find_exe(self, exe: str) -> Path | None:
         """Locate one executable of the EDT installation - the CLI and the GUI live side by side."""
@@ -420,6 +587,14 @@ class Backend:
         """Start 1cedtcli with the keepalive pipe (the run-headless recipe), detached."""
         if self._headless_cli_running():
             return True, "a headless 1cedtcli is already starting – waiting for it"
+        owner = self._workspace_owner()
+        if owner is not None:
+            return False, (f"workspace {self.workspace} is already in use by EDT process "
+                           f"{owner.get('ProcessId', 'unknown')}; close that EDT or choose another "
+                           "--workspace. A different port or EDT installation cannot share its workspace.")
+        if self._workspace_locked():
+            return False, (f"workspace lock is held: {Path(self.workspace) / '.metadata' / '.lock'}; "
+                           "close the EDT using this workspace or choose another --workspace")
         if self._gui_edt_running():
             gui_hint = ("bridge port is dead but a GUI EDT is running – refusing to start a "
                         "headless one (workspace lock).")
@@ -447,18 +622,13 @@ class Backend:
         if not jar_ok:
             return False, jar_msg
         ws = Path(self.workspace)
-        lock = ws / ".metadata" / ".lock"
-        if lock.exists():
-            try:
-                lock.unlink()
-            except OSError:
-                return False, f"workspace lock is held and cannot be removed: {lock}"
         log(f"starting headless EDT: {cli} -data {ws}")
         try:
             if os.name == "nt":
                 bat = write_headless_batch(
-                    Path(tempfile.gettempdir()) / "edtbridge-headless.bat", cli, ws,
+                    Path(tempfile.gettempdir()) / f"edtbridge-headless-{os.getpid()}-{self.port}.bat", cli, ws,
                     self.token or "", os.environ.get("EDT_BRIDGE_ALLOW_EVALUATE") or "",
+                    port=self.port,
                 )
                 creation = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
                 subprocess.Popen(
@@ -468,7 +638,8 @@ class Backend:
                 )
             else:
                 shell = (
-                    f'(echo version; while :; do sleep 3600; done) | "{cli}" -data "{ws}" -nl en_US'
+                    f'(echo version; while :; do sleep 3600; done) | {shlex.quote(str(cli))} '
+                    f'-data {shlex.quote(str(ws))} -nl en_US -vmargs -Dedt.bridge.port={self.port}'
                 )
                 subprocess.Popen(
                     ["sh", "-c", shell], cwd=str(cli.parent), start_new_session=True,
@@ -567,17 +738,6 @@ class Backend:
         if self._wait(lambda: not self.headless_pids(), time.monotonic() + 10):
             return True, []
         return False, self.headless_pids()
-
-    def _clear_stale_lock(self) -> None:
-        """Drop the workspace lock left by a killed session - EDT refuses the workspace with it."""
-        if not self.workspace:
-            return
-        lock = Path(self.workspace) / ".metadata" / ".lock"
-        if lock.exists():
-            try:
-                lock.unlink()
-            except OSError:
-                pass  # still held: the GUI will say so itself, and it is right to
 
     def _parents(self) -> dict[int, int]:
         """pid -> parent pid for every process, in one query."""
@@ -741,7 +901,6 @@ class Backend:
                         "close that window or rerun with --force")
                 return False, lines
             say("the headless EDT is down")
-            self._clear_stale_lock()
         if already:
             say(f"a GUI EDT is already running (pid {already[0]})")
             return True, lines
@@ -850,6 +1009,13 @@ class StdioServer:
         """What the wrapper serves by itself: its own tools plus the plugin tools."""
         return list(LOCAL_TOOLS) + [t.descriptor() for t in self._plugin_tools.values()]
 
+    def _offline_descriptors(self) -> list[dict]:
+        from .catalog import bridge_tools
+
+        local = self._local_descriptors()
+        names = {tool["name"] for tool in local}
+        return [tool for tool in bridge_tools() if tool["name"] not in names] + local
+
     # -- frames ----------------------------------------------------------
 
     def _send(self, message: dict) -> None:
@@ -926,9 +1092,9 @@ class StdioServer:
                 return
             # Kicked off in the background, as after notifications/initialized: ensure() probes
             # the ports once more and may launch a headless EDT, and the answer the client is
-            # waiting for needs neither - it is the local tools, and list_changed follows.
+            # waiting for needs neither - the packaged descriptors are available immediately.
             threading.Thread(target=self._kick_background_start, daemon=True).start()
-            self._result(req_id, {"tools": self._local_descriptors()})
+            self._result(req_id, {"tools": self._offline_descriptors()})
             return
         if method == "tools/call":
             if params.get("name") in LOCAL_TOOL_NAMES:
@@ -944,7 +1110,8 @@ class StdioServer:
                 return
             ready, msg = self.backend.ensure(wait=True)
             if not ready:
-                self._tool_error(req_id, f"edt-bridge backend is unavailable: {msg}")
+                self._tool_error(req_id, f"edt-bridge backend is unavailable: {msg}. "
+                                 + self.backend.start_hint())
                 return
             self._forward_or_error(message, req_id)
             return
@@ -1009,7 +1176,8 @@ class StdioServer:
         try:
             reply = self.backend.forward(message)
         except (OSError, ValueError) as exc:
-            self._error(req_id, -32000, f"edt-bridge request failed: {exc}")
+            log(f"live tool catalog unavailable: {request_failure(exc)}")
+            self._result(req_id, {"tools": self._offline_descriptors()})
             return
         result = reply.get("result")
         if isinstance(result, dict) and isinstance(result.get("tools"), list):
@@ -1030,9 +1198,9 @@ class StdioServer:
             reply = self.backend.forward(message)
         except (OSError, ValueError) as exc:
             if message.get("method") == "tools/call":
-                self._tool_error(req_id, f"edt-bridge request failed: {exc}")
+                self._tool_error(req_id, f"edt-bridge request failed: {request_failure(exc)}")
             else:
-                self._error(req_id, -32000, f"edt-bridge request failed: {exc}")
+                self._error(req_id, -32000, f"edt-bridge request failed: {request_failure(exc)}")
             return
         if req_id is not None:
             reply.setdefault("jsonrpc", "2.0")
@@ -1144,6 +1312,9 @@ def main() -> int:
     command, rest = split_command(sys.argv[1:])
     if command == "self-update":
         from . import update
+        if "-h" not in rest and "--help" not in rest:
+            args, rest = build_parser().parse_known_args(rest)
+            apply_connection_options(args)
         return update.run(rest)
     if command:
         return cli.run(command, rest)

@@ -238,6 +238,36 @@ def install_latest_jar(dropins: Path, emit=log) -> bool:
     return True
 
 
+def warn_stale_configurations(dropins: Path, emit=log) -> None:
+    """Report pinned Equinox entries in known configurations without changing a running EDT."""
+    installed = installed_jar(dropins)
+    if installed is None:
+        return
+    version, jar = installed
+    configurations = [dropins.parent / "configuration"]
+    workspace = (os.environ.get("EDT_BRIDGE_WORKSPACE") or "").strip()
+    if workspace:
+        configurations.append(Path(workspace) / "eclipsecfg")
+    for configuration in configurations:
+        info = configuration / "org.eclipse.equinox.simpleconfigurator" / "bundles.info"
+        try:
+            rows = info.read_text(encoding="utf-8-sig").splitlines()
+        except FileNotFoundError:
+            continue
+        except OSError as error:
+            emit(f"could not inspect Equinox configuration {info}: {error}")
+            continue
+        for row in rows:
+            fields = row.split(",")
+            if len(fields) < 3 or fields[0] != "io.github.keyfire.edtbridge":
+                continue
+            if fields[1] != version or jar.name not in fields[2]:
+                emit(f"stale Equinox configuration: {info} pins {fields[1]} at {fields[2]}, "
+                     f"but dropins contains {version} ({jar}). Stop the EDT using this "
+                     "configuration and reconcile its edt-bridge bundles.info entry with the "
+                     "installed jar before restarting; copying a jar into dropins is insufficient.")
+
+
 def update_jar() -> bool:
     dropins = _find_dropins()
     if dropins is None:
@@ -245,6 +275,7 @@ def update_jar() -> bool:
         return False
     ok = install_latest_jar(dropins)
     if ok:
+        warn_stale_configurations(dropins)
         log("a running EDT (GUI or headless) keeps the old code until restarted")
         # Named, not just warned about: the running bridge answered 0.21.0 while 0.22.0 lay in
         # dropins, and nothing said so - the session went on believing it ran the new code.

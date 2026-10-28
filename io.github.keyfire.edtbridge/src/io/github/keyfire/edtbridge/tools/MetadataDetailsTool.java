@@ -98,10 +98,23 @@ public final class MetadataDetailsTool {
                         JsonObject c = new JsonObject();
                         c.addProperty("fqn", ci.fqn);
                         c.addProperty("type", ci.type);
-                        c.addProperty("autoRecord", ci.autoRecord);
+                        if (ci.autoRecord != null) {
+                            c.addProperty("autoRecord", ci.autoRecord);
+                        }
+                        if (ci.use != null) {
+                            c.addProperty("use", ci.use);
+                        }
+                        if (ci.conditionalSeparation != null) {
+                            c.addProperty("conditionalSeparation", ci.conditionalSeparation);
+                        }
                         content.add(c);
                     }
                     o.add("content", content);
+                }
+                if (!d.sourceTypes.isEmpty()) {
+                    JsonArray sources = new JsonArray();
+                    d.sourceTypes.forEach(sources::add);
+                    o.add("sourceTypes", sources);
                 }
                 o.add("structure", groupsToJson(d.structure));
                 if (d.emptyStructuralFeatures != null && !d.emptyStructuralFeatures.isEmpty()) {

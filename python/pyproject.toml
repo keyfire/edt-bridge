@@ -39,3 +39,6 @@ where = ["src"]
 testpaths = ["tests"]
 # Import the package from the checkout, so the suite runs without installing it first.
 pythonpath = ["src"]
+
+[tool.setuptools.package-data]
+edt_bridge_mcp = ["tool_catalog.json"]

@@ -55,9 +55,12 @@ public final class AddMethodTool {
                 + "src/CommonModules/X/Module.bsl"));
         props.add("methodText", strProp("The full BSL procedure/function text (exactly ONE method), e.g. "
                 + "\"Процедура Имя() Экспорт ... КонецПроцедуры\". Must parse as one method."));
-        props.add("region", strProp("Optional #Область name to insert the method into (by model, not text). "
-                + "If omitted, the method is appended after the last method of the module (or of the server "
-                + "block when serverBlock=true)."));
+        props.add("region", strProp("Region name or full nested path, e.g. Public/Helpers. "
+                + "A short name must be unique. Methods are inserted directly in the chosen region."));
+        props.add("beforeMethod", strProp("Insert before this method, including its attached documentation "
+                + "and pragmas. Mutually exclusive with afterMethod; must be unique in the selected scope."));
+        props.add("afterMethod", strProp("Insert after this method. Mutually exclusive with beforeMethod; "
+                + "must be unique in the selected scope."));
         props.add("serverBlock", boolProp("Optional: place the method inside the module's server preprocessor "
                 + "block (#Если Сервер ... #КонецЕсли). Combined with region = the region inside that block."));
         props.add("apply", boolProp("false (default) = dry-run: validate + return the plan, write nothing. "
@@ -76,18 +79,20 @@ public final class AddMethodTool {
         JsonObject t = new JsonObject();
         t.addProperty("name", name());
         t.addProperty("description",
-                "WRITE (Phase 2): add a new procedure/function to a module's BSL. Dry-run by "
+                "WRITE (Phase 2): add a new procedure/function to a module's BSL. A missing module file "
+                + "can be created only for an existing metadata owner selected by fqn and an empty typed module slot. Dry-run by "
                 + "default – parses the module, validates methodText is exactly one legal method with a free "
-                + "name, computes the insertion point from the model (region / server block / after the last "
+                + "name, computes the insertion point from the model (region path / beforeMethod / afterMethod / server block / after the last "
                 + "method) and returns the plan + preview WITHOUT writing. apply=true writes the .bsl, but "
                 + "only if the spliced module re-parses cleanly (safety invariant – a bad methodText or "
                 + "offset can never corrupt the module, worst case is a refused apply). Additive (a new "
                 + "method is non-breaking) – no force. Requires a configured token; caller must verify "
                 + "bsl_support_status EDITABLE before apply (cannot add to vendor-locked modules).");
         t.addProperty("descriptionRu",
-                "ЗАПИСЬ (Phase 2): добавить новую процедуру/функцию в BSL модуля. По умолчанию "
+                "ЗАПИСЬ (Phase 2): добавить новую процедуру/функцию в BSL модуля. Отсутствующий файл "
+                + "создается только для существующего владельца fqn с пустым модулем известного типа. По умолчанию "
                 + "dry-run – парсит модуль, проверяет, что methodText – ровно один корректный метод со "
-                + "свободным именем, вычисляет точку вставки по модели (регион / серверный блок / после "
+                + "свободным именем, вычисляет точку вставки по модели (путь области / beforeMethod / afterMethod / серверный блок / после "
                 + "последнего метода) и возвращает план + предпросмотр БЕЗ записи. apply=true пишет .bsl, но "
                 + "только если результат парсится без ошибок (инвариант безопасности – плохой methodText или "
                 + "смещение не могут испортить модуль, худший случай – отказ). Аддитивно (новый метод не "
@@ -104,6 +109,11 @@ public final class AddMethodTool {
         String moduleType = getStr(args, "moduleType");
         String methodText = getStr(args, "methodText");
         String region = getStr(args, "region");
+        String beforeMethod = getStr(args, "beforeMethod");
+        String afterMethod = getStr(args, "afterMethod");
+        if (beforeMethod != null && afterMethod != null) {
+            return McpServer.toolError("beforeMethod and afterMethod are mutually exclusive");
+        }
         if (project == null || methodText == null || (fqn == null && modulePath == null)) {
             return McpServer.toolError("projectName, methodText and (fqn or modulePath) are required");
         }
@@ -112,7 +122,7 @@ public final class AddMethodTool {
         boolean apply = args.has("apply") && !args.get("apply").isJsonNull() && args.get("apply").getAsBoolean();
         try {
             BslGateway.AddMethodResult res = gateway.addMethod(project, fqn, moduleType, modulePath,
-                    methodText, region, serverBlock, apply);
+                    methodText, region, serverBlock, beforeMethod, afterMethod, apply);
             JsonObject o = new JsonObject();
             o.addProperty("ok", res.ok);
             o.addProperty("applied", res.applied);
@@ -121,6 +131,8 @@ public final class AddMethodTool {
             }
             o.addProperty("modulePath", res.modulePath);
             o.addProperty("moduleFound", res.moduleFound);
+            if (res.moduleFileMissing) o.addProperty("moduleFileMissing", true);
+            if (res.moduleFileCreated) o.addProperty("moduleFileCreated", true);
             if (res.methodName != null) {
                 o.addProperty("methodName", res.methodName);
             }
@@ -146,6 +158,8 @@ public final class AddMethodTool {
             if (res.serverBlockFound != null) {
                 o.addProperty("serverBlockFound", res.serverBlockFound.booleanValue());
             }
+            if (res.previousMethod != null) o.addProperty("previousMethod", res.previousMethod);
+            if (res.nextMethod != null) o.addProperty("nextMethod", res.nextMethod);
             if (res.insertAfter != null) {
                 o.addProperty("insertAfter", res.insertAfter);
             }

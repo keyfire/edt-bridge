@@ -40,6 +40,11 @@ import com._1c.g5.v8.bm.integration.IBmModel;
 import com._1c.g5.v8.dt.core.platform.IBmModelManager;
 import com._1c.g5.v8.dt.metadata.mdclass.BasicFeature;
 import com._1c.g5.v8.dt.metadata.mdclass.CommonModule;
+import com._1c.g5.v8.dt.metadata.mdclass.CommonAttribute;
+import com._1c.g5.v8.dt.metadata.mdclass.CommonAttributeContentItem;
+import com._1c.g5.v8.dt.metadata.mdclass.EventSubscription;
+import com._1c.g5.v8.dt.mcore.TypeItem;
+import com._1c.g5.v8.dt.mcore.util.McoreUtil;
 import com._1c.g5.v8.dt.metadata.mdclass.ExchangePlan;
 import com._1c.g5.v8.dt.metadata.mdclass.ExchangePlanContentItem;
 import com._1c.g5.v8.dt.metadata.mdclass.MdClassPackage;
@@ -70,15 +75,19 @@ public final class MetadataReadGateway {
         /** Type-specific scalar properties that are not child members – e.g. a common module's
          *  compilation flags, which decide where its methods may run at all. */
         public Map<String, String> properties = new LinkedHashMap<>();
-        /** An exchange plan's content: the metadata objects replicated between nodes. */
+        /** Metadata objects included in an exchange plan or common attribute. */
         public List<ContentItem> content = new ArrayList<>();
+        /** Event-subscription source types, using the English platform type names. */
+        public List<String> sourceTypes = new ArrayList<>();
     }
 
-    /** One entry of an exchange plan's content. */
+    /** One entry of an exchange plan or common attribute content. */
     public static final class ContentItem {
         public String fqn;
         public String type;
         public String autoRecord;
+        public String use;
+        public String conditionalSeparation;
     }
 
     /** A group of child members sharing one containment feature (e.g. "attributes"). */
@@ -165,6 +174,41 @@ public final class MetadataReadGateway {
             r.properties.put("privileged", String.valueOf(cm.isPrivileged()));
             r.properties.put("returnValuesReuse", String.valueOf(cm.getReturnValuesReuse()));
         }
+        if (md instanceof CommonAttribute) {
+            CommonAttribute attribute = (CommonAttribute) md;
+            r.properties.put("valueType", GatewaySupport.renderType(attribute.getType()));
+            r.properties.put("autoUse", String.valueOf(attribute.getAutoUse()));
+            r.properties.put("dataSeparation", String.valueOf(attribute.getDataSeparation()));
+            r.properties.put("separatedDataUse", String.valueOf(attribute.getSeparatedDataUse()));
+            r.properties.put("dataSeparationValue", metadataFqn(attribute.getDataSeparationValue()));
+            r.properties.put("dataSeparationUse", metadataFqn(attribute.getDataSeparationUse()));
+            r.properties.put("conditionalSeparation", metadataFqn(attribute.getConditionalSeparation()));
+            r.properties.put("usersSeparation", String.valueOf(attribute.getUsersSeparation()));
+            r.properties.put("authenticationSeparation", String.valueOf(attribute.getAuthenticationSeparation()));
+            r.properties.put("configurationExtensionsSeparation",
+                    String.valueOf(attribute.getConfigurationExtensionsSeparation()));
+            for (CommonAttributeContentItem item : attribute.getContent()) {
+                ContentItem entry = new ContentItem();
+                entry.use = String.valueOf(item.getUse());
+                entry.conditionalSeparation = metadataFqn(item.getConditionalSeparation());
+                MdObject target = item.getMetadata();
+                if (target != null) {
+                    entry.fqn = metadataFqn(target);
+                    entry.type = target.eClass().getName();
+                }
+                r.content.add(entry);
+            }
+        }
+        if (md instanceof EventSubscription) {
+            EventSubscription subscription = (EventSubscription) md;
+            r.properties.put("event", subscription.getEvent());
+            r.properties.put("handler", subscription.getHandler());
+            if (subscription.getSource() != null) {
+                for (TypeItem source : subscription.getSource().getTypes()) {
+                    r.sourceTypes.add(McoreUtil.getTypeName(source));
+                }
+            }
+        }
         if (md instanceof ExchangePlan) {
             for (ExchangePlanContentItem item : ((ExchangePlan) md).getContent()) {
                 ContentItem ci = new ContentItem();
@@ -182,6 +226,19 @@ public final class MetadataReadGateway {
                 r.content.add(ci);
             }
         }
+    }
+
+    private static String metadataFqn(MdObject object) {
+        if (object == null) {
+            return null;
+        }
+        if (object instanceof IBmObject && ((IBmObject) object).bmGetEngine() != null) {
+            String fqn = ((IBmObject) object).bmGetFqn();
+            if (fqn != null && !fqn.isBlank()) {
+                return fqn;
+            }
+        }
+        return object.eClass().getName() + "." + object.getName();
     }
 
     /**

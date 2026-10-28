@@ -22,6 +22,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.eclipse.core.resources.IProject;
@@ -968,6 +969,18 @@ public final class MetadataWriteGateway {
         public boolean nameValid;     // newName is a legal 1C identifier and differs from the current name
         public boolean forced;
         public int refactoringCount;  // number of IRefactoring (base config + adopted extension counterparts)
+        public String targetPath;
+        public int affectedFileCount;
+        public int nativeChangeCount;
+        public int nativeTextEditCount;
+        public Integer editCount = 0;
+        public boolean editCountComplete = true;
+        public boolean coverageComplete = true;
+        public int selectedItemCount;
+        public int unmappedItemCount;
+        public int unknownChangeCount;
+        public List<String> unmappedItems = new ArrayList<>();
+        public List<BslRefactorGateway.AffectedFile> affectedFiles = new ArrayList<>();
         public boolean truncated;     // the item list was capped
         public List<RenameItem> items = new ArrayList<>();
         public List<RenameProblem> problems = new ArrayList<>();
@@ -1035,6 +1048,7 @@ public final class MetadataWriteGateway {
         // which also guarantees the MdObject we hand to the engine is live. perform() happens later,
         // OUTSIDE any transaction (it opens its own write transactions via a batch session).
         final List<IRefactoring> built = new ArrayList<>();
+        final List<IRefactoringItem> allItems = new ArrayList<>();
         model.executeReadonlyTask(new AbstractBmTask<Object>("edt-bridge.rename.build") {
             @Override
             public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
@@ -1062,6 +1076,12 @@ public final class MetadataWriteGateway {
                 r.targetType = md.eClass().getName();
                 r.topObject = top;
                 r.currentName = md.getName();
+                try { r.targetPath = BslRefactorGateway.resourcePath(md); }
+                catch (RuntimeException unavailable) {
+                    r.coverageComplete = false;
+                    r.editCountComplete = false;
+                    r.unmappedItems.add("Target file mapping unavailable: " + unavailable.getClass().getSimpleName());
+                }
                 if (newName.equals(r.currentName)) {
                     r.nameValid = false;
                     r.message = "newName equals the current name: " + newName;
@@ -1084,9 +1104,10 @@ public final class MetadataWriteGateway {
                             }
                         }
                         for (IRefactoringItem it : rf.getItems()) {
+                            allItems.add(it);
                             if (r.items.size() >= RENAME_ITEM_CAP) {
                                 r.truncated = true;
-                                break;
+                                continue;
                             }
                             RenameItem ri = new RenameItem();
                             ri.name = it.getName();
@@ -1094,10 +1115,25 @@ public final class MetadataWriteGateway {
                             ri.checked = it.isChecked();
                             r.items.add(ri);
                         }
-                    } catch (RuntimeException ignored) {
-                        // item/problem extraction is best-effort
+                    } catch (RuntimeException unavailable) {
+                        r.coverageComplete = false;
+                        r.editCountComplete = false;
+                        r.unmappedItems.add("Refactoring items unavailable: " + unavailable.getClass().getSimpleName());
                     }
                 }
+                BslRefactorGateway.Result preview = BslRefactorGateway.previewItems(allItems);
+                BslRefactorGateway.includeTargetPath(preview, r.targetPath);
+                r.affectedFiles = preview.affectedFiles;
+                r.affectedFileCount = preview.affectedFileCount;
+                r.nativeChangeCount = preview.changeCount;
+                r.nativeTextEditCount = preview.nativeTextEditCount;
+                r.editCountComplete &= preview.editCountComplete;
+                r.editCount = r.editCountComplete ? preview.editCount : null;
+                r.coverageComplete &= preview.coverageComplete;
+                r.selectedItemCount = preview.selectedItemCount;
+                r.unmappedItemCount = preview.unmappedItemCount;
+                r.unknownChangeCount = preview.unknownChangeCount;
+                r.unmappedItems.addAll(preview.unmappedItems);
                 return null;
             }
         });
@@ -1112,6 +1148,8 @@ public final class MetadataWriteGateway {
         r.warning = "a rename changes the metadata contract and BREAKS backward compatibility for "
                 + "dependent configurations and extensions on other deployments. The cascade touches "
                 + "metadata AND BSL across all projects. Requires explicit confirmation (force).";
+        if (!r.coverageComplete) r.warning += " Preview coverage is incomplete: paths and counts cover exposed native changes only; "
+                + r.unmappedItemCount + " selected item(s) have no native file mapping.";
         if (!r.problems.isEmpty()) {
             r.message = "refactoring engine reported " + r.problems.size() + " problem(s) – apply blocked "
                     + "(e.g. name taken, or object not editable / support-locked).";
@@ -1225,21 +1263,43 @@ public final class MetadataWriteGateway {
 
     // ---- Metadata write, Phase 2: delete a metadata object (inverse of create) ----------
 
-    /**
-     * Result of {@link #deleteObject}. Reuses {@link RenameItem}/{@link RenameProblem} for the engine's
-     * change list + validation problems (same refactoring family as rename).
-     */
+    /** Native delete plan plus a bounded, explicitly non-semantic reference audit. */
     public static final class DeleteObjectResult {
-        public boolean ok;            // dry-run valid (refactoring built, no problems) → an apply would run
-        public boolean applied;       // the delete cascade was performed
+        public boolean ok;
+        public boolean applied;       // native apply started; inspect applyMayBePartial and deletionConfirmed
+        public boolean applyStarted;
+        public boolean applyMayBePartial;
+        public boolean deletionConfirmed;
+        public Boolean targetStillPresent;
+        public boolean afterAuditComplete;
+        public Boolean requestedExportsAccepted;
+        public Boolean requestedExportsCompleted;
+        public DeleteExportSynchronization.Result exportSynchronization;
+        public List<String> requestedExports = new ArrayList<>();
+        public String afterAuditCoverage = "Accepted target-project exports use a bounded native EXP_O/EXP_B "
+                + "completion barrier. Native deletion can affect other objects/projects asynchronously; afterAuditComplete=false "
+                + "means the after-audit is an observation, not a fully settled remaining-reference count.";
+        public String verificationCoverage = "deletionConfirmed verifies target absence in the live BM model; "
+                + "disk export, runtime behavior and a complete reference cascade are not verified";
         public String targetFqn;
         public boolean targetFound;
-        public String targetType;     // EClass of the resolved target
-        public boolean topObject;     // target is a top metadata object (the widest blast radius)
-        public String name;           // resolved object/member name
+        public String targetType;
+        public boolean topObject;
+        public String name;
         public boolean forced;
-        public int refactoringCount;  // 1 when the engine built a delete refactoring
-        public boolean truncated;     // the item list was capped
+        public int refactoringCount;
+        public boolean nativeDeleteReady;
+        public boolean nativePreviewComplete = true;
+        public boolean truncated;
+        public Integer indexedRefCount;
+        public List<MetadataReadGateway.Ref> indexedRefs = new ArrayList<>();
+        public DeleteReferenceAuditGateway.Result referenceAudit;
+        public DeleteReferenceAuditGateway.Result remainingPossibleReferences;
+        public int retainedFormControlsWithoutDataPath;
+        public List<DeleteReferenceAuditGateway.UnboundControl> retainedFormControls = new ArrayList<>();
+        public String formControlCoverage = "Before/after stored XML or text-buffer controls matched by unique "
+                + "file/name/type; controls can remain after native deletion clears dataPath. This is a bounded "
+                + "observation, not proof that every unbound control was found.";
         public List<RenameItem> items = new ArrayList<>();
         public List<RenameProblem> problems = new ArrayList<>();
         public String plan;
@@ -1248,23 +1308,9 @@ public final class MetadataWriteGateway {
     }
 
     /**
-     * Delete a metadata object (the inverse of {@link #createObject}) – a top object (e.g.
-     * {@code Catalog.X}) or a child member – and cascade the removal of every reference in metadata AND
-     * BSL using EDT's OWN refactoring engine
-     * ({@link IMdRefactoringService#createMdObjectDeleteRefactoring}), the same native machinery as
-     * {@link #renameObject}. The engine deletes the object's {@code .mdo} (and its directory) and updates
-     * the {@code Configuration}, so no manual detach/forceExport is needed. Two stages by {@code apply}:
-     * <ul>
-     *   <li>{@code apply=false} (default) – DRY-RUN: resolve the target, build the delete refactoring and
-     *       return its change items ({@code getItems}) + validation problems ({@code getStatus}), deleting
-     *       nothing.
-     *   <li>{@code apply=true} – perform the cascade via {@code IRefactoring.perform()} inside
-     *       {@link IProjectOperationApi#performExclusiveOperation} (build pipeline suspended, project
-     *       locked), exactly as the rename apply does.
-     * </ul>
-     * Deleting an object is irreversible and breaking for peer configurations, so an apply requires
-     * {@code force=true} (the owner's explicit override) on top of the configured token. The
-     * {@code bsl_support_status = EDITABLE} gate before an apply is the caller's responsibility.
+     * Build and optionally perform EDT's native metadata delete. The native item list does not prove
+     * that BSL, query strings or dynamic-list bindings will be rewritten. A separate bounded audit
+     * reports possible references before and after apply; force is required for every apply.
      */
     public DeleteObjectResult deleteObject(String projectName, String targetFqn, boolean apply, boolean force) {
         DeleteObjectResult r = new DeleteObjectResult();
@@ -1280,7 +1326,7 @@ public final class MetadataWriteGateway {
             return r;
         }
         IBmModelManager mm = ServiceAccess.get(IBmModelManager.class);
-        IBmModel model = (mm == null) ? null : mm.getModel(p);
+        IBmModel model = mm == null ? null : mm.getModel(p);
         if (model == null) {
             r.message = "no BM model for project: " + projectName;
             return r;
@@ -1290,124 +1336,227 @@ public final class MetadataWriteGateway {
             r.message = "md refactoring service unavailable (EDT refactoring bundles not active)";
             return r;
         }
-
-        // Stage 1 – resolve the target and BUILD the delete refactoring (read-only analysis), mirroring
-        // rename: building is pure analysis (change list + problems), safe in a read-only BM transaction,
-        // and guarantees the MdObject handed to the engine is live. perform() happens later, outside any tx.
         final List<IRefactoring> built = new ArrayList<>();
         model.executeReadonlyTask(new AbstractBmTask<Object>("edt-bridge.delete.build") {
             @Override
             public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
-                EObject target = tx.getTopObjectByFqn(targetFqn);
-                boolean top = target instanceof MdObject;
-                if (!top) {
-                    // Resolve a child member by its full FQN (e.g. Catalog.X.Attribute.Y), as rename does.
-                    String[] segs = targetFqn.split("\\.");
-                    if (segs.length >= 4 && segs.length % 2 == 0) {
-                        EObject topObj = tx.getTopObjectByFqn(segs[0] + "." + segs[1]);
-                        if (topObj instanceof MdObject) {
-                            target = resolveChild(topObj, segs, 2);
-                        }
-                    }
-                }
-                if (!(target instanceof MdObject)) {
+                MdObject md = resolveDeleteTarget(tx, targetFqn);
+                if (md == null) {
                     r.message = "target not found: " + targetFqn;
                     return null;
                 }
-                MdObject md = (MdObject) target;
                 r.targetFound = true;
                 r.targetType = md.eClass().getName();
-                r.topObject = top;
+                r.topObject = targetFqn.split("\\.").length <= 2;
                 r.name = md.getName();
-                IRefactoring del = service.createMdObjectDeleteRefactoring(List.of(md));
-                if (del != null) {
-                    built.add(del);
-                }
-                r.refactoringCount = built.size();
-                for (IRefactoring rf : built) {
+                if (md instanceof IBmObject) {
                     try {
-                        if (rf.getStatus() != null) {
-                            for (IRefactoringProblem pr : rf.getStatus().getProblems()) {
-                                RenameProblem rp = new RenameProblem();
-                                rp.kind = pr.getClass().getSimpleName();
-                                rp.object = describeProblemObject(pr.getObject());
-                                r.problems.add(rp);
+                        Collection<IBmCrossReference> refs = tx.getReferences(((IBmObject) md).bmGetUri());
+                        r.indexedRefCount = refs.size();
+                        for (IBmCrossReference reference : refs) {
+                            if (r.indexedRefs.size() >= 40) break;
+                            IBmObject source = reference.getObject();
+                            if (source == null) continue;
+                            IBmObject top = source.bmGetTopObject();
+                            MetadataReadGateway.Ref item = new MetadataReadGateway.Ref();
+                            item.sourceFqn = top == null ? source.bmGetFqn() : top.bmGetFqn();
+                            item.sourceType = top == null ? source.eClass().getName() : top.eClass().getName();
+                            item.feature = reference.getFeature() == null ? null : reference.getFeature().getName();
+                            item.sourceUri = source.bmGetUriAsString();
+                            r.indexedRefs.add(item);
+                        }
+                    } catch (RuntimeException unavailable) {
+                        r.warning = "BM inbound-reference index could not be read; indexedRefCount is unknown.";
+                    }
+                }
+                IRefactoring deletion = service.createMdObjectDeleteRefactoring(List.of(md));
+                if (deletion != null) built.add(deletion);
+                r.refactoringCount = built.size();
+                for (IRefactoring refactoring : built) {
+                    try {
+                        if (refactoring.getStatus() != null) {
+                            for (IRefactoringProblem problem : refactoring.getStatus().getProblems()) {
+                                RenameProblem item = new RenameProblem();
+                                item.kind = problem.getClass().getSimpleName();
+                                item.object = describeProblemObject(problem.getObject());
+                                r.problems.add(item);
                             }
                         }
-                        for (IRefactoringItem it : rf.getItems()) {
+                        for (IRefactoringItem item : refactoring.getItems()) {
                             if (r.items.size() >= RENAME_ITEM_CAP) {
                                 r.truncated = true;
+                                r.nativePreviewComplete = false;
                                 break;
                             }
-                            RenameItem ri = new RenameItem();
-                            ri.name = it.getName();
-                            ri.optional = it.isOptional();
-                            ri.checked = it.isChecked();
-                            r.items.add(ri);
+                            RenameItem entry = new RenameItem();
+                            entry.name = item.getName();
+                            entry.optional = item.isOptional();
+                            entry.checked = item.isChecked();
+                            r.items.add(entry);
                         }
-                    } catch (RuntimeException ignored) {
-                        // item/problem extraction is best-effort
+                    } catch (RuntimeException unavailable) {
+                        r.nativePreviewComplete = false;
                     }
                 }
                 return null;
             }
         });
-
-        if (!r.targetFound) {
-            return r; // target-not-found message already set
+        if (!r.targetFound) return r;
+        r.referenceAudit = auditDeleteReferences(r.name);
+        r.nativeDeleteReady = deleteReady(r);
+        r.ok = r.nativeDeleteReady && force;
+        r.plan = "Native delete " + (r.topObject ? "object" : "member") + " \"" + r.name + "\" (" + targetFqn
+                + "); native items: " + r.items.size() + (r.truncated ? "+" : "")
+                + "; possible reference candidates: " + r.referenceAudit.candidateCount
+                + (r.referenceAudit.countIsLowerBound ? "+ (incomplete scan)" : " (within the stated lexical scope)");
+        r.warning = appendWarning(r.warning, "Deletion is irreversible. Native changes do not prove a complete "
+                + "BSL/query/form cascade; possible references may remain. Form controls can remain with dataPath "
+                + "cleared. The reference audit is incomplete semantically, even when scanComplete=true. "
+                + "Every apply requires force=true.");
+        if (!r.nativeDeleteReady) {
+            r.message = r.items.isEmpty() ? "native delete returned no change items; apply refused"
+                    : "native delete preview is incomplete, has no checked items, or reports problems; apply refused";
+            return r;
         }
-        r.ok = r.refactoringCount > 0 && r.problems.isEmpty();
-        r.plan = "Delete " + (r.topObject ? "object" : "member") + " \"" + r.name + "\" (" + targetFqn
-                + "); affected changes: " + r.items.size() + (r.truncated ? "+" : "")
-                + ", refactorings: " + r.refactoringCount;
-        r.warning = "deleting an object is IRREVERSIBLE and BREAKS backward compatibility for dependent "
-                + "configurations; the cascade removes the object's .mdo and clears references in metadata "
-                + "AND BSL across all projects. Requires explicit confirmation (force). Back up before apply.";
-        if (!r.problems.isEmpty()) {
-            r.message = "refactoring engine reported " + r.problems.size() + " problem(s) – apply blocked "
-                    + "(e.g. object not editable / support-locked).";
+        if (!apply) {
+            r.message = "dry-run: native delete plan and possible references reported; nothing changed. "
+                    + "The native item count is not a reference count. Apply requires force=true.";
+            return r;
         }
-
-        // Stage 2 – apply: perform the delete cascade. Requires force=true (the breaking-change override)
-        // AND a clean dry-run. Runs outside the read transaction, inside an exclusive project operation.
-        if (apply) {
-            if (!force) {
-                r.message = "delete is an irreversible breaking change for peer configurations – apply "
-                        + "refused; pass force=true (owner's explicit override) to perform it.";
-                return r;
-            }
-            if (!r.ok) {
-                r.message = (r.message == null ? "cannot delete" : r.message) + " – apply refused (nothing deleted).";
-                return r;
-            }
-            try {
-                IProjectOperationApi ops = ServiceAccess.get(IProjectOperationApi.class);
-                IDtProject dtProject = mm.getDtProject(model);
-                final List<IRefactoring> toPerform = built;
-                Runnable run = () -> {
-                    for (IRefactoring rf : toPerform) {
-                        rf.perform();
-                    }
-                };
-                if (ops != null && dtProject != null) {
-                    ops.performExclusiveOperation(run, ProjectPipelineJob.BUILD, new NullProgressMonitor(), dtProject);
-                } else {
-                    // Fallback: the engine still manages its own BM transactions; we lose only the
-                    // build-pipeline suspension. Surface that we took the fallback path.
-                    run.run();
-                    r.warning = (r.warning == null ? "" : r.warning + " ")
-                            + "(applied WITHOUT exclusive project lock: IProjectOperationApi/IDtProject unavailable.)";
-                }
+        if (!force) {
+            r.message = "apply refused: force=true is required, including when possible references remain "
+                    + "or the audit is incomplete; nothing deleted";
+            return r;
+        }
+        try {
+            IProjectOperationApi operations = ServiceAccess.get(IProjectOperationApi.class);
+            IDtProject dtProject = mm.getDtProject(model);
+            Runnable run = () -> {
+                r.applyStarted = true;
                 r.applied = true;
-                r.message = "deleted \"" + r.name + "\" (" + targetFqn
-                        + ") – cascade performed across metadata + BSL.";
-            } catch (Exception ex) {
-                r.applied = false;
-                r.message = "apply failed (cascade may be partial – verify the working tree): "
-                        + ex.getClass().getSimpleName() + (ex.getMessage() != null ? ": " + ex.getMessage() : "");
+                for (IRefactoring refactoring : built) refactoring.perform();
+            };
+            if (operations != null && dtProject != null) {
+                operations.performExclusiveOperation(run, ProjectPipelineJob.BUILD, new NullProgressMonitor(), dtProject);
+            } else {
+                run.run();
+                r.warning = appendWarning(r.warning, "Native apply ran without an exclusive project lock: "
+                        + "IProjectOperationApi/IDtProject unavailable.");
             }
+            mm.waitAllEnqueuedEventsSent();
+            if (dtProject != null) {
+                java.util.Set<String> exports = new java.util.LinkedHashSet<>();
+                String[] segments = targetFqn.split("\\.");
+                exports.add(r.topObject ? "Configuration" : segments[0] + "." + segments[1]);
+                for (MetadataReadGateway.Ref reference : r.indexedRefs) {
+                    if (reference.sourceFqn != null && !reference.sourceFqn.equals(targetFqn)
+                            && !reference.sourceFqn.startsWith(targetFqn + ".")) exports.add(reference.sourceFqn);
+                }
+                r.requestedExports.addAll(exports);
+                r.requestedExportsAccepted = mm.forceExport(dtProject, r.requestedExports);
+                mm.waitAllEnqueuedEventsSent();
+                r.requestedExportsCompleted = false;
+                if (Boolean.TRUE.equals(r.requestedExportsAccepted)) {
+                    r.exportSynchronization = DeleteExportSynchronization.await(p, r.requestedExports);
+                    r.requestedExportsCompleted = r.exportSynchronization.completed;
+                    if (!r.exportSynchronization.completed) {
+                        r.warning = appendWarning(r.warning, r.exportSynchronization.message);
+                    }
+                }
+            }
+            r.targetStillPresent = model.executeReadonlyTask(new AbstractBmTask<Boolean>("edt-bridge.delete.verify") {
+                @Override
+                public Boolean execute(IBmTransaction transaction, IProgressMonitor monitor) {
+                    return resolveDeleteTarget(transaction, targetFqn) != null;
+                }
+            });
+            r.deletionConfirmed = Boolean.FALSE.equals(r.targetStillPresent);
+            r.ok = r.deletionConfirmed;
+            r.applyMayBePartial = !r.deletionConfirmed;
+            r.message = r.deletionConfirmed ? "native delete completed; target absence confirmed in the live BM model. "
+                    + "A complete BSL/query/form cascade has not been established."
+                    : "native apply completed, but the target is still present or absence is unconfirmed; inspect the model and working tree";
+        } catch (Exception failure) {
+            if (failure instanceof InterruptedException) Thread.currentThread().interrupt();
+            r.ok = false;
+            r.applyMayBePartial = r.applyStarted;
+            r.message = (r.applyStarted ? "native apply started; changes or verification may be partial/unknown: "
+                    : "native apply failed before execution: ") + GatewaySupport.describeCause(failure);
+        }
+        if (r.applyStarted) {
+            r.remainingPossibleReferences = auditDeleteReferences(r.name);
+            // The SDK does not expose a complete affected-file list or a global export barrier here.
+            r.remainingPossibleReferences.snapshotMayPrecedeNativeExport = true;
+            var unbound = DeleteReferenceAuditGateway.retainedUnbound(
+                    r.referenceAudit, r.remainingPossibleReferences, r.name);
+            r.retainedFormControlsWithoutDataPath = unbound.size();
+            r.retainedFormControls = new ArrayList<>(unbound.stream().limit(40).toList());
+            r.message += " Remaining possible reference candidates: " + r.remainingPossibleReferences.candidateCount
+                    + (r.remainingPossibleReferences.countIsLowerBound ? "+ (incomplete scan)." : " within the stated lexical scope.")
+                    + " Retained form controls observed with dataPath cleared: " + unbound.size() + "."
+                    + " After-audit coverage is incomplete: asynchronous exports not covered by a confirmed "
+                    + "scoped wait may still be pending.";
         }
         return r;
+    }
+
+    static boolean deleteReady(DeleteObjectResult result) {
+        return result.refactoringCount > 0 && result.problems.isEmpty()
+                && result.nativePreviewComplete && !result.truncated
+                && result.items.stream().anyMatch(item -> item.checked);
+    }
+
+    static MdObject resolveDeleteTarget(IBmTransaction transaction, String targetFqn) {
+        String[] segments = targetFqn.split("\\.", -1);
+        for (String segment : segments) {
+            if (segment.isBlank() || !segment.equals(segment.strip())) return null;
+        }
+        if (segments.length <= 2) {
+            EObject target = transaction.getTopObjectByFqn(targetFqn);
+            return target instanceof MdObject ? (MdObject) target : null;
+        }
+        if (segments.length % 2 != 0) return null;
+        EObject root = transaction.getTopObjectByFqn(segments[0] + "." + segments[1]);
+        if (!(root instanceof MdObject)) return null;
+        MdObject current = (MdObject) root;
+        String rootClass = current.eClass().getName();
+        for (int index = 2; index < segments.length; index += 2) {
+            String kind = segments[index];
+            String name = segments[index + 1];
+            List<MdObject> matches = new ArrayList<>();
+            for (EReference feature : current.eClass().getEAllContainments()) {
+                if (feature.isDerived() || feature.isTransient()) continue;
+                Object value = current.eGet(feature);
+                List<?> children = value instanceof List ? (List<?>) value
+                        : value instanceof EObject ? List.of(value) : List.of();
+                for (Object child : children) {
+                    if (!(child instanceof MdObject candidate) || !name.equalsIgnoreCase(candidate.getName())) continue;
+                    String type = candidate.eClass().getName();
+                    // Generated member types use either the root or immediate-owner class prefix.
+                    // Never accept suffix fragments, infrastructure ancestors or a same-name wrong kind.
+                    if (type.equalsIgnoreCase(kind) || type.equalsIgnoreCase(rootClass + kind)
+                            || type.equalsIgnoreCase(current.eClass().getName() + kind)) matches.add(candidate);
+                }
+            }
+            if (matches.size() > 1) throw new IllegalArgumentException("ambiguous delete target: " + targetFqn);
+            if (matches.isEmpty()) return null;
+            current = matches.get(0);
+        }
+        return current;
+    }
+
+    private static DeleteReferenceAuditGateway.Result auditDeleteReferences(String name) {
+        try {
+            return new DeleteReferenceAuditGateway().scan(name);
+        } catch (Exception failure) {
+            DeleteReferenceAuditGateway.Result result = new DeleteReferenceAuditGateway.Result();
+            result.errorCount = 1;
+            result.countIsLowerBound = true;
+            DeleteReferenceAuditGateway.Failure detail = new DeleteReferenceAuditGateway.Failure();
+            detail.message = GatewaySupport.describeCause(failure);
+            result.failures.add(detail);
+            return result;
+        }
     }
 
     // ---- Metadata write, Phase 2: create a top metadata object --------------------------
@@ -1488,6 +1637,11 @@ public final class MetadataWriteGateway {
      */
     public CreateObjectResult createObject(String projectName, String objectType, String name,
             String synonymRu, String comment, boolean apply) {
+        return createObject(projectName, objectType, name, synonymRu, comment, java.util.Map.of(), apply);
+    }
+
+    public CreateObjectResult createObject(String projectName, String objectType, String name,
+            String synonymRu, String comment, java.util.Map<String, Object> properties, boolean apply) {
         CreateObjectResult r = new CreateObjectResult();
         r.objectType = objectType;
         r.name = name;
@@ -1518,6 +1672,15 @@ public final class MetadataWriteGateway {
             return r;
         }
         final EClass eClass = (EClass) classifier;
+        if (properties != null && !properties.isEmpty()) {
+            EObject draft = eClass.getEPackage().getEFactoryInstance().create(eClass);
+            if (!(draft instanceof com._1c.g5.v8.dt.metadata.mdclass.CommonModule module)) {
+                r.message = "properties are supported only for CommonModule";
+                return r;
+            }
+            try { CommonModuleSettings.describe(module, properties, false); }
+            catch (IllegalArgumentException invalid) { r.message = invalid.getMessage(); return r; }
+        }
         r.typeKnown = true;
         r.eClass = mdClassName;
         final String fqn = mdClassName + "." + name;
@@ -1604,23 +1767,30 @@ public final class MetadataWriteGateway {
                         EReference feat = findConfigFeature(config, eClass);
                         @SuppressWarnings("unchecked")
                         List<EObject> list = (List<EObject>) config.eGet(feat);
-                        list.add(created);
+                        int position = io.github.keyfire.edtbridge.core.MetadataOrder.insertionIndex(
+                                list.stream().map(object -> object instanceof MdObject md ? md.getName() : null).toList(), name);
+                        list.add(position, created);
+                        if (created instanceof com._1c.g5.v8.dt.metadata.mdclass.CommonModule module
+                                && properties != null && !properties.isEmpty()) {
+                            CommonModuleSettings.apply(module, properties, false);
+                        }
                         factory.fillDefaultReferences(created);
                         return null;
                     }
                 }, false);
+                r.applied = true;
                 // Serialize the new object AND the Configuration (its child list changed).
                 IDtProject dtProject = mm.getDtProject(model);
                 boolean exportedObj = dtProject != null && mm.forceExport(dtProject, fqn);
                 boolean exportedCfg = dtProject != null && mm.forceExport(dtProject, "Configuration");
-                r.applied = true;
                 r.message = "created " + objectType + " " + fqn
                         + ((exportedObj && exportedCfg) ? " (serialized: object .mdo + Configuration.mdo)"
                                 : " – WARNING: created in-memory but forceExport incomplete (object=" + exportedObj
                                         + ", configuration=" + exportedCfg + ")");
             } catch (RuntimeException ex) {
-                r.applied = false;
-                r.message = "create failed (verify the working tree – a partial object may remain): "
+                r.ok = false;
+                r.message = (r.applied ? "The object was created, but export failed: "
+                        : "Creation failed; inspect the working tree for partial changes: ")
                         + ex.getClass().getSimpleName() + (ex.getMessage() != null ? ": " + ex.getMessage() : "");
             }
         }
@@ -2156,7 +2326,12 @@ public final class MetadataWriteGateway {
      * @param apply       {@code false} validates and returns the plan; {@code true} performs the adopt
      */
     public AdoptResult adoptObject(String projectName, String fqn, boolean apply) {
+        return adoptObject(projectName, fqn, false, apply);
+    }
+
+    public AdoptResult adoptObject(String projectName, String fqn, boolean extendModule, boolean apply) {
         AdoptResult r = new AdoptResult();
+        boolean adoptionStarted = false;
         r.project = projectName;
         r.fqn = fqn;
         if (projectName == null || projectName.isBlank() || fqn == null || fqn.isBlank()) {
@@ -2216,12 +2391,17 @@ public final class MetadataWriteGateway {
             }
         });
 
+        if (extendModule && !"CommonModule".equals(r.type)) {
+            r.message = "extendModule requires a CommonModule target";
+            return r;
+        }
         if (!r.objectFound) {
             r.message = "object not found in the base configuration " + r.baseProject + ": " + fqn;
             return r;
         }
         r.ok = !Boolean.FALSE.equals(r.adoptable) && !Boolean.TRUE.equals(r.alreadyAdopted);
         r.plan = "Adopt " + fqn + " (" + r.type + ") from " + r.baseProject + " into " + projectName;
+        if (extendModule) r.plan += " and enable its module body for extension";
         if (Boolean.TRUE.equals(r.alreadyAdopted)) {
             r.message = fqn + " is already adopted into " + projectName;
         } else if (Boolean.FALSE.equals(r.adoptable)) {
@@ -2240,6 +2420,27 @@ public final class MetadataWriteGateway {
             return r;
         }
         try {
+            IBmModel extensionModel = mm.getModel(p);
+            if (extensionModel == null) throw new IllegalStateException("The extension BM model is not loaded");
+            final boolean[] alphabetic = {false};
+            extensionModel.executeReadonlyTask(new AbstractBmTask<Object>("edt-bridge.adopt.order.inspect") {
+                @Override public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
+                    EObject configuration = tx.getTopObjectByFqn("Configuration");
+                    EClass targetClass = (EClass) MdClassPackage.eINSTANCE.getEClassifier(r.type);
+                    EReference feature = configuration == null ? null : findConfigFeature(configuration, targetClass);
+                    if (feature != null) {
+                        @SuppressWarnings("unchecked") List<EObject> list = (List<EObject>) configuration.eGet(feature);
+                        java.util.List<String> names = list.stream().map(o -> ((MdObject) o).getName()).toList();
+                        alphabetic[0] = true;
+                        for (int i = 1; i < names.size(); i++) {
+                            if (names.get(i - 1) == null || names.get(i) == null
+                                    || names.get(i - 1).toLowerCase(java.util.Locale.ROOT)
+                                            .compareTo(names.get(i).toLowerCase(java.util.Locale.ROOT)) > 0) alphabetic[0] = false;
+                        }
+                    }
+                    return null;
+                }
+            });
             final EObject[] adopted = {null};
             baseModel.executeReadonlyTask(new AbstractBmTask<Object>("edt-bridge.adopt.read") {
                 @Override
@@ -2252,15 +2453,45 @@ public final class MetadataWriteGateway {
                 r.message = "the object disappeared between validation and apply";
                 return r;
             }
+            adoptionStarted = true;
             EObject result = adopter.adoptAndAttach(adopted[0], extension, new NullProgressMonitor());
             r.applied = result != null;
+            if (r.applied && (alphabetic[0] || extendModule)) {
+                extensionModel.execute(new AbstractBmTask<Object>("edt-bridge.adopt.settings.apply") {
+                    @Override public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
+                        EObject object = tx.getTopObjectByFqn(fqn);
+                        if (extendModule) CommonModuleSettings.apply(
+                                (com._1c.g5.v8.dt.metadata.mdclass.CommonModule) object, java.util.Map.of(), true);
+                        if (alphabetic[0]) {
+                            EObject configuration = tx.getTopObjectByFqn("Configuration");
+                            EReference feature = findConfigFeature(configuration, object.eClass());
+                            @SuppressWarnings("unchecked") org.eclipse.emf.common.util.EList<EObject> list =
+                                    (org.eclipse.emf.common.util.EList<EObject>) configuration.eGet(feature);
+                            java.util.List<EObject> sorted = new ArrayList<>(list);
+                            sorted.sort(java.util.Comparator.comparing(o -> ((MdObject) o).getName().toLowerCase(java.util.Locale.ROOT)));
+                            for (int i = 0; i < sorted.size(); i++) list.move(i, list.indexOf(sorted.get(i)));
+                        }
+                        return null;
+                    }
+                });
+                IDtProject targetProject = mm.getDtProject(extensionModel);
+                boolean exportedObject = targetProject != null && mm.forceExport(targetProject, fqn);
+                boolean exportedConfiguration = targetProject != null && mm.forceExport(targetProject, "Configuration");
+                if (!exportedObject || !exportedConfiguration) {
+                    r.warning = (r.warning == null ? "" : r.warning + " ")
+                            + "The model changed, but serialization was not confirmed (object=" + exportedObject
+                            + ", configuration=" + exportedConfiguration + "); inspect the working tree";
+                }
+            }
             r.message = r.applied
                     ? "adopted " + fqn + " into " + projectName
                             + " (attached to the extension's configuration)"
                     : "the adopter returned nothing for " + fqn;
         } catch (CoreException | RuntimeException ex) {
-            r.applied = false;
-            r.message = "adopt failed: " + GatewaySupport.describeCause(ex);
+            r.ok = false;
+            r.message = (r.applied ? "The object was adopted, but finalization failed: "
+                    : adoptionStarted ? "Adoption failed after execution began; inspect the project for partial changes: "
+                    : "Nothing adopted: ") + GatewaySupport.describeCause(ex);
         }
         return r;
     }
@@ -2453,6 +2684,7 @@ public final class MetadataWriteGateway {
         java.nio.file.Path log = java.nio.file.Path.of(r.logPath);
         String problem = platforms.dumpExternalObjectViaDisk(root, target, version, log, method);
         r.applied = problem == null && java.nio.file.Files.exists(target);
+        r.ok = r.applied;
         r.nativeError = nativeError;
         r.method = r.applied ? method.toString() : r.method;
         String because = nativeError != null ? "; EDT's own dumper refused first"
@@ -2530,6 +2762,12 @@ public final class MetadataWriteGateway {
      */
     TypeDescription typeDescriptionFor(IBmTransaction tx, String spec, Version version,
             boolean allowPlatformTypes) {
+        return typeDescriptionFor(tx, spec, version, allowPlatformTypes, null);
+    }
+
+    /** Resolve form reference types in the owning project's base configuration when needed. */
+    TypeDescription typeDescriptionFor(IBmTransaction tx, String spec, Version version,
+            boolean allowPlatformTypes, Function<String, EObject> baseReference) {
         ParsedType pt = parseType(spec);
         if (!pt.valid && allowPlatformTypes && spec != null && IDENT.matcher(spec.trim()).matches()) {
             // Form attributes accept platform types the metadata grammar has no business allowing -
@@ -2540,21 +2778,30 @@ public final class MetadataWriteGateway {
             pt.platformCode = spec.trim();
             pt.display = spec.trim();
         }
-        return pt.valid ? buildTypeDescription(tx, pt, version) : null;
+        return pt.valid ? buildTypeDescription(tx, pt, version, baseReference) : null;
     }
 
     private TypeDescription buildTypeDescription(IBmTransaction tx, ParsedType pt, Version version) {
+        return buildTypeDescription(tx, pt, version, null);
+    }
+
+    private TypeDescription buildTypeDescription(IBmTransaction tx, ParsedType pt, Version version,
+            Function<String, EObject> baseReference) {
         TypeDescription td = McoreFactory.eINSTANCE.createTypeDescription();
         for (ParsedType part : partsOf(pt)) {
-            addTypeItem(tx, part, version, td);
+            addTypeItem(tx, part, version, td, baseReference);
         }
         return td;
     }
 
     /** Add one type (ref/defined or platform primitive + its qualifier) to {@code td}. */
-    private void addTypeItem(IBmTransaction tx, ParsedType part, Version version, TypeDescription td) {
+    private void addTypeItem(IBmTransaction tx, ParsedType part, Version version, TypeDescription td,
+            Function<String, EObject> baseReference) {
         if (part.refFqn != null) {
             EObject target = tx.getTopObjectByFqn(part.refFqn);
+            if (!(target instanceof MdObject) && baseReference != null) {
+                target = baseReference.apply(part.refFqn);
+            }
             if (!(target instanceof MdObject)) {
                 throw new IllegalStateException("reference target not resolvable: " + part.refFqn);
             }

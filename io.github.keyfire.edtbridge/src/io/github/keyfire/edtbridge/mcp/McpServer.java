@@ -37,6 +37,13 @@ import org.osgi.framework.Version;
 
 import io.github.keyfire.edtbridge.core.ArgumentNames;
 import io.github.keyfire.edtbridge.edt.ProjectGateway;
+import io.github.keyfire.edtbridge.tools.MoveMethodTool;
+import io.github.keyfire.edtbridge.tools.MoveFormItemTool;
+import io.github.keyfire.edtbridge.tools.ModifyObjectTool;
+import io.github.keyfire.edtbridge.tools.UpdateSubsystemTool;
+import io.github.keyfire.edtbridge.tools.RegisterInfobaseTool;
+import io.github.keyfire.edtbridge.tools.ImportExternalObjectTool;
+import io.github.keyfire.edtbridge.tools.SearchQueriesTool;
 import io.github.keyfire.edtbridge.tools.AddAttributeTool;
 import io.github.keyfire.edtbridge.tools.AddRouteTool;
 import io.github.keyfire.edtbridge.tools.CheckInfoTool;
@@ -314,15 +321,20 @@ applyI18n();loadStatus();loadTools();
     private final RemoveFormCommandTool removeFormCommand = new RemoveFormCommandTool();
     private final AddFormItemTool addFormItem = new AddFormItemTool();
     private final ModifyFormItemTool modifyFormItem = new ModifyFormItemTool();
+    private final MoveFormItemTool moveFormItem = new MoveFormItemTool();
     private final RemoveFormItemTool removeFormItem = new RemoveFormItemTool();
     private final AddMethodTool addMethod = new AddMethodTool();
+    private final MoveMethodTool moveMethod = new MoveMethodTool();
     private final DeleteMethodTool deleteMethod = new DeleteMethodTool();
     private final RemoveAttributeTool removeAttribute = new RemoveAttributeTool();
     private final ModifyAttributeTool modifyAttribute = new ModifyAttributeTool();
     private final RenameTool rename = new RenameTool();
     private final CreateObjectTool createObject = new CreateObjectTool();
+    private final ModifyObjectTool modifyObject = new ModifyObjectTool();
+    private final UpdateSubsystemTool updateSubsystem = new UpdateSubsystemTool();
     private final CreateExtensionTool createExtension = new CreateExtensionTool();
     private final CreateExternalObjectTool createExternalObject = new CreateExternalObjectTool();
+    private final ImportExternalObjectTool importExternalObject = new ImportExternalObjectTool();
     private final DumpExternalObjectTool dumpExternalObject = new DumpExternalObjectTool();
     private final InfobasesTool infobases = new InfobasesTool();
     private final InfobaseConfigStateTool infobaseConfigState = new InfobaseConfigStateTool();
@@ -337,6 +349,7 @@ applyI18n();loadStatus();loadTools();
     private final PlatformInstallationsTool platformInstallations = new PlatformInstallationsTool();
     private final RegisterPlatformTool registerPlatform = new RegisterPlatformTool();
     private final CreateInfobaseTool createInfobase = new CreateInfobaseTool();
+    private final RegisterInfobaseTool registerInfobase = new RegisterInfobaseTool();
     private final BuildExtensionTool buildExtension = new BuildExtensionTool();
     private final ExtensionPropertiesTool extensionProperties = new ExtensionPropertiesTool();
     private final PlatformHelpTool platformHelp = new PlatformHelpTool();
@@ -345,6 +358,7 @@ applyI18n();loadStatus();loadTools();
     private final ImportProjectTool importProject = new ImportProjectTool();
     private final CleanProjectTool cleanProject = new CleanProjectTool();
     private final SearchModulesTool searchModules = new SearchModulesTool();
+    private final SearchQueriesTool searchQueries = new SearchQueriesTool();
     private final AdoptObjectTool adoptObject = new AdoptObjectTool();
     private final DebugAttachTool debugAttach = new DebugAttachTool();
     private final DebugDetachTool debugDetach = new DebugDetachTool();
@@ -466,6 +480,13 @@ applyI18n();loadStatus();loadTools();
         return (t == null || t.isBlank()) ? null : t.trim();
     }
 
+    private void sendAuthenticationRequired(HttpExchange ex) throws IOException {
+        ex.getResponseHeaders().set("WWW-Authenticate", "Bearer realm=\"edt-bridge\"");
+        send(ex, 401, gson.toJson(errorObj(JsonNull.INSTANCE, -32001,
+                "Authentication required: set EDT_BRIDGE_TOKEN to the token from the EDT-Bridge "
+                + "preference page, or send Authorization: Bearer <token>.")));
+    }
+
     private void handle(HttpExchange ex) throws IOException {
         try {
             if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
@@ -478,7 +499,7 @@ applyI18n();loadStatus();loadTools();
                 String alt = ex.getRequestHeaders().getFirst("X-Edt-Bridge-Token");
                 boolean ok = ("Bearer " + required).equals(auth) || required.equals(alt);
                 if (!ok) {
-                    send(ex, 401, "{}");
+                    sendAuthenticationRequired(ex);
                     return;
                 }
             }
@@ -536,7 +557,7 @@ applyI18n();loadStatus();loadTools();
                 String alt = ex.getRequestHeaders().getFirst("X-Edt-Bridge-Token");
                 boolean ok = ("Bearer " + required).equals(auth) || required.equals(alt);
                 if (!ok) {
-                    send(ex, 401, "{}");
+                    sendAuthenticationRequired(ex);
                     return;
                 }
             }
@@ -604,6 +625,29 @@ applyI18n();loadStatus();loadTools();
         JsonObject o = new JsonObject();
         o.addProperty("name", SERVER_NAME);
         o.addProperty("version", SERVER_VERSION);
+        Bundle bridgeBundle = FrameworkUtil.getBundle(McpServer.class);
+        if (bridgeBundle != null) o.addProperty("bridgeBundleVersion", bridgeBundle.getVersion().toString());
+        try {
+            Bundle product = org.eclipse.core.runtime.Platform.getBundle("com._1c.g5.v8.dt.product.application");
+            if (product != null) {
+                java.net.URL mappings = product.getEntry("about.mappings");
+                if (mappings != null) {
+                    java.util.Properties properties = new java.util.Properties();
+                    try (java.io.InputStream input = mappings.openStream()) { properties.load(input); }
+                    String edtVersion = properties.getProperty("1");
+                    if (edtVersion != null && edtVersion.matches("[0-9]+(?:\\.[0-9]+){2,3}")) {
+                        o.addProperty("edtVersion", edtVersion);
+                    }
+                }
+                o.addProperty("edtProductBundleVersion", product.getVersion().toString());
+            }
+            var installation = org.eclipse.core.runtime.Platform.getInstallLocation();
+            if (installation != null && "file".equals(installation.getURL().getProtocol())) {
+                o.addProperty("edtInstall", new java.io.File(java.net.URLDecoder.decode(installation.getURL().getPath(), java.nio.charset.StandardCharsets.UTF_8)).getAbsolutePath());
+            }
+        } catch (Exception unavailable) {
+            o.addProperty("edtStatusHint", "Some EDT installation details are not available: " + unavailable.getClass().getSimpleName());
+        }
         o.addProperty("protocolVersion", PROTOCOL_VERSION);
         o.addProperty("port", port);
         o.addProperty("tokenRequired", token() != null);
@@ -617,6 +661,13 @@ applyI18n();loadStatus();loadTools();
             // workspace not ready yet - leave the list empty
         }
         o.add("openProjects", projects);
+        o.addProperty("workspace", org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot().getLocation().toOSString());
+        try {
+            o.add("projects", gson.toJsonTree(gateway.listProjectsDetailed()));
+        } catch (RuntimeException unavailable) {
+            o.add("projects", new JsonArray());
+            o.addProperty("modelStatusHint", "Project model status is not available yet");
+        }
         send(ex, 200, gson.toJson(o));
     }
 
@@ -697,21 +748,27 @@ applyI18n();loadStatus();loadTools();
         tools.add(removeFormCommand.descriptor());
         tools.add(addFormItem.descriptor());
         tools.add(modifyFormItem.descriptor());
+        tools.add(moveFormItem.descriptor());
         tools.add(removeFormItem.descriptor());
         tools.add(addMethod.descriptor());
+        tools.add(moveMethod.descriptor());
         tools.add(deleteMethod.descriptor());
         tools.add(removeAttribute.descriptor());
         tools.add(modifyAttribute.descriptor());
         tools.add(rename.descriptor());
         tools.add(createObject.descriptor());
+        tools.add(modifyObject.descriptor());
+        tools.add(updateSubsystem.descriptor());
         tools.add(createExtension.descriptor());
         tools.add(createExternalObject.descriptor());
+        tools.add(importExternalObject.descriptor());
         tools.add(dumpExternalObject.descriptor());
         tools.add(infobases.descriptor());
         tools.add(updateInfobase.descriptor());
         tools.add(platformInstallations.descriptor());
         tools.add(registerPlatform.descriptor());
         tools.add(createInfobase.descriptor());
+        tools.add(registerInfobase.descriptor());
         tools.add(buildExtension.descriptor());
         tools.add(extensionProperties.descriptor());
         tools.add(platformHelp.descriptor());
@@ -720,6 +777,7 @@ applyI18n();loadStatus();loadTools();
         tools.add(importProject.descriptor());
         tools.add(cleanProject.descriptor());
         tools.add(searchModules.descriptor());
+        tools.add(searchQueries.descriptor());
         tools.add(adoptObject.descriptor());
         tools.add(debugAttach.descriptor());
         tools.add(debugDetach.descriptor());
@@ -856,6 +914,10 @@ applyI18n();loadStatus();loadTools();
             JsonObject denied = writeTokenGate(addFormItem.isWrite(), name);
             return denied != null ? denied : addFormItem.call(args);
         }
+        if (moveFormItem.name().equals(name)) {
+            JsonObject denied = writeTokenGate(moveFormItem.isWrite(), name);
+            return denied != null ? denied : moveFormItem.call(args);
+        }
         if (modifyFormItem.name().equals(name)) {
             JsonObject denied = writeTokenGate(modifyFormItem.isWrite(), name);
             return denied != null ? denied : modifyFormItem.call(args);
@@ -863,6 +925,10 @@ applyI18n();loadStatus();loadTools();
         if (removeFormItem.name().equals(name)) {
             JsonObject denied = writeTokenGate(removeFormItem.isWrite(), name);
             return denied != null ? denied : removeFormItem.call(args);
+        }
+        if (moveMethod.name().equals(name)) {
+            JsonObject denied = writeTokenGate(moveMethod.isWrite(), name);
+            return denied != null ? denied : moveMethod.call(args);
         }
         if (addMethod.name().equals(name)) {
             JsonObject denied = writeTokenGate(addMethod.isWrite(), name);
@@ -884,6 +950,14 @@ applyI18n();loadStatus();loadTools();
             JsonObject denied = writeTokenGate(rename.isWrite(), name);
             return denied != null ? denied : rename.call(args);
         }
+        if (updateSubsystem.name().equals(name)) {
+            JsonObject denied = writeTokenGate(updateSubsystem.isWrite(), name);
+            return denied != null ? denied : updateSubsystem.call(args);
+        }
+        if (modifyObject.name().equals(name)) {
+            JsonObject denied = writeTokenGate(modifyObject.isWrite(), name);
+            return denied != null ? denied : modifyObject.call(args);
+        }
         if (createObject.name().equals(name)) {
             JsonObject denied = writeTokenGate(createObject.isWrite(), name);
             return denied != null ? denied : createObject.call(args);
@@ -891,6 +965,10 @@ applyI18n();loadStatus();loadTools();
         if (createExtension.name().equals(name)) {
             JsonObject denied = writeTokenGate(createExtension.isWrite(), name);
             return denied != null ? denied : createExtension.call(args);
+        }
+        if (importExternalObject.name().equals(name)) {
+            JsonObject denied = writeTokenGate(importExternalObject.isWrite(), name);
+            return denied != null ? denied : importExternalObject.call(args);
         }
         if (createExternalObject.name().equals(name)) {
             JsonObject denied = writeTokenGate(createExternalObject.isWrite(), name);
@@ -909,6 +987,10 @@ applyI18n();loadStatus();loadTools();
         if (registerPlatform.name().equals(name)) {
             JsonObject denied = writeTokenGate(registerPlatform.isWrite(), name);
             return denied != null ? denied : registerPlatform.call(args);
+        }
+        if (registerInfobase.name().equals(name)) {
+            JsonObject denied = writeTokenGate(registerInfobase.isWrite(), name);
+            return denied != null ? denied : registerInfobase.call(args);
         }
         if (createInfobase.name().equals(name)) {
             JsonObject denied = writeTokenGate(createInfobase.isWrite(), name);
@@ -944,6 +1026,10 @@ applyI18n();loadStatus();loadTools();
         if (cleanProject.name().equals(name)) {
             JsonObject denied = writeTokenGate(cleanProject.isWrite(), name);
             return denied != null ? denied : cleanProject.call(args);
+        }
+        if (searchQueries.name().equals(name)) {
+            JsonObject denied = writeTokenGate(searchQueries.isWrite(), name);
+            return denied != null ? denied : searchQueries.call(args);
         }
         if (searchModules.name().equals(name)) {
             return searchModules.call(args);

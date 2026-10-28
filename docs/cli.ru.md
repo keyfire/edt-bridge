@@ -113,9 +113,10 @@ usage: edt-bridge-mcp tools [-h] [--raw] [--workspace WORKSPACE] [--edt-dir EDT_
 Состояние моста без его запуска и версия jar в dropins - кода, который EDT загрузит при следующем запуске.
 
 ```bash
-usage: edt-bridge-mcp status [-h] [--workspace WORKSPACE] [--edt-dir EDT_DIR]
-                             [--port PORT] [--start-timeout START_TIMEOUT]
-                             [--no-autostart] [--version]
+usage: edt-bridge-mcp status [-h] [--all] [--ports PORTS] [--workspace WORKSPACE]
+                             [--edt-dir EDT_DIR] [--port PORT]
+                             [--start-timeout START_TIMEOUT] [--no-autostart]
+                             [--version]
 ```
 
 **Параметры**
@@ -123,6 +124,8 @@ usage: edt-bridge-mcp status [-h] [--workspace WORKSPACE] [--edt-dir EDT_DIR]
 | Параметр | Описание |
 |---|---|
 | `-h, --help` | показать эту справку и выйти |
+| `--all` | проверить все порты диапазона без фильтра рабочей области и запуска EDT |
+| `--ports PORTS` | порты для `--all`, через запятую или диапазон: 8770,8772-8774 (до 128 портов) |
 | `--workspace WORKSPACE` | рабочая область EDT для автозапуска headless |
 | `--edt-dir EDT_DIR` | каталог установки EDT (.../1cedt); без флага определяется сам |
 | `--port PORT` | порт моста (по умолчанию 8770) |

@@ -133,3 +133,31 @@ def test_forward_without_a_token_sends_no_authorization(monkeypatch):
     backend.forward({"jsonrpc": "2.0"})
 
     assert "Authorization" not in seen["headers"]
+
+
+@pytest.mark.parametrize("name,arguments,expected_timeout", [
+    ("edt_project_errors", {"refresh": True, "waitSeconds": 600}, 1200),
+    ("edt_project_errors", {"refresh": True, "waitSeconds": 300}, 900),
+    ("edt_project_errors", {"refresh": True}, 720),
+    ("edt_project_errors", {"baseline": "save", "waitSeconds": 600}, 1200),
+    ("edt_project_errors", {"baseline": "compare", "waitSeconds": 300}, 900),
+    ("edt_project_errors", {"baseline": "save"}, 720),
+    ("edt_project_errors", {"refresh": False, "waitSeconds": 600}, 600),
+    ("edt_project_errors", {"waitSeconds": 600}, 600),
+    ("edt_project_errors", {"refresh": True, "waitSeconds": 601}, 600),
+    ("edt_project_errors", {"refresh": True, "waitSeconds": 0}, 600),
+    ("edt_project_errors", {"refresh": True, "waitSeconds": "bad"}, 600),
+    ("edt_project_errors", {"refresh": True, "waitSeconds": True}, 600),
+    ("edt_projects", {"refresh": True, "waitSeconds": 600}, 600),
+])
+def test_validation_refresh_wait_keeps_transport_time_for_build_and_report(
+        monkeypatch, name, arguments, expected_timeout):
+    backend = server.Backend()
+    seen = {}
+    def urlopen(request, timeout):
+        seen["timeout"] = timeout
+        return _Response({"jsonrpc": "2.0", "id": 1, "result": {"content": []}})
+    monkeypatch.setattr(server.urllib.request, "urlopen", urlopen)
+    backend.forward({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                     "params": {"name": name, "arguments": arguments}})
+    assert seen["timeout"] == expected_timeout

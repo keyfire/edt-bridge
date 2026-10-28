@@ -52,6 +52,9 @@ public final class CreateObjectTool {
         props.add("name", strProp("New object name (a valid 1C identifier, Cyrillic allowed)"));
         props.add("synonymRu", strProp("Russian synonym. Optional."));
         props.add("comment", strProp("Comment. Optional."));
+        JsonObject properties = new JsonObject(); properties.addProperty("type", "object");
+        properties.addProperty("description", "Optional CommonModule execution flags and returnValuesReuse; same typed properties as edt_modify_object. Existing sorted Configuration lists retain alphabetic order.");
+        props.add("properties", properties);
         props.add("apply", boolProp("false (default) = dry-run: validate (type, name free, config feature) "
                 + "and return the plan, create nothing. true = create the object (factory + attach + link + "
                 + "serialize). Verify bsl_support_status EDITABLE first."));
@@ -96,7 +99,7 @@ public final class CreateObjectTool {
         boolean apply = args.has("apply") && !args.get("apply").isJsonNull() && args.get("apply").getAsBoolean();
         try {
             MetadataWriteGateway.CreateObjectResult res =
-                    gateway.createObject(project, objectType, name, synonymRu, comment, apply);
+                    gateway.createObject(project, objectType, name, synonymRu, comment, ModifyObjectTool.properties(args), apply);
             JsonObject o = new JsonObject();
             o.addProperty("ok", res.ok);
             o.addProperty("applied", res.applied);

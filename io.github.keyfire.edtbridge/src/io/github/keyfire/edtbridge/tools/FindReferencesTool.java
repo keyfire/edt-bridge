@@ -19,6 +19,7 @@ package io.github.keyfire.edtbridge.tools;
 import java.util.List;
 
 import io.github.keyfire.edtbridge.edt.BslGateway;
+import io.github.keyfire.edtbridge.edt.QueryUsageGateway;
 import io.github.keyfire.edtbridge.edt.MetadataReadGateway;
 import io.github.keyfire.edtbridge.mcp.McpServer;
 import com.google.gson.GsonBuilder;
@@ -47,18 +48,19 @@ public final class FindReferencesTool {
 
         JsonObject fqn = new JsonObject();
         fqn.addProperty("type", "string");
-        fqn.addProperty("description", "Target top object FQN (English type prefix), e.g. Catalog.Контрагенты "
-                + "– or CommonModule.X when method is given (method-caller mode).");
+        fqn.addProperty("description", "Target top object FQN (English type prefix), e.g. Catalog.Items or CommonModule.X. "
+                + "With method, supports common-module and object-manager literal calls.");
 
         JsonObject method = new JsonObject();
         method.addProperty("type", "string");
         method.addProperty("description", "Optional. When given, switches to method-caller mode: returns the BSL "
-                + "call sites of the method of fqn (fqn = CommonModule.X) as module + line + call text. Separates "
-                + "a qualified X.Method(...) call from same-named local procedures. Best-effort (literal calls).");
+                + "call sites of the method of fqn as module + line + call text. Matches X.Method(...) and "
+                + "manager calls such as Catalogs.X.Method(...), using the last FQN segment X as qualifier. "
+                + "Best-effort literal-call search; local unqualified and dynamically computed calls are excluded.");
 
         JsonObject moduleType = new JsonObject();
         moduleType.addProperty("type", "string");
-        moduleType.addProperty("description", "Reserved for non-CommonModule owners in method-caller mode. Optional.");
+        moduleType.addProperty("description", "Optional compatibility parameter; currently not used to narrow method-caller search. ManagerModule need not be supplied for object-manager literal calls.");
 
         JsonObject limit = new JsonObject();
         limit.addProperty("type", "integer");
@@ -84,14 +86,20 @@ public final class FindReferencesTool {
         t.addProperty("name", name());
         t.addProperty("description",
                 "Inbound references to a top-level metadata object (metadata membership: subsystems, the "
-                + "Configuration lists) from the live BM cross-reference index. With method given, switches to "
-                + "method-caller mode: the BSL call sites of CommonModule.X.method (module + line + call text), "
-                + "found by scanning the project's BSL – the counterpart the BM index does NOT cover.");
+                + "Configuration lists) from the live BM cross-reference index, plus separate queryReferences from actual "
+                + "QL FROM/JOIN sources in stored dynamic-list .form and DCS .dcs queries. Query scan coverage and parse "
+                + "failures are reported explicitly; BSL query assembly and unsaved graphical-designer edits are not covered. With method given, switches to "
+                + "method-caller mode: literal BSL calls to common-module and object-manager methods "
+                + "(module + line + call text). Query texts in Form.form and Template.dcs are not searched "
+                + "in either mode.");
         t.addProperty("descriptionRu",
                 "Входящие ссылки на объект метаданных верхнего уровня (членство в метаданных: подсистемы, "
-                + "списки Configuration) из BM-индекса перекрёстных ссылок. С параметром method – режим поиска "
-                + "мест вызова: BSL-места вызова CommonModule.X.method (модуль + строка + текст вызова), обходом "
-                + "BSL проекта – то, чего BM-индекс не покрывает.");
+                + "списки Configuration) из BM-индекса перекрестных ссылок и отдельные queryReferences из источников "
+                + "ИЗ/СОЕДИНЕНИЕ QL-запросов динамических списков .form и наборов СКД .dcs. Покрытие и ошибки разбора "
+                + "явно указаны; сборка запросов BSL и несохраненные правки визуальных редакторов не учитываются. С параметром method – режим поиска "
+                + "мест вызова: литеральные BSL-вызовы методов общего модуля или менеджера объекта "
+                + "(модуль + строка + текст вызова). Тексты запросов в Form.form и Template.dcs "
+                + "не входят в результаты обоих режимов.");
         t.add("inputSchema", schema);
         return t;
     }
@@ -135,6 +143,16 @@ public final class FindReferencesTool {
             payload.addProperty("returned", arr.size());
             payload.addProperty("truncated", res.truncated);
             payload.add("references", arr);
+            QueryUsageGateway.Result query = new QueryUsageGateway().references(project, fqn, limit);
+            var gson = new GsonBuilder().setPrettyPrinting().create();
+            payload.add("queryReferences", gson.toJsonTree(query.hits));
+            payload.addProperty("queryReferenceCount", query.hits.size());
+            payload.addProperty("queryCoverageComplete", query.complete);
+            payload.addProperty("queryReferencesTruncated", query.truncated);
+            payload.addProperty("queryCoverage", query.coverage);
+            payload.addProperty("queryScanMessage", query.message);
+            payload.add("queryFailures", gson.toJsonTree(query.failures));
+            payload.addProperty("totalIncludingReturnedQueryReferences", res.total + query.hits.size());
             return McpServer.textResult(new GsonBuilder().setPrettyPrinting().create().toJson(payload));
         } catch (Exception e) {
             return McpServer.toolError("edt_find_references failed: " + e.getMessage());

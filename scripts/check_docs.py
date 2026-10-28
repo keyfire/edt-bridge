@@ -105,6 +105,8 @@ PITCH_GROUPS = (
     PitchItem("Infobases, the cluster and the platform", "Информационные базы, кластер и платформа",
               "infobase", "информационн"),
     PitchItem("Debug", "Отладка", "debug", "отлад"),
+    PitchItem("Placement, properties and validation snapshots", "Размещение, свойства и снимки замечаний",
+              "write", "запис"),
     # The wrapper's own tools are plumbing - a version, a self-update, the state of the bridge.
     # The wrapper itself is named in the annotations; its tools are not a reason to install.
     PitchItem("Served by the wrapper", "Инструменты самой обвязки", None, None),

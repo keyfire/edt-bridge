@@ -52,6 +52,8 @@ public final class AddFormItemTool {
                 + "button group, column group, popup (Russian names accepted). Optional, defaults to a "
                 + "usual group."));
         props.add("titleRu", ToolJson.strProp("Russian title. Optional."));
+        FormItemToolOptions.positionProps(props, false);
+        FormItemToolOptions.settingsProps(props);
         props.add("apply", ToolJson.boolProp("false (default) = dry-run: validate (form resolves, parent "
                 + "exists, name free, data path and command resolve) and return the plan, add nothing. "
                 + "true = add the item and serialize Form.form."));
@@ -60,12 +62,12 @@ public final class AddFormItemTool {
                 + "decoration - through EDT's own IFormItemManagementService, the service the form editor "
                 + "itself calls. Naming, ids, a field's actual type and a table's auto-filled columns are "
                 + "decided by EDT, not assembled here. A table bound to a value-table attribute gets its "
-                + "columns filled in. Dry-run by default. Additive - no force - but requires a token.",
+                + "columns filled in. index/beforeItem/afterItem select an exclusive insertion position. Typed group/field options and scalar choiceList are validated before writing. Dry-run by default. Additive - no force - but requires a token.",
                 "ЗАПИСЬ (Phase 2): добавить элемент управляемой формы - поле, таблицу, кнопку, группу "
                 + "или декорацию - через штатный IFormItemManagementService, тот самый, который вызывает "
                 + "редактор форм. Имена, идентификаторы, фактический вид поля и автозаполнение колонок "
                 + "таблицы определяет EDT, а не сборка здесь. Таблица, связанная с реквизитом типа "
-                + "ТаблицаЗначений, получает колонки автоматически. По умолчанию dry-run. Аддитивно - "
+                + "ТаблицаЗначений, получает колонки автоматически. index/beforeItem/afterItem задают одно место вставки. Свойства групп/полей и scalar choiceList проверяются до записи. По умолчанию dry-run. Аддитивно - "
                 + "force не нужен - но требует токен.",
                 props, "projectName", "formFqn", "kind");
     }
@@ -82,6 +84,8 @@ public final class AddFormItemTool {
                     ToolJson.getStr(args, "name"), ToolJson.getStr(args, "parent"),
                     ToolJson.getStr(args, "dataPath"), ToolJson.getStr(args, "command"),
                     ToolJson.getStr(args, "groupType"), ToolJson.getStr(args, "titleRu"),
+                    FormItemToolOptions.index(args), ToolJson.getStr(args, "beforeItem"),
+                    ToolJson.getStr(args, "afterItem"), FormItemToolOptions.settings(args),
                     ToolJson.getBool(args, "apply"))));
         } catch (Exception e) {
             return McpServer.toolError("edt_add_form_item failed: " + e.getMessage());

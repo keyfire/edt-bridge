@@ -180,4 +180,12 @@ class ProblemFilterTest {
                 "src/HTTPServices/Payments/Module.bsl", "src/HTTPServices/Payments",
                 List.of("Payments")));
     }
+    @Test
+    void folderPrefixDoesNotIncludeAnObjectWithALongerName() {
+        assertFalse(ProblemFilter.matchesLocation("src/CommonModules/OrdersCopy/Module.bsl",
+                "src/CommonModules/Orders", null));
+        assertTrue(ProblemFilter.matchesLocation("src/CommonModules/Orders/Module.bsl",
+                "src/CommonModules/Orders", null));
+    }
+
 }

@@ -57,6 +57,9 @@ def build_parser(command: str) -> argparse.ArgumentParser:
         source.add_argument("--stdin", action="store_true", help=i18n.t("call.stdin"))
     if command in ("call", "tools"):
         parser.add_argument("--raw", action="store_true", help=i18n.t("call.raw"))
+    if command == "status":
+        parser.add_argument("--all", dest="all_bridges", action="store_true", help=i18n.t("status.all"))
+        parser.add_argument("--ports", type=_ports, help=i18n.t("status.ports"))
     if command == "shutdown":
         parser.add_argument("--force", action="store_true", help=i18n.t("shutdown.force"))
         parser.add_argument("--no-wait", action="store_true", help=i18n.t("shutdown.no-wait"))
@@ -67,6 +70,28 @@ def build_parser(command: str) -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", help=i18n.t("version"),
                         version=f"%(prog)s {__version__}")
     return parser
+
+
+def _ports(text: str) -> list[int]:
+    """A bounded list of explicit loopback targets, accepting comma-separated ports and ranges."""
+    ports = set()
+    try:
+        for part in text.split(","):
+            bounds = part.strip().split("-")
+            if len(bounds) == 1:
+                start = end = int(bounds[0])
+            elif len(bounds) == 2:
+                start, end = map(int, bounds)
+            else:
+                raise ValueError()
+            if not 1 <= start <= end <= 65535 or end - start > 127:
+                raise ValueError()
+            ports.update(range(start, end + 1))
+            if len(ports) > 128:
+                raise ValueError()
+    except ValueError:
+        raise argparse.ArgumentTypeError("use ports 1..65535, up to 128 targets, e.g. 8770,8772-8774") from None
+    return sorted(ports)
 
 
 def _parse(command: str, argv: list[str]) -> argparse.Namespace:
@@ -319,6 +344,33 @@ def _run(command: str, argv: list[str]) -> int:
         return _call_plugin_tool(plugin_tools[args.tool], args, backend)
 
     if command == "status":
+        if args.ports is not None and not args.all_bridges:
+            print("--ports requires --all", file=sys.stderr)
+            return 1
+        if args.all_bridges:
+            try:
+                rows = backend.status_all(args.ports)
+            except ValueError as invalid:
+                print(str(invalid), file=sys.stderr)
+                return 1
+            from pathlib import Path
+            from .update import installed_jar
+            bridges = []
+            for row in rows:
+                if row["state"] != "bridge":
+                    continue
+                install = row.get("edtInstall")
+                found = installed_jar(Path(install) / "dropins") if install else None
+                if found:
+                    version, path = found
+                    row = {**row, "jarOnDisk": {"version": version, "path": str(path),
+                            "current": bool(row.get("version")) and version.startswith(str(row["version"]))}}
+                bridges.append(row)
+            _emit(json.dumps({"bridges": bridges,
+                  "unavailable": [r for r in rows if r["state"] == "unavailable"],
+                  "otherServices": [r for r in rows if r["state"] not in ("bridge", "unavailable")]},
+                  ensure_ascii=False, indent=2))
+            return 0 if bridges else 1
         status = backend.status()
         if status is None:
             print("no bridge is running in the scanned port range", file=sys.stderr)

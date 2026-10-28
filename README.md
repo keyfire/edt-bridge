@@ -90,12 +90,13 @@ Together the tools close the whole cycle without leaving MCP: create, develop, b
 
 | Tool | What it returns |
 |------|-----------------|
-| `edt_projects` · `edt_project_errors` | List open workspace projects with their names, disk locations, natures, and 1C:EDT project status. Also return a project's EDT validation problems with message, severity, resource, and line. Filter by `fqn`, `modulePath`, or `severity`; use `countOnly` for a count or `brief` for one text line per problem. EDT reports a missing method in another module as `WARNING` (`SU239`, "Property (method) of object is not defined"). Only an undefined call without a module name is an error, so generated-code checks must include warnings. `modulePath` returns only Eclipse markers; use `fqn` to include EDT check markers addressed by object. When `fqn` identifies a form (`...Form.<Name>`), the form name is also matched to exclude other forms. Each marker is compared with its file: `stale` means it predates the last disk change; `unsynchronized` means the workspace has not read that change. The summary counts both (`staleCount`, `unsynchronized`), and `hint` provides suggested actions. `refresh=true` rereads the selected scope from disk and runs an incremental build before reading markers. This takes seconds for one module; `edt_clean_project` rebuilds the whole project. |
+| `edt_projects` · `edt_project_errors` | Workspace projects and validation problems from Eclipse and EDT checks. `modelReady` reports whether the BM model and derived data are ready; `complete=false` marks a partial snapshot and must not be treated as a clean result. Filter by `fqn`, `modulePath` or `severity`; `countOnly` returns counts and `brief` returns one line per problem. `modulePath` includes EDT markers traced to source files; unresolved markers are counted and reported with a hint. Form filters exclude sibling forms. `stale` identifies markers older than their source and `unsynchronized` identifies disk changes not yet read by the workspace. `refresh=true` rereads the scope and builds the project; `waitSeconds` sets the validation wait (1-600, default 120). A timeout returns current markers with `refreshed.settled=false`. Include WARNING when checking generated code: EDT reports some undefined methods as warnings. |
 | `edt_check_info` | Returns a validation check's description, non-compliant and compliant examples, and links to 1C development standards in Russian or English. It complements `edt_project_errors`, which identifies the triggered check. Search by check ID or problem message. A check with a short-code ID is found by title. |
-| `edt_metadata_objects` · `edt_metadata_details` | Top-level metadata objects, optionally filtered by type (`Catalog`, `Document`, ...) and by a name substring. Then one object's core properties and its structure: attributes, tabular sections, forms, commands, templates, dimensions, resources, enum values, each attribute with its value type. |
-| `edt_find_references` · `edt_outgoing_calls` · `edt_outgoing_structures` | Return incoming references and outgoing calls. Metadata references come from EDT's cross-reference index; `method` selects BSL call sites of `CommonModule.X.method`. Outgoing calls list the methods called by a module, method, or form one level out, with call-site counts and an ExtAPI layer flag. The third tool extracts the recognized top-level keys of the `Структура` passed to each qualified outgoing call. |
+| `edt_metadata_objects` · `edt_metadata_details` | Top-level metadata objects, optionally filtered by type (`Catalog`, `Document`, ...) and by a name substring. Then one object's core properties and its structure: attributes, tabular sections, forms, commands, templates, dimensions, resources, enum values, each attribute with its value type. Common attributes include usage composition, auto-use and separator settings; event subscriptions include source types, event and handler. |
+| `edt_find_references` · `edt_outgoing_calls` · `edt_outgoing_structures` | Return incoming references and outgoing calls. Metadata references come from EDT's cross-reference index; `method` selects BSL call sites of `CommonModule.X.method`. Outgoing calls list the methods called by a module, method, or form one level out, with call-site counts and an ExtAPI layer flag. The third tool extracts the recognized top-level keys of the `Структура` passed to each qualified outgoing call. Method search also accepts literal object-manager calls such as `Catalogs.Items.Method(...)`; `moduleType` does not narrow this search. Metadata mode also reports `queryReferences` from dynamic-list and DCS dataset queries; `queryCoverageComplete` and errors report the limits of that separate scan. Method mode searches BSL call sites. |
 | `edt_module_text` · `edt_go_to_definition` · `edt_symbol_info` | Return BSL module text or one method, including procedure and function names and signatures, addressed by FQN or modulePath. Also return a symbol's definition at a position, including kind, name, owning object, and location, or the element and computed expression value types at a position. |
-| `edt_search_modules` | Full-text search across a project's BSL modules, by substring or regular expression, with an optional path filter. It reads through Eclipse's file buffers, so a module open in an editor is searched as it stands right now, unsaved edits included. `edt_find_references` answers "who calls this method"; this one answers "where does this text appear". |
+| `edt_search_modules` | Full-text search across a project's BSL modules, by substring or regular expression, with an optional path filter. It reads through Eclipse's file buffers, so a module open in an editor is searched as it stands right now, unsaved edits included. `edt_find_references` answers "who calls this method"; this one answers "where does this text appear". Regular expressions use Unicode word classes and case folding. Texts in `Form.form` and `Template.dcs` are outside the BSL search. |
+| `edt_search_queries` | Searches the query fields of dynamic lists in `Form.form` and datasets in `Template.dcs`, by text or Unicode regular expression. Returns the path, form/attribute or template/dataset, query line and XML field line. Parse errors and truncation set `complete=false`. |
 | `edt_validate_query` | Checks a 1C query against the project's live metadata: syntax and semantics, so unknown tables and fields and type errors come back with positions. Takes the query text, or a module address (`modulePath`, optionally one `method`). Given a module, the bridge pulls the `\|`-framed query literals out of the live module itself and checks each one. The batch is followed as a whole too, which EDT does not do. A query that reads a temporary table no earlier query puts there (`ПОМЕСТИТЬ`), or one an earlier query has dropped, makes the text invalid. For a module literal that is an `INFO` note instead, because the table may come from a shared temporary table manager or from another literal. |
 | `edt_form_structure` · `edt_form_render` · `edt_picture_export` | Return a managed form's structure, its image, and the content of a configuration picture. The structure includes a tree of fields, groups, tables, buttons, and decorations. Items include data bindings, static visible/enabled/readOnly, event handlers, input-field properties, command-to-button links, and conditional appearance. Form attributes, commands, parameters, and handlers are also returned. EDT's offscreen renderer renders the form to PNG with a choice of interface variant and theme. For CommonPicture, the content of Picture.zip is returned. |
 | `edt_platform_help` | Search the 1C:Enterprise platform Syntax Helper supplied with EDT by name or read a page as text. The Russian and English API reference covers objects, methods, properties, and events. |
@@ -106,11 +107,18 @@ Write tools change the model through EDT's own engine, not by editing text. Ever
 the token, and every one does nothing until asked: `apply=false` is the default and returns a plan.
 `apply=true` makes the change and serializes the `.mdo`.
 
+`edt_delete_object` separates EDT's indexed references from lexical candidates in `referenceAudit`.
+`scanComplete` describes the stated file scan; `complete=false` keeps semantic coverage explicit.
+Check `countIsLowerBound`, errors and samples before deciding to force deletion. After apply,
+`deletionConfirmed` confirms target absence in the live BM model. `remainingPossibleReferences`
+and `retainedFormControls` report the observed remaining uses and controls with cleared data paths;
+the response states the limits of the export wait and after-audit.
+
 | Write tool | What it does |
 |------------|--------------|
-| `edt_create_object` · `edt_delete_object` | Creates a new top-level object – Catalog, Document, Enum, InformationRegister and the rest – through EDT's factory and the per-type initializer, and registers it in the Configuration. Deletion cascades: every reference in metadata and in BSL goes with the object, which is why it needs `force`. |
+| `edt_create_object` · `edt_delete_object` | Creates a new top-level object – Catalog, Document, Enum, InformationRegister and the rest – through EDT's factory and the per-type initializer, and registers it in the Configuration. Deletion uses EDT refactoring and requires `force`. The preview reports indexed references and possible uses in BSL, query text and form bindings. These uses can remain after deletion; the response does not promise a complete cascade. |
 | `edt_add_attribute` · `edt_modify_attribute` · `edt_remove_attribute` | Adds an attribute to a metadata object with a validated type, klass, synonym and comment; changes an existing attribute's type, synonym or comment; removes one. Removal checks the references first and refuses while any remain, unless forced. |
-| `edt_rename` | Renames an object or member and updates its references in metadata and BSL through EDT's refactoring engine. Requires `force` because external uses of the old name may break. |
+| `edt_rename` | Renames a method, metadata object or member and updates references through EDT's refactoring engine. The preview reports known affected files and the completeness of file and edit counts. Requires `force` because external uses of the old name may break. |
 | `edt_add_method` · `edt_delete_method` | Adds and deletes a procedure or function in a module's BSL, both guided by the model. The insert refuses any result that would not parse again. The cut takes the adjacent doc comment with it, and its plan returns the exact text that will go, which is why it needs `force`. Both address a module by FQN, `HTTPService.X` and `WebService.X` included. |
 | `edt_add_route` | Adds a route to an `HTTPService`: a URL template plus one HTTP method. It generates the `uuid` of the template and its method. It resolves the `httpMethod` enum, and with `createHandler` it splices a `Функция <handler>(Запрос)` stub into the service module. |
 | `edt_add_form` | Adds a managed form to a metadata object through EDT's own form generator, the engine behind the "New form" wizard. The generator creates the form, its items and its module. |
@@ -120,9 +128,13 @@ the token, and every one does nothing until asked: `apply=false` is the default 
 | `edt_add_form_item` · `edt_modify_form_item` · `edt_remove_form_item` | Adds, changes and removes a form's visual items: field, table, button, group, decoration. It goes through EDT's own `IFormItemManagementService`, the service the form editor calls. A table bound to a value-table attribute gets its columns filled in automatically. A `titleRu` given to the table stays on the table, and the generated columns keep EDT's own default. The `newName` parameter renames the item in the form model while preserving handler procedure names. Removal takes everything nested inside and needs `force`. |
 | `edt_adopt_object` | Adopts an object of the base configuration into an extension project through EDT's own `IModelObjectAdopter`. Nothing in an extension can intercept that object until this happens, and it is the step that completes `edt_create_extension`. |
 | `edt_import_project` | Registers a project directory that already exists in the workspace: "Import existing project" without the dialog. The create-work-delete cycle lacked this step. An extension in modification-and-control mode is validated against a base project on the target release, and that project comes from another worktree. Files on disk are not changed. A separate name allows two working copies of one repository in the workspace. |
+| `edt_modify_object` · `edt_update_subsystem` | Sets common-module execution flags and result reuse, or adds/removes existing objects from a subsystem. Both validate the whole request before writing and show a plan. Removing members additionally requires `force=true`. `extendModule=true` enables an adopted common module for extension. |
 | `edt_create_extension` · `edt_create_external_object` | Create a configuration extension project or an external data processor project. The extension uses `IExtensionProjectManager`. Its root Configuration is adopted from the base configuration as in EDT's wizard, making the project loadable into an infobase. A name prefix, purpose (Customization, AddOn or Patch), and synonym are also set. An external processor project is used for the "processor → .epf" build process. |
 | `edt_clean_project` · `edt_delete_project` | Clear build results or remove a project. The clean operation invokes EDT's "Clean" function, reports problem counts before and after, and waits for the count to stabilize so validation can run again. For one module changed on disk, use `edt_project_errors` with `refresh=true`. Project removal uses the Eclipse workspace to update its resource tree and requires `force` because it cannot be undone. |
 | `edt_build_extension` · `edt_dump_external_object` | Builds the binaries: a `.cfe` from an extension project, an `.epf` or `.erf` from an external data processor or report. Both can go around EDT's platform resolver when it serves no thick client. They export designer XML in-process, then assemble the file with a full on-disk 1C install in a temporary infobase that is deleted afterwards. `logPath` keeps the platform's build log next to the artefact. The dump falls back to the on-disk route when EDT's own dumper refuses, `route` pins it to `edt` or `disk`, and the auto-dump generation is put back if the refusal switched it off. |
+| `edt_move_method` | Moves a method within its module, preserving its exact text, documentation and directives. Supports nested region paths and neighboring methods, checks the intermediate and final module with the EDT parser, and requires `apply=true, force=true`. |
+| `edt_move_form_item` | Moves an existing form item by sibling index or anchor while preserving identity, id, children, properties and events. Refuses cycles and moves that require converting the item kind or data binding. |
+| `edt_import_external_object` | Imports an existing `.epf` or `.erf` into a new EDT project, optionally with `baseProjectName`. Uses EDT or a full platform installation to unpack XML, then the native EDT importer. The source is preserved and the tool removes its own partial project after a failed import. |
 
 ### Infobases, the cluster and the platform
 
@@ -151,6 +163,7 @@ tools above.
 | `edt_update_database_config` | agent | Applies the database configuration. This is the step that makes running sessions execute the configuration the infobase holds. Loading a project into an infobase does not do it, and until it happens every session keeps running the previous code; a freshly added HTTP route answering 404 is what that looks like. Returns a plan by default. `sessionTermination=force` ends the sessions holding the base when an exclusive lock is needed. |
 | `edt_update_infobase` | EDT · agent | Updates an infobase configuration from an EDT project. EDT synchronization is used by default: database structure changes are confirmed automatically, a conflict aborts the update, and infobases with users are not supported. With `transport=agent`, the project is exported to designer XML and loaded through a configurator agent. This supports server infobases with users and applies the database configuration unless `updateDatabaseConfig=false`. When the saved load record matches the infobase state, only changed files are loaded. See [Incremental configuration loading](#incremental-configuration-loading) for the conditions and `fullLoad` parameter. |
 | `edt_create_infobase` · `edt_register_platform` | EDT · disk install | Creates an empty file infobase and registers it in EDT's list, falling back to a full install found on disk when EDT resolves none for the version. Or registers a full install into EDT, so that EDT's own engine can use it. |
+| `edt_register_infobase` | EDT | Registers an existing server infobase by `name`, `connect="Srvr=server;Ref=base;"`, `version` and optional `user`. Writes through EDT, reloads its list and reads back the UUID without restarting EDT. Refuses duplicate names/addresses and embedded credentials; it does not create or change the server database. |
 | `edt_extension_properties` | agent · ibcmd | Reads and sets how an extension is registered in an infobase: safe mode, protection from dangerous actions, active, scope. Neither building a `.cfe` nor updating from EDT decides any of this, and a freshly registered extension gets safe mode and dangerous-action protection turned on. An extension that changes methods of the base configuration cannot run under them. Pass the extension project to check whether these settings prevent it from running. Addressed by an EDT-registered name the call goes through the agent, which reaches a server infobase with users; addressed by explicit DBMS coordinates it goes through `ibcmd`, which does not. |
 | `edt_delete_extension` | agent | Removes an extension from an infobase, the step that closes the lifecycle of create, load, configure, delete. The plan reads the extension's current properties first, so a wrong name gets a plain answer. Requires `force` in addition to apply because the extension configuration is stored in the infobase and cannot be restored by this tool. |
 | `edt_infobase_sessions` | rac | The 1C cluster's sessions through `rac`: list them for one infobase or one application, and end them. Neither the agent nor `ibcmd` can, because the cluster manager controls sessions. Reach for this when an infobase refuses to be configured. A designer session that was killed rather than closed still holds the configuration lock, and it shows up here as a `Designer` session. Terminating returns a plan by default and needs force. |
@@ -203,6 +216,68 @@ alongside the bridge tools and answers without forwarding anything.
 | Wrapper tool | What it does |
 |--------------|--------------|
 | `edt_open_gui` | Transfers the workspace to the GUI EDT. It stops the headless EDT, waits for its processes to exit, and opens EDT on the same workspace. The port closes before the runtime exits, so the processes must be allowed to finish. `force` terminates processes that do not stop in time, including the parent keepalive shell. The bridge becomes available once GUI EDT loads the plugin. |
+
+### Placement, properties and validation snapshots
+
+`edt_add_method` accepts one of `beforeMethod` and `afterMethod`. `region` accepts a full nested
+path such as `Public/Helpers`; a short name must be unique. A neighbor must belong directly to the
+selected scope. A missing or ambiguous target is refused. The plan returns `insertLine`,
+`previousMethod` and `nextMethod`. `edt_move_method` uses the same destination options.
+For the first method of an existing empty model module, pass its `fqn`. The bridge creates the
+missing `.bsl` only on apply after checking the owner and module type; dry-run creates no file.
+An arbitrary missing `modulePath` is refused.
+
+`edt_rename` accepts `method="CommonModule.Api.Run"`, or `methodName="Run"` with an owner FQN
+or `modulePath`. It uses EDT's method refactoring. The preview lists `affectedFiles` with change
+and edit counts before `apply=true, force=true`. Save affected editors before applying a rename.
+`nativeTextEditCount` counts the text edits exposed by EDT. Model changes can have
+`editCount=null` and `editCountComplete=false`; `changeCount` still reports the operations.
+Metadata mode also returns `targetPath`. Some metadata refactoring items expose no file mapping:
+`coverageComplete=false`, `unmappedItemCount` and `unmappedItems` identify that partial preview.
+The known file list is then a subset; inspect the native `items` before applying.
+
+`edt_add_form_item` and `edt_move_form_item` accept exactly one placement selector: `index`
+(zero-based), `beforeItem` or `afterItem`. A move calculates the index after excluding the moved
+item. An omitted `parent` keeps its parent; `parent=""` selects the form root. Add and modify
+support `groupDirection` (alias `group`), `representation`, `showTitle`, `united`, `titleLocation`,
+`maxHeight` and `verticalStretch` where the item type supports them. Unknown enums and settings
+for the wrong item type are refused. `fieldType` selects `InputField`, `RadioButtonField` or
+`CheckBoxField`. `choiceList` replaces the choices of an input or radio field:
+
+```json
+{"choiceList":[{"value":"all","titleRu":"Все"},{"value":"selected","titleRu":"Выбранные"}]}
+```
+
+Choice values can be strings, numbers or booleans; references and enum values are not supported.
+An empty list clears the choices. `edt_form_structure` returns item IDs and properties for checking
+the result. A dynamic-list attribute also returns `customQuery`, `mainTable` and `queryText` under
+`dynamicList`. `queryLimit` bounds each returned query (default 20000, maximum 100000 characters);
+`queryTextTruncated` reports omitted text.
+
+For a new common module, `edt_create_object` accepts a `properties` object. The same object goes
+to `edt_modify_object` for an existing module: `global`, `server`, `externalConnection`,
+`clientManagedApplication`, `clientOrdinaryApplication`, `serverCall` and `privileged` are booleans;
+`returnValuesReuse` is `DontUse`, `DuringRequest` or `DuringSession`. Adopted modules retain the
+base configuration's execution flags. Pass `extendModule=true` to `edt_adopt_object` or
+`edt_modify_object` to enable extending an adopted common module without replacing its body.
+`edt_update_subsystem` takes `fqn` and arrays of object FQNs in `add` and `remove`.
+Creating and adopting objects preserve an already alphabetic Configuration list, ignoring case.
+A list in a custom order keeps that order and receives a new object at the end.
+
+To compare validation results, call `edt_project_errors` with `baseline="save"`, then pass the
+returned `baselineId` with `baseline="compare"` after the change. Both operations refresh the scope
+and wait for validation to settle even when `refresh` is omitted. Use the same project and scope
+filters in both calls. Comparison returns only new problems plus resolved-problem counts and
+`resolvedProblems`; `limit`, `brief` and `countOnly` control the returned presentation.
+Line shifts do not turn an unchanged problem into a new one, and duplicate problems remain
+separate occurrences. Incomplete or truncated input is refused. Snapshots live only in this bridge
+session; restarting EDT invalidates them. The cache holds at most 16 snapshots and 200000 markers
+in total, with 100000 markers per snapshot. Saving returns the IDs it evicted.
+
+`edt-bridge-mcp status --all` checks the bridge discovery port range without starting EDT.
+Use `--ports 8770,8771` to select ports explicitly. Each detected bridge reports its workspace,
+port, bridge bundle version, EDT product version and project readiness. Unreachable ports and
+other HTTP services are distinguished from a running bridge.
 
 <!-- tools:end -->
 

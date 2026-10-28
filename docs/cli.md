@@ -113,9 +113,10 @@ usage: edt-bridge-mcp tools [-h] [--raw] [--workspace WORKSPACE] [--edt-dir EDT_
 Report the running bridge (does not start one) and the version of the jar in dropins - the code EDT will load next time it starts.
 
 ```bash
-usage: edt-bridge-mcp status [-h] [--workspace WORKSPACE] [--edt-dir EDT_DIR]
-                             [--port PORT] [--start-timeout START_TIMEOUT]
-                             [--no-autostart] [--version]
+usage: edt-bridge-mcp status [-h] [--all] [--ports PORTS] [--workspace WORKSPACE]
+                             [--edt-dir EDT_DIR] [--port PORT]
+                             [--start-timeout START_TIMEOUT] [--no-autostart]
+                             [--version]
 ```
 
 **Options**
@@ -123,6 +124,8 @@ usage: edt-bridge-mcp status [-h] [--workspace WORKSPACE] [--edt-dir EDT_DIR]
 | Option | Description |
 |---|---|
 | `-h, --help` | show this help message and exit |
+| `--all` | inspect every port in the scan range without filtering workspaces or starting EDT |
+| `--ports PORTS` | ports for `--all`, comma-separated or ranges: 8770,8772-8774 (up to 128 ports) |
 | `--workspace WORKSPACE` | EDT workspace path for the headless auto-start |
 | `--edt-dir EDT_DIR` | EDT install dir (.../1cedt); auto-detected when omitted |
 | `--port PORT` | bridge port (default 8770) |

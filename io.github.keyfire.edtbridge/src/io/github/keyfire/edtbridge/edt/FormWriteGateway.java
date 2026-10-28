@@ -24,6 +24,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Supplier;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 
 import org.eclipse.core.resources.IContainer;
@@ -49,6 +50,8 @@ import com._1c.g5.v8.dt.core.model.IModelObjectFactory;
 import com._1c.g5.v8.dt.core.naming.ITopObjectFqnGenerator;
 import com._1c.g5.v8.dt.core.platform.IBmModelManager;
 import com._1c.g5.v8.dt.core.platform.IDtProject;
+import com._1c.g5.v8.dt.core.platform.IExternalObjectProject;
+import com._1c.g5.v8.dt.core.platform.IConfigurationProject;
 import com._1c.g5.v8.dt.core.platform.IEditingLanguageManager;
 import com._1c.g5.v8.dt.core.platform.IV8Project;
 import com._1c.g5.v8.dt.core.platform.IV8ProjectManager;
@@ -61,6 +64,7 @@ import org.eclipse.emf.common.util.EMap;
 import com._1c.g5.v8.dt.form.model.AbstractDataPath;
 import com._1c.g5.v8.dt.form.model.AbstractFormAttribute;
 import com._1c.g5.v8.dt.form.model.CommandHandler;
+import com._1c.g5.v8.dt.form.model.Button;
 import com._1c.g5.v8.dt.form.model.DataItem;
 import com._1c.g5.v8.dt.form.model.EventHandler;
 import com._1c.g5.v8.dt.form.model.EventHandlerContainer;
@@ -72,6 +76,8 @@ import com._1c.g5.v8.dt.form.model.FormCommand;
 import com._1c.g5.v8.dt.form.model.FormCommandHandlerContainer;
 import com._1c.g5.v8.dt.form.model.FormFactory;
 import com._1c.g5.v8.dt.form.model.FormItem;
+import com._1c.g5.v8.dt.form.model.FormField;
+import com._1c.g5.v8.dt.form.model.FormGroup;
 import com._1c.g5.v8.dt.form.model.FormItemContainer;
 import com._1c.g5.v8.dt.form.model.FormVisualEntity;
 import com._1c.g5.v8.dt.form.model.ManagedFormGroupType;
@@ -82,6 +88,8 @@ import com._1c.g5.v8.dt.form.service.FormIdentifierService;
 import com._1c.g5.v8.dt.form.service.FormItemInformationService;
 import com._1c.g5.v8.dt.form.service.item.FormNewItemDescriptor;
 import com._1c.g5.v8.dt.form.service.item.IFormItemManagementService;
+import com._1c.g5.v8.dt.form.service.item.IFormItemMovementService;
+import com._1c.g5.v8.dt.form.service.item.IFormItemTypeManagementService;
 import com._1c.g5.v8.dt.mcore.Event;
 import com._1c.g5.v8.dt.mcore.ParamSet;
 import com._1c.g5.v8.dt.mcore.Parameter;
@@ -693,7 +701,7 @@ public final class FormWriteGateway {
         public String warning;
         public String message;
         public final List<String> events = new ArrayList<>();      // what this owner allows
-        public final List<String> parameters = new ArrayList<>();  // the event's own signature
+        public final List<String> parameters = new ArrayList<>();  // the complete handler signature
         public final List<String> items = new ArrayList<>();       // the form items, when one was missed
     }
 
@@ -756,7 +764,8 @@ public final class FormWriteGateway {
             return r;
         }
         final boolean asColumn = columnOf != null && !columnOf.isBlank();
-        String typeIssue = typeProblem(model, typeSpec, GatewaySupport.projectVersion(p));
+        final Function<String, EObject> baseReference = baseTypeResolver(p, mm);
+        String typeIssue = typeProblem(model, typeSpec, GatewaySupport.projectVersion(p), baseReference);
         r.ok = Boolean.TRUE.equals(r.nameAvailable) && typeIssue == null;
         r.type = typeSpec;
         r.plan = "Add " + (asColumn ? "column \"" + name + "\" of " + columnOf : "attribute \"" + name + "\"")
@@ -786,7 +795,7 @@ public final class FormWriteGateway {
                         failure[0] = "the form disappeared between validation and apply";
                         return null;
                     }
-                    TypeDescription td = types.typeDescriptionFor(tx, typeSpec, version, true);
+                    TypeDescription td = types.typeDescriptionFor(tx, typeSpec, version, true, baseReference);
                     if (td == null) {
                         failure[0] = "type does not parse: \"" + typeSpec + "\"";
                         return null;
@@ -869,7 +878,9 @@ public final class FormWriteGateway {
             return r;
         }
         r.present = Boolean.valueOf(!Boolean.TRUE.equals(r.nameAvailable));
-        String typeIssue = wantsType ? typeProblem(model, typeSpec, GatewaySupport.projectVersion(p)) : null;
+        final Function<String, EObject> baseReference = baseTypeResolver(p, mm);
+        String typeIssue = wantsType
+                ? typeProblem(model, typeSpec, GatewaySupport.projectVersion(p), baseReference) : null;
         r.ok = Boolean.TRUE.equals(r.present) && typeIssue == null;
         r.type = wantsType ? typeSpec : null;
         StringBuilder what = new StringBuilder();
@@ -910,7 +921,7 @@ public final class FormWriteGateway {
                         return null;
                     }
                     if (wantsType) {
-                        TypeDescription td = types.typeDescriptionFor(tx, typeSpec, version, true);
+                        TypeDescription td = types.typeDescriptionFor(tx, typeSpec, version, true, baseReference);
                         if (td == null) {
                             failure[0] = "type does not parse: \"" + typeSpec + "\"";
                             return null;
@@ -1298,7 +1309,7 @@ public final class FormWriteGateway {
                 r.event = matched.getName();
                 r.eventRu = (matched.getNameRu() == null || matched.getNameRu().isBlank())
                         ? matched.getName() : matched.getNameRu();
-                r.parameters.addAll(parameterNames(matched, russian));
+                r.parameters.addAll(parameterNames(matched, russian, entity instanceof FormItem));
                 r.directive = directiveOf(matched, russian);
                 r.eventFree = Boolean.TRUE;
                 for (EventHandler existing : ((EventHandlerContainer) entity).getHandlers()) {
@@ -1350,9 +1361,10 @@ public final class FormWriteGateway {
         return null;
     }
 
-    /** The parameter names of the event's first parameter set, in the project's script variant. */
-    private static List<String> parameterNames(Event event, boolean russian) {
+    /** Handler parameters include the implicit item before the event's declared parameters. */
+    private static List<String> parameterNames(Event event, boolean russian, boolean item) {
         List<String> names = new ArrayList<>();
+        if (item) names.add(russian ? "Элемент" : "Item");
         List<ParamSet> sets = event.getParamSet();
         if (sets.isEmpty()) {
             return names;
@@ -1670,7 +1682,8 @@ public final class FormWriteGateway {
      * Build the type in a read transaction so an unusable spec fails the dry-run rather than the apply.
      * Returns {@code null} when the type resolves, otherwise the reason.
      */
-    private String typeProblem(IBmModel model, String typeSpec, Version version) {
+    private String typeProblem(IBmModel model, String typeSpec, Version version,
+            Function<String, EObject> baseReference) {
         if (typeSpec == null || typeSpec.isBlank()) {
             return null;
         }
@@ -1679,11 +1692,32 @@ public final class FormWriteGateway {
             @Override
             public String execute(IBmTransaction tx, IProgressMonitor monitor) {
                 try {
-                    return (types.typeDescriptionFor(tx, typeSpec, version, true) == null)
+                    return (types.typeDescriptionFor(tx, typeSpec, version, true, baseReference) == null)
                             ? "type does not parse: \"" + typeSpec + "\"" : null;
                 } catch (RuntimeException e) {
                     return "type cannot be resolved: " + GatewaySupport.describeCause(e);
                 }
+            }
+        });
+    }
+
+    /** Only the external object's declared parent supplies configuration reference types. */
+    private static Function<String, EObject> baseTypeResolver(IProject project, IBmModelManager models) {
+        IV8ProjectManager projects = ServiceAccess.get(IV8ProjectManager.class);
+        IV8Project owner = projects == null ? null : projects.getProject(project);
+        if (!(owner instanceof IExternalObjectProject)) {
+            return null;
+        }
+        IConfigurationProject parent = ((IExternalObjectProject) owner).getParent();
+        IBmModel baseModel = parent == null ? null : models.getModel(parent.getDtProject());
+        if (baseModel == null) {
+            return null;
+        }
+        return fqn -> baseModel.executeReadonlyTask(new AbstractBmTask<EObject>(
+                "edt-bridge.formMember.baseType") {
+            @Override
+            public EObject execute(IBmTransaction tx, IProgressMonitor monitor) {
+                return tx.getTopObjectByFqn(fqn);
             }
         });
     }
@@ -1985,6 +2019,15 @@ public final class FormWriteGateway {
     public FormItemResult addFormItem(String projectName, String formFqn, String kind, String name,
             String parentName, String dataPath, String command, String groupType, String titleRu,
             boolean apply) {
+        return addFormItem(projectName, formFqn, kind, name, parentName, dataPath, command, groupType,
+                titleRu, null, null, null, Map.of(), apply);
+    }
+
+    /** Add an item at an explicit sibling position with validated design properties. */
+    public FormItemResult addFormItem(String projectName, String formFqn, String kind, String name,
+            String parentName, String dataPath, String command, String groupType, String titleRu,
+            Integer index, String beforeItem, String afterItem, Map<String, Object> settings, boolean apply) {
+        Map<String, Object> options = settings == null ? Map.of() : new LinkedHashMap<>(settings);
         FormItemResult r = new FormItemResult();
         r.projectName = projectName;
         r.formFqn = formFqn;
@@ -2037,6 +2080,7 @@ public final class FormWriteGateway {
         }
 
         final String[] problem = {null};
+        final String[] placement = {null};
         model.executeReadonlyTask(new AbstractBmTask<Object>("edt-bridge.addFormItem.validate") {
             @Override
             public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
@@ -2047,7 +2091,9 @@ public final class FormWriteGateway {
                 r.formFound = true;
                 collectItemNames(form.getItems(), r.items);
                 if (name != null && !name.isBlank()) {
-                    r.nameAvailable = Boolean.valueOf(findItem(form.getItems(), name) == null);
+                    List<String> taken = new ArrayList<>();
+                    collectEveryItemName(form, taken);
+                    r.nameAvailable = Boolean.valueOf(taken.stream().noneMatch(name::equalsIgnoreCase));
                 }
                 r.parentFound = Boolean.valueOf(parentName == null || parentName.isBlank()
                         || findContainer(form.getItems(), parentName) != null);
@@ -2060,6 +2106,18 @@ public final class FormWriteGateway {
                 }
                 if (command != null && !command.isBlank() && findCommand(form, command) == null) {
                     problem[0] = "the form has no command \"" + command + "\"";
+                }
+                try {
+                    FormItemEdits.Position destination = FormItemEdits.position(form, null, parentName,
+                            index, beforeItem, afterItem);
+                    placement[0] = destination.describe();
+                    if (!options.isEmpty()) {
+                        FormItem prototype = itemPrototype(itemKind, group, dataPath, destination.parent,
+                                form, GatewaySupport.projectVersion(p));
+                        FormItemEdits.validateSettings(prototype, options);
+                    }
+                } catch (RuntimeException invalid) {
+                    problem[0] = GatewaySupport.describeCause(invalid);
                 }
                 return null;
             }
@@ -2077,6 +2135,8 @@ public final class FormWriteGateway {
                 + (group != null ? " [" + group.getName() + "]" : "")
                 + " to " + formFqn
                 + (parentName == null || parentName.isBlank() ? " (form root)" : " inside " + parentName);
+        if (placement[0] != null) { r.plan += " at " + placement[0]; }
+        if (!options.isEmpty()) { r.plan += " with " + options; }
         if (Boolean.FALSE.equals(r.nameAvailable)) {
             r.message = "the form already has an item named \"" + name + "\"";
         } else if (Boolean.FALSE.equals(r.parentFound)) {
@@ -2116,6 +2176,12 @@ public final class FormWriteGateway {
                             return null;
                         }
                     }
+                    FormItemEdits.Position destination = FormItemEdits.position(form, null, parentName,
+                            index, beforeItem, afterItem);
+                    if (!options.isEmpty()) {
+                        FormItemEdits.validateSettings(itemPrototype(itemKind, group, dataPath, parent,
+                                form, GatewaySupport.projectVersion(p)), options);
+                    }
                     Map<String, String> title = new LinkedHashMap<>();
                     // A table generates its columns from the bound attribute, and EDT hands the
                     // SAME descriptor to every one of them: a table titled "Курсы валют" came out
@@ -2143,7 +2209,7 @@ public final class FormWriteGateway {
                             }
                             break;
                         case "button":
-                            created = items.addButton(parent, findCommand(form, command), null, form,
+                            created = addButtonWithName(items, parent, findCommand(form, command), form,
                                     descriptor);
                             break;
                         case "group":
@@ -2161,6 +2227,8 @@ public final class FormWriteGateway {
                             && created instanceof Titled) {
                         ((Titled) created).getTitle().put("ru", titleRu);
                     }
+                    applyItemSettings(created, options, parent, form, GatewaySupport.projectVersion(p));
+                    destination.placeAdded(created);
                     r.name = created.getName();
                     r.id = Integer.valueOf(created.getId());
                     return null;
@@ -2176,6 +2244,118 @@ public final class FormWriteGateway {
         }
         finishItem(r, mm, model, formFqn, "added " + itemKind + " \"" + r.name + "\" to ");
         return r;
+    }
+
+    private static FormItem itemPrototype(String kind, ManagedFormGroupType groupType, String path,
+            FormItemContainer parent, Form form, Version version) {
+        switch (kind) {
+            case "field":
+                FormField field = FormFactory.eINSTANCE.createFormField();
+                field.setDataPath(dataPathOf(path));
+                IFormItemTypeManagementService types = formTypeService();
+                if (types == null) { throw new IllegalStateException("form item type service unavailable"); }
+                types.setActualType(field, field.getDataPath(), parent, form, version);
+                return field;
+            case "group":
+                FormGroup group = FormFactory.eINSTANCE.createFormGroup();
+                group.setType(groupType);
+                if (groupType == ManagedFormGroupType.USUAL_GROUP) {
+                    group.setExtInfo(FormFactory.eINSTANCE.createUsualGroupExtInfo());
+                }
+                return group;
+            case "button": return FormFactory.eINSTANCE.createButton();
+            case "table": return FormFactory.eINSTANCE.createTable();
+            default: return FormFactory.eINSTANCE.createDecoration();
+        }
+    }
+
+    private static IFormItemTypeManagementService formTypeService() {
+        Injector injector = formInjector();
+        return injector == null ? null : injector.getInstance(IFormItemTypeManagementService.class);
+    }
+
+    private static void applyItemSettings(FormItem item, Map<String, Object> settings,
+            FormItemContainer parent, Form form, Version version) {
+        if (settings.isEmpty()) { return; }
+        FormItemEdits.applySettings(item, settings, requested -> {
+            IFormItemTypeManagementService types = formTypeService();
+            if (types == null) { throw new IllegalStateException("form item type service unavailable"); }
+            FormField field = (FormField) item;
+            types.setType(requested, field, field.getDataPath(), parent, form, version);
+        }, version.isGreaterThanOrEquals(new Version(8, 5, 1)));
+    }
+
+    /** Move the existing BM object; EDT maintains references to it and its descendants. */
+    public FormItemResult moveFormItem(String projectName, String formFqn, String name, String parentName,
+            Integer index, String beforeItem, String afterItem, boolean apply) {
+        FormItemResult result = new FormItemResult();
+        result.projectName = projectName; result.formFqn = formFqn; result.name = name; result.kind = "move";
+        if (name == null || name.isBlank()) { result.message = "name is required"; return result; }
+        if (parentName == null && index == null && beforeItem == null && afterItem == null) {
+            result.message = "pass parent, index, beforeItem or afterItem to select the destination";
+            return result;
+        }
+        IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+        if (!project.exists() || !project.isOpen()) { result.message = "project not found or closed: " + projectName; return result; }
+        IBmModelManager manager = ServiceAccess.get(IBmModelManager.class);
+        IBmModel model = manager == null ? null : manager.getModel(project);
+        if (model == null) { result.message = "no BM model for project: " + projectName; return result; }
+        try {
+            model.executeReadonlyTask(new AbstractBmTask<Object>("edt-bridge.moveFormItem.validate") {
+                @Override public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
+                    Form form = resolveForm(tx, formFqn);
+                    if (form == null) { throw new IllegalArgumentException("form not found: " + formFqn); }
+                    result.formFound = true;
+                    FormItem item = FormItemEdits.findUnique(form.getItems(), name);
+                    if (item == null) { throw new IllegalArgumentException("form item not found: " + name); }
+                    result.present = true; result.id = item.getId();
+                    FormItemEdits.Position destination = FormItemEdits.position(form, item, parentName, index, beforeItem, afterItem);
+                    result.parent = destination.parent instanceof FormItem ? ((FormItem) destination.parent).getName() : "";
+                    result.plan = "Move item " + name + " to " + destination.describe();
+                    return null;
+                }
+            });
+            result.ok = true;
+        } catch (RuntimeException invalid) { result.message = GatewaySupport.describeCause(invalid); return result; }
+        if (!apply) { return result; }
+        try {
+            Injector injector = formInjector();
+            IFormItemMovementService movement = injector == null ? null : injector.getInstance(IFormItemMovementService.class);
+            if (movement == null) { throw new IllegalStateException("form item movement service unavailable"); }
+            model.execute(new AbstractBmTask<Object>("edt-bridge.moveFormItem.apply") {
+                @Override public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
+                    Form form = resolveForm(tx, formFqn);
+                    if (form == null) { throw new IllegalArgumentException("the form disappeared"); }
+                    FormItem item = FormItemEdits.findUnique(form.getItems(), name);
+                    if (item == null) { throw new IllegalArgumentException("the item disappeared"); }
+                    FormItemEdits.Position destination = FormItemEdits.position(form, item, parentName, index, beforeItem, afterItem);
+                    destination.apply(movement);
+                    result.id = item.getId();
+                    collectItemNames(destination.parent.getItems(), result.items);
+                    return null;
+                }
+            });
+        } catch (RuntimeException failure) {
+            result.ok = false; result.message = "apply failed (nothing committed): " + GatewaySupport.describeCause(failure); return result;
+        }
+        finishItem(result, manager, model, formFqn, "moved item \"" + name + "\" in ");
+        return result;
+    }
+
+    /** EDT derives button names from the command, ignoring the descriptor's explicit name. */
+    static Button addButtonWithName(IFormItemManagementService items, FormItemContainer parent,
+            FormCommand command, Form form, FormNewItemDescriptor descriptor) {
+        Button button = items.addButton(parent, command, null, form, descriptor);
+        String requestedName = descriptor.getItemName();
+        if (button != null && requestedName != null && !requestedName.isBlank()
+                && !requestedName.equals(button.getName())) {
+            String previousName = button.getName();
+            button.setName(requestedName);
+            if (previousName != null && !previousName.isBlank()) {
+                renameOwnChildren(button, previousName, requestedName, new ArrayList<>());
+            }
+        }
+        return button;
     }
 
     /** Change a form item's title, visibility or enabled state. */
@@ -2195,6 +2375,13 @@ public final class FormWriteGateway {
      */
     public FormItemResult modifyFormItem(String projectName, String formFqn, String name,
             String newName, String titleRu, Boolean visible, Boolean enabled, boolean apply) {
+        return modifyFormItem(projectName, formFqn, name, newName, titleRu, visible, enabled, Map.of(), apply);
+    }
+
+    public FormItemResult modifyFormItem(String projectName, String formFqn, String name,
+            String newName, String titleRu, Boolean visible, Boolean enabled, Map<String, Object> settings,
+            boolean apply) {
+        Map<String, Object> options = settings == null ? Map.of() : new LinkedHashMap<>(settings);
         FormItemResult r = new FormItemResult();
         r.projectName = projectName;
         r.formFqn = formFqn;
@@ -2203,7 +2390,7 @@ public final class FormWriteGateway {
             r.message = "name is required - the form item to change";
             return r;
         }
-        if (titleRu == null && visible == null && enabled == null
+        if (titleRu == null && visible == null && enabled == null && options.isEmpty()
                 && (newName == null || newName.isBlank())) {
             r.message = "nothing to change - pass at least one of newName, titleRu, visible, enabled";
             return r;
@@ -2230,6 +2417,22 @@ public final class FormWriteGateway {
             return r;
         }
         r.ok = Boolean.TRUE.equals(r.present);
+        if (r.ok) {
+            String issue = model.executeReadonlyTask(new AbstractBmTask<String>("edt-bridge.modifyFormItem.settings") {
+                @Override public String execute(IBmTransaction tx, IProgressMonitor monitor) {
+                    Form form = resolveForm(tx, formFqn);
+                    FormItem item = form == null ? null : FormItemEdits.findUnique(form.getItems(), name);
+                    try {
+                        if (item == null) { return "form item disappeared"; }
+                        if (titleRu != null && !(item instanceof Titled)) { return "the item has no title"; }
+                        if ((visible != null || enabled != null) && !(item instanceof Visible)) { return "the item has no visibility properties"; }
+                        FormItemEdits.validateSettings(item, options);
+                        return null;
+                    } catch (RuntimeException invalid) { return GatewaySupport.describeCause(invalid); }
+                }
+            });
+            if (issue != null) { r.ok = false; r.message = issue; }
+        }
         boolean renaming = newName != null && !newName.isBlank() && !newName.equals(name);
         if (renaming) {
             for (String taken : r.takenNames) {
@@ -2257,6 +2460,7 @@ public final class FormWriteGateway {
             what.append(" enabled -> ").append(enabled);
         }
         r.plan = "Change item \"" + name + "\" of " + formFqn + ":" + what;
+        if (!options.isEmpty()) { r.plan += " properties -> " + options; }
         if (!r.ok && r.message == null) {
             r.message = "the form has no item named \"" + name + "\"";
         }
@@ -2278,6 +2482,9 @@ public final class FormWriteGateway {
                         failure[0] = "the item disappeared between validation and apply";
                         return null;
                     }
+                    FormItemEdits.validateSettings(item, options);
+                    applyItemSettings(item, options, (FormItemContainer) item.eContainer(), form,
+                            GatewaySupport.projectVersion(p));
                     if (titleRu != null && item instanceof Titled) {
                         EMap<String, String> title = ((Titled) item).getTitle();
                         if (titleRu.isBlank()) {

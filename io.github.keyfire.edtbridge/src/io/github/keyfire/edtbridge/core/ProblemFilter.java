@@ -58,7 +58,8 @@ public final class ProblemFilter {
             java.util.List<String> nameTokens) {
         String value = normalize(resource);
         if (pathPrefix != null && !pathPrefix.isBlank() && !value.isEmpty()
-                && value.startsWith(normalize(pathPrefix))) {
+                && (value.equals(normalize(pathPrefix))
+                        || value.startsWith(normalize(pathPrefix).replaceAll("/+$", "") + "/"))) {
             return true;
         }
         if (nameTokens == null || nameTokens.isEmpty()) {
