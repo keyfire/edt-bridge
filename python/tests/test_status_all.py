@@ -80,6 +80,14 @@ def test_non_http_listener_is_not_a_bridge():
     import socketserver
     class Handler(socketserver.BaseRequestHandler):
         def handle(self):
+            # Closing with unread request bytes can produce a Windows TCP reset instead of the bad status line.
+            self.request.settimeout(3)
+            request = bytearray()
+            while b"\r\n\r\n" not in request:
+                chunk = self.request.recv(4096)
+                if not chunk or len(request) + len(chunk) > 16384:
+                    return
+                request.extend(chunk)
             self.request.sendall(b"not HTTP\r\n")
     tcp = socketserver.ThreadingTCPServer(("127.0.0.1", 0), Handler)
     thread = threading.Thread(target=tcp.serve_forever, daemon=True)
