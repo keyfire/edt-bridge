@@ -56,7 +56,7 @@ public final class QueryTextFields {
         List<Frame> stack = new ArrayList<>();
         List<Pending> pending = new ArrayList<>();
         try {
-            SAXParserFactory factory = SAXParserFactory.newInstance();
+            SAXParserFactory factory = SAXParserFactory.newDefaultInstance();
             factory.setNamespaceAware(true);
             factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
             factory.setFeature("http://xml.org/sax/features/external-general-entities", false);

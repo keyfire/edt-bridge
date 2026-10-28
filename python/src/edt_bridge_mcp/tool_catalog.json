@@ -2511,8 +2511,8 @@
     },
     {
       "name": "edt_delete_object",
-      "description": "WRITE (Phase 2): delete a metadata object (top object or child member) and cascade the removal of every reference in metadata AND BSL via EDT's native refactoring engine; the engine removes the object's .mdo and updates the Configuration. Dry-run by default: returns the engine's change list + validation problems WITHOUT deleting. apply=true performs the cascade; requires a configured token AND force=true (delete is irreversible and breaking for peer configurations – owner approval). Verify bsl_support_status EDITABLE before apply. Building the cascade analyses references across every open project - in a workspace with a large configuration this can take several minutes, and it keeps running to completion even if the client gives up waiting; re-check the model before concluding it hung.",
-      "descriptionRu": "ЗАПИСЬ (Phase 2): удалить объект метаданных (объект или его член) с каскадным удалением ВСЕХ ссылок в метаданных И в BSL через штатный движок рефакторинга EDT; движок сам удаляет .mdo объекта и правит Configuration. По умолчанию dry-run: возвращает список изменений и проблемы БЕЗ удаления. apply=true выполняет каскад; требует токен И force=true (удаление необратимо и ломает обратную совместимость для конфигураций-партнёров – нужно одобрение владельца). Перед apply проверить bsl_support_status = EDITABLE. Построение каскада анализирует ссылки по всем открытым проектам: в workspace с большой конфигурацией это занимает минуты, и операция доходит до конца, даже если клиент перестал ждать; прежде чем счесть вызов зависшим, перепроверьте модель.",
+      "description": "WRITE (Phase 2): delete a metadata object or child through EDT's native refactoring. Dry-run reports native change items and a separate bounded audit of possible references in BSL code/strings, actual dynamic-list/DCS query fields and form dataPath bindings. These lexical candidates can include unrelated names; coverage, lower-bound counts, samples and read failures are explicit. Native items are not proof of a complete BSL/query/form cascade. Every apply requires a configured token and force=true; native blockers and empty plans are refused. After apply, deletionConfirmed reports target absence in the live BM model, and remainingPossibleReferences reports remaining candidates. Form controls can remain with dataPath cleared; observed cases are listed separately. No automatic text replacement is performed by the audit. Verify bsl_support_status EDITABLE before apply. Native analysis can take minutes.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): удалить объект метаданных или его член штатным рефакторингом EDT. Сухой прогон показывает штатный план изменений и отдельный ограниченный аудит возможных ссылок в коде и строках BSL, текстах запросов динамических списков/СКД и dataPath форм. Это лексические кандидаты: одинаковые имена могут относиться к другим членам; покрытие, нижняя граница счетчиков, образцы и ошибки чтения указаны явно. Этот план не доказывает полный каскад по BSL, запросам и формам. Любое применение требует токен и force=true; проблемы штатного рефакторинга и пустой план блокируют запись. После применения deletionConfirmed подтверждает отсутствие цели в живой BM-модели, remainingPossibleReferences показывает оставшихся кандидатов. Элементы формы могут остаться с очищенным dataPath; найденные случаи перечислены отдельно. Аудит не заменяет текст автоматически. Перед apply проверить bsl_support_status EDITABLE. Штатный анализ может занять несколько минут.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2522,15 +2522,15 @@
           },
           "targetFqn": {
             "type": "string",
-            "description": "Object or child member to delete, by full FQN: a top object (e.g. Catalog.Контрагенты) or a child (e.g. Catalog.Контрагенты.Attribute.ИНН)"
+            "description": "Object or child member to delete, for example Catalog.Partners or InformationRegister.Versions.Resource.Version"
           },
           "apply": {
             "type": "boolean",
-            "description": "false (default) = dry-run: build the delete refactoring and return the full change list + problems, delete nothing. true = perform the cascade (metadata + BSL). Verify bsl_support_status EDITABLE first."
+            "description": "false (default): report native delete items, indexed inbound references and possible BSL/query/form references; change nothing. true: run native delete with force=true, verify target absence in the live BM model, and audit remaining candidates. A complete BSL/query/form cascade is not guaranteed. Verify bsl_support_status EDITABLE first."
           },
           "force": {
             "type": "boolean",
-            "description": "false (default) = refuse apply (delete is irreversible and breaking for peer configurations). true = the owner's explicit override; required for any apply. Has no effect on a dry-run."
+            "description": "Required for every apply. Acknowledges irreversible deletion and possible remaining references, incomplete audit coverage and retained form controls with dataPath cleared. Does not override native refactoring problems or a plan with no checked delete items."
           }
         },
         "required": [

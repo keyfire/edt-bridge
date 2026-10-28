@@ -46,6 +46,8 @@ to the code and the reasoning behind it.
   ([#49](https://github.com/keyfire/edt-bridge/pull/49))
 
 ### Fixed
+- `edt_delete_object` reports possible remaining uses in BSL, queries and form bindings before and after deleting a metadata member. The response no longer promises a complete BSL cascade, and identifies controls whose data binding was cleared.
+  ([#52](https://github.com/keyfire/edt-bridge/pull/52))
 - Generated form-item handlers include the implicit item parameter. Native command-handler rename preserves its action container on EDT 2026.2. Adding the first method to an existing empty module creates its BSL file after model and parser checks.
   ([#52](https://github.com/keyfire/edt-bridge/pull/52))
 - Validation no longer reports an unavailable or warming model as clean. Module paths include traced EDT-check markers; validation waits are configurable, and a timeout returns explicit partial results.

@@ -22,151 +22,93 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 
-/**
- * MCP tool: edt_delete_object - WRITE (Phase 2). The inverse of edt_create_object: deletes a metadata
- * object (a top object such as Catalog.X, or a child member) and cascades the removal of every reference
- * in metadata AND BSL using EDT's OWN refactoring engine – not a brittle text edit. Dry-run by default
- * (apply=false) returns the engine's change list + validation problems. Deleting an object is
- * irreversible and breaking for peer configurations: an apply requires a configured token AND force=true
- * (the owner's explicit override); the caller must verify bsl_support_status EDITABLE before apply.
- */
+/** Native metadata deletion with an explicit possible-reference audit; every apply requires force. */
 public final class DeleteObjectTool {
-
     private final MetadataWriteGateway gateway = new MetadataWriteGateway();
 
-    public String name() {
-        return "edt_delete_object";
-    }
-
-    /** Write tool – the server gates this on a configured token. */
-    public boolean isWrite() {
-        return true;
-    }
+    public String name() { return "edt_delete_object"; }
+    public boolean isWrite() { return true; }
 
     public JsonObject descriptor() {
         JsonObject props = new JsonObject();
         props.add("projectName", strProp("EDT project name"));
-        props.add("targetFqn", strProp("Object or child member to delete, by full FQN: a top object "
-                + "(e.g. Catalog.Контрагенты) or a child (e.g. Catalog.Контрагенты.Attribute.ИНН)"));
-        props.add("apply", boolProp("false (default) = dry-run: build the delete refactoring and return the "
-                + "full change list + problems, delete nothing. true = perform the cascade (metadata + BSL). "
-                + "Verify bsl_support_status EDITABLE first."));
-        props.add("force", boolProp("false (default) = refuse apply (delete is irreversible and breaking for "
-                + "peer configurations). true = the owner's explicit override; required for any apply. Has no "
-                + "effect on a dry-run."));
+        props.add("targetFqn", strProp("Object or child member to delete, for example Catalog.Partners "
+                + "or InformationRegister.Versions.Resource.Version"));
+        props.add("apply", boolProp("false (default): report native delete items, indexed inbound references "
+                + "and possible BSL/query/form references; change nothing. true: run native delete with force=true, "
+                + "verify target absence in the live BM model, and audit remaining candidates. "
+                + "A complete BSL/query/form cascade is not guaranteed. Verify bsl_support_status EDITABLE first."));
+        props.add("force", boolProp("Required for every apply. Acknowledges irreversible deletion and possible "
+                + "remaining references, incomplete audit coverage and retained form controls with dataPath cleared. "
+                + "Does not override native refactoring problems or a plan with no checked delete items."));
 
-        JsonArray req = new JsonArray();
-        req.add("projectName");
-        req.add("targetFqn");
-
+        JsonArray required = new JsonArray();
+        required.add("projectName"); required.add("targetFqn");
         JsonObject schema = new JsonObject();
         schema.addProperty("type", "object");
-        schema.add("properties", props);
-        schema.add("required", req);
-
-        JsonObject t = new JsonObject();
-        t.addProperty("name", name());
-        t.addProperty("description",
-                "WRITE (Phase 2): delete a metadata object (top object or child member) and cascade the "
-                + "removal of every reference in metadata AND BSL via EDT's native refactoring engine; the "
-                + "engine removes the object's .mdo and updates the Configuration. Dry-run by default: returns "
-                + "the engine's change list + validation problems WITHOUT deleting. apply=true performs the "
-                + "cascade; requires a configured token AND force=true (delete is irreversible and breaking for "
-                + "peer configurations – owner approval). Verify bsl_support_status EDITABLE before apply. "
-                + "Building the cascade analyses references across every open project - in a workspace with a "
-                + "large configuration this can take several minutes, and it keeps running to completion even "
-                + "if the client gives up waiting; re-check the model before concluding it hung.");
-        t.addProperty("descriptionRu",
-                "ЗАПИСЬ (Phase 2): удалить объект метаданных (объект или его член) с каскадным удалением ВСЕХ "
-                + "ссылок в метаданных И в BSL через штатный движок рефакторинга EDT; движок сам удаляет .mdo "
-                + "объекта и правит Configuration. По умолчанию dry-run: возвращает список изменений и проблемы "
-                + "БЕЗ удаления. apply=true выполняет каскад; требует токен И force=true (удаление необратимо и "
-                + "ломает обратную совместимость для конфигураций-партнёров – нужно одобрение владельца). Перед "
-                + "apply проверить bsl_support_status = EDITABLE. Построение каскада анализирует ссылки по всем "
-                + "открытым проектам: в workspace с большой конфигурацией это занимает минуты, и операция "
-                + "доходит до конца, даже если клиент перестал ждать; прежде чем счесть вызов зависшим, "
-                + "перепроверьте модель.");
-        t.add("inputSchema", schema);
-        return t;
+        schema.add("properties", props); schema.add("required", required);
+        JsonObject descriptor = new JsonObject();
+        descriptor.addProperty("name", name());
+        descriptor.addProperty("description", "WRITE (Phase 2): delete a metadata object or child through EDT's "
+                + "native refactoring. Dry-run reports native change items and a separate bounded audit of possible "
+                + "references in BSL code/strings, actual dynamic-list/DCS query fields and form dataPath bindings. "
+                + "These lexical candidates can include unrelated names; coverage, lower-bound counts, samples and "
+                + "read failures are explicit. Native items are not proof of a complete BSL/query/form cascade. "
+                + "Every apply requires a configured token and force=true; native blockers and empty plans are "
+                + "refused. After apply, deletionConfirmed reports target absence in the live BM model, and "
+                + "remainingPossibleReferences reports remaining candidates. Form controls can remain with dataPath "
+                + "cleared; observed cases are listed separately. No automatic text replacement is performed by "
+                + "the audit. Verify bsl_support_status EDITABLE before apply. Native analysis can take minutes.");
+        descriptor.addProperty("descriptionRu", "ЗАПИСЬ (Phase 2): удалить объект метаданных или его член штатным "
+                + "рефакторингом EDT. Сухой прогон показывает штатный план изменений и отдельный ограниченный аудит "
+                + "возможных ссылок в коде и строках BSL, текстах запросов динамических списков/СКД и dataPath форм. "
+                + "Это лексические кандидаты: одинаковые имена могут относиться к другим членам; покрытие, нижняя "
+                + "граница счетчиков, образцы и ошибки чтения указаны явно. Этот план не доказывает полный каскад "
+                + "по BSL, запросам и формам. Любое применение требует токен и force=true; проблемы штатного "
+                + "рефакторинга и пустой план блокируют запись. После применения deletionConfirmed подтверждает "
+                + "отсутствие цели в живой BM-модели, remainingPossibleReferences показывает оставшихся кандидатов. "
+                + "Элементы формы могут остаться с очищенным dataPath; найденные случаи перечислены отдельно. "
+                + "Аудит не заменяет текст автоматически. Перед apply проверить bsl_support_status EDITABLE. "
+                + "Штатный анализ может занять несколько минут.");
+        descriptor.add("inputSchema", schema);
+        return descriptor;
     }
 
     public JsonObject call(JsonObject args) {
         String project = getStr(args, "projectName");
-        String targetFqn = getStr(args, "targetFqn");
-        if (project == null || targetFqn == null) {
-            return McpServer.toolError("projectName and targetFqn are required");
-        }
-        boolean apply = args.has("apply") && !args.get("apply").isJsonNull() && args.get("apply").getAsBoolean();
-        boolean force = args.has("force") && !args.get("force").isJsonNull() && args.get("force").getAsBoolean();
+        String fqn = getStr(args, "targetFqn");
+        if (project == null || fqn == null) return McpServer.toolError("projectName and targetFqn are required");
+        boolean apply = getBool(args, "apply");
+        boolean force = getBool(args, "force");
         try {
-            MetadataWriteGateway.DeleteObjectResult res = gateway.deleteObject(project, targetFqn, apply, force);
-            JsonObject o = new JsonObject();
-            o.addProperty("ok", res.ok);
-            o.addProperty("applied", res.applied);
-            o.addProperty("targetFqn", res.targetFqn);
-            o.addProperty("targetFound", res.targetFound);
-            if (res.targetType != null) {
-                o.addProperty("targetType", res.targetType);
-            }
-            o.addProperty("topObject", res.topObject);
-            if (res.name != null) {
-                o.addProperty("name", res.name);
-            }
-            o.addProperty("force", res.forced);
-            o.addProperty("refactoringCount", res.refactoringCount);
-            if (!res.problems.isEmpty()) {
-                JsonArray probs = new JsonArray();
-                for (MetadataWriteGateway.RenameProblem pr : res.problems) {
-                    JsonObject po = new JsonObject();
-                    po.addProperty("kind", pr.kind);
-                    if (pr.object != null) {
-                        po.addProperty("object", pr.object);
-                    }
-                    probs.add(po);
-                }
-                o.add("problems", probs);
-            }
-            JsonArray items = new JsonArray();
-            for (MetadataWriteGateway.RenameItem it : res.items) {
-                JsonObject io = new JsonObject();
-                io.addProperty("name", it.name);
-                io.addProperty("optional", it.optional);
-                io.addProperty("checked", it.checked);
-                items.add(io);
-            }
-            o.add("items", items);
-            o.addProperty("itemCount", res.items.size());
-            o.addProperty("truncated", res.truncated);
-            if (res.plan != null) {
-                o.addProperty("plan", res.plan);
-            }
-            if (res.warning != null) {
-                o.addProperty("warning", res.warning);
-            }
-            if (res.message != null) {
-                o.addProperty("message", res.message);
-            }
-            return McpServer.textResult(new GsonBuilder().setPrettyPrinting().create().toJson(o));
-        } catch (Exception e) {
-            return McpServer.toolError("edt_delete_object failed: " + e.getMessage());
+            MetadataWriteGateway.DeleteObjectResult result = gateway.deleteObject(project, fqn, apply, force);
+            var gson = new GsonBuilder().serializeNulls().setPrettyPrinting().create();
+            JsonObject payload = gson.toJsonTree(result).getAsJsonObject();
+            payload.addProperty("force", result.forced);
+            payload.remove("forced");
+            payload.addProperty("itemCount", result.items.size());
+            payload.addProperty("indexedRefsTruncated", result.indexedRefCount != null
+                    && result.indexedRefCount > result.indexedRefs.size());
+            payload.addProperty("indexedReferenceCoverage", "BM inbound-reference index before native deletion; "
+                    + "includes metadata plumbing and does not cover every BSL/query/runtime reference");
+            return McpServer.textResult(gson.toJson(payload));
+        } catch (Exception failure) {
+            return McpServer.toolError("edt_delete_object failed: " + failure.getMessage());
         }
     }
 
-    private static JsonObject strProp(String desc) {
-        JsonObject o = new JsonObject();
-        o.addProperty("type", "string");
-        o.addProperty("description", desc);
-        return o;
+    private static JsonObject strProp(String description) {
+        JsonObject result = new JsonObject(); result.addProperty("type", "string");
+        result.addProperty("description", description); return result;
     }
-
-    private static JsonObject boolProp(String desc) {
-        JsonObject o = new JsonObject();
-        o.addProperty("type", "boolean");
-        o.addProperty("description", desc);
-        return o;
+    private static JsonObject boolProp(String description) {
+        JsonObject result = new JsonObject(); result.addProperty("type", "boolean");
+        result.addProperty("description", description); return result;
     }
-
-    private static String getStr(JsonObject a, String k) {
-        return (a.has(k) && !a.get(k).isJsonNull()) ? a.get(k).getAsString() : null;
+    private static String getStr(JsonObject arguments, String key) {
+        return arguments.has(key) && !arguments.get(key).isJsonNull() ? arguments.get(key).getAsString() : null;
+    }
+    private static boolean getBool(JsonObject arguments, String key) {
+        return arguments.has(key) && !arguments.get(key).isJsonNull() && arguments.get(key).getAsBoolean();
     }
 }

@@ -107,9 +107,16 @@ Write tools change the model through EDT's own engine, not by editing text. Ever
 the token, and every one does nothing until asked: `apply=false` is the default and returns a plan.
 `apply=true` makes the change and serializes the `.mdo`.
 
+`edt_delete_object` separates EDT's indexed references from lexical candidates in `referenceAudit`.
+`scanComplete` describes the stated file scan; `complete=false` keeps semantic coverage explicit.
+Check `countIsLowerBound`, errors and samples before deciding to force deletion. After apply,
+`deletionConfirmed` confirms target absence in the live BM model. `remainingPossibleReferences`
+and `retainedFormControls` report the observed remaining uses and controls with cleared data paths;
+the response states the limits of the export wait and after-audit.
+
 | Write tool | What it does |
 |------------|--------------|
-| `edt_create_object` · `edt_delete_object` | Creates a new top-level object – Catalog, Document, Enum, InformationRegister and the rest – through EDT's factory and the per-type initializer, and registers it in the Configuration. Deletion cascades: every reference in metadata and in BSL goes with the object, which is why it needs `force`. |
+| `edt_create_object` · `edt_delete_object` | Creates a new top-level object – Catalog, Document, Enum, InformationRegister and the rest – through EDT's factory and the per-type initializer, and registers it in the Configuration. Deletion uses EDT refactoring and requires `force`. The preview reports indexed references and possible uses in BSL, query text and form bindings. These uses can remain after deletion; the response does not promise a complete cascade. |
 | `edt_add_attribute` · `edt_modify_attribute` · `edt_remove_attribute` | Adds an attribute to a metadata object with a validated type, klass, synonym and comment; changes an existing attribute's type, synonym or comment; removes one. Removal checks the references first and refuses while any remain, unless forced. |
 | `edt_rename` | Renames a method, metadata object or member and updates references through EDT's refactoring engine. The preview reports known affected files and the completeness of file and edit counts. Requires `force` because external uses of the old name may break. |
 | `edt_add_method` · `edt_delete_method` | Adds and deletes a procedure or function in a module's BSL, both guided by the model. The insert refuses any result that would not parse again. The cut takes the adjacent doc comment with it, and its plan returns the exact text that will go, which is why it needs `force`. Both address a module by FQN, `HTTPService.X` and `WebService.X` included. |
