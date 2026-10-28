@@ -483,8 +483,8 @@
     },
     {
       "name": "edt_add_attribute",
-      "description": "WRITE (Phase 2): add an attribute to a metadata object. Dry-run by default – validates (owner exists, name free, type parses, reference target exists) and returns the plan WITHOUT writing. apply=true performs the write (creates the attribute and commits). Requires a configured token. Caller must verify bsl_support_status EDITABLE before any apply.",
-      "descriptionRu": "ЗАПИСЬ (Phase 2): добавить реквизит объекту метаданных. По умолчанию dry-run – проверяет (объект есть, имя свободно, тип распознан, ссылочный тип существует) и возвращает план БЕЗ записи. apply=true – реальная запись (создаёт реквизит и фиксирует). Требует токен. Перед apply вызывающий обязан проверить bsl_support_status = EDITABLE.",
+      "description": "WRITE (Phase 2): add an attribute, register resource or dimension. Dry-run by default – validates (owner exists, name free across attributes/resources/dimensions, type parses, reference target exists) and returns the plan WITHOUT writing. apply=true performs the write (creates the selected field and commits). Requires a configured token. Caller must verify bsl_support_status EDITABLE before any apply.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): добавить реквизит, ресурс или измерение регистра. По умолчанию dry-run – проверяет (объект есть, имя свободно среди реквизитов, ресурсов и измерений, тип распознан, ссылочный тип существует) и возвращает план БЕЗ записи. apply=true – реальная запись (создает выбранное поле и фиксирует). Требует токен. Перед apply вызывающий обязан проверить bsl_support_status = EDITABLE.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -494,11 +494,21 @@
           },
           "ownerFqn": {
             "type": "string",
-            "description": "Object to add the attribute to, e.g. Catalog.Контрагенты, Document.Заказ"
+            "description": "Field owner, e.g. Catalog.Контрагенты or InformationRegister.Versions"
           },
           "name": {
             "type": "string",
-            "description": "New attribute name (Cyrillic), e.g. Комментарий"
+            "description": "New field name, e.g. Комментарий"
+          },
+          "kind": {
+            "type": "string",
+            "description": "Field kind: attribute (default), resource or dimension. Resources and dimensions require a register owner.",
+            "enum": [
+              "attribute",
+              "resource",
+              "dimension"
+            ],
+            "default": "attribute"
           },
           "type": {
             "type": "string",
@@ -1847,8 +1857,8 @@
     },
     {
       "name": "edt_modify_attribute",
-      "description": "WRITE (Phase 2): modify an existing attribute – type, ru synonym and/or comment (provide at least one). Dry-run by default: validates and returns the current→new plan WITHOUT changing. apply=true performs the change. Changing the type may break backward compatibility (warned). Requires a configured token. Verify bsl_support_status EDITABLE before apply.",
-      "descriptionRu": "ЗАПИСЬ (Phase 2): изменить существующий реквизит – тип, синоним(ru) и/или comment (хотя бы одно). По умолчанию dry-run: проверяет и возвращает план было→стало БЕЗ изменения. apply=true применяет. Смена типа может нарушить обратную совместимость (предупреждение). Требует токен. Перед apply проверить bsl_support_status = EDITABLE.",
+      "description": "WRITE (Phase 2): modify an attribute, register resource or dimension – type, ru synonym and/or comment (provide at least one). Dry-run by default: validates and returns the current→new plan WITHOUT changing. apply=true performs the change. Changing the type may break backward compatibility (warned). Requires a configured token. Verify bsl_support_status EDITABLE before apply.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): изменить реквизит, ресурс или измерение регистра – тип, синоним(ru) и/или comment (хотя бы одно). По умолчанию dry-run: проверяет и возвращает план было→стало БЕЗ изменения. apply=true применяет. Смена типа может нарушить обратную совместимость (предупреждение). Требует токен. Перед apply проверить bsl_support_status = EDITABLE.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1858,11 +1868,21 @@
           },
           "ownerFqn": {
             "type": "string",
-            "description": "Object that holds the attribute, e.g. Catalog.Контрагенты"
+            "description": "Field owner, e.g. Catalog.Контрагенты or InformationRegister.Versions"
           },
           "name": {
             "type": "string",
-            "description": "Existing attribute name to modify (Cyrillic)"
+            "description": "Existing field name to modify"
+          },
+          "kind": {
+            "type": "string",
+            "description": "Field kind: attribute (default), resource or dimension. Resources and dimensions require a register owner.",
+            "enum": [
+              "attribute",
+              "resource",
+              "dimension"
+            ],
+            "default": "attribute"
           },
           "newType": {
             "type": "string",
@@ -2859,5 +2879,5 @@
       }
     }
   ],
-  "version": "0.29.0"
+  "version": "0.29.1"
 }

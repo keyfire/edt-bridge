@@ -26,7 +26,7 @@ import com.google.gson.JsonObject;
  * MCP tool: edt_add_attribute - WRITE (Phase 2). Adds an attribute to a metadata object.
  * Dry-run by default (apply=false): validates the planned change (owner resolvable, name free, type
  * parses, reference target exists) and returns the plan without writing. apply=true performs the real
- * write – builds the TypeDescription, creates the attribute and commits. Requires a configured token
+ * write – builds the TypeDescription, creates the selected field and commits. Requires a configured token
  * (write tool, owner decision); the caller must verify bsl_support_status EDITABLE before apply.
  */
 public final class AddAttributeTool {
@@ -45,8 +45,14 @@ public final class AddAttributeTool {
     public JsonObject descriptor() {
         JsonObject props = new JsonObject();
         props.add("projectName", strProp("EDT project name"));
-        props.add("ownerFqn", strProp("Object to add the attribute to, e.g. Catalog.Контрагенты, Document.Заказ"));
-        props.add("name", strProp("New attribute name (Cyrillic), e.g. Комментарий"));
+        props.add("ownerFqn", strProp("Field owner, e.g. Catalog.Контрагенты or InformationRegister.Versions"));
+        props.add("name", strProp("New field name, e.g. Комментарий"));
+        JsonObject kind = strProp("Field kind: attribute (default), resource or dimension. Resources and dimensions require a register owner.");
+        JsonArray kinds = new JsonArray();
+        kinds.add("attribute"); kinds.add("resource"); kinds.add("dimension");
+        kind.add("enum", kinds);
+        kind.addProperty("default", "attribute");
+        props.add("kind", kind);
         props.add("type", strProp("Value type: Строка(150), Число(15,2), Булево, Дата/ДатаВремя/Время, "
                 + "ХранилищеЗначения, ОпределяемыйТип.X, or a reference <kind>Ссылка.X, where <kind> is "
                 + "Справочник, Документ, Перечисление, ПланВидовХарактеристик, ПланСчетов, ПланВидовРасчета, "
@@ -72,15 +78,15 @@ public final class AddAttributeTool {
         JsonObject t = new JsonObject();
         t.addProperty("name", name());
         t.addProperty("description",
-                "WRITE (Phase 2): add an attribute to a metadata object. Dry-run by default – validates "
-                + "(owner exists, name free, type parses, reference target exists) and returns the plan "
-                + "WITHOUT writing. apply=true performs the write (creates the attribute and commits). "
+                "WRITE (Phase 2): add an attribute, register resource or dimension. Dry-run by default – validates "
+                + "(owner exists, name free across attributes/resources/dimensions, type parses, reference target exists) and returns the plan "
+                + "WITHOUT writing. apply=true performs the write (creates the selected field and commits). "
                 + "Requires a configured token. Caller must verify bsl_support_status EDITABLE before "
                 + "any apply.");
         t.addProperty("descriptionRu",
-                "ЗАПИСЬ (Phase 2): добавить реквизит объекту метаданных. По умолчанию dry-run – проверяет "
-                + "(объект есть, имя свободно, тип распознан, ссылочный тип существует) и возвращает план "
-                + "БЕЗ записи. apply=true – реальная запись (создаёт реквизит и фиксирует). Требует токен. "
+                "ЗАПИСЬ (Phase 2): добавить реквизит, ресурс или измерение регистра. По умолчанию dry-run – проверяет "
+                + "(объект есть, имя свободно среди реквизитов, ресурсов и измерений, тип распознан, ссылочный тип существует) и возвращает план "
+                + "БЕЗ записи. apply=true – реальная запись (создает выбранное поле и фиксирует). Требует токен. "
                 + "Перед apply вызывающий обязан проверить bsl_support_status = EDITABLE.");
         t.add("inputSchema", schema);
         return t;
@@ -98,7 +104,7 @@ public final class AddAttributeTool {
         String comment = getStr(args, "comment");
         boolean apply = args.has("apply") && !args.get("apply").isJsonNull() && args.get("apply").getAsBoolean();
         try {
-            MetadataWriteGateway.AddAttrResult res = gateway.addAttribute(project, ownerFqn, name, type, synonymRu, comment, apply);
+            MetadataWriteGateway.AddAttrResult res = gateway.addAttribute(project, ownerFqn, name, type, synonymRu, comment, getStr(args, "kind"), apply);
             JsonObject o = new JsonObject();
             o.addProperty("ok", res.ok);
             o.addProperty("applied", res.applied);
@@ -111,6 +117,12 @@ public final class AddAttributeTool {
                 o.addProperty("ownerType", res.ownerType);
             }
             o.addProperty("name", res.name);
+            o.addProperty("kind", res.kind);
+            if (!res.conflictingFqns.isEmpty()) {
+                JsonArray conflicts = new JsonArray();
+                res.conflictingFqns.forEach(conflicts::add);
+                o.add("conflictingFqns", conflicts);
+            }
             if (res.nameAvailable != null) {
                 o.addProperty("nameAvailable", res.nameAvailable.booleanValue());
             }
