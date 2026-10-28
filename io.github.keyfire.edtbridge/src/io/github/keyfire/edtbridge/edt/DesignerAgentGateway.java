@@ -41,6 +41,8 @@ import io.github.keyfire.edtbridge.core.AgentLeftovers;
 import io.github.keyfire.edtbridge.core.AgentRecord;
 import io.github.keyfire.edtbridge.core.AgentStop;
 import io.github.keyfire.edtbridge.core.AgentUser;
+import io.github.keyfire.edtbridge.core.LoadPlan;
+import io.github.keyfire.edtbridge.core.LoadSnapshot;
 import io.github.keyfire.edtbridge.core.QuestionChoice;
 import io.github.keyfire.edtbridge.core.PlatformSelection;
 import io.github.keyfire.edtbridge.core.TreeRemoval;
@@ -1205,6 +1207,10 @@ public final class DesignerAgentGateway {
             return withSession(agent, s -> {
                 List<String> collected = new ArrayList<>();
                 boolean[] refused = {false};
+                // A real apply may move the configuration generation itself. Read it on both sides,
+                // so the record of the last load can follow that move - and only that one.
+                boolean tracked = apply && (extension == null || extension.isBlank());
+                String generationBefore = tracked ? generationId(s) : null;
                 var step = s.configure().updateDatabaseConfiguration();
                 if (extension != null && !extension.isBlank()) {
                     step = step.extension(extension.trim());
@@ -1247,6 +1253,9 @@ public final class DesignerAgentGateway {
                     r.message = collected.isEmpty()
                             ? "nothing to apply - the database configuration was already up to date"
                             : "applied " + collected.size() + " structure change(s)";
+                }
+                if (tracked) {
+                    carrySnapshot(agent, generationBefore, generationIdAfter(s));
                 }
                 return r;
             });
@@ -1390,7 +1399,36 @@ public final class DesignerAgentGateway {
         /** A platform question the database-configuration step stopped on, if any. */
         public String question;
         public final List<String> questionOptions = new ArrayList<>();
+        /** full, partial or skipped: how much of the export went into the infobase, and why. */
+        public String loadMode;
+        public String loadReason;
+        /** Files in the export, and how many of them a partial load sent; -1 when not counted. */
+        public int totalFiles = -1;
+        public int changedFiles = -1;
+        /** The first of the files a partial load sent. */
+        public final List<String> changedSample = new ArrayList<>();
+        public long exportMillis = -1;
+        public long loadMillis = -1;
+        /** The infobase's configuration generation id before and after the load, when known. */
+        public String generationBefore;
+        public String generationAfter;
+        /**
+         * Where the record of the last load is kept, and what became of it in this call: found or not
+         * before the load, kept or not after it. A record that silently fails to be kept turns every
+         * later load into a full one with nothing saying why.
+         */
+        public String loadRecord;
+        public String loadRecordState;
+        /**
+         * Set when a lost infobase connection made the load run a second time, with how far the first
+         * attempt had got. Only the last attempt is reported otherwise, and a repeat that nobody sees
+         * is exactly how a record of the last load once went missing without a trace.
+         */
+        public String loadRepeated;
     }
+
+    /** How many of the files a partial load sent are named in its result. */
+    private static final int CHANGED_SAMPLE = 20;
 
     /**
      * Load an EDT project into an infobase and, unless told otherwise, apply it to the database.
@@ -1409,10 +1447,16 @@ public final class DesignerAgentGateway {
      * <p>Loading changes the MAIN configuration only. Sessions execute the DATABASE configuration, so
      * {@code updateDatabaseConfig} (on by default) applies it afterwards - leaving it off is how a
      * caller ends up with an infobase that holds the new code and runs the old.
+     *
+     * <p>The configuration is loaded file by file when that is provably safe. The export is whole every
+     * time, but only the files that differ from the last load's export reach the infobase
+     * ({@code --partial --list-file}): a change of one module costs that module, not minutes of the whole
+     * configuration. What counts as provably safe, and why every doubt ends in a full load, is in
+     * {@link LoadPlan}; {@code fullLoad} skips the comparison. An extension is always loaded whole.
      */
     public LoadProjectResult loadProject(String projectName, String infobase, String extension,
             String sessionTermination, String user, String password, String platformVersion,
-            String answer, boolean updateDatabaseConfig, boolean apply) {
+            String answer, boolean updateDatabaseConfig, boolean fullLoad, boolean apply) {
         LoadProjectResult r = new LoadProjectResult();
         r.project = projectName;
         r.infobase = infobase;
@@ -1452,6 +1496,10 @@ public final class DesignerAgentGateway {
         r.platform = agent.platformVersion;
         r.plan = "Export " + projectName + " to designer XML, load it into " + agent.infobase
                 + (r.extension == null ? " as the configuration" : " as extension " + r.extension)
+                + (r.extension == null && !fullLoad
+                        ? " - only the files changed since this bridge's last load when that is provably "
+                          + "safe, otherwise all of it"
+                        : "")
                 + (updateDatabaseConfig ? ", then apply the database configuration" : "");
         if (!apply) {
             r.ok = true;
@@ -1461,7 +1509,21 @@ public final class DesignerAgentGateway {
 
         agent.lock.lock();
         try {
+            String[] stage = {null};
             ExtensionLoadOutcome outcome = withSession(agent, session -> {
+                // withSession runs the body a second time only when the infobase connection was lost.
+                if (stage[0] != null) {
+                    r.loadRepeated = "the infobase connection was lost while " + stage[0]
+                            + "; the agent reconnected and the load ran again from the start";
+                }
+                stage[0] = "starting";
+                // A retried first attempt starts over: what the first one found no longer holds.
+                r.loadMode = null;
+                r.loadReason = null;
+                r.changedFiles = -1;
+                r.changedSample.clear();
+                r.loadRecord = null;
+                r.loadRecordState = null;
                 // The agent gives each SSH user a subdirectory of its own inside /AgentBaseDir, and
                 // only the platform knows the layout - it asks the agent for its version and reads
                 // agentbasedir.json. Note the overload: the first argument of the two-argument form
@@ -1470,9 +1532,18 @@ public final class DesignerAgentGateway {
                 Path userDir = com._1c.g5.designer.ssh.client.integration.UserDirectoryProvider
                         .get(session, Path.of(agent.baseDir), agent.user);
                 String name = "edtbridge-load-" + java.util.UUID.randomUUID();
+                // The generation is read first: a lost connection then fails the attempt before the
+                // export is spent and before anything is decided on it.
+                Path snapshot = r.extension == null ? snapshotFile(agent) : null;
+                if (snapshot != null) {
+                    stage[0] = "reading the infobase's configuration generation";
+                    r.generationBefore = generationId(session);
+                }
+                stage[0] = "exporting the project";
                 Path exportDir = userDir.resolve(name);
                 Files.createDirectories(exportDir);
                 try {
+                    long exportStarted = System.nanoTime();
                     com.google.inject.Injector injector = GatewaySupport.exportInjector();
                     if (injector == null) {
                         r.message = "export injector unavailable (com._1c.g5.v8.dt.export not loaded)";
@@ -1489,12 +1560,80 @@ public final class DesignerAgentGateway {
                         return ExtensionLoadOutcome.FAILED;
                     }
 
-                    var load = session.configure().importXmlToInfobase(Path.of(name));
+                    r.exportMillis = millisSince(exportStarted);
+
+                    // Which files to send. The export is whole every time; it is compared with the
+                    // record of the last load, and LoadPlan decides when sending only the difference
+                    // is safe.
+                    LoadSnapshot export = LoadSnapshot.of(exportDir);
+                    export.target = LoadSnapshot.target(agent.connectionString, r.extension);
+                    export.platformVersion = agent.platformVersion;
+                    LoadPlan plan;
                     if (r.extension != null) {
-                        load = load.extension(r.extension);
+                        plan = LoadPlan.full("an extension is loaded whole - only the configuration is "
+                                + "loaded file by file", export.files.size());
+                    } else if (snapshot == null) {
+                        plan = LoadPlan.full("the workspace has no state location to keep the record of a "
+                                + "load in", export.files.size());
+                    } else {
+                        r.loadRecord = snapshot.toString();
+                        boolean present = Files.isRegularFile(snapshot);
+                        LoadSnapshot previous = present ? LoadSnapshot.read(snapshot) : null;
+                        if (present && previous == null) {
+                            r.loadRecordState = "unreadable before the load";
+                            plan = LoadPlan.full("the record of the earlier load is there but cannot be read "
+                                    + "as one", export.files.size());
+                        } else {
+                            r.loadRecordState = present ? "read before the load" : "none before the load";
+                            plan = LoadPlan.decide(previous, export, r.generationBefore, fullLoad);
+                        }
                     }
-                    List<com._1c.g5.designer.ssh.client.operation.ILoadIssue> issues =
-                            load.exec(Duration.ofHours(4));
+                    r.totalFiles = plan.total;
+                    r.loadReason = plan.reason;
+                    if (plan.mode == LoadPlan.Mode.SKIP) {
+                        r.loadRecordState += "; nothing was loaded, so it stands as it was";
+                        r.loadMode = "skipped";
+                        r.issues.clear();
+                        r.ok = true;
+                        r.message = "nothing to load into " + agent.infobase + ": " + plan.reason;
+                        return ExtensionLoadOutcome.LOADED;
+                    }
+                    // The old record stays until a new one replaces it. Should this load not go
+                    // through, the platform rolls it back and the record still describes the infobase;
+                    // should it go through and no new record follow - the process killed, the record
+                    // not writable - the load has moved the generation, and the old record no longer
+                    // matches. Deleting it up front bought nothing on top of that, and a lost
+                    // connection right after the deletion made the repeated attempt find no record.
+                    stage[0] = "loading";
+                    long loadStarted = System.nanoTime();
+                    List<com._1c.g5.designer.ssh.client.operation.ILoadIssue> issues = null;
+                    if (plan.mode == LoadPlan.Mode.PARTIAL) {
+                        try {
+                            issues = loadPartial(session, userDir, name, plan.changed);
+                            r.loadMode = "partial";
+                            r.changedFiles = plan.changed.size();
+                            plan.changed.stream().limit(CHANGED_SAMPLE).forEach(r.changedSample::add);
+                        } catch (Exception partialFailed) {
+                            if (connectionLost(partialFailed)) {
+                                throw partialFailed;
+                            }
+                            // A failed partial load rolls the main configuration back to the last saved
+                            // one (Developer guide 2.17.5.3.1), so a full load now starts from known
+                            // ground.
+                            r.loadReason = "the partial load of " + plan.changed.size() + " file(s) failed ("
+                                    + describe(partialFailed) + "); the platform rolled it back, and the "
+                                    + "configuration was loaded whole";
+                        }
+                    }
+                    if (r.loadMode == null) {
+                        var load = session.configure().importXmlToInfobase(Path.of(name));
+                        if (r.extension != null) {
+                            load = load.extension(r.extension);
+                        }
+                        issues = load.exec(Duration.ofHours(4));
+                        r.loadMode = "full";
+                    }
+                    r.loadMillis = millisSince(loadStarted);
                     r.issues.clear();  // a retried first attempt must not double the list
                     if (issues != null) {
                         for (com._1c.g5.designer.ssh.client.operation.ILoadIssue issue : issues) {
@@ -1503,8 +1642,33 @@ public final class DesignerAgentGateway {
                     }
                     r.ok = true;
                     r.applied = true;
-                    r.message = "loaded into " + agent.infobase
+                    r.message = ("partial".equals(r.loadMode)
+                                    ? "loaded " + r.changedFiles + " changed file(s) of " + r.totalFiles
+                                      + " into "
+                                    : "loaded into ")
+                            + agent.infobase
                             + (r.issues.isEmpty() ? "" : " with " + r.issues.size() + " issue(s)");
+
+                    // What the infobase holds now, and the generation the load left it at. Without a
+                    // new record the next load is whole - slower, never wrong - but the caller is told.
+                    if (snapshot != null) {
+                        stage[0] = "reading the generation the load left";
+                        r.generationAfter = generationIdAfter(session);
+                        if (r.generationAfter == null) {
+                            r.loadRecordState += "; not written after the load: the infobase's "
+                                    + "configuration generation could not be read, so the next load is whole";
+                        } else {
+                            export.generation = r.generationAfter;
+                            try {
+                                export.write(snapshot);
+                                r.loadRecordState += "; kept after the load";
+                            } catch (IOException notKept) {
+                                r.loadRecordState += "; NOT written after the load ("
+                                        + notKept.getClass().getSimpleName() + ": " + notKept.getMessage()
+                                        + "), so the next load is whole";
+                            }
+                        }
+                    }
                     return ExtensionLoadOutcome.LOADED;
                 } finally {
                     IbcmdGateway.deleteRecursively(exportDir);
@@ -1725,6 +1889,116 @@ public final class DesignerAgentGateway {
         String base = GatewaySupport.describeCause(ex);
         StackTraceElement[] frames = ex.getStackTrace();
         return frames.length == 0 ? base : base + " at " + frames[0];
+    }
+
+    /**
+     * Load only the listed files ({@code --partial --list-file}). The list is written beside the export
+     * directory, in the agent's user directory: file arguments are resolved against it and absolute
+     * paths are not accepted (Administrator guide 4.7.6.7). Its lines are relative to the export.
+     */
+    private static List<com._1c.g5.designer.ssh.client.operation.ILoadIssue> loadPartial(
+            IDesignerSession session, Path userDir, String dirName, List<String> files) throws Exception {
+        String listName = dirName + ".list";
+        Path list = userDir.resolve(listName);
+        Files.writeString(list, LoadPlan.listFile(files, java.io.File.separatorChar), StandardCharsets.UTF_8);
+        try {
+            return session.configure().importXmlToInfobase(Path.of(dirName))
+                    .partial()
+                    .listFile(Path.of(listName))
+                    .exec(Duration.ofHours(4));
+        } finally {
+            Files.deleteIfExists(list);
+        }
+    }
+
+    /**
+     * The infobase's configuration generation id (the agent's {@code config generation-id}), or null
+     * when it cannot be had. It is only ever compared for equality: the platform changes it on every
+     * change of the configuration (Administrator guide 7.4.4, {@code /GetConfigGenerationID}). Null makes
+     * the next plan a full load, which is the safe direction.
+     *
+     * <p>A lost infobase connection is thrown rather than turned into null. It is not an unknown
+     * generation: withSession reconnects and runs the operation again, and nothing gets decided on a
+     * guess in between. Read this way only BEFORE the work - see {@link #generationIdAfter}.
+     */
+    private static String generationId(IDesignerSession session) throws Exception {
+        try {
+            String id = session.configure().retrieveGenerationId().exec(Duration.ofMinutes(5));
+            return id == null || id.isBlank() ? null : id.trim();
+        } catch (Exception failed) {
+            if (connectionLost(failed)) {
+                throw failed;
+            }
+            return null;
+        }
+    }
+
+    /**
+     * The generation once the work is done. Nothing is thrown from here: a repeat at this point would
+     * run the finished work a second time, while an unknown generation only makes the next load whole.
+     */
+    private static String generationIdAfter(IDesignerSession session) {
+        try {
+            return generationId(session);
+        } catch (Exception lost) {
+            return null;
+        }
+    }
+
+    /**
+     * After the database configuration was applied: when the record of the last load still names the
+     * generation the infobase had right before the apply, the apply is what moved it, and the record
+     * follows. In any other case the record stays as it is, and the next load sees the mismatch and
+     * loads whole.
+     */
+    private static void carrySnapshot(Agent agent, String before, String after) {
+        if (before == null || after == null || before.equals(after)) {
+            return;
+        }
+        Path file = snapshotFile(agent);
+        LoadSnapshot s = LoadSnapshot.read(file);
+        if (s == null || !before.equals(s.generation)) {
+            return;
+        }
+        s.generation = after;
+        try {
+            s.write(file);
+        } catch (IOException notKept) {
+            // The record keeps the old generation, which no longer matches: the next load is whole.
+        }
+    }
+
+    /** Where the record of the last load of the configuration into this agent's infobase is kept. */
+    private static Path snapshotFile(Agent agent) {
+        Path dir = snapshotDir();
+        return dir == null
+                ? null
+                : dir.resolve(LoadSnapshot.fileName(LoadSnapshot.target(agent.connectionString, null)));
+    }
+
+    /**
+     * The bundle's state location in the workspace metadata. Not the agent's own directory: an agent
+     * stops after half an hour of idling and takes its directory with it, and the record of a load has
+     * to outlive both the agent and EDT.
+     */
+    private static Path snapshotDir() {
+        try {
+            org.osgi.framework.Bundle bundle =
+                    org.osgi.framework.FrameworkUtil.getBundle(DesignerAgentGateway.class);
+            if (bundle == null) {
+                return null;
+            }
+            Path dir = org.eclipse.core.runtime.Platform.getStateLocation(bundle).toFile().toPath()
+                    .resolve("load-snapshots");
+            Files.createDirectories(dir);
+            return dir;
+        } catch (Exception | LinkageError none) {
+            return null;
+        }
+    }
+
+    private static long millisSince(long startNanos) {
+        return (System.nanoTime() - startNanos) / 1_000_000;
     }
 
     /** One operation against the agent's session. */
