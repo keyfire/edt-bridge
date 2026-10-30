@@ -26,7 +26,10 @@ if ($JdkHome) {
 }
 New-Item -ItemType Directory -Force -Path $Output | Out-Null
 $sources = @(Get-ChildItem (Join-Path $root 'tests\sdk') -Recurse -Filter '*.java' | ForEach-Object { $_.FullName })
-$classpath = "$Output;$Classes;$Junit;$Pool\*"
+# The wildcard can select an older Guava that is incompatible with the installed Xtext/Guice.
+$guava = Get-ChildItem -LiteralPath $Pool -Filter 'com.google.guava_*.jar' |
+    Sort-Object Name -Descending | Select-Object -First 1 -ExpandProperty FullName
+$classpath = "$Output;$Classes;$Junit;$guava;$Pool\*"
 & $javac --release 17 -encoding UTF-8 -cp $classpath -d $Output @sources
 if ($LASTEXITCODE -ne 0) { throw "SDK test compilation failed. Check -JdkHome. Output: $Output" }
 & $java -cp $classpath org.junit.platform.console.ConsoleLauncher execute --scan-class-path $Output --details=summary --disable-banner

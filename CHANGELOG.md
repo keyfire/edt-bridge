@@ -13,6 +13,25 @@ Every entry ends with a link to the pull request it came from -
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
+## 2026-10-30 – 0.30.0
+
+### Added
+
+- `edt_metadata_details` returns scheduled-job properties, including model defaults that are omitted from `.mdo` files.
+  ([#57](https://github.com/keyfire/edt-bridge/pull/57))
+
+### Changed
+
+- JSON examples in the Russian and English tool guides use multiline formatting.
+  ([#57](https://github.com/keyfire/edt-bridge/pull/57))
+
+### Fixed
+
+- Metadata reference search finds tables in dynamic-list queries with data-composition `WHERE` and `JOIN` extensions. Invalid queries retain incomplete-coverage diagnostics.
+  ([#57](https://github.com/keyfire/edt-bridge/pull/57))
+- Auto-start reports early CLI exits with their code and a bounded output tail instead of waiting for the readiness timeout. Failed starts can be retried; the detached CLI remains independent of short-lived wrapper commands.
+  ([#57](https://github.com/keyfire/edt-bridge/pull/57))
+
 ## 2026-10-28 – 0.29.1, 0.29.0, 0.28.0
 
 ### Added

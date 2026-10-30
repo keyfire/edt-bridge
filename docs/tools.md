@@ -24,7 +24,7 @@ Together the tools close the whole cycle without leaving MCP: create, develop, b
 |------|-----------------|
 | `edt_projects` · `edt_project_errors` | Workspace projects and validation problems from Eclipse and EDT checks. `modelReady` reports whether the BM model and derived data are ready; `complete=false` marks a partial snapshot and must not be treated as a clean result. Filter by `fqn`, `modulePath` or `severity`; `countOnly` returns counts and `brief` returns one line per problem. `modulePath` includes EDT markers traced to source files; unresolved markers are counted and reported with a hint. Form filters exclude sibling forms. `stale` identifies markers older than their source and `unsynchronized` identifies disk changes not yet read by the workspace. `refresh=true` rereads the scope and builds the project; `waitSeconds` sets the validation wait (1-600, default 120). A timeout returns current markers with `refreshed.settled=false`. Include WARNING when checking generated code: EDT reports some undefined methods as warnings. |
 | `edt_check_info` | Returns a validation check's description, non-compliant and compliant examples, and links to 1C development standards in Russian or English. It complements `edt_project_errors`, which identifies the triggered check. Search by check ID or problem message. A check with a short-code ID is found by title. |
-| `edt_metadata_objects` · `edt_metadata_details` | Top-level metadata objects, optionally filtered by type (`Catalog`, `Document`, ...) and by a name substring. Then one object's core properties and its structure: attributes, tabular sections, forms, commands, templates, dimensions, resources, enum values, each attribute with its value type. Common attributes include usage composition, auto-use and separator settings; event subscriptions include source types, event and handler. |
+| `edt_metadata_objects` · `edt_metadata_details` | Top-level metadata objects, optionally filtered by type (`Catalog`, `Document`, ...) and by a name substring. Then one object's core properties and its structure: attributes, tabular sections, forms, commands, templates, dimensions, resources, enum values, each attribute with its value type. Common attributes include usage composition, auto-use and separator settings; event subscriptions include source types, event and handler. Scheduled jobs include `use`, `methodName`, `predefined`, `key`, `restartCountOnFailure` and `restartIntervalOnFailure` in `properties`, including model defaults. Values are strings; these describe metadata, not the current scheduler state. |
 | `edt_find_references` · `edt_outgoing_calls` · `edt_outgoing_structures` | Return incoming references and outgoing calls. Metadata references come from EDT's cross-reference index; `method` selects BSL call sites of `CommonModule.X.method`. Outgoing calls list the methods called by a module, method, or form one level out, with call-site counts and an ExtAPI layer flag. The third tool extracts the recognized top-level keys of the `Структура` passed to each qualified outgoing call. Method search also accepts literal object-manager calls such as `Catalogs.Items.Method(...)`; `moduleType` does not narrow this search. Metadata mode also reports `queryReferences` from dynamic-list and DCS dataset queries; `queryCoverageComplete` and errors report the limits of that separate scan. Method mode searches BSL call sites. |
 | `edt_module_text` · `edt_go_to_definition` · `edt_symbol_info` | Return BSL module text or one method, including procedure and function names and signatures, addressed by FQN or modulePath. Also return a symbol's definition at a position, including kind, name, owning object, and location, or the element and computed expression value types at a position. |
 | `edt_search_modules` | Full-text search across a project's BSL modules, by substring or regular expression, with an optional path filter. It reads through Eclipse's file buffers, so a module open in an editor is searched as it stands right now, unsaved edits included. `edt_find_references` answers "who calls this method"; this one answers "where does this text appear". Regular expressions use Unicode word classes and case folding. Texts in `Form.form` and `Template.dcs` are outside the BSL search. |
@@ -32,6 +32,11 @@ Together the tools close the whole cycle without leaving MCP: create, develop, b
 | `edt_validate_query` | Checks a 1C query against the project's live metadata: syntax and semantics, so unknown tables and fields and type errors come back with positions. Takes the query text, or a module address (`modulePath`, optionally one `method`). Given a module, the bridge pulls the `\|`-framed query literals out of the live module itself and checks each one. The batch is followed as a whole too, which EDT does not do. A query that reads a temporary table no earlier query puts there (`ПОМЕСТИТЬ`), or one an earlier query has dropped, makes the text invalid. For a module literal that is an `INFO` note instead, because the table may come from a shared temporary table manager or from another literal. |
 | `edt_form_structure` · `edt_form_render` · `edt_picture_export` | Return a managed form's structure, its image, and the content of a configuration picture. The structure includes a tree of fields, groups, tables, buttons, and decorations. Items include data bindings, static visible/enabled/readOnly, event handlers, input-field properties, command-to-button links, and conditional appearance. Form attributes, commands, parameters, and handlers are also returned. EDT's offscreen renderer renders the form to PNG with a choice of interface variant and theme. For CommonPicture, the content of Picture.zip is returned. |
 | `edt_platform_help` | Search the 1C:Enterprise platform Syntax Helper supplied with EDT by name or read a page as text. The Russian and English API reference covers objects, methods, properties, and events. |
+
+Dynamic-list queries are first parsed with the EDT Ql language. A syntax error triggers a second
+parse with QlDcs, which supports data-composition extensions such as `{WHERE ...}` and
+`{LEFT JOIN ...}`. If parsing still fails, `queryFailures` reports the failure and
+`queryCoverageComplete` remains false. Use `edt_search_queries` to search those query fields by text.
 
 ### Write
 
@@ -89,7 +94,13 @@ the selected list are refused.
 For example, preview a resource addition:
 
 ```json
-{"projectName":"Demo","ownerFqn":"InformationRegister.Versions","kind":"resource","name":"Version","type":"Строка(20)"}
+{
+  "projectName": "Demo",
+  "ownerFqn": "InformationRegister.Versions",
+  "kind": "resource",
+  "name": "Version",
+  "type": "Строка(20)"
+}
 ```
 
 To change that field, call `edt_modify_attribute` with the same owner, name and kind,
@@ -214,7 +225,18 @@ for the wrong item type are refused. `fieldType` selects `InputField`, `RadioBut
 `CheckBoxField`. `choiceList` replaces the choices of an input or radio field:
 
 ```json
-{"choiceList":[{"value":"all","titleRu":"Все"},{"value":"selected","titleRu":"Выбранные"}]}
+{
+  "choiceList": [
+    {
+      "value": "all",
+      "titleRu": "Все"
+    },
+    {
+      "value": "selected",
+      "titleRu": "Выбранные"
+    }
+  ]
+}
 ```
 
 Choice values can be strings, numbers or booleans; references and enum values are not supported.

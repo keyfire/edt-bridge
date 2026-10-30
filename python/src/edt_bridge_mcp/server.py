@@ -5,8 +5,8 @@ configured with an HTTP URL simply loses the server whenever EDT is not running.
 wrapper is what the client talks to instead (stdio, install via pipx):
 
 - if the bridge port is alive (a GUI EDT or a headless one), every request is forwarded;
-- if not, it AUTO-STARTS a headless EDT (1cedtcli with a keepalive pipe - the same recipe
-  as scripts/run-headless.ps1) and forwards once it is ready;
+- if not, it starts a detached supervisor that keeps 1cedtcli stdin open, captures a
+  bounded output tail and reports early exits, then forwards once EDT is ready;
 - `initialize` / `tools/list` never block a client session: while the backend is starting,
   `tools/list` returns the packaged catalog for this wrapper version, plus local tools.
   Once EDT starts, the live bridge supplies its current descriptors.
@@ -110,7 +110,7 @@ def log(message: str) -> None:
 
 def write_headless_batch(path: Path, cli: Path, workspace: Path, token: str = "",
                          allow_evaluate: str = "", port: int | None = None) -> Path:
-    """Write the batch file the Windows auto-start runs, and answer where it landed.
+    """Write the legacy Windows headless batch recipe, and return its path.
 
     A batch file wants CRLF, so the lines are joined with it. The `newline=""` beside the
     encoding is the other half of that, and it was missing: `write_text` opens in TEXT mode and
@@ -158,6 +158,9 @@ class Backend:
         self._active_port = self.port  # the port the live bridge was last found on
         self._start_lock = threading.Lock()
         self._starting = False
+        self._headless_process = None
+        self._headless_state = None
+        self._headless_output = None
 
     # -- probing ---------------------------------------------------------
 
@@ -385,8 +388,12 @@ class Backend:
         if not self.autostart:
             return False, "bridge is not running and autostart is disabled (EDT_BRIDGE_AUTOSTART=0)"
         with self._start_lock:
-            already = self._starting
-            if not already:
+            if self._starting:
+                failure = self._startup_failure()
+                if failure:
+                    self._starting = False
+                    return False, failure
+            if not self._starting:
                 ok, msg = self._launch_headless()
                 if not ok:
                     return False, msg
@@ -394,16 +401,49 @@ class Backend:
         if not wait:
             return False, "starting"
         deadline = time.monotonic() + self.start_timeout
-        while time.monotonic() < deadline:
+        while True:
+            with self._start_lock:
+                failure = self._startup_failure()
+                if failure:
+                    self._starting = False
+                    return False, failure
             if self.is_ready():
                 self._starting = False
                 return True, "started"
-            time.sleep(3)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            time.sleep(min(1, remaining))
         return False, (
             f"headless EDT did not become ready in {self.start_timeout}s "
             "(first model load of a big workspace can take longer – retry, or raise "
             "EDT_BRIDGE_START_TIMEOUT)"
         )
+
+    def _startup_failure(self) -> str | None:
+        """Read the supervised CLI exit, not the lifetime of its stdin feeder."""
+        if self._headless_process is None:
+            return None
+        # Poll first: an exited supervisor has already published its final child status.
+        code = self._headless_process.poll()
+        state = {}
+        try:
+            state = json.loads(self._headless_state.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            pass
+        if "exitCode" in state:
+            message = f"headless EDT exited with exit code {state['exitCode']} before becoming ready"
+        elif state.get("error"):
+            message = f"failed to launch 1cedtcli: {state['error']}"
+        elif code is not None:
+            message = f"headless EDT supervisor exited with exit code {code} before becoming ready"
+        else:
+            return None
+        try:
+            tail = self._headless_output.read_bytes()[-16384:].decode("utf-8", errors="replace").strip()
+        except OSError:
+            tail = ""
+        return message + (f"\nLast EDT output:\n{tail}" if tail else "")
 
     def _pids_of(self, image: str) -> list[int]:
         """Live pids of one EDT image - a list, not a flag: a hung process is killed by pid.
@@ -584,7 +624,7 @@ class Backend:
         )
 
     def _launch_headless(self) -> tuple[bool, str]:
-        """Start 1cedtcli with the keepalive pipe (the run-headless recipe), detached."""
+        """Start a detached supervisor that holds the CLI stdin and reports its exit."""
         if self._headless_cli_running():
             return True, "a headless 1cedtcli is already starting – waiting for it"
         owner = self._workspace_owner()
@@ -624,27 +664,23 @@ class Backend:
         ws = Path(self.workspace)
         log(f"starting headless EDT: {cli} -data {ws}")
         try:
-            if os.name == "nt":
-                bat = write_headless_batch(
-                    Path(tempfile.gettempdir()) / f"edtbridge-headless-{os.getpid()}-{self.port}.bat", cli, ws,
-                    self.token or "", os.environ.get("EDT_BRIDGE_ALLOW_EVALUATE") or "",
-                    port=self.port,
-                )
-                creation = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
-                subprocess.Popen(
-                    ["cmd", "/c", str(bat)], cwd=str(cli.parent),
-                    creationflags=creation,
-                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                )
-            else:
-                shell = (
-                    f'(echo version; while :; do sleep 3600; done) | {shlex.quote(str(cli))} '
-                    f'-data {shlex.quote(str(ws))} -nl en_US -vmargs -Dedt.bridge.port={self.port}'
-                )
-                subprocess.Popen(
-                    ["sh", "-c", shell], cwd=str(cli.parent), start_new_session=True,
-                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                )
+            folder = Path(tempfile.mkdtemp(prefix="edtbridge-headless-"))
+            self._headless_state = folder / "state.json"
+            self._headless_output = folder / "output.log"
+            command = [sys.executable, str(Path(__file__).with_name("headless.py")),
+                       "--state", str(self._headless_state), "--output", str(self._headless_output),
+                       "--", str(cli), "-data", str(ws), "-nl", "en_US",
+                       "-vmargs", f"-Dedt.bridge.port={self.port}"]
+            environment = os.environ.copy()
+            if self.token:
+                environment["EDT_BRIDGE_TOKEN"] = self.token
+            options = ({"creationflags": subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP}
+                       if os.name == "nt" else {"start_new_session": True})
+            self._headless_process = subprocess.Popen(
+                command, cwd=str(cli.parent), env=environment,
+                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                **options,
+            )
         except OSError as exc:
             return False, f"failed to launch 1cedtcli: {exc}"
         return True, "launched"
@@ -652,14 +688,28 @@ class Backend:
     # -- handing the workspace over to the GUI ---------------------------
 
     def _keepalive_pids(self) -> list[int]:
-        """The shell that feeds the headless CLI its keepalive stdin, and its ping.
+        """The supervisor or legacy shell that holds the headless CLI stdin open.
 
         It is the PARENT of 1cedtcli, so killing the tree below the CLI does not reach it, and
         while it lives it keeps the dropins jar locked. Matched by command line - the same
         marker scripts/toggle-headless.ps1 uses.
         """
+        if self._headless_process is not None and self._headless_process.poll() is None:
+            return [self._headless_process.pid]
         if not _WINDOWS:
-            return []
+            found = []
+            for process in self._edt_processes():
+                try:
+                    args = shlex.split(process.get("CommandLine") or "")
+                    boundary = args.index("--")
+                    if (any(Path(arg).name == "headless.py" for arg in args[:boundary])
+                            and any("edtbridge-headless-" in arg for arg in args[:boundary])
+                            and self._process_matches({"CommandLine": shlex.join(args[boundary + 1:])},
+                                                      CLI_IMAGE, match_port=True)):
+                        found.append(process["ProcessId"])
+                except (ValueError, KeyError):
+                    continue
+            return found
         # $PID excludes the query itself: the pattern we look for is part of THIS command line,
         # so without it the shell reports - and force would kill - its own process.
         query = (

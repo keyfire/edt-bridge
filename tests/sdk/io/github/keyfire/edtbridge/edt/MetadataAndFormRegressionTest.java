@@ -67,6 +67,31 @@ class MetadataAndFormRegressionTest {
     }
 
     @Test
+    void scheduledJobReportsExplicitProperties() throws Exception {
+        ScheduledJob job = MdClassFactory.eINSTANCE.createScheduledJob();
+        job.setUse(true);
+        job.setPredefined(true);
+        job.setMethodName("CommonModule.Jobs.Run");
+        job.setKey("nightly");
+        job.setRestartCountOnFailure(3);
+        job.setRestartIntervalOnFailure(10);
+
+        MetadataReadGateway.MdDetails result = specifics(job);
+        assertEquals(Map.of("use", "true", "predefined", "true",
+                "methodName", "CommonModule.Jobs.Run", "key", "nightly",
+                "restartCountOnFailure", "3", "restartIntervalOnFailure", "10"), result.properties);
+    }
+
+    @Test
+    void scheduledJobReportsDefaultsEvenWhenNotSerialized() throws Exception {
+        ScheduledJob job = MdClassFactory.eINSTANCE.createScheduledJob();
+        MetadataReadGateway.MdDetails result = specifics(job);
+        assertEquals(Map.of("use", "false", "predefined", "false",
+                "methodName", "", "key", "",
+                "restartCountOnFailure", "0", "restartIntervalOnFailure", "0"), result.properties);
+    }
+
+    @Test
     void eventSubscriptionReportsSourceTypesEventAndHandler() throws Exception {
         EventSubscription subscription = MdClassFactory.eINSTANCE.createEventSubscription();
         TypeDescription source = McoreFactory.eINSTANCE.createTypeDescription();

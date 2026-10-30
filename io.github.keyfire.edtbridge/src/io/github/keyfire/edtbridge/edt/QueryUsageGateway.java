@@ -221,8 +221,30 @@ public final class QueryUsageGateway {
         return hit;
     }
 
+    @FunctionalInterface
+    interface QueryParser<T> { T parse(boolean dcs) throws Exception; }
+
+    static final class QuerySyntaxException extends IOException {
+        QuerySyntaxException(String message) {
+            super(message + "; use edt_search_queries for a text search");
+        }
+    }
+
+    static <T> T parseQuery(String kind, QueryParser<T> parser) throws Exception {
+        boolean dcs = kind.equals("dcs");
+        try {
+            return parser.parse(dcs);
+        } catch (QuerySyntaxException syntax) {
+            if (dcs || !kind.equals("dynamicList")) throw syntax;
+            return parser.parse(true);
+        }
+    }
+
     private List<Hit> tableReferences(Query query, String fqn) throws Exception {
-        boolean dcs = query.field().kind().equals("dcs");
+        return parseQuery(query.field().kind(), dcs -> tableReferences(query, fqn, dcs));
+    }
+
+    private List<Hit> tableReferences(Query query, String fqn, boolean dcs) throws Exception {
         String bundleName = dcs ? "com._1c.g5.v8.dt.ql.dcs.ui" : "com._1c.g5.v8.dt.ql.ui";
         String activatorName = dcs ? "com._1c.g5.v8.dt.ql.dcs.ui.internal.QlDcsActivator"
                 : "com._1c.g5.v8.dt.ql.ui.internal.QlActivator";
@@ -240,7 +262,13 @@ public final class QueryUsageGateway {
         set.getResources().add(resource);
         try {
             resource.load(new ByteArrayInputStream(query.field().text().getBytes(StandardCharsets.UTF_8)), set.getLoadOptions());
-            if (!resource.getErrors().isEmpty()) throw new IOException("query syntax could not be parsed: " + resource.getErrors().get(0).getMessage());
+            if (!resource.getErrors().isEmpty()) {
+                String message = "query could not be parsed: " + resource.getErrors().get(0).getMessage();
+                if (resource.getParseResult() != null && resource.getParseResult().hasSyntaxErrors()) {
+                    throw new QuerySyntaxException(message);
+                }
+                throw new IOException(message);
+            }
             List<Hit> out = new ArrayList<>();
             String[] lines = query.field().text().split("\\R", -1);
             for (var iterator = resource.getAllContents(); iterator.hasNext();) {

@@ -84,6 +84,14 @@ flag twin, documented in [Commands](/cli).
 Environment variables and `-Dedt.bridge.*` properties supplied at launch take precedence over
 EDT's preference page. The wrapper uses them to configure a headless instance.
 
+
+During auto-start, a detached supervisor keeps the CLI input open and tracks the launched
+`1cedtcli` process. If the CLI exits before the bridge is ready, the wrapper reports its exit
+code and up to 16 KiB from the end of its combined stdout/stderr, decoded as UTF-8 with replacement
+for invalid bytes. The supervisor exits with the CLI, and a later call can retry the launch.
+`--start-timeout` limits the readiness wait while the CLI is still running. A timeout leaves
+the live process running; EDT also continues running after a short-lived wrapper command exits.
+
 ### Build from source
 
 Without Maven this is the quickest route: a local JDK plus the EDT pool, no network.
