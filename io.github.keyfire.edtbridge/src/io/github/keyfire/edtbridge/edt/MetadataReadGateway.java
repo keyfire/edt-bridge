@@ -43,6 +43,7 @@ import com._1c.g5.v8.dt.metadata.mdclass.CommonModule;
 import com._1c.g5.v8.dt.metadata.mdclass.CommonAttribute;
 import com._1c.g5.v8.dt.metadata.mdclass.CommonAttributeContentItem;
 import com._1c.g5.v8.dt.metadata.mdclass.EventSubscription;
+import com._1c.g5.v8.dt.metadata.mdclass.ScheduledJob;
 import com._1c.g5.v8.dt.mcore.TypeItem;
 import com._1c.g5.v8.dt.mcore.util.McoreUtil;
 import com._1c.g5.v8.dt.metadata.mdclass.ExchangePlan;
@@ -198,6 +199,14 @@ public final class MetadataReadGateway {
                 }
                 r.content.add(entry);
             }
+        }
+        if (md instanceof ScheduledJob job) {
+            r.properties.put("use", String.valueOf(job.isUse()));
+            r.properties.put("methodName", job.getMethodName() == null ? "" : job.getMethodName());
+            r.properties.put("predefined", String.valueOf(job.isPredefined()));
+            r.properties.put("key", job.getKey() == null ? "" : job.getKey());
+            r.properties.put("restartCountOnFailure", String.valueOf(job.getRestartCountOnFailure()));
+            r.properties.put("restartIntervalOnFailure", String.valueOf(job.getRestartIntervalOnFailure()));
         }
         if (md instanceof EventSubscription) {
             EventSubscription subscription = (EventSubscription) md;

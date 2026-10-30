@@ -203,8 +203,8 @@
     },
     {
       "name": "edt_metadata_details",
-      "description": "Details of a top-level metadata object from the live EDT model: core properties (type, name, uuid, comment, synonym) plus its structure grouped by feature (attributes, tabularSections, forms, commands, templates, dimensions, resources, enumValues, ...), with each attribute's value type.",
-      "descriptionRu": "Детали объекта метаданных верхнего уровня из живой модели EDT: основные свойства (тип, имя, uuid, комментарий, синоним) и структура по группам (реквизиты, табличные части, формы, команды, макеты, измерения, ресурсы, значения перечисления, ...), с типом значения каждого реквизита.",
+      "description": "Details of a top-level metadata object from the live EDT model: core properties (type, name, uuid, comment, synonym) plus its structure grouped by feature (attributes, tabularSections, forms, commands, templates, dimensions, resources, enumValues, ...), with each attribute's value type. ScheduledJob properties include use, methodName, predefined, key, restartCountOnFailure and restartIntervalOnFailure, including model defaults; property values are strings.",
+      "descriptionRu": "Детали объекта метаданных верхнего уровня из живой модели EDT: основные свойства (тип, имя, uuid, комментарий, синоним) и структура по группам (реквизиты, табличные части, формы, команды, макеты, измерения, ресурсы, значения перечисления, ...), с типом значения каждого реквизита. Для ScheduledJob в properties возвращаются use, methodName, predefined, key, restartCountOnFailure и restartIntervalOnFailure, включая значения модели по умолчанию; значения свойств строковые.",
       "inputSchema": {
         "type": "object",
         "properties": {
