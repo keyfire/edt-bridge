@@ -26,6 +26,57 @@ import org.eclipse.ui.IEditorInput;
 import org.eclipse.ui.part.FileEditorInput;
 
 class HtmlTemplateRegressionTest {
+    @Test void checkedDispatchRethrowsRuntimeFailureConsumedByDispatcher() {
+        int[] calls = {0};
+        HtmlTemplateGateway.dispatchChecked(Runnable::run, () -> calls[0]++);
+        assertEquals(1, calls[0]);
+        var failure = new IllegalArgumentException("unsaved template editor");
+        assertSame(failure, assertThrows(IllegalArgumentException.class, () ->
+            HtmlTemplateGateway.dispatchChecked(operation -> {
+                try { operation.run(); } catch (RuntimeException ignored) {}
+            }, () -> { throw failure; })));
+    }
+
+    @Test void checkedDispatchRethrowsErrorConsumedByDispatcher() {
+        var failure = new AssertionError("editor dispatch failed");
+        assertSame(failure, assertThrows(AssertionError.class, () ->
+            HtmlTemplateGateway.dispatchChecked(operation -> {
+                try { operation.run(); } catch (Error ignored) {}
+            }, () -> { throw failure; })));
+    }
+
+    @Test void swallowedExclusiveDirtyRefusalCannotReportSuccessOrWrite() {
+        var access = new MemoryAccess(); var gateway = new HtmlTemplateGateway(access);
+        access.swallowExclusiveFailure = true;
+        access.onSavedCheck = () -> {
+            if (access.savedChecks == 2) throw new IllegalArgumentException("unsaved template editor");
+        };
+        var result = gateway.replace("Demo", "CommonTemplate.Notice", "ru", "replacement",
+                ExactTextReplacement.hash(access.text), true, true);
+        assertFalse(result.ok, result.message); assertFalse(result.applied); assertFalse(result.verified);
+        assertFalse(result.writeAttempted); assertEquals(0, access.writes); assertEquals("old\r\n", access.text);
+        assertTrue(result.message.contains("unsaved template editor"), result.message);
+    }
+
+    @Test void skippedExclusiveCallbackCannotReportSuccessOrWrite() {
+        var access = new MemoryAccess(); var gateway = new HtmlTemplateGateway(access);
+        access.skipExclusiveCallback = true;
+        var result = gateway.replace("Demo", "CommonTemplate.Notice", "ru", "replacement",
+                ExactTextReplacement.hash(access.text), true, true);
+        assertFalse(result.ok, result.message); assertFalse(result.applied); assertFalse(result.verified);
+        assertFalse(result.writeAttempted); assertEquals(0, access.writes); assertEquals("old\r\n", access.text);
+    }
+
+    @Test void swallowedPostWriteVerificationFailureStillReportsPartialFailure() {
+        var access = new MemoryAccess(); var gateway = new HtmlTemplateGateway(access);
+        access.swallowExclusiveFailure = true; access.corruptWrite = true;
+        var result = gateway.replace("Demo", "CommonTemplate.Notice", "ru", "replacement",
+                ExactTextReplacement.hash(access.text), true, true);
+        assertFalse(result.ok, result.message); assertTrue(result.applied); assertFalse(result.verified);
+        assertTrue(result.writeAttempted); assertEquals(1, access.writes);
+        assertTrue(result.message.contains("written but verification failed"), result.message);
+    }
+
     @Test void fileEditorInputsWithoutFileAdaptersStillMatchOnlyTemplateFiles() throws Exception {
         Map<String, IFile> files = new LinkedHashMap<>();
         IProject project = (IProject) Proxy.newProxyInstance(IProject.class.getClassLoader(),
@@ -274,6 +325,8 @@ class HtmlTemplateRegressionTest {
         boolean dirty;
         boolean corruptWrite;
         boolean readOnly;
+        boolean swallowExclusiveFailure;
+        boolean skipExclusiveCallback;
         Runnable onExclusive = () -> {};
         Runnable onSavedCheck = () -> {};
         HtmlTemplateGateway.Target target = new HtmlTemplateGateway.Target("Demo", "CommonTemplate.Notice",
@@ -292,7 +345,11 @@ class HtmlTemplateRegressionTest {
             if (readOnly) throw new IllegalArgumentException("template file is read-only");
         }
         public void exclusive(HtmlTemplateGateway.Target target, Runnable operation) {
-            exclusiveCalls++; onExclusive.run(); operation.run();
+            exclusiveCalls++; onExclusive.run();
+            if (skipExclusiveCallback) return;
+            try { operation.run(); } catch (RuntimeException failure) {
+                if (!swallowExclusiveFailure) throw failure;
+            }
         }
         public void write(HtmlTemplateGateway.Target target, byte[] bytes) {
             writes++; text = corruptWrite ? "unexpected writer content" : ExactTextReplacement.decode(bytes); stamp++;

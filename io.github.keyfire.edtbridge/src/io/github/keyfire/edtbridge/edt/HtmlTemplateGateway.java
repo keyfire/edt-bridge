@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Consumer;
 import org.eclipse.core.filebuffers.FileBuffers;
 import org.eclipse.core.filebuffers.ITextFileBuffer;
 import org.eclipse.core.filebuffers.LocationKind;
@@ -131,6 +132,7 @@ public final class HtmlTemplateGateway {
                         : "dry-run: exact locale replacement validated; apply requires expectedHash and force=true";
                 return result;
             }
+            Exception[] callbackFailure = {null};
             access.exclusive(target, () -> {
                 try {
                     Target current = access.resolve(projectName, fqn, language);
@@ -149,9 +151,13 @@ public final class HtmlTemplateGateway {
                     requireSameTarget(target, access.resolve(projectName, fqn, language));
                     result.verified = true;
                 } catch (Exception exception) {
-                    throw new IllegalStateException(exception);
+                    callbackFailure[0] = exception;
                 }
             });
+            if (callbackFailure[0] != null) throw callbackFailure[0];
+            if (!result.applied || !result.verified) {
+                throw new IllegalStateException("exclusive HTML replacement did not complete and verify");
+            }
             result.ok = true;
             result.message = "exact HTML locale source replaced and reread; other locales and metadata were not written";
         } catch (Exception exception) {
@@ -423,7 +429,16 @@ public final class HtmlTemplateGateway {
         if (!PlatformUI.isWorkbenchRunning()) { operation.run(); return; }
         Display display = PlatformUI.getWorkbench().getDisplay();
         if (display == null || display.isDisposed()) throw new IllegalStateException("EDT workbench is unavailable");
-        if (Display.getCurrent() == display) operation.run(); else display.syncExec(operation);
+        if (Display.getCurrent() == display) operation.run(); else dispatchChecked(display::syncExec, operation);
+    }
+
+    static void dispatchChecked(Consumer<Runnable> dispatcher, Runnable operation) {
+        Throwable[] failure = {null};
+        dispatcher.accept(() -> {
+            try { operation.run(); } catch (RuntimeException | Error exception) { failure[0] = exception; }
+        });
+        if (failure[0] instanceof RuntimeException exception) throw exception;
+        if (failure[0] instanceof Error error) throw error;
     }
 
     private static String cause(Throwable exception) {
