@@ -13,11 +13,32 @@ import com._1c.g5.v8.bm.core.IBmTransaction;
 import com._1c.g5.v8.bm.integration.IBmModel;
 import com._1c.g5.v8.bm.integration.IBmTask;
 import com._1c.g5.v8.derived.IDerivedDataManager;
+import com._1c.g5.v8.dt.form.model.FormFactory;
+import com._1c.g5.v8.dt.metadata.mdclass.MdClassFactory;
 import com.e1c.g5.v8.dt.check.ICheckScheduler;
 import com.e1c.g5.v8.dt.check.settings.ICheckProcessPreferences;
 import com.e1c.g5.v8.dt.check.settings.ICheckRepository;
 
 class ValidationSchedulerRegressionTest {
+    @Test
+    void aNestedFormResolvesItsContentWithoutATopObjectIndex() {
+        var owner = MdClassFactory.eINSTANCE.createDataProcessor(); owner.setName("Sample");
+        var metadata = MdClassFactory.eINSTANCE.createDataProcessorForm(); metadata.setName("Main");
+        var content = FormFactory.eINSTANCE.createForm(); metadata.setForm(content);
+        owner.getForms().add(metadata);
+        IBmTransaction transaction = proxy(IBmTransaction.class, (method, args) -> {
+            if (!method.equals("getTopObjectByFqn")) throw new AssertionError("unexpected transaction write: " + method);
+            return "DataProcessor.Sample".equals(args[0]) ? owner : null;
+        });
+        assertSame(content, ProjectGateway.validationObject(transaction, "DataProcessor.Sample.Form.Main"));
+        String fileTarget = ProjectGateway.validationFqn(null,
+                "src/DataProcessors/Sample/Forms/Main/Form.form");
+        assertEquals("DataProcessor.Sample.Form.Main", fileTarget);
+        assertSame(content, ProjectGateway.validationObject(transaction, fileTarget));
+        assertNull(ProjectGateway.validationObject(transaction, "DataProcessor.Sample.Form.Missing"));
+        assertNull(ProjectGateway.validationObject(transaction, "DataProcessor.Missing.Form.Main"));
+    }
+
     @Test
     void schedulesOnlyTheResolvedTopObjectInsideAReadonlyTransaction() {
         var f = new Fixture();

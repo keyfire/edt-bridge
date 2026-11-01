@@ -644,6 +644,14 @@ public final class ProjectGateway {
         return owner;
     }
 
+    static Object validationObject(IBmTransaction transaction, String fqn) {
+        Object indexed = transaction.getTopObjectByFqn(fqn);
+        if (indexed == null && fqn.contains(".Form.")) {
+            return FormWriteGateway.resolveForm(transaction, fqn);
+        }
+        return indexed;
+    }
+
     static RefreshResult revalidateObject(IProject project, String fqn, IBmModel model,
             ICheckScheduler scheduler, ICheckRepository repository, IDerivedDataManager derived,
             IProgressMonitor monitor, long timeoutMs) {
@@ -667,8 +675,8 @@ public final class ProjectGateway {
                     if (!transaction.isReadOnly()) {
                         throw new IllegalStateException("Object validation requires a read-only transaction");
                     }
-                    IBmObject object = transaction.getTopObjectByFqn(fqn);
-                    if (object == null || object.bmGetId() == IBmObject.BM_NULL_ID) {
+                    Object resolved = validationObject(transaction, fqn);
+                    if (!(resolved instanceof IBmObject object) || object.bmGetId() == IBmObject.BM_NULL_ID) {
                         result.warning = "The exact validation object was not found; "
                                 + "no whole-project check was requested.";
                         return null;
