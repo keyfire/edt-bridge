@@ -27,7 +27,7 @@ import com.google.gson.JsonObject;
  * Dry-run by default (apply=false): validates the planned change (owner resolvable, name free, type
  * parses, reference target exists) and returns the plan without writing. apply=true performs the real
  * write – builds the TypeDescription, creates the selected field and commits. Requires a configured token
- * (write tool, owner decision); the caller must verify bsl_support_status EDITABLE before apply.
+ * (write tool, owner decision); the caller must verify edt_support_status EDITABLE before apply.
  */
 public final class AddAttributeTool {
 
@@ -60,8 +60,9 @@ public final class AddAttributeTool {
                 + "\"СправочникСсылка.A, СправочникСсылка.B\" or \"Строка(10), Число(5)\""));
         props.add("synonymRu", strProp("Russian synonym (optional)"));
         props.add("comment", strProp("Comment (optional)"));
+        MetadataFieldToolOptions.properties(props);
         props.add("apply", boolProp("false (default) = dry-run: validate + return the plan, write nothing. "
-                + "true = perform the write (create the attribute and commit). Verify bsl_support_status "
+                + "true = perform the write (create the attribute and commit). Verify edt_support_status "
                 + "EDITABLE first."));
 
         JsonArray req = new JsonArray();
@@ -81,13 +82,13 @@ public final class AddAttributeTool {
                 "WRITE (Phase 2): add an attribute, register resource or dimension. Dry-run by default – validates "
                 + "(owner exists, name free across attributes/resources/dimensions, type parses, reference target exists) and returns the plan "
                 + "WITHOUT writing. apply=true performs the write (creates the selected field and commits). "
-                + "Requires a configured token. Caller must verify bsl_support_status EDITABLE before "
+                + "Requires a configured token. Caller must verify edt_support_status EDITABLE before "
                 + "any apply.");
         t.addProperty("descriptionRu",
                 "ЗАПИСЬ (Phase 2): добавить реквизит, ресурс или измерение регистра. По умолчанию dry-run – проверяет "
                 + "(объект есть, имя свободно среди реквизитов, ресурсов и измерений, тип распознан, ссылочный тип существует) и возвращает план "
                 + "БЕЗ записи. apply=true – реальная запись (создает выбранное поле и фиксирует). Требует токен. "
-                + "Перед apply вызывающий обязан проверить bsl_support_status = EDITABLE.");
+                + "Перед apply вызывающий обязан проверить edt_support_status = EDITABLE.");
         t.add("inputSchema", schema);
         return t;
     }
@@ -104,10 +105,11 @@ public final class AddAttributeTool {
         String comment = getStr(args, "comment");
         boolean apply = args.has("apply") && !args.get("apply").isJsonNull() && args.get("apply").getAsBoolean();
         try {
-            MetadataWriteGateway.AddAttrResult res = gateway.addAttribute(project, ownerFqn, name, type, synonymRu, comment, getStr(args, "kind"), apply);
+            MetadataWriteGateway.AddAttrResult res = gateway.addAttribute(project, ownerFqn, name, type, synonymRu, comment, getStr(args, "kind"), MetadataFieldToolOptions.values(args), apply);
             JsonObject o = new JsonObject();
             o.addProperty("ok", res.ok);
             o.addProperty("applied", res.applied);
+            o.add("properties", new GsonBuilder().create().toJsonTree(res.properties));
             if (res.applyPending) {
                 o.addProperty("applyPending", true);
             }

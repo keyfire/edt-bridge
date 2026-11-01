@@ -390,6 +390,67 @@
       }
     },
     {
+      "name": "edt_support_status",
+      "description": "READ: check EDT's direct-edit policy and backing resource before a write. Returns EDITABLE, READ_ONLY or UNKNOWN. Missing objects or unavailable policy return UNKNOWN. Check the object that will be changed; this is a preflight and does not lock it against subsequent changes.",
+      "descriptionRu": "ЧТЕНИЕ: проверить разрешение EDT на прямое редактирование объекта и доступность его файла для записи. Возвращает EDITABLE, READ_ONLY или UNKNOWN. Отсутствующий объект или недоступная служба дают UNKNOWN. Проверять изменяемый объект; проверка не блокирует последующие изменения.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "Open EDT project name."
+          },
+          "objectFqn": {
+            "type": "string",
+            "description": "Metadata object FQN, e.g. CommonModule.Worker or Catalog.Customers."
+          }
+        },
+        "required": [
+          "projectName",
+          "objectFqn"
+        ]
+      }
+    },
+    {
+      "name": "edt_applications",
+      "description": "READ/WRITE: list native EDT applications, associate an existing registered infobase, or start/stop a thin client for a selected infobase application. Association is idempotent and does not update the database. Stop addresses only a session started by this bridge process; a client without a returned process handle must be closed in EDT. Credentials are taken from EDT settings and omitted from replies.",
+      "descriptionRu": "ЧТЕНИЕ/ЗАПИСЬ: список штатных приложений EDT, связь проекта с уже зарегистрированной базой, запуск и остановка тонкого клиента выбранного приложения информационной базы. Повторная связь не создает дубликат и не обновляет базу. Остановка доступна только для сеанса этого процесса моста; клиент без возвращенного дескриптора нужно закрыть в EDT. Данные входа берутся из настроек EDT и в ответ не включаются.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "list (default), associate, start or stop. Mutations require apply=true and a configured token.",
+            "enum": [
+              "list",
+              "associate",
+              "start",
+              "stop"
+            ]
+          },
+          "projectName": {
+            "type": "string",
+            "description": "Existing open EDT project."
+          },
+          "infobase": {
+            "type": "string",
+            "description": "Registered infobase UUID or exact name; required for associate. No new database is created."
+          },
+          "applicationId": {
+            "type": "string",
+            "description": "Application id from list; required for start/stop."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = validate and return a plan. true = apply associate/start/stop."
+          }
+        },
+        "required": [
+          "projectName"
+        ]
+      }
+    },
+    {
       "name": "edt_form_structure",
       "description": "Structure of a managed form from the live EDT model: the visual items tree (fields, groups, tables, buttons, decorations) with their data bindings, plus the form's attributes (with value types and bounded dynamic-list customQuery/mainTable/queryText), commands, parameters and event handlers (form event -> BSL handler). Items also carry their static visible/enabled/readOnly (DESIGN values from .form – runtime BSL e.g. ПриСозданииНаСервере may override them), per-item event handlers (e.g. a table column's Selection/Выбор handler), a cellHyperlink flag, for input fields the password/choice-button design props (passwordMode / choiceButton / choiceButtonPicture – the reveal-eye secret idiom), and for buttons the wired command + representation/placement (command -> button). The form's declarative conditional appearance (УсловноеОформление: fields + filter + appearance) is returned in conditionalAppearance when present. Cleaner than parsing the serialized .form.",
       "descriptionRu": "Структура управляемой формы из живой модели EDT: дерево элементов (поля, группы, таблицы, кнопки, декорации) с их привязками к данным, а также реквизиты формы (с типами значений и настройками динамических списков customQuery/mainTable/queryText), команды, параметры и обработчики событий (событие формы -> процедура BSL). У элементов также: обработчики уровня элемента (например, обработчик Выбор у колонки таблицы), флаг cellHyperlink, у полей ввода – design-свойства пароля/кнопки выбора (passwordMode / choiceButton / choiceButtonPicture – идиома \"глазика\" раскрытия секрета) и для кнопок – привязанная команда + представление/размещение (команда -> кнопка). Декларативное условное оформление (УсловноеОформление: поля + отбор + оформление) – в conditionalAppearance, если задано. Чище, чем разбор сериализованного файла .form.",
@@ -483,8 +544,8 @@
     },
     {
       "name": "edt_add_attribute",
-      "description": "WRITE (Phase 2): add an attribute, register resource or dimension. Dry-run by default – validates (owner exists, name free across attributes/resources/dimensions, type parses, reference target exists) and returns the plan WITHOUT writing. apply=true performs the write (creates the selected field and commits). Requires a configured token. Caller must verify bsl_support_status EDITABLE before any apply.",
-      "descriptionRu": "ЗАПИСЬ (Phase 2): добавить реквизит, ресурс или измерение регистра. По умолчанию dry-run – проверяет (объект есть, имя свободно среди реквизитов, ресурсов и измерений, тип распознан, ссылочный тип существует) и возвращает план БЕЗ записи. apply=true – реальная запись (создает выбранное поле и фиксирует). Требует токен. Перед apply вызывающий обязан проверить bsl_support_status = EDITABLE.",
+      "description": "WRITE (Phase 2): add an attribute, register resource or dimension. Dry-run by default – validates (owner exists, name free across attributes/resources/dimensions, type parses, reference target exists) and returns the plan WITHOUT writing. apply=true performs the write (creates the selected field and commits). Requires a configured token. Caller must verify edt_support_status EDITABLE before any apply.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): добавить реквизит, ресурс или измерение регистра. По умолчанию dry-run – проверяет (объект есть, имя свободно среди реквизитов, ресурсов и измерений, тип распознан, ссылочный тип существует) и возвращает план БЕЗ записи. apply=true – реальная запись (создает выбранное поле и фиксирует). Требует токен. Перед apply вызывающий обязан проверить edt_support_status = EDITABLE.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -522,9 +583,22 @@
             "type": "string",
             "description": "Comment (optional)"
           },
+          "use": {
+            "type": "string",
+            "description": "Hierarchical field use: ForFolder, ForItem or ForFolderAndItem. Optional; rejected on other fields.",
+            "enum": [
+              "ForFolder",
+              "ForItem",
+              "ForFolderAndItem"
+            ]
+          },
+          "multiLine": {
+            "type": "boolean",
+            "description": "Allow multiline field input. Optional; the metadata field must support this property."
+          },
           "apply": {
             "type": "boolean",
-            "description": "false (default) = dry-run: validate + return the plan, write nothing. true = perform the write (create the attribute and commit). Verify bsl_support_status EDITABLE first."
+            "description": "false (default) = dry-run: validate + return the plan, write nothing. true = perform the write (create the attribute and commit). Verify edt_support_status EDITABLE first."
           }
         },
         "required": [
@@ -537,8 +611,8 @@
     },
     {
       "name": "edt_add_route",
-      "description": "WRITE: add a route (a URL template plus one HTTP method) to an HTTPService – the write tool for HTTP service routes, next to edt_add_attribute (attributes) and edt_add_method (module code). Dry-run by default – resolves the service, checks the template name is free and the HTTP method is valid, returns the plan WITHOUT writing. apply=true creates the url template and its method through the model (uuids generated like the other writers) and serialises the .mdo; createHandler also writes a handler stub into the service module. On an ADOPTED service of an extension the plan carries a warning: in compatibility mode 8.5.1 and below the platform refuses to load an own url template on an adopted service, and EDT validation stays silent about it. Requires a configured token. Caller must verify bsl_support_status EDITABLE before any apply.",
-      "descriptionRu": "ЗАПИСЬ: добавить маршрут (шаблон URL и один HTTP-метод) в HTTPService – инструмент записи маршрутов HTTP-сервиса, рядом с edt_add_attribute (реквизиты) и edt_add_method (код модуля). По умолчанию dry-run – находит сервис, проверяет что имя шаблона свободно и HTTP-метод допустим, возвращает план БЕЗ записи. apply=true создаёт шаблон URL и его метод через модель (uuid генерируются как у прочих инструментов записи) и сериализует .mdo; createHandler ещё и пишет заглушку обработчика в модуль сервиса. На ЗАИМСТВОВАННОМ сервисе расширения план несёт предупреждение: в режиме совместимости 8.5.1 и ниже платформа откажется загрузить собственный шаблон URL у заимствованного сервиса, а валидация EDT об этом молчит. Требует токен. Перед apply вызывающий обязан проверить bsl_support_status = EDITABLE.",
+      "description": "WRITE: add a route (a URL template plus one HTTP method) to an HTTPService – the write tool for HTTP service routes, next to edt_add_attribute (attributes) and edt_add_method (module code). Dry-run by default – resolves the service, checks the template name is free and the HTTP method is valid, returns the plan WITHOUT writing. apply=true creates the url template and its method through the model (uuids generated like the other writers) and serialises the .mdo; createHandler also writes a handler stub into the service module. On an ADOPTED service of an extension the plan carries a warning: in compatibility mode 8.5.1 and below the platform refuses to load an own url template on an adopted service, and EDT validation stays silent about it. Requires a configured token. Caller must verify edt_support_status EDITABLE before any apply.",
+      "descriptionRu": "ЗАПИСЬ: добавить маршрут (шаблон URL и один HTTP-метод) в HTTPService – инструмент записи маршрутов HTTP-сервиса, рядом с edt_add_attribute (реквизиты) и edt_add_method (код модуля). По умолчанию dry-run – находит сервис, проверяет что имя шаблона свободно и HTTP-метод допустим, возвращает план БЕЗ записи. apply=true создаёт шаблон URL и его метод через модель (uuid генерируются как у прочих инструментов записи) и сериализует .mdo; createHandler ещё и пишет заглушку обработчика в модуль сервиса. На ЗАИМСТВОВАННОМ сервисе расширения план несёт предупреждение: в режиме совместимости 8.5.1 и ниже платформа откажется загрузить собственный шаблон URL у заимствованного сервиса, а валидация EDT об этом молчит. Требует токен. Перед apply вызывающий обязан проверить edt_support_status = EDITABLE.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -576,7 +650,7 @@
           },
           "apply": {
             "type": "boolean",
-            "description": "false (default) = dry-run: validate + return the plan, write nothing. true = create the url template and method and commit. Verify bsl_support_status EDITABLE first."
+            "description": "false (default) = dry-run: validate + return the plan, write nothing. true = create the url template and method and commit. Verify edt_support_status EDITABLE first."
           }
         },
         "required": [
@@ -993,8 +1067,8 @@
     },
     {
       "name": "edt_add_form",
-      "description": "WRITE (Phase 2): create a managed form on an existing metadata object via EDT's own form generator - the engine behind the \"New form\" wizard - so the form, its items and its module are generated the way EDT would, not hand-written as XML. Dry-run by default: validates and returns the plan WITHOUT creating. apply=true creates it (owner .mdo gains the form entry, Form.form and Module.bsl are written). Additive - no force needed - but requires a configured token. Verify bsl_support_status EDITABLE before apply.",
-      "descriptionRu": "ЗАПИСЬ (Phase 2): создать управляемую форму у существующего объекта метаданных штатным генератором EDT - тем же, что стоит за мастером \"Новая форма\", - поэтому форма, её элементы и модуль получаются такими, какими их сделала бы EDT, а не собранными руками из XML. По умолчанию dry-run: проверяет и возвращает план БЕЗ создания. apply=true создаёт (в .mdo владельца появляется форма, пишутся Form.form и Module.bsl). Аддитивно - force не нужен - но требует токен. Перед apply проверить bsl_support_status = EDITABLE.",
+      "description": "WRITE (Phase 2): create a managed form on an existing metadata object via EDT's own form generator - the engine behind the \"New form\" wizard - so the form, its items and its module are generated the way EDT would, not hand-written as XML. Dry-run by default: validates and returns the plan WITHOUT creating. apply=true creates it (owner .mdo gains the form entry, Form.form and Module.bsl are written). Additive - no force needed - but requires a configured token. Verify edt_support_status EDITABLE before apply.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): создать управляемую форму у существующего объекта метаданных штатным генератором EDT - тем же, что стоит за мастером \"Новая форма\", - поэтому форма, её элементы и модуль получаются такими, какими их сделала бы EDT, а не собранными руками из XML. По умолчанию dry-run: проверяет и возвращает план БЕЗ создания. apply=true создаёт (в .mdo владельца появляется форма, пишутся Form.form и Module.bsl). Аддитивно - force не нужен - но требует токен. Перед apply проверить edt_support_status = EDITABLE.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1028,7 +1102,7 @@
           },
           "apply": {
             "type": "boolean",
-            "description": "false (default) = dry-run: validate (owner exists, carries forms, name free, form kind known) and return the plan, create nothing. true = create the form (BasicForm + generated Form content + Module.bsl). Verify bsl_support_status EDITABLE first."
+            "description": "false (default) = dry-run: validate (owner exists, carries forms, name free, form kind known) and return the plan, create nothing. true = create the form (BasicForm + generated Form content + Module.bsl). Verify edt_support_status EDITABLE first."
           }
         },
         "required": [
@@ -1423,7 +1497,7 @@
           },
           "verticalStretch": {
             "type": "boolean",
-            "description": "Vertical stretch of a group or input field. Optional."
+            "description": "Vertical stretch of a field, group or table, where supported. Optional."
           },
           "fieldType": {
             "type": "string",
@@ -1431,8 +1505,55 @@
             "enum": [
               "InputField",
               "RadioButtonField",
-              "CheckBoxField"
+              "CheckBoxField",
+              "HTMLDocumentField"
             ]
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Design-time width of a field or table. Optional; must exist on the target item."
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Design-time height of a field or table. Optional; must exist on the target item."
+          },
+          "horizontalStretch": {
+            "type": "boolean",
+            "description": "Horizontal stretch of a field, group or table, where supported. Optional."
+          },
+          "choiceButton": {
+            "type": "boolean",
+            "description": "Show the input field's choice button. Optional."
+          },
+          "clearButton": {
+            "type": "boolean",
+            "description": "Show the input field's clear button. Optional."
+          },
+          "textEdit": {
+            "type": "boolean",
+            "description": "Allow typing in an input field. Optional."
+          },
+          "listChoiceMode": {
+            "type": "boolean",
+            "description": "Restrict an input field to its choice list. Optional."
+          },
+          "readOnly": {
+            "type": "boolean",
+            "description": "Read-only field, table or table column. Optional."
+          },
+          "changeRowSet": {
+            "type": "boolean",
+            "description": "Allow adding and deleting table rows. Optional; table only."
+          },
+          "autoInsertNewRow": {
+            "type": "boolean",
+            "description": "Automatically insert a new table row. Optional; table only."
+          },
+          "changeRowOrder": {
+            "type": "boolean",
+            "description": "Allow changing table row order. Optional; table only."
           },
           "choiceList": {
             "type": "array",
@@ -1536,7 +1657,7 @@
           },
           "verticalStretch": {
             "type": "boolean",
-            "description": "Vertical stretch of a group or input field. Optional."
+            "description": "Vertical stretch of a field, group or table, where supported. Optional."
           },
           "fieldType": {
             "type": "string",
@@ -1544,8 +1665,55 @@
             "enum": [
               "InputField",
               "RadioButtonField",
-              "CheckBoxField"
+              "CheckBoxField",
+              "HTMLDocumentField"
             ]
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Design-time width of a field or table. Optional; must exist on the target item."
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Design-time height of a field or table. Optional; must exist on the target item."
+          },
+          "horizontalStretch": {
+            "type": "boolean",
+            "description": "Horizontal stretch of a field, group or table, where supported. Optional."
+          },
+          "choiceButton": {
+            "type": "boolean",
+            "description": "Show the input field's choice button. Optional."
+          },
+          "clearButton": {
+            "type": "boolean",
+            "description": "Show the input field's clear button. Optional."
+          },
+          "textEdit": {
+            "type": "boolean",
+            "description": "Allow typing in an input field. Optional."
+          },
+          "listChoiceMode": {
+            "type": "boolean",
+            "description": "Restrict an input field to its choice list. Optional."
+          },
+          "readOnly": {
+            "type": "boolean",
+            "description": "Read-only field, table or table column. Optional."
+          },
+          "changeRowSet": {
+            "type": "boolean",
+            "description": "Allow adding and deleting table rows. Optional; table only."
+          },
+          "autoInsertNewRow": {
+            "type": "boolean",
+            "description": "Automatically insert a new table row. Optional; table only."
+          },
+          "changeRowOrder": {
+            "type": "boolean",
+            "description": "Allow changing table row order. Optional; table only."
           },
           "choiceList": {
             "type": "array",
@@ -1668,8 +1836,8 @@
     },
     {
       "name": "edt_add_method",
-      "description": "WRITE (Phase 2): add a new procedure/function to a module's BSL. A missing module file can be created only for an existing metadata owner selected by fqn and an empty typed module slot. Dry-run by default – parses the module, validates methodText is exactly one legal method with a free name, computes the insertion point from the model (region path / beforeMethod / afterMethod / server block / after the last method) and returns the plan + preview WITHOUT writing. apply=true writes the .bsl, but only if the spliced module re-parses cleanly (safety invariant – a bad methodText or offset can never corrupt the module, worst case is a refused apply). Additive (a new method is non-breaking) – no force. Requires a configured token; caller must verify bsl_support_status EDITABLE before apply (cannot add to vendor-locked modules).",
-      "descriptionRu": "ЗАПИСЬ (Phase 2): добавить новую процедуру/функцию в BSL модуля. Отсутствующий файл создается только для существующего владельца fqn с пустым модулем известного типа. По умолчанию dry-run – парсит модуль, проверяет, что methodText – ровно один корректный метод со свободным именем, вычисляет точку вставки по модели (путь области / beforeMethod / afterMethod / серверный блок / после последнего метода) и возвращает план + предпросмотр БЕЗ записи. apply=true пишет .bsl, но только если результат парсится без ошибок (инвариант безопасности – плохой methodText или смещение не могут испортить модуль, худший случай – отказ). Аддитивно (новый метод не ломает совместимость) – без force. Требует токен; перед apply вызывающий обязан проверить bsl_support_status = EDITABLE (в vendor-locked модули добавлять нельзя).",
+      "description": "WRITE (Phase 2): add a new procedure/function to a module's BSL. A missing module file can be created only for an existing metadata owner selected by fqn and an empty typed module slot. Dry-run by default – parses the module, validates methodText is exactly one legal method with a free name, computes the insertion point from the model (region path / beforeMethod / afterMethod / server block / after the last method) and returns the plan + preview WITHOUT writing. apply=true writes the .bsl, but only if the spliced module re-parses cleanly (safety invariant – a bad methodText or offset can never corrupt the module, worst case is a refused apply). Additive (a new method is non-breaking) – no force. Requires a configured token; caller must verify edt_support_status EDITABLE before apply (cannot add to vendor-locked modules).",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): добавить новую процедуру/функцию в BSL модуля. Отсутствующий файл создается только для существующего владельца fqn с пустым модулем известного типа. По умолчанию dry-run – парсит модуль, проверяет, что methodText – ровно один корректный метод со свободным именем, вычисляет точку вставки по модели (путь области / beforeMethod / afterMethod / серверный блок / после последнего метода) и возвращает план + предпросмотр БЕЗ записи. apply=true пишет .bsl, но только если результат парсится без ошибок (инвариант безопасности – плохой methodText или смещение не могут испортить модуль, худший случай – отказ). Аддитивно (новый метод не ломает совместимость) – без force. Требует токен; перед apply вызывающий обязан проверить edt_support_status = EDITABLE (в vendor-locked модули добавлять нельзя).",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1711,7 +1879,7 @@
           },
           "apply": {
             "type": "boolean",
-            "description": "false (default) = dry-run: validate + return the plan, write nothing. true = write the .bsl (only if the result parses cleanly). Verify bsl_support_status EDITABLE, first."
+            "description": "false (default) = dry-run: validate + return the plan, write nothing. true = write the .bsl (only if the result parses cleanly). Verify edt_support_status EDITABLE, first."
           }
         },
         "required": [
@@ -1780,8 +1948,8 @@
     },
     {
       "name": "edt_delete_method",
-      "description": "WRITE (Phase 2): delete a procedure/function from a module's BSL – the inverse of edt_add_method. Dry-run by default – parses the module, locates the method by name via the model (never a regex), and returns the plan + the exact text that would be removed WITHOUT writing. apply=true cuts the method (with its adjacent leading doc comments and the blank line above) and writes the .bsl, but only if the result re-parses cleanly and loses exactly this one method (safety invariant), AND force=true (destructive; deleting an EXPORTED method breaks consumers – check callers via edt_find_references method mode and prefer deprecation). Requires a configured token; caller must verify bsl_support_status EDITABLE before apply.",
-      "descriptionRu": "ЗАПИСЬ (Phase 2): удалить процедуру/функцию из BSL модуля – обратная операция к edt_add_method. По умолчанию dry-run – парсит модуль, находит метод по имени через модель (не regex) и возвращает план + точный текст, который будет удалён, БЕЗ записи. apply=true вырезает метод (вместе с прилегающим комментарием-описанием и пустой строкой над ним) и пишет .bsl, но только если результат парсится без ошибок и теряет ровно этот один метод (инвариант безопасности), И передан force=true (деструктивно; удаление ЭКСПОРТНОГО метода ломает вызывающий код – проверьте вызовы через edt_find_references по методу, предпочитайте deprecated). Требует токен; перед apply вызывающий обязан проверить bsl_support_status = EDITABLE.",
+      "description": "WRITE (Phase 2): delete a procedure/function from a module's BSL – the inverse of edt_add_method. Dry-run by default – parses the module, locates the method by name via the model (never a regex), and returns the plan + the exact text that would be removed WITHOUT writing. apply=true cuts the method (with its adjacent leading doc comments and the blank line above) and writes the .bsl, but only if the result re-parses cleanly and loses exactly this one method (safety invariant), AND force=true (destructive; deleting an EXPORTED method breaks consumers – check callers via edt_find_references method mode and prefer deprecation). Requires a configured token; caller must verify edt_support_status EDITABLE before apply.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): удалить процедуру/функцию из BSL модуля – обратная операция к edt_add_method. По умолчанию dry-run – парсит модуль, находит метод по имени через модель (не regex) и возвращает план + точный текст, который будет удалён, БЕЗ записи. apply=true вырезает метод (вместе с прилегающим комментарием-описанием и пустой строкой над ним) и пишет .bsl, но только если результат парсится без ошибок и теряет ровно этот один метод (инвариант безопасности), И передан force=true (деструктивно; удаление ЭКСПОРТНОГО метода ломает вызывающий код – проверьте вызовы через edt_find_references по методу, предпочитайте deprecated). Требует токен; перед apply вызывающий обязан проверить edt_support_status = EDITABLE.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1807,7 +1975,7 @@
           },
           "apply": {
             "type": "boolean",
-            "description": "false (default) = dry-run: locate + validate + return the plan and the exact text that would be removed, write nothing. true = write the .bsl without the method (only if the result parses cleanly); also requires force=true. Verify bsl_support_status EDITABLE first."
+            "description": "false (default) = dry-run: locate + validate + return the plan and the exact text that would be removed, write nothing. true = write the .bsl without the method (only if the result parses cleanly); also requires force=true. Verify edt_support_status EDITABLE first."
           },
           "force": {
             "type": "boolean",
@@ -1822,8 +1990,8 @@
     },
     {
       "name": "edt_remove_attribute",
-      "description": "WRITE (Phase 2): remove an attribute from a metadata object. DESTRUCTIVE – a schema change. Dry-run by default: checks inbound references (BM xref) and returns the plan WITHOUT removing. apply=true removes (commit + serialize); blocked if referenced unless force=true. Requires a configured token. Verify bsl_support_status EDITABLE before apply .",
-      "descriptionRu": "ЗАПИСЬ (Phase 2): удалить реквизит объекта метаданных. ДЕСТРУКТИВНО – изменение схемы. По умолчанию dry-run: проверяет входящие ссылки (BM xref) и возвращает план БЕЗ удаления. apply=true удаляет (фиксирует + сериализует); если на реквизит ссылаются – блокируется, пока не задан force=true. Требует токен. Перед apply проверить bsl_support_status = EDITABLE.",
+      "description": "WRITE (Phase 2): remove an attribute from a metadata object. DESTRUCTIVE – a schema change. Dry-run by default: checks inbound references (BM xref) and returns the plan WITHOUT removing. apply=true removes (commit + serialize); blocked if referenced unless force=true. Requires a configured token. Verify edt_support_status EDITABLE before apply .",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): удалить реквизит объекта метаданных. ДЕСТРУКТИВНО – изменение схемы. По умолчанию dry-run: проверяет входящие ссылки (BM xref) и возвращает план БЕЗ удаления. apply=true удаляет (фиксирует + сериализует); если на реквизит ссылаются – блокируется, пока не задан force=true. Требует токен. Перед apply проверить edt_support_status = EDITABLE.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1841,7 +2009,7 @@
           },
           "apply": {
             "type": "boolean",
-            "description": "false (default) = dry-run: report references + plan, remove nothing. true = perform the removal (commit + serialize). Verify bsl_support_status EDITABLE first."
+            "description": "false (default) = dry-run: report references + plan, remove nothing. true = perform the removal (commit + serialize). Verify edt_support_status EDITABLE first."
           },
           "force": {
             "type": "boolean",
@@ -1857,8 +2025,8 @@
     },
     {
       "name": "edt_modify_attribute",
-      "description": "WRITE (Phase 2): modify an attribute, register resource or dimension – type, ru synonym and/or comment (provide at least one). Dry-run by default: validates and returns the current→new plan WITHOUT changing. apply=true performs the change. Changing the type may break backward compatibility (warned). Requires a configured token. Verify bsl_support_status EDITABLE before apply.",
-      "descriptionRu": "ЗАПИСЬ (Phase 2): изменить реквизит, ресурс или измерение регистра – тип, синоним(ru) и/или comment (хотя бы одно). По умолчанию dry-run: проверяет и возвращает план было→стало БЕЗ изменения. apply=true применяет. Смена типа может нарушить обратную совместимость (предупреждение). Требует токен. Перед apply проверить bsl_support_status = EDITABLE.",
+      "description": "WRITE (Phase 2): modify an attribute, register resource or dimension – type, ru synonym and/or comment (provide at least one). Dry-run by default: validates and returns the current→new plan WITHOUT changing. apply=true performs the change. Changing the type may break backward compatibility (warned). Requires a configured token. Verify edt_support_status EDITABLE before apply.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): изменить реквизит, ресурс или измерение регистра – тип, синоним(ru) и/или comment (хотя бы одно). По умолчанию dry-run: проверяет и возвращает план было→стало БЕЗ изменения. apply=true применяет. Смена типа может нарушить обратную совместимость (предупреждение). Требует токен. Перед apply проверить edt_support_status = EDITABLE.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1896,9 +2064,22 @@
             "type": "string",
             "description": "New comment. Optional; empty string clears it."
           },
+          "use": {
+            "type": "string",
+            "description": "Hierarchical field use: ForFolder, ForItem or ForFolderAndItem. Optional; rejected on other fields.",
+            "enum": [
+              "ForFolder",
+              "ForItem",
+              "ForFolderAndItem"
+            ]
+          },
+          "multiLine": {
+            "type": "boolean",
+            "description": "Allow multiline field input. Optional; the metadata field must support this property."
+          },
           "apply": {
             "type": "boolean",
-            "description": "false (default) = dry-run: validate + return current→new plan, change nothing. true = perform the change (commit + serialize). Verify bsl_support_status EDITABLE first."
+            "description": "false (default) = dry-run: validate + return current→new plan, change nothing. true = perform the change (commit + serialize). Verify edt_support_status EDITABLE first."
           }
         },
         "required": [
@@ -1910,8 +2091,8 @@
     },
     {
       "name": "edt_rename",
-      "description": "WRITE (Phase 2): rename a BSL method (methodName mode), metadata object or child member (attribute/dimension/resource/...) and cascade every reference in metadata AND BSL via EDT's native refactoring engine. Preview reports known file paths and nativeTextEditCount. editCount is null when model operations expose no text edits; coverageComplete=false identifies unmapped metadata items. Dry-run by default: returns the engine's change list + validation problems WITHOUT changing. apply=true performs the cascade; requires a configured token AND force=true (rename is breaking for peer configurations –, owner approval). Verify bsl_support_status EDITABLE before apply.",
-      "descriptionRu": "ЗАПИСЬ (Phase 2): переименовать метод BSL (methodName), объект метаданных или его член (реквизит/измерение/ресурс/...) с каскадным обновлением ВСЕХ ссылок в метаданных И в BSL через штатный движок рефакторинга EDT. Предпросмотр возвращает известные пути и nativeTextEditCount; editCount=null означает отсутствие текстового счетчика, coverageComplete=false отмечает неполное покрытие. По умолчанию dry-run: возвращает список изменений и проблемы БЕЗ применения. apply=true выполняет каскад; требует токен И force=true (переименование ломает обратную совместимость для конфигураций-партнёров –, нужно одобрение владельца). Перед apply проверить bsl_support_status = EDITABLE.",
+      "description": "WRITE (Phase 2): rename a BSL method (methodName mode), metadata object or child member (attribute/dimension/resource/...) and cascade every reference in metadata AND BSL via EDT's native refactoring engine. Preview reports known file paths and nativeTextEditCount. editCount is null when model operations expose no text edits; coverageComplete=false identifies unmapped metadata items. Dry-run by default: returns the engine's change list + validation problems WITHOUT changing. apply=true performs the cascade; requires a configured token AND force=true (rename is breaking for peer configurations –, owner approval). Verify edt_support_status EDITABLE before apply.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): переименовать метод BSL (methodName), объект метаданных или его член (реквизит/измерение/ресурс/...) с каскадным обновлением ВСЕХ ссылок в метаданных И в BSL через штатный движок рефакторинга EDT. Предпросмотр возвращает известные пути и nativeTextEditCount; editCount=null означает отсутствие текстового счетчика, coverageComplete=false отмечает неполное покрытие. По умолчанию dry-run: возвращает список изменений и проблемы БЕЗ применения. apply=true выполняет каскад; требует токен И force=true (переименование ломает обратную совместимость для конфигураций-партнёров –, нужно одобрение владельца). Перед apply проверить edt_support_status = EDITABLE.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1945,7 +2126,7 @@
           },
           "apply": {
             "type": "boolean",
-            "description": "false (default) = dry-run: build the refactoring and return the full change list + problems, perform nothing. true = perform the cascade (metadata + BSL). Verify bsl_support_status EDITABLE first."
+            "description": "false (default) = dry-run: build the refactoring and return the full change list + problems, perform nothing. true = perform the cascade (metadata + BSL). Verify edt_support_status EDITABLE first."
           },
           "force": {
             "type": "boolean",
@@ -1960,8 +2141,8 @@
     },
     {
       "name": "edt_create_object",
-      "description": "WRITE (Phase 2): create a new top metadata object (Catalog/Document/Enum/InformationRegister/...) via EDT's own factory + per-type initializer, registered in the Configuration. Dry-run by default: validates and returns the plan WITHOUT creating. apply=true creates it (object .mdo + Configuration.mdo). Additive – no force needed – but requires a configured token. Verify bsl_support_status EDITABLE before apply.",
-      "descriptionRu": "ЗАПИСЬ (Phase 2): создать новый объект метаданных (Справочник/Документ/Перечисление/РегистрСведений/...) через штатную фабрику EDT + инициализатор типа, с регистрацией в Configuration. По умолчанию dry-run: проверяет и возвращает план БЕЗ создания. apply=true создаёт (object .mdo + Configuration.mdo). Аддитивно – force не нужен – но требует токен. Перед apply проверить bsl_support_status = EDITABLE.",
+      "description": "WRITE (Phase 2): create a new top metadata object (Catalog/Document/Enum/InformationRegister/...) via EDT's own factory + per-type initializer, registered in the Configuration. Dry-run by default: validates and returns the plan WITHOUT creating. apply=true creates it (object .mdo + Configuration.mdo). Additive – no force needed – but requires a configured token. Verify edt_support_status EDITABLE before apply.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): создать новый объект метаданных (Справочник/Документ/Перечисление/РегистрСведений/...) через штатную фабрику EDT + инициализатор типа, с регистрацией в Configuration. По умолчанию dry-run: проверяет и возвращает план БЕЗ создания. apply=true создаёт (object .mdo + Configuration.mdo). Аддитивно – force не нужен – но требует токен. Перед apply проверить edt_support_status = EDITABLE.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1991,7 +2172,7 @@
           },
           "apply": {
             "type": "boolean",
-            "description": "false (default) = dry-run: validate (type, name free, config feature) and return the plan, create nothing. true = create the object (factory + attach + link + serialize). Verify bsl_support_status EDITABLE first."
+            "description": "false (default) = dry-run: validate (type, name free, config feature) and return the plan, create nothing. true = create the object (factory + attach + link + serialize). Verify edt_support_status EDITABLE first."
           }
         },
         "required": [
@@ -2531,8 +2712,8 @@
     },
     {
       "name": "edt_delete_object",
-      "description": "WRITE (Phase 2): delete a metadata object or child through EDT's native refactoring. Dry-run reports native change items and a separate bounded audit of possible references in BSL code/strings, actual dynamic-list/DCS query fields and form dataPath bindings. These lexical candidates can include unrelated names; coverage, lower-bound counts, samples and read failures are explicit. Native items are not proof of a complete BSL/query/form cascade. Every apply requires a configured token and force=true; native blockers and empty plans are refused. After apply, deletionConfirmed reports target absence in the live BM model, and remainingPossibleReferences reports remaining candidates. Form controls can remain with dataPath cleared; observed cases are listed separately. No automatic text replacement is performed by the audit. Verify bsl_support_status EDITABLE before apply. Native analysis can take minutes.",
-      "descriptionRu": "ЗАПИСЬ (Phase 2): удалить объект метаданных или его член штатным рефакторингом EDT. Сухой прогон показывает штатный план изменений и отдельный ограниченный аудит возможных ссылок в коде и строках BSL, текстах запросов динамических списков/СКД и dataPath форм. Это лексические кандидаты: одинаковые имена могут относиться к другим членам; покрытие, нижняя граница счетчиков, образцы и ошибки чтения указаны явно. Этот план не доказывает полный каскад по BSL, запросам и формам. Любое применение требует токен и force=true; проблемы штатного рефакторинга и пустой план блокируют запись. После применения deletionConfirmed подтверждает отсутствие цели в живой BM-модели, remainingPossibleReferences показывает оставшихся кандидатов. Элементы формы могут остаться с очищенным dataPath; найденные случаи перечислены отдельно. Аудит не заменяет текст автоматически. Перед apply проверить bsl_support_status EDITABLE. Штатный анализ может занять несколько минут.",
+      "description": "WRITE (Phase 2): delete a metadata object or child through EDT's native refactoring. Dry-run reports native change items and a separate bounded audit of possible references in BSL code/strings, actual dynamic-list/DCS query fields and form dataPath bindings. These lexical candidates can include unrelated names; coverage, lower-bound counts, samples and read failures are explicit. Native items are not proof of a complete BSL/query/form cascade. Every apply requires a configured token and force=true; native blockers and empty plans are refused. After apply, deletionConfirmed reports target absence in the live BM model, and remainingPossibleReferences reports remaining candidates. Form controls can remain with dataPath cleared; observed cases are listed separately. No automatic text replacement is performed by the audit. Verify edt_support_status EDITABLE before apply. Native analysis can take minutes.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): удалить объект метаданных или его член штатным рефакторингом EDT. Сухой прогон показывает штатный план изменений и отдельный ограниченный аудит возможных ссылок в коде и строках BSL, текстах запросов динамических списков/СКД и dataPath форм. Это лексические кандидаты: одинаковые имена могут относиться к другим членам; покрытие, нижняя граница счетчиков, образцы и ошибки чтения указаны явно. Этот план не доказывает полный каскад по BSL, запросам и формам. Любое применение требует токен и force=true; проблемы штатного рефакторинга и пустой план блокируют запись. После применения deletionConfirmed подтверждает отсутствие цели в живой BM-модели, remainingPossibleReferences показывает оставшихся кандидатов. Элементы формы могут остаться с очищенным dataPath; найденные случаи перечислены отдельно. Аудит не заменяет текст автоматически. Перед apply проверить edt_support_status EDITABLE. Штатный анализ может занять несколько минут.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2546,7 +2727,7 @@
           },
           "apply": {
             "type": "boolean",
-            "description": "false (default): report native delete items, indexed inbound references and possible BSL/query/form references; change nothing. true: run native delete with force=true, verify target absence in the live BM model, and audit remaining candidates. A complete BSL/query/form cascade is not guaranteed. Verify bsl_support_status EDITABLE first."
+            "description": "false (default): report native delete items, indexed inbound references and possible BSL/query/form references; change nothing. true: run native delete with force=true, verify target absence in the live BM model, and audit remaining candidates. A complete BSL/query/form cascade is not guaranteed. Verify edt_support_status EDITABLE first."
           },
           "force": {
             "type": "boolean",
@@ -2590,8 +2771,8 @@
     },
     {
       "name": "edt_import_project",
-      "description": "WRITE (Phase 2): register an EXISTING project directory in the workspace - the programmatic form of \"Import existing project\". Needed whenever a second project must join the workspace: an extension in modification-and-control mode is checked against a BASE project on the target release, and that one comes from another worktree. Sources are not touched - only the workspace learns about them. Reports the declared name, the name it will take and whether that name is already busy.",
-      "descriptionRu": "ЗАПИСЬ (Phase 2): зарегистрировать в workspace СУЩЕСТВУЮЩИЙ каталог проекта - программный аналог \"Импорт существующего проекта\". Нужно, когда в workspace должен появиться второй проект: расширение в режиме изменения и контроля сверяется с БАЗОВЫМ проектом на целевом релизе, а он лежит в другом worktree. Исходники не трогаются - о них узнаёт только workspace. Возвращает объявленное имя, имя под которым проект будет зарегистрирован, и занято ли оно.",
+      "description": "WRITE (Phase 2): register an EXISTING project directory in the workspace - the programmatic form of \"Import existing project\". Needed whenever a second project must join the workspace: an extension in modification-and-control mode is checked against a BASE project on the target release, and that one comes from another worktree. Sources are not touched - only the workspace learns about them. Reports the declared name, workspace name and open state. An already imported closed project is reopened without changing its settings or infobase associations.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): зарегистрировать в workspace СУЩЕСТВУЮЩИЙ каталог проекта - программный аналог \"Импорт существующего проекта\". Нужно, когда в workspace должен появиться второй проект: расширение в режиме изменения и контроля сверяется с БАЗОВЫМ проектом на целевом релизе, а он лежит в другом worktree. Исходники не трогаются - о них узнаёт только workspace. Возвращает объявленное имя, имя под которым проект будет зарегистрирован, и открытость. Уже зарегистрированный закрытый проект открывается без повторного импорта и изменения связей с базами.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2605,7 +2786,7 @@
           },
           "apply": {
             "type": "boolean",
-            "description": "false (default) = dry-run: report what would be registered and under which name. true = register the project and open it."
+            "description": "false (default) = dry-run: report what would be registered and under which name. true = register and open it, or reopen the existing closed project without reimport."
           }
         },
         "required": [

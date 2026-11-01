@@ -105,6 +105,8 @@ $need = @(
   'com.google.inject',
   'com.google.guava',
   'com._1c.g5.wiring',
+  'com.e1c.g5.dt.applications',
+  'com.e1c.g5.dt.applications.infobases',
   'com._1c.g5.v8.dt.core',
   'com._1c.g5.v8.dt.metadata',
   'com._1c.g5.v8.dt.metadata.extension',

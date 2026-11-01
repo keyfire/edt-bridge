@@ -45,9 +45,23 @@ final class FormItemToolOptions {
         props.add("titleLocation", ToolJson.strProp("Field title location (Auto/Left/Right/Top/Bottom/None), or usual-group child title location. The value must exist in the target EDT enum. Optional."));
         JsonObject maxHeight = new JsonObject(); maxHeight.addProperty("type", "integer"); maxHeight.addProperty("minimum", 0);
         maxHeight.addProperty("description", "Maximum input-field height; disables autoMaxHeight. Requires InputField. Optional."); props.add("maxHeight", maxHeight);
-        props.add("verticalStretch", ToolJson.boolProp("Vertical stretch of a group or input field. Optional."));
+        props.add("verticalStretch", ToolJson.boolProp("Vertical stretch of a field, group or table, where supported. Optional."));
         JsonObject type = ToolJson.strProp("Field kind. EDT initializes the matching ext-info. Optional.");
-        JsonArray types = new JsonArray(); types.add("InputField"); types.add("RadioButtonField"); types.add("CheckBoxField"); type.add("enum", types); props.add("fieldType", type);
+        JsonArray types = new JsonArray(); types.add("InputField"); types.add("RadioButtonField"); types.add("CheckBoxField"); types.add("HTMLDocumentField"); type.add("enum", types); props.add("fieldType", type);
+        for (String key : List.of("width", "height")) {
+            JsonObject size = new JsonObject(); size.addProperty("type", "integer"); size.addProperty("minimum", 0);
+            size.addProperty("description", "Design-time " + key + " of a field or table. Optional; must exist on the target item.");
+            props.add(key, size);
+        }
+        props.add("horizontalStretch", ToolJson.boolProp("Horizontal stretch of a field, group or table, where supported. Optional."));
+        props.add("choiceButton", ToolJson.boolProp("Show the input field's choice button. Optional."));
+        props.add("clearButton", ToolJson.boolProp("Show the input field's clear button. Optional."));
+        props.add("textEdit", ToolJson.boolProp("Allow typing in an input field. Optional."));
+        props.add("listChoiceMode", ToolJson.boolProp("Restrict an input field to its choice list. Optional."));
+        props.add("readOnly", ToolJson.boolProp("Read-only field, table or table column. Optional."));
+        props.add("changeRowSet", ToolJson.boolProp("Allow adding and deleting table rows. Optional; table only."));
+        props.add("autoInsertNewRow", ToolJson.boolProp("Automatically insert a new table row. Optional; table only."));
+        props.add("changeRowOrder", ToolJson.boolProp("Allow changing table row order. Optional; table only."));
         JsonObject choices = new JsonObject(); choices.addProperty("type", "array");
         choices.addProperty("description", "Replace the InputField/RadioButtonField choice list. Entries have a scalar string/number/boolean value and optional titleRu. Enum/reference/object values are not supported. An empty array clears the list.");
         JsonObject entry = new JsonObject(); entry.addProperty("type", "object"); entry.addProperty("additionalProperties", false);
@@ -66,7 +80,8 @@ final class FormItemToolOptions {
     static Map<String, Object> settings(JsonObject args) {
         Map<String, Object> result = new LinkedHashMap<>();
         if (args.has("group") && args.has("groupDirection")) { throw new IllegalArgumentException("group and groupDirection are aliases; pass one"); }
-        for (String key : List.of("groupDirection", "group", "representation", "showTitle", "united", "titleLocation", "maxHeight", "verticalStretch", "fieldType", "choiceList")) {
+        for (String key : List.of("groupDirection", "group", "representation", "showTitle", "united", "titleLocation", "maxHeight", "verticalStretch", "fieldType", "choiceList", "width", "height", "horizontalStretch", "choiceButton",
+                "clearButton", "textEdit", "listChoiceMode", "readOnly", "changeRowSet", "autoInsertNewRow", "changeRowOrder")) {
             if (args.has(key)) {
                 result.put("group".equals(key) ? "groupDirection" : key, value(args.get(key)));
             }

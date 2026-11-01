@@ -29,7 +29,7 @@ import com.google.gson.JsonObject;
  * resolves the service, checks the template name is free and the HTTP method is valid, returns the
  * plan. apply=true creates the url template and method through the model (uuids from the same source
  * as the other writers) and serialises the .mdo; createHandler additionally writes a handler stub into
- * the service module. Requires a configured token; the caller must verify bsl_support_status EDITABLE
+ * the service module. Requires a configured token; the caller must verify edt_support_status EDITABLE
  * before apply.
  */
 public final class AddRouteTool {
@@ -61,7 +61,7 @@ public final class AddRouteTool {
         props.add("createHandler", boolProp("true = also splice a handler stub Функция <handler>(Запрос) into "
                 + "the service module (region ОбработчикиСобытий), created via edt_add_method. Default false."));
         props.add("apply", boolProp("false (default) = dry-run: validate + return the plan, write nothing. "
-                + "true = create the url template and method and commit. Verify bsl_support_status EDITABLE "
+                + "true = create the url template and method and commit. Verify edt_support_status EDITABLE "
                 + "first."));
 
         JsonArray req = new JsonArray();
@@ -86,7 +86,7 @@ public final class AddRouteTool {
                 + ".mdo; createHandler also writes a handler stub into the service module. On an ADOPTED "
                 + "service of an extension the plan carries a warning: in compatibility mode 8.5.1 and below "
                 + "the platform refuses to load an own url template on an adopted service, and EDT validation "
-                + "stays silent about it. Requires a configured token. Caller must verify bsl_support_status "
+                + "stays silent about it. Requires a configured token. Caller must verify edt_support_status "
                 + "EDITABLE before any apply.");
         t.addProperty("descriptionRu",
                 "ЗАПИСЬ: добавить маршрут (шаблон URL и один HTTP-метод) в HTTPService – инструмент записи "
@@ -97,7 +97,7 @@ public final class AddRouteTool {
                 + "пишет заглушку обработчика в модуль сервиса. На ЗАИМСТВОВАННОМ сервисе расширения план несёт "
                 + "предупреждение: в режиме совместимости 8.5.1 и ниже платформа откажется загрузить собственный "
                 + "шаблон URL у заимствованного сервиса, а валидация EDT об этом молчит. Требует токен. Перед "
-                + "apply вызывающий обязан проверить bsl_support_status = EDITABLE.");
+                + "apply вызывающий обязан проверить edt_support_status = EDITABLE.");
         t.add("inputSchema", schema);
         return t;
     }

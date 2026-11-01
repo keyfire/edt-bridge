@@ -38,6 +38,7 @@ import org.eclipse.core.runtime.Platform;
 import org.eclipse.emf.ecore.EClass;
 import org.eclipse.emf.ecore.EObject;
 import org.eclipse.emf.ecore.EReference;
+import org.eclipse.emf.ecore.EStructuralFeature;
 import org.osgi.framework.Bundle;
 
 import com._1c.g5.v8.bm.core.IBmObject;
@@ -188,6 +189,7 @@ public final class FormWriteGateway {
         public boolean ownerFound;
         public Boolean nameAvailable;
         public boolean defaultForm;
+        public String defaultFormProperty;
         public String plan;
         public String warning;
         public String message;
@@ -213,7 +215,6 @@ public final class FormWriteGateway {
         r.projectName = projectName;
         r.ownerFqn = ownerFqn;
         r.name = name;
-        r.defaultForm = setDefault;
 
         IProject p = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
         if (!p.exists() || !p.isOpen()) {
@@ -289,6 +290,18 @@ public final class FormWriteGateway {
             return r;
         }
         r.formType = formType.name();
+        if (setDefault) {
+            try {
+                r.defaultFormProperty = model.executeReadonlyTask(new AbstractBmTask<String>("edt-bridge.addForm.default") {
+                    @Override public String execute(IBmTransaction tx, IProgressMonitor monitor) {
+                        return defaultFormFeature(tx.getTopObjectByFqn(ownerFqn).eClass(), formType).getName();
+                    }
+                });
+            } catch (RuntimeException invalid) {
+                r.message = GatewaySupport.describeCause(invalid);
+                return r;
+            }
+        }
 
         r.ok = r.ownerFound && Boolean.TRUE.equals(r.nameAvailable);
         r.plan = "Create form \"" + name + "\" [" + formType.name() + "] on " + ownerFqn
@@ -374,7 +387,8 @@ public final class FormWriteGateway {
                     createdFqn[0] = formFqn;
 
                     if (setDefault) {
-                        setDefaultForm(owner, basicForm);
+                        setDefaultForm(owner, basicForm, type);
+                        r.defaultForm = true;
                     }
                     factory.fillDefaultReferences(basicForm);
                     return null;
@@ -504,20 +518,41 @@ public final class FormWriteGateway {
         return InterfaceCompatibilityMode.TAXI;
     }
 
-    /** Point the owner's {@code defaultForm}-style feature at the new form, when it has exactly one. */
-    private static void setDefaultForm(EObject owner, BasicForm form) {
-        for (EReference ref : owner.eClass().getEAllReferences()) {
-            if (ref.isMany() || ref.isContainment()) {
-                continue;
-            }
-            if (!"defaultForm".equals(ref.getName())) {
-                continue;
-            }
-            EClass type = ref.getEReferenceType();
-            if (type != null && type.isSuperTypeOf(form.eClass())) {
-                owner.eSet(ref, form);
-                return;
-            }
+    /** Resolve the explicit default slot before creating a form. */
+    private static EReference defaultFormFeature(EClass owner, FormType type) {
+        String slot;
+        switch (type) {
+            case OBJECT: slot = "defaultObjectForm"; break;
+            case FOLDER: slot = "defaultFolderForm"; break;
+            case LIST: slot = "defaultListForm"; break;
+            case CHOICE: slot = "defaultChoiceForm"; break;
+            case FOLDER_CHOICE: slot = "defaultFolderChoiceForm"; break;
+            case RECORD: slot = "defaultRecordForm"; break;
+            case RECORD_SET: slot = "defaultRecordSetForm"; break;
+            case REPORT_SETTINGS: slot = "defaultSettingsForm"; break;
+            case REPORT_VARIANT: slot = "defaultVariantForm"; break;
+            case REPORT: case GENERIC: case CONSTANTS: slot = "defaultForm"; break;
+            default: throw new IllegalArgumentException("no default form slot for " + type);
+        }
+        EStructuralFeature feature = owner.getEStructuralFeature(slot);
+        if (feature == null && type == FormType.OBJECT) {
+            feature = owner.getEStructuralFeature("defaultForm");
+        }
+        if (!(feature instanceof EReference) || feature.isMany()
+                || ((EReference) feature).isContainment() || !feature.isChangeable()) {
+            throw new IllegalArgumentException(owner.getName() + " has no default slot for " + type);
+        }
+        return (EReference) feature;
+    }
+
+    private static void setDefaultForm(EObject owner, BasicForm form, FormType type) {
+        EReference feature = defaultFormFeature(owner.eClass(), type);
+        if (!feature.getEReferenceType().isSuperTypeOf(form.eClass())) {
+            throw new IllegalArgumentException("the form does not fit " + feature.getName());
+        }
+        owner.eSet(feature, form);
+        if (owner.eGet(feature) != form) {
+            throw new IllegalStateException("default form assignment was not retained: " + feature.getName());
         }
     }
 
@@ -1284,7 +1319,7 @@ public final class FormWriteGateway {
                     if (itemName == null) {
                         r.message = "the form does not accept event handlers";
                     }
-                    collectItemNames(form.getItems(), r.items);
+                    collectItemNames(FormItemEdits.children(form), r.items);
                     return null;
                 }
                 r.ownerFound = true;
@@ -1329,7 +1364,7 @@ public final class FormWriteGateway {
         if (itemName == null || itemName.isBlank()) {
             return form;
         }
-        return findItem(form.getItems(), itemName);
+        return FormItemEdits.findUnique(form, itemName);
     }
 
     /**
@@ -1658,7 +1693,7 @@ public final class FormWriteGateway {
                             }
                         }
                     }
-                    collectItemsBoundToAttribute(form.getItems(),
+                    collectItemsBoundToAttribute(FormItemEdits.children(form),
                             asColumn ? new String[] {columnOf, name} : new String[] {name}, r.boundItems);
                 } else {
                     for (FormCommand c : form.getFormCommands()) {
@@ -1669,7 +1704,7 @@ public final class FormWriteGateway {
                             }
                         }
                     }
-                    collectButtonsUsingCommand(form.getItems(), name, r.boundItems);
+                    collectButtonsUsingCommand(FormItemEdits.children(form), name, r.boundItems);
                     // fall through to the shared availability assignment below
                 }
                 r.nameAvailable = Boolean.valueOf(free);
@@ -1829,7 +1864,7 @@ public final class FormWriteGateway {
                 }
             }
             if (item instanceof FormItemContainer) {
-                collectItemsBoundToAttribute(((FormItemContainer) item).getItems(), path, out);
+                collectItemsBoundToAttribute(FormItemEdits.children((FormItemContainer) item), path, out);
             }
         }
     }
@@ -1876,7 +1911,7 @@ public final class FormWriteGateway {
                 }
             }
             if (item instanceof FormItemContainer) {
-                collectButtonsUsingCommand(((FormItemContainer) item).getItems(), commandName, out);
+                collectButtonsUsingCommand(FormItemEdits.children((FormItemContainer) item), commandName, out);
             }
         }
     }
@@ -1999,6 +2034,8 @@ public final class FormWriteGateway {
         public String warning;
         public String message;
         public final List<String> items = new ArrayList<>();
+        public boolean structural;
+        public Map<String, Object> properties = new LinkedHashMap<>();
         public final List<String> createdColumns = new ArrayList<>();
         public final List<String> renamedChildren = new ArrayList<>();  // moved with a rename
         public final List<String> takenNames = new ArrayList<>();       // every item name on the form
@@ -2089,14 +2126,14 @@ public final class FormWriteGateway {
                     return null;
                 }
                 r.formFound = true;
-                collectItemNames(form.getItems(), r.items);
+                collectItemNames(FormItemEdits.children(form), r.items);
                 if (name != null && !name.isBlank()) {
                     List<String> taken = new ArrayList<>();
                     collectEveryItemName(form, taken);
                     r.nameAvailable = Boolean.valueOf(taken.stream().noneMatch(name::equalsIgnoreCase));
                 }
                 r.parentFound = Boolean.valueOf(parentName == null || parentName.isBlank()
-                        || findContainer(form.getItems(), parentName) != null);
+                        || findContainer(form, parentName) != null);
                 if (dataPath != null && !dataPath.isBlank()) {
                     String head = dataPath.split("\\.")[0];
                     if (findAttribute(form, head) == null) {
@@ -2170,7 +2207,7 @@ public final class FormWriteGateway {
                     }
                     FormItemContainer parent = form;
                     if (parentName != null && !parentName.isBlank()) {
-                        parent = findContainer(form.getItems(), parentName);
+                        parent = findContainer(form, parentName);
                         if (parent == null) {
                             failure[0] = "parent container disappeared: " + parentName;
                             return null;
@@ -2306,7 +2343,7 @@ public final class FormWriteGateway {
                     Form form = resolveForm(tx, formFqn);
                     if (form == null) { throw new IllegalArgumentException("form not found: " + formFqn); }
                     result.formFound = true;
-                    FormItem item = FormItemEdits.findUnique(form.getItems(), name);
+                    FormItem item = FormItemEdits.findUnique(form, name);
                     if (item == null) { throw new IllegalArgumentException("form item not found: " + name); }
                     result.present = true; result.id = item.getId();
                     FormItemEdits.Position destination = FormItemEdits.position(form, item, parentName, index, beforeItem, afterItem);
@@ -2326,7 +2363,7 @@ public final class FormWriteGateway {
                 @Override public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
                     Form form = resolveForm(tx, formFqn);
                     if (form == null) { throw new IllegalArgumentException("the form disappeared"); }
-                    FormItem item = FormItemEdits.findUnique(form.getItems(), name);
+                    FormItem item = FormItemEdits.findUnique(form, name);
                     if (item == null) { throw new IllegalArgumentException("the item disappeared"); }
                     FormItemEdits.Position destination = FormItemEdits.position(form, item, parentName, index, beforeItem, afterItem);
                     destination.apply(movement);
@@ -2421,7 +2458,7 @@ public final class FormWriteGateway {
             String issue = model.executeReadonlyTask(new AbstractBmTask<String>("edt-bridge.modifyFormItem.settings") {
                 @Override public String execute(IBmTransaction tx, IProgressMonitor monitor) {
                     Form form = resolveForm(tx, formFqn);
-                    FormItem item = form == null ? null : FormItemEdits.findUnique(form.getItems(), name);
+                    FormItem item = form == null ? null : FormItemEdits.findUnique(form, name);
                     try {
                         if (item == null) { return "form item disappeared"; }
                         if (titleRu != null && !(item instanceof Titled)) { return "the item has no title"; }
@@ -2477,7 +2514,7 @@ public final class FormWriteGateway {
                 @Override
                 public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
                     Form form = resolveForm(tx, formFqn);
-                    FormItem item = (form == null) ? null : findItem(form.getItems(), name);
+                    FormItem item = (form == null) ? null : FormItemEdits.findUnique(form, name);
                     if (item == null) {
                         failure[0] = "the item disappeared between validation and apply";
                         return null;
@@ -2554,7 +2591,11 @@ public final class FormWriteGateway {
             r.message = "form not found: " + formFqn;
             return r;
         }
-        r.ok = Boolean.TRUE.equals(r.present);
+        r.ok = Boolean.TRUE.equals(r.present) && !r.structural;
+        if (r.structural) {
+            r.message = "a structural command bar cannot be removed; remove its child items instead";
+            return r;
+        }
         r.plan = "Remove item \"" + name + "\" from " + formFqn
                 + (r.createdColumns.isEmpty() ? ""
                         : " together with " + r.createdColumns.size() + " nested item(s)");
@@ -2583,10 +2624,13 @@ public final class FormWriteGateway {
                 @Override
                 public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
                     Form form = resolveForm(tx, formFqn);
-                    FormItem item = (form == null) ? null : findItem(form.getItems(), name);
+                    FormItem item = (form == null) ? null : FormItemEdits.findUnique(form, name);
                     if (item == null) {
                         failure[0] = "the item disappeared between validation and apply";
                         return null;
+                    }
+                    if (!FormItemEdits.isListMember(item)) {
+                        throw new IllegalArgumentException("a structural command bar cannot be removed");
                     }
                     EObject container = item.eContainer();
                     if (container instanceof FormItemContainer) {
@@ -2620,12 +2664,17 @@ public final class FormWriteGateway {
                     return null;
                 }
                 r.formFound = true;
-                collectItemNames(form.getItems(), r.items);
+                collectItemNames(FormItemEdits.children(form), r.items);
                 collectEveryItemName(form, r.takenNames);
-                FormItem item = findItem(form.getItems(), name);
+                FormItem item = FormItemEdits.findUnique(form, name);
                 r.present = Boolean.valueOf(item != null);
+                if (item != null) {
+                    r.structural = !FormItemEdits.isListMember(item);
+                    r.id = item.getId();
+                    r.properties = FormItemEdits.readSettings(item);
+                }
                 if (item instanceof FormItemContainer) {
-                    collectItemNames(((FormItemContainer) item).getItems(), r.createdColumns);
+                    collectItemNames(FormItemEdits.children((FormItemContainer) item), r.createdColumns);
                 }
                 return null;
             }
@@ -2634,14 +2683,28 @@ public final class FormWriteGateway {
 
     private static void finishItem(FormItemResult r, IBmModelManager mm, IBmModel model, String formFqn,
             String what) {
-        String topFqn = formTopFqn(model, formFqn);
-        IDtProject dtProject = mm.getDtProject(model);
-        boolean exported = dtProject != null && topFqn != null && mm.forceExport(dtProject, topFqn);
         r.applied = true;
-        r.message = what + formFqn
-                + (exported ? " (serialized to Form.form)"
-                        : " - WARNING: committed in-memory but forceExport did not persist (Form.form "
-                                + "unchanged)");
+        try {
+            String topFqn = formTopFqn(model, formFqn);
+            IDtProject dtProject = mm.getDtProject(model);
+            boolean exported = dtProject != null && topFqn != null && mm.forceExport(dtProject, topFqn);
+            model.executeReadonlyTask(new AbstractBmTask<Object>("edt-bridge.formItem.readback") {
+                @Override public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
+                    Form form = resolveForm(tx, formFqn);
+                    FormItem item = form == null ? null : FormItemEdits.findUnique(form, r.name);
+                    r.properties = item == null ? Map.of() : FormItemEdits.readSettings(item);
+                    r.structural = item != null && !FormItemEdits.isListMember(item);
+                    return null;
+                }
+            });
+            r.message = what + formFqn
+                    + (exported ? " (serialized to Form.form)"
+                            : " - WARNING: committed in-memory but forceExport did not persist (Form.form "
+                                    + "unchanged)");
+        } catch (RuntimeException failed) {
+            r.ok = false;
+            r.message = "the form item was committed, but export/readback failed: " + GatewaySupport.describeCause(failed);
+        }
     }
 
     private static DataPath dataPathOf(String path) {
@@ -2718,8 +2781,8 @@ public final class FormWriteGateway {
     }
 
     /** Depth-first search for a container item by name. */
-    private static FormItemContainer findContainer(List<FormItem> items, String name) {
-        FormItem item = findItem(items, name);
+    private static FormItemContainer findContainer(Form form, String name) {
+        FormItem item = FormItemEdits.findUnique(form, name);
         return (item instanceof FormItemContainer) ? (FormItemContainer) item : null;
     }
 
@@ -2729,7 +2792,7 @@ public final class FormWriteGateway {
                 out.add(item.getName());
             }
             if (item instanceof FormItemContainer) {
-                collectItemNames(((FormItemContainer) item).getItems(), out);
+                collectItemNames(FormItemEdits.children((FormItemContainer) item), out);
             }
         }
     }

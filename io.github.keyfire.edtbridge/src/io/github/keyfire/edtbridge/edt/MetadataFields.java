@@ -3,8 +3,15 @@ package io.github.keyfire.edtbridge.edt;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.LinkedHashMap;
+import java.util.Set;
 import java.util.UUID;
 import org.eclipse.emf.ecore.EObject;
+import org.eclipse.emf.ecore.EClass;
+import org.eclipse.emf.ecore.EEnum;
+import org.eclipse.emf.ecore.EStructuralFeature;
+import org.eclipse.emf.common.util.Enumerator;
 import org.eclipse.emf.ecore.EReference;
 import com._1c.g5.v8.dt.metadata.mdclass.BasicFeature;
 import com._1c.g5.v8.dt.metadata.mdclass.MdObject;
@@ -112,6 +119,49 @@ final class MetadataFields {
         }
         if (comment != null) member.setComment(comment);
         return member;
+    }
+
+    static Map<EStructuralFeature, Object> validateOptions(EClass type, Map<String, Object> options) {
+        Map<EStructuralFeature, Object> changes = new LinkedHashMap<>();
+        for (var entry : options.entrySet()) {
+            String key = entry.getKey(); Object value = entry.getValue();
+            if (!Set.of("use", "multiLine").contains(key)) {
+                throw new IllegalArgumentException("unsupported field option: " + key);
+            }
+            EStructuralFeature feature = type.getEStructuralFeature(key);
+            if (feature == null || feature.isMany() || !feature.isChangeable()) {
+                throw new IllegalArgumentException(key + " is not available on " + type.getName());
+            }
+            if ("multiLine".equals(key)) {
+                if (!(value instanceof Boolean)) throw new IllegalArgumentException("multiLine must be boolean");
+                changes.put(feature, value);
+            } else {
+                if (!(value instanceof String) || !(feature.getEType() instanceof EEnum enumeration)) {
+                    throw new IllegalArgumentException("use requires a hierarchical field and an enum string");
+                }
+                var literal = enumeration.getELiterals().stream().filter(each ->
+                        each.getLiteral().equalsIgnoreCase((String) value)).findFirst().orElseThrow(() ->
+                                new IllegalArgumentException("use must be ForFolder, ForItem or ForFolderAndItem"));
+                changes.put(feature, literal.getInstance());
+            }
+        }
+        return changes;
+    }
+
+    static void applyOptions(EObject field, Map<String, Object> options) {
+        var changes = validateOptions(field.eClass(), options);
+        changes.forEach(field::eSet);
+    }
+
+    static Map<String, Object> readOptions(EObject field) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (String key : List.of("use", "multiLine")) {
+            var feature = field.eClass().getEStructuralFeature(key);
+            if (feature == null) continue;
+            Object value = field.eGet(feature);
+            result.put(key, value instanceof Enumerator enumeration ? enumeration.getLiteral() : value);
+        }
+        return result;
     }
 
     static String missingMessage(EObject owner, String ownerFqn, String kind, String name) {

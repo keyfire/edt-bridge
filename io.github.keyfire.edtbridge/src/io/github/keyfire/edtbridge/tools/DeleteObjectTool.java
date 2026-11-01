@@ -37,7 +37,7 @@ public final class DeleteObjectTool {
         props.add("apply", boolProp("false (default): report native delete items, indexed inbound references "
                 + "and possible BSL/query/form references; change nothing. true: run native delete with force=true, "
                 + "verify target absence in the live BM model, and audit remaining candidates. "
-                + "A complete BSL/query/form cascade is not guaranteed. Verify bsl_support_status EDITABLE first."));
+                + "A complete BSL/query/form cascade is not guaranteed. Verify edt_support_status EDITABLE first."));
         props.add("force", boolProp("Required for every apply. Acknowledges irreversible deletion and possible "
                 + "remaining references, incomplete audit coverage and retained form controls with dataPath cleared. "
                 + "Does not override native refactoring problems or a plan with no checked delete items."));
@@ -58,7 +58,7 @@ public final class DeleteObjectTool {
                 + "refused. After apply, deletionConfirmed reports target absence in the live BM model, and "
                 + "remainingPossibleReferences reports remaining candidates. Form controls can remain with dataPath "
                 + "cleared; observed cases are listed separately. No automatic text replacement is performed by "
-                + "the audit. Verify bsl_support_status EDITABLE before apply. Native analysis can take minutes.");
+                + "the audit. Verify edt_support_status EDITABLE before apply. Native analysis can take minutes.");
         descriptor.addProperty("descriptionRu", "ЗАПИСЬ (Phase 2): удалить объект метаданных или его член штатным "
                 + "рефакторингом EDT. Сухой прогон показывает штатный план изменений и отдельный ограниченный аудит "
                 + "возможных ссылок в коде и строках BSL, текстах запросов динамических списков/СКД и dataPath форм. "
@@ -68,7 +68,7 @@ public final class DeleteObjectTool {
                 + "рефакторинга и пустой план блокируют запись. После применения deletionConfirmed подтверждает "
                 + "отсутствие цели в живой BM-модели, remainingPossibleReferences показывает оставшихся кандидатов. "
                 + "Элементы формы могут остаться с очищенным dataPath; найденные случаи перечислены отдельно. "
-                + "Аудит не заменяет текст автоматически. Перед apply проверить bsl_support_status EDITABLE. "
+                + "Аудит не заменяет текст автоматически. Перед apply проверить edt_support_status EDITABLE. "
                 + "Штатный анализ может занять несколько минут.");
         descriptor.add("inputSchema", schema);
         return descriptor;

@@ -164,6 +164,9 @@ public final class MetadataReadGateway {
      * nodes?". Both used to be invisible here, which sent callers to grep the {@code .mdo} on disk.
      */
     private static void fillTypeSpecifics(MdObject md, MdDetails r) {
+        if (md instanceof BasicFeature) {
+            MetadataFields.readOptions(md).forEach((key, value) -> r.properties.put(key, String.valueOf(value)));
+        }
         if (md instanceof CommonModule) {
             CommonModule cm = (CommonModule) md;
             r.properties.put("global", String.valueOf(cm.isGlobal()));

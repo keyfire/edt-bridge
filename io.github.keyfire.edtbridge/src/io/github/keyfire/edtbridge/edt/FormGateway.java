@@ -324,7 +324,7 @@ public final class FormGateway {
                 }
                 collectConditionalAppearance(form, r);
                 int[] counter = {0};
-                for (FormItem it : form.getItems()) {
+                for (FormItem it : FormItemEdits.children(form)) {
                     FormNode n = nodeOf(it, cap, counter, r);
                     if (n != null) {
                         r.items.add(n);
@@ -447,7 +447,7 @@ public final class FormGateway {
             // properties are best-effort
         }
         if (item instanceof FormItemContainer) {
-            for (FormItem child : ((FormItemContainer) item).getItems()) {
+            for (FormItem child : FormItemEdits.children((FormItemContainer) item)) {
                 FormNode cn = nodeOf(child, cap, counter, r);
                 if (cn != null) {
                     n.children.add(cn);

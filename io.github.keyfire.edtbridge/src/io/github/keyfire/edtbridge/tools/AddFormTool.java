@@ -61,7 +61,7 @@ public final class AddFormTool {
                 + "Optional."));
         props.add("apply", boolProp("false (default) = dry-run: validate (owner exists, carries forms, name "
                 + "free, form kind known) and return the plan, create nothing. true = create the form "
-                + "(BasicForm + generated Form content + Module.bsl). Verify bsl_support_status EDITABLE "
+                + "(BasicForm + generated Form content + Module.bsl). Verify edt_support_status EDITABLE "
                 + "first."));
 
         JsonArray req = new JsonArray();
@@ -82,14 +82,14 @@ public final class AddFormTool {
                 + "module are generated the way EDT would, not hand-written as XML. Dry-run by default: "
                 + "validates and returns the plan WITHOUT creating. apply=true creates it (owner .mdo gains "
                 + "the form entry, Form.form and Module.bsl are written). Additive - no force needed - but "
-                + "requires a configured token. Verify bsl_support_status EDITABLE before apply.");
+                + "requires a configured token. Verify edt_support_status EDITABLE before apply.");
         t.addProperty("descriptionRu",
                 "ЗАПИСЬ (Phase 2): создать управляемую форму у существующего объекта метаданных штатным "
                 + "генератором EDT - тем же, что стоит за мастером \"Новая форма\", - поэтому форма, её "
                 + "элементы и модуль получаются такими, какими их сделала бы EDT, а не собранными руками из "
                 + "XML. По умолчанию dry-run: проверяет и возвращает план БЕЗ создания. apply=true создаёт "
                 + "(в .mdo владельца появляется форма, пишутся Form.form и Module.bsl). Аддитивно - force не "
-                + "нужен - но требует токен. Перед apply проверить bsl_support_status = EDITABLE.");
+                + "нужен - но требует токен. Перед apply проверить edt_support_status = EDITABLE.");
         t.add("inputSchema", schema);
         return t;
     }
@@ -132,6 +132,7 @@ public final class AddFormTool {
                 o.addProperty("nameAvailable", res.nameAvailable.booleanValue());
             }
             o.addProperty("defaultForm", res.defaultForm);
+            if (res.defaultFormProperty != null) o.addProperty("defaultFormProperty", res.defaultFormProperty);
             if (!res.existingForms.isEmpty()) {
                 JsonArray forms = new JsonArray();
                 res.existingForms.forEach(forms::add);

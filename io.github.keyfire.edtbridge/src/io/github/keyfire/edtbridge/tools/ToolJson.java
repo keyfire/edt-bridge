@@ -108,6 +108,8 @@ final class ToolJson {
     /** Render a form-item outcome as the tool's JSON result. */
     static String renderItem(FormWriteGateway.FormItemResult res) {
         JsonObject o = new JsonObject();
+        o.add("properties", new GsonBuilder().create().toJsonTree(res.properties));
+        if (res.structural) o.addProperty("structural", true);
         o.addProperty("ok", res.ok);
         o.addProperty("applied", res.applied);
         o.addProperty("formFqn", res.formFqn);

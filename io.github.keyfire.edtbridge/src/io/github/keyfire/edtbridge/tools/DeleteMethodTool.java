@@ -31,7 +31,7 @@ import com.google.gson.JsonObject;
  * and writes the .bsl, but ONLY if the result re-parses cleanly and loses exactly this one method (the
  * safety invariant), AND force=true is passed (deleting code is destructive; an exported method is a
  * breaking change for consumers). Requires a configured token; the caller must verify
- * bsl_support_status EDITABLE before apply.
+ * edt_support_status EDITABLE before apply.
  */
 public final class DeleteMethodTool {
 
@@ -59,7 +59,7 @@ public final class DeleteMethodTool {
                 + "as BSL names are)."));
         props.add("apply", boolProp("false (default) = dry-run: locate + validate + return the plan and the "
                 + "exact text that would be removed, write nothing. true = write the .bsl without the method "
-                + "(only if the result parses cleanly); also requires force=true. Verify bsl_support_status "
+                + "(only if the result parses cleanly); also requires force=true. Verify edt_support_status "
                 + "EDITABLE first."));
         props.add("force", boolProp("false (default) = refuse apply (deleting code is destructive; an "
                 + "exported method is breaking for consumers). true = the owner's explicit override; "
@@ -84,7 +84,7 @@ public final class DeleteMethodTool {
                 + "line above) and writes the .bsl, but only if the result re-parses cleanly and loses exactly "
                 + "this one method (safety invariant), AND force=true (destructive; deleting an EXPORTED "
                 + "method breaks consumers – check callers via edt_find_references method mode and prefer "
-                + "deprecation). Requires a configured token; caller must verify bsl_support_status EDITABLE "
+                + "deprecation). Requires a configured token; caller must verify edt_support_status EDITABLE "
                 + "before apply.");
         t.addProperty("descriptionRu",
                 "ЗАПИСЬ (Phase 2): удалить процедуру/функцию из BSL модуля – обратная операция к "
@@ -95,7 +95,7 @@ public final class DeleteMethodTool {
                 + "(инвариант безопасности), И передан force=true (деструктивно; удаление ЭКСПОРТНОГО метода "
                 + "ломает вызывающий код – проверьте вызовы через edt_find_references по методу, "
                 + "предпочитайте deprecated). Требует токен; перед apply вызывающий обязан проверить "
-                + "bsl_support_status = EDITABLE.");
+                + "edt_support_status = EDITABLE.");
         t.add("inputSchema", schema);
         return t;
     }
