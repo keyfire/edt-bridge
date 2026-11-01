@@ -71,9 +71,61 @@ the response states the limits of the export wait and after-audit.
 | `edt_create_extension` · `edt_create_external_object` | Create a configuration extension project or an external data processor project. The extension uses `IExtensionProjectManager`. Its root Configuration is adopted from the base configuration as in EDT's wizard, making the project loadable into an infobase. A name prefix, purpose (Customization, AddOn or Patch), and synonym are also set. An external processor project is used for the "processor → .epf" build process. |
 | `edt_clean_project` · `edt_delete_project` | Clear build results or remove a project. The clean operation invokes EDT's "Clean" function, reports problem counts before and after, and waits for the count to stabilize so validation can run again. For one module changed on disk, use `edt_project_errors` with `refresh=true`. Project removal uses the Eclipse workspace to update its resource tree and requires `force` because it cannot be undone. |
 | `edt_build_extension` · `edt_dump_external_object` | Builds the binaries: a `.cfe` from an extension project, an `.epf` or `.erf` from an external data processor or report. Both can go around EDT's platform resolver when it serves no thick client. They export designer XML in-process, then assemble the file with a full on-disk 1C install in a temporary infobase that is deleted afterwards. `logPath` keeps the platform's build log next to the artefact. The dump falls back to the on-disk route when EDT's own dumper refuses, `route` pins it to `edt` or `disk`, and the auto-dump generation is put back if the refusal switched it off. |
+| `edt_replace_method` | Replaces one existing method after parsing it with EDT. Dry-run returns exact oldText/newText and the whole-module sourceHash. Apply requires that hash and force=true; stale source, unsaved editors and invalid replacements are refused. The method name and kind stay the same, and surrounding source is preserved. |
 | `edt_move_method` | Moves a method within its module, preserving its exact text, documentation and directives. Supports nested region paths and neighboring methods, checks the intermediate and final module with the EDT parser, and requires `apply=true, force=true`. |
 | `edt_move_form_item` | Moves an existing form item by sibling index or anchor while preserving identity, id, children, properties and events. Refuses cycles and moves that require converting the item kind or data binding. |
 | `edt_import_external_object` | Imports an existing `.epf` or `.erf` into a new EDT project, optionally with `baseProjectName`. Uses EDT or a full platform installation to unpack XML, then the native EDT importer. The source is preserved and the tool removes its own partial project after a failed import. |
+
+#### Replace an existing BSL method
+
+Use `edt_replace_method` to change a method's body, parameters, export flag or attached
+comments and directives in one operation. The name and kind must remain the same.
+Use `edt_rename` to rename a method and update its callers.
+
+1. Read the source with `edt_module_text`. When preparing the full replacement, include
+   the method's documentation, compilation directives and trailing comment. A targeted
+   read may omit attachments; the dry-run's `oldText` shows the full range being replaced.
+2. Check `edt_support_status` for the owner and save any open module editor.
+3. Call `edt_replace_method` without `apply`. Review `oldText` and `newText` and keep
+   `sourceHash`. The replacement contains exactly one method, without surrounding
+   regions, preprocessor blocks, variables or statements at module level.
+4. Apply the same replacement with `apply=true`, `force=true` and `expectedHash` set
+   to that `sourceHash`. A change anywhere in the module requires a new dry-run.
+5. Read the saved source and run `edt_project_errors`. Parsing checks syntax; the tool
+   does not rewrite callers after a parameter change or prove runtime behavior.
+
+Preview:
+
+```json
+{
+  "projectName": "Demo",
+  "fqn": "CommonModule.Api",
+  "methodName": "Calculate",
+  "methodText": "Function Calculate(Value) Export\n    Return Value + 1;\nEndFunction"
+}
+```
+
+Apply with the hash returned by that preview:
+
+```json
+{
+  "projectName": "Demo",
+  "fqn": "CommonModule.Api",
+  "methodName": "Calculate",
+  "methodText": "Function Calculate(Value) Export\n    Return Value + 1;\nEndFunction",
+  "expectedHash": "<sourceHash from the dry-run>",
+  "apply": true,
+  "force": true
+}
+```
+
+`oldText` and `newText` include attachments: omitting an old comment or directive from
+`methodText` removes it. `sourceHash` covers the entire UTF-8 module, including its BOM;
+`resultHash` identifies the proposed or saved result. The replacement adopts the source's
+line endings. Other source text and its BOM are retained. Invalid UTF-8 and malformed
+Unicode are refused. An identical replacement returns `unchanged=true` without writing.
+A missing or ambiguous method, a dirty editor or a parse error in the source also prevents
+a write. This operation does not create a missing module.
 
 #### Register fields
 

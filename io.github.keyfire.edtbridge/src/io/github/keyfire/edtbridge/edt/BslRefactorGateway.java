@@ -18,6 +18,9 @@ package io.github.keyfire.edtbridge.edt;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.charset.CodingErrorAction;
+import java.nio.ByteBuffer;
+import io.github.keyfire.edtbridge.core.BslMethodReplacement;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -197,6 +200,141 @@ public final class BslRefactorGateway {
             if (change != null) change.dispose();
         }
         return result;
+    }
+
+    /** A single-method replacement, with exact previews and a whole-source concurrency guard. */
+    public static final class ReplacementResult {
+        public boolean ok;
+        public boolean applied;
+        public boolean applyPending;
+        public boolean valid;
+        public boolean unchanged;
+        public boolean force;
+        public String modulePath;
+        public String methodName;
+        public String sourceHash;
+        public String resultHash;
+        public String oldText;
+        public String newText;
+        public int lineFrom;
+        public int lineTo;
+        public String plan;
+        public String message;
+    }
+
+    public ReplacementResult replaceMethod(String projectName, String fqn, String moduleType,
+            String modulePath, String methodName, String methodText, String expectedHash,
+            boolean apply, boolean force) {
+        ReplacementResult result = new ReplacementResult();
+        result.force = force;
+        result.methodName = methodName;
+        try {
+            if (methodName == null || methodName.isBlank()) throw new IllegalArgumentException("methodName is required");
+            if (methodText == null || methodText.isBlank()) throw new IllegalArgumentException("methodText is required");
+            if (apply && (expectedHash == null || expectedHash.isBlank())) {
+                throw new IllegalArgumentException("apply requires expectedHash from a current dry-run");
+            }
+            if (apply && !force) throw new IllegalArgumentException("apply requires force=true");
+            IFile file = moduleFile(projectName, fqn, moduleType, modulePath);
+            if (!file.getName().toLowerCase(Locale.ROOT).endsWith(".bsl")) {
+                throw new IllegalArgumentException("modulePath must identify a .bsl file");
+            }
+            requireReplacementSaved(file);
+            result.modulePath = file.getProjectRelativePath().toPortableString();
+            String text = replacementSource(file);
+            // Keep the BOM in the file and hash, but give the parser an unambiguous text origin.
+            int bom = text.startsWith("\ufeff") ? 1 : 0;
+            String parseText = text.substring(bom);
+            Module original = BslGateway.firstModule(parse(projectName, result.modulePath, parseText).resource);
+            var method = uniqueMethod(original, methodName);
+            result.methodName = method.getName();
+            int[] range = BslGateway.methodRange(method, parseText);
+            range[0] += bom; range[1] += bom;
+            var edit = BslMethodReplacement.plan(text, range[0], range[1], methodText, expectedHash);
+            result.sourceHash = edit.sourceHash();
+            result.resultHash = edit.resultHash();
+            result.oldText = edit.oldText();
+            result.newText = edit.newText();
+            result.lineFrom = lineAt(text, range[0]);
+            result.lineTo = lineAt(text, range[1]);
+            Module fragment = BslGateway.firstModule(parse(projectName, result.modulePath, edit.newText()).resource);
+            replacementMethod(fragment, edit.newText(), method.getName(),
+                    method instanceof com._1c.g5.v8.dt.bsl.model.Function);
+            String changedParseText = edit.text().substring(bom);
+            Module changed = BslGateway.firstModule(parse(projectName, result.modulePath, changedParseText).resource);
+            if (!methodNames(original).equals(methodNames(changed))) {
+                throw new IllegalArgumentException("replacement would change the set of methods");
+            }
+            var finalMethod = uniqueMethod(changed, methodName);
+            int[] finalRange = BslGateway.methodRange(finalMethod, changedParseText);
+            if (!edit.newText().equals(changedParseText.substring(finalRange[0], finalRange[1]))) {
+                throw new IllegalArgumentException("replacement is not exactly the target method range");
+            }
+            result.valid = true;
+            result.unchanged = edit.unchanged();
+            result.plan = "Replace method " + method.getName() + " in " + result.modulePath
+                    + " [lines " + result.lineFrom + "-" + result.lineTo + "]; surrounding source is preserved";
+            if (!apply || edit.unchanged()) {
+                result.ok = true;
+                result.applyPending = !apply && !edit.unchanged();
+                result.message = edit.unchanged() ? "method text is unchanged; nothing written"
+                        : "dry-run: replacement validated; nothing written; apply requires expectedHash and force=true";
+                return result;
+            }
+            exclusive(file.getProject(), () -> {
+                try {
+                    requireReplacementSaved(file);
+                    if (!text.equals(replacementSource(file))) {
+                        throw new IllegalStateException("module changed after planning; repeat the dry-run");
+                    }
+                    file.setContents(new ByteArrayInputStream(edit.text().getBytes(StandardCharsets.UTF_8)),
+                            true, true, new NullProgressMonitor());
+                } catch (Exception exception) {
+                    throw new IllegalStateException(exception);
+                }
+            });
+            result.applied = true;
+            result.ok = true;
+            result.message = "method replaced; surrounding source preserved";
+        } catch (Exception exception) {
+            result.ok = false;
+            result.message = "replacement refused or failed: " + cause(exception);
+        }
+        return result;
+    }
+
+    /** The fragment must be one same-named, same-kind method, without module-level content. */
+    static com._1c.g5.v8.dt.bsl.model.Method replacementMethod(Module module, String text,
+            String methodName, boolean function) {
+        int count = 0;
+        for (var ignored : module.allMethods()) count++;
+        if (count != 1) throw new IllegalArgumentException("methodText must contain exactly one method");
+        var method = uniqueMethod(module, methodName);
+        if (function != (method instanceof com._1c.g5.v8.dt.bsl.model.Function)) {
+            throw new IllegalArgumentException("replacement must keep the method kind (procedure or function)");
+        }
+        int[] range = BslGateway.methodRange(method, text);
+        if (text.startsWith("\ufeff") || !text.substring(0, range[0]).isBlank()
+                || !text.substring(range[1]).isBlank()) {
+            throw new IllegalArgumentException("methodText contains content outside the method; wrappers and module-level code are not supported");
+        }
+        return method;
+    }
+
+    private static String replacementSource(IFile file) throws Exception {
+        try (var input = file.getContents()) {
+            return StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(input.readAllBytes())).toString();
+        }
+    }
+
+    private static void requireReplacementSaved(IFile file) {
+        requireSaved(file);
+        var manager = org.eclipse.core.filebuffers.FileBuffers.getTextFileBufferManager();
+        if (file.getLocation() != null) {
+            var buffer = manager.getTextFileBuffer(file.getLocation(), org.eclipse.core.filebuffers.LocationKind.LOCATION);
+            if (buffer != null && buffer.isDirty()) throw new IllegalArgumentException("save the module editor before replacement");
+        }
     }
 
     public Result moveMethod(String projectName, String fqn, String moduleType, String modulePath,
