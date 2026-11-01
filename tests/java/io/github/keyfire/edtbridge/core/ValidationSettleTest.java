@@ -92,4 +92,15 @@ class ValidationSettleTest {
         }
     }
 
+    @Test
+    void quietCountsWaitForTheRequestedValidationToComplete() {
+        ValidationSettle settle = new ValidationSettle();
+        for (int i = 0; i < 8; i++) {
+            assertFalse(settle.poll(0, true, false));
+        }
+        assertFalse(settle.poll(0, true, true));
+        assertFalse(settle.poll(0, true, true));
+        assertTrue(settle.poll(0, true, true));
+    }
+
 }

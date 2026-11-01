@@ -20,6 +20,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.NullProgressMonitor;
@@ -29,6 +31,8 @@ import com.google.inject.Injector;
 import com._1c.g5.wiring.ServiceAccess;
 import com._1c.g5.v8.dt.platform.services.core.infobases.IInfobaseAssociationManager;
 import com._1c.g5.v8.dt.platform.services.core.infobases.IInfobaseManager;
+import com._1c.g5.v8.dt.platform.services.core.infobases.IInfobaseAssociationContextProvider;
+import com._1c.g5.v8.dt.platform.services.core.infobases.InfobaseAssociationContext;
 import com._1c.g5.v8.dt.platform.services.core.infobases.InfobaseAssociationSettings;
 import com._1c.g5.v8.dt.platform.services.core.infobases.InfobaseReferences;
 import com._1c.g5.v8.dt.platform.services.model.InfobaseReference;
@@ -52,6 +56,9 @@ public final class ApplicationGateway {
         public boolean applied;
         public boolean verified;
         public boolean already;
+        public boolean associationVerified;
+        public boolean associationAlready;
+        public String associationContext;
         public boolean controllable;
         public String projectName;
         public String applicationId;
@@ -76,28 +83,73 @@ public final class ApplicationGateway {
     private static final Object LOCK = new Object();
 
     static Result associateExisting(IProject project, InfobaseReference base,
-            IInfobaseAssociationManager associations, IApplicationManager applications, boolean apply) throws Exception {
+            IInfobaseAssociationManager associations, IApplicationManager applications,
+            InfobaseAssociationContext context, boolean apply) throws Exception {
+        if (context == null) throw new IllegalArgumentException("The active association context is required");
         Result result = new Result(); result.action = "associate"; result.projectName = project.getName();
         result.infobaseUuid = String.valueOf(base.getUuid());
+        result.associationContext = context.toString();
+        result.plan = "Associate registered infobase " + base.getName() + " with project " + project.getName()
+                + " in its active EDT context";
+        result.associationVerified = hasAssociation(project, base, associations, context);
+        result.associationAlready = result.associationVerified;
         var existing = applications.findApplicationByInfobaseAndProject(base, project);
-        result.plan = "Associate registered infobase " + base.getName() + " with project " + project.getName();
-        result.ok = true;
         if (existing.isPresent()) {
-            result.already = true; application(result, existing.get()); return result;
+            result.ok = result.associationVerified;
+            result.already = result.ok;
+            if (result.ok) application(result, existing.get());
+            else result.message = "An application exists, but its association in the active context could not be verified";
+            return result;
         }
+        result.ok = true;
         if (!apply) return result;
-        associations.associate(project, base, InfobaseAssociationSettings.notSynchronized());
-        result.applied = true;
+        if (!result.associationAlready) {
+            associations.associate(project, base, InfobaseAssociationSettings.notSynchronized(context));
+            result.applied = true;
+        }
         try {
-            var actual = applications.findApplicationByInfobaseAndProject(base, project);
+            result.associationVerified = hasAssociation(project, base, associations, context);
+            if (!result.associationVerified) {
+                result.ok = false;
+                result.message = "EDT returned from associate, but the association was not found in the active context";
+                return result;
+            }
+            var actual = awaitApplication(project, base, applications);
             result.ok = actual.isPresent();
-            if (actual.isPresent()) application(result, actual.get());
-            else result.message = "association was saved, but EDT has not exposed an application; re-read the application list";
+            if (actual.isPresent()) {
+                application(result, actual.get());
+                result.already = result.associationAlready;
+            } else {
+                result.message = "The association is verified, but EDT has not exposed its application; "
+                        + "the existing association was not removed or rewritten";
+            }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            result.ok = false;
+            result.message = "Application verification was interrupted; re-read the native application list";
         } catch (Exception unavailable) {
             result.ok = false;
-            result.message = "association was saved, but its application could not be verified; re-read the application list";
+            result.message = "The association operation returned, but its final state could not be verified; "
+                    + "re-read the native application list";
         }
         return result;
+    }
+
+    private static boolean hasAssociation(IProject project, InfobaseReference base,
+            IInfobaseAssociationManager associations, InfobaseAssociationContext context) throws Exception {
+        var actual = associations.getAssociation(project, context);
+        return actual.isPresent() && actual.get().getInfobases().stream()
+                .anyMatch(candidate -> base.getUuid().equals(candidate.getUuid()));
+    }
+
+    private static Optional<IApplication> awaitApplication(IProject project, InfobaseReference base,
+            IApplicationManager applications) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        while (true) {
+            var actual = applications.findApplicationByInfobaseAndProject(base, project);
+            if (actual.isPresent() || System.nanoTime() >= deadline) return actual;
+            Thread.sleep(25);
+        }
     }
 
     private static void application(Result result, IApplication application) {
@@ -127,7 +179,12 @@ public final class ApplicationGateway {
                         if (infobase.equals(String.valueOf(candidate.getUuid())) || infobase.equals(candidate.getName())) matches.add(candidate);
                     }
                     if (matches.size() != 1) { result.message = "registered infobase is missing or ambiguous; use its uuid"; return result; }
-                    return associateExisting(project, matches.get(0), associations, manager, apply);
+                    IInfobaseAssociationContextProvider contexts = ServiceAccess.get(IInfobaseAssociationContextProvider.class);
+                    if (contexts == null) {
+                        result.message = "EDT active association context provider unavailable; no association was changed";
+                        return result;
+                    }
+                    return associateExisting(project, matches.get(0), associations, manager, contexts.get(project), apply);
                 }
                 if ("list".equals(action)) {
                     for (IApplication app : manager.getApplications(project)) {

@@ -59,7 +59,9 @@ public final class CleanProjectTool {
                 + "it stops changing. Sources are untouched, so no force is needed - but it does need a "
                 + "configured token. Use it before trusting edt_project_errors after an edit – or, for one "
                 + "module changed on disk, pass refresh=true to edt_project_errors instead: an incremental "
-                + "build of that scope, seconds instead of a full rebuild.",
+                + "build plus active checks of the resolved object. A failure reports its stage, completed "
+                + "stages, cancellation and bounded job/status diagnostics. applied=true may mean the clean "
+                + "finished before a later rebuild or wait failed.",
                 "ЗАПИСЬ (Phase 2): сбросить результаты сборки проекта и дать пересчитать их заново - "
                 + "программный аналог диалога \"Очистить\" в EDT. Проверки EDT висят на сборке, поэтому "
                 + "именно это заставляет валидацию отработать снова: иначе замечание может пережить "
@@ -67,8 +69,10 @@ public final class CleanProjectTool {
                 + "число замечаний до и после, дождавшись, пока оно перестанет меняться. Исходники не "
                 + "трогаются, force не нужен - но нужен токен. Вызывать перед тем, как доверять "
                 + "edt_project_errors после правок, – либо, для одного модуля, изменённого на диске, "
-                + "передать edt_project_errors refresh=true: инкрементальная сборка этой области, "
-                + "секунды вместо полной пересборки.",
+                + "передать edt_project_errors refresh=true: инкрементальная сборка и применимые проверки "
+                + "разрешенного объекта. При сбое возвращаются этап, завершенные этапы, отмена и ограниченная "
+                + "диагностика jobs/status. applied=true может означать, что очистка выполнена, а последующая "
+                + "пересборка или ожидание завершились ошибкой.",
                 props, "projectName");
     }
 
@@ -95,19 +99,30 @@ public final class CleanProjectTool {
             o.addProperty("rebuild", res.rebuild);
             o.addProperty("autoBuilding", res.autoBuilding);
             o.addProperty("modelReady", res.modelReady);
+            o.addProperty("attempted", res.attempted);
+            o.addProperty("stateMayHaveChanged", res.stateMayHaveChanged);
+            o.addProperty("stage", res.stage);
+            o.addProperty("canceled", res.canceled);
+            o.addProperty("monitorCanceled", res.monitorCanceled);
+            o.addProperty("threadInterrupted", res.threadInterrupted);
+            o.addProperty("settled", res.settled);
+            o.addProperty("validationCompleted", res.validationCompleted);
+            o.addProperty("sawValidation", res.sawValidation);
+            o.addProperty("elapsedMs", res.elapsedMs);
+            var gson = new GsonBuilder().create();
+            o.add("completedStages", gson.toJsonTree(res.completedStages));
+            o.add("jobs", gson.toJsonTree(res.jobs));
+            o.addProperty("jobsTruncated", res.jobsTruncated);
+            if (res.status != null) o.add("status", gson.toJsonTree(res.status));
+            if (res.cancelCause != null) o.addProperty("cancelCause", res.cancelCause);
+            if (res.failureType != null) o.addProperty("failureType", res.failureType);
+            if (res.failureOrigin != null) o.addProperty("failureOrigin", res.failureOrigin);
+            if (res.nextStep != null) o.addProperty("nextStep", res.nextStep);
             if (res.problemsBefore >= 0) {
                 o.addProperty("problemsBefore", res.problemsBefore);
             }
             if (res.problemsAfter >= 0) {
                 o.addProperty("problemsAfter", res.problemsAfter);
-            }
-            if (res.applied) {
-                o.addProperty("settled", res.settled);
-                // Whether the checks were seen running at all: "settled" without them is the shape
-                // of a wait that finished before validation started, and the caller must be able to
-                // tell the two apart without reading the message.
-                o.addProperty("sawValidation", res.sawValidation);
-                o.addProperty("elapsedMs", res.elapsedMs);
             }
             if (res.plan != null) {
                 o.addProperty("plan", res.plan);

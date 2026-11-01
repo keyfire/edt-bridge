@@ -36,6 +36,16 @@ import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.core.runtime.jobs.Job;
+import org.eclipse.core.runtime.jobs.IJobManager;
+import org.eclipse.core.runtime.IStatus;
+import org.eclipse.core.runtime.OperationCanceledException;
+import com._1c.g5.v8.bm.core.IBmObject;
+import com._1c.g5.v8.bm.core.IBmTransaction;
+import com._1c.g5.v8.bm.integration.AbstractBmTask;
+import com._1c.g5.v8.bm.integration.IBmModel;
+import com._1c.g5.v8.derived.IDerivedDataManager;
+import com.e1c.g5.v8.dt.check.ICheckScheduler;
+import com.e1c.g5.v8.dt.check.settings.ICheckRepository;
 import org.eclipse.emf.common.util.URI;
 import org.eclipse.emf.ecore.EObject;
 import com._1c.g5.v8.dt.validation.marker.IMarkerManager;
@@ -169,6 +179,8 @@ public final class ProjectGateway {
         /** Listed problems whose marker predates the last change of their file; -1 when nothing
          *  was listed to judge (countOnly). */
         public int staleCount = -1;
+        /** Whether freshness was inspected for every filtered marker before presentation limits. */
+        public boolean markerFreshnessComplete;
         /** Files in scope the workspace has not read since their last write on disk - the first
          *  few; unsynchronizedCount says how many there are. */
         public List<String> unsynchronized = new ArrayList<>();
@@ -271,15 +283,7 @@ public final class ProjectGateway {
         // Every listed problem is judged against its file, and the scope is checked for files
         // the workspace has not read: a marker outliving its cause is the defect this report
         // exists to expose, and a file holding problems nothing reports yet is its twin.
-        if (!countOnly) {
-            judgeFreshness(r.problems);
-            r.staleCount = 0;
-            for (Problem p : r.problems) {
-                if (p.stale) {
-                    r.staleCount++;
-                }
-            }
-        }
+        finishFreshness(r, FormWriteGateway.coreService(IResourceLookup.class));
         boolean several = projects.size() > 1;
         java.util.Set<String> unseen = new java.util.LinkedHashSet<>();
         int unseenCount = 0;
@@ -309,6 +313,10 @@ public final class ProjectGateway {
         }
         r.hint = MarkerFreshness.hint(Math.max(r.staleCount, 0), r.unsynchronizedCount,
                 refreshed != null);
+        if (!r.markerFreshnessComplete) {
+            r.hint = appendHint(r.hint, "Marker freshness was not inspected for the full scope. "
+                    + "Use countOnly=false and narrow fqn/modulePath or increase limit for a complete snapshot.");
+        }
         for (ProjInfo pi : listProjectsDetailed()) {
             if (pi.open && (projectName == null || projectName.isBlank() || projectName.equals(pi.name))) {
                 r.modelStatus.add(pi);
@@ -367,11 +375,26 @@ public final class ProjectGateway {
      * report is worth. So the stale count covers what the caller reads - which is what the
      * caller acts on.
      */
-    private static void judgeFreshness(List<Problem> listed) {
+    static void finishFreshness(ProblemReport report, IResourceLookup lookup) {
+        report.markerFreshnessComplete = !report.countOnly && !report.truncated;
+        if (report.countOnly) return;
+        judgeFreshness(report.problems, lookup);
+        report.staleCount = 0;
+        int unresolvedEdt = 0;
+        for (Problem problem : report.problems) {
+            if (problem.stale) report.staleCount++;
+            if (problem.file == null) {
+                report.markerFreshnessComplete = false;
+                if (problem.edtMarker != null || "edt-check".equals(problem.source)) unresolvedEdt++;
+            }
+        }
+        report.unresolvedEdtMarkers = Math.max(report.unresolvedEdtMarkers, unresolvedEdt);
+    }
+
+    private static void judgeFreshness(List<Problem> listed, IResourceLookup lookup) {
         if (listed.isEmpty()) {
             return;
         }
-        IResourceLookup lookup = FormWriteGateway.coreService(IResourceLookup.class);
         java.util.Map<Object, IResource> byObject = new java.util.HashMap<>();
         java.util.Map<IResource, long[]> stamps = new java.util.HashMap<>();
         for (Problem p : listed) {
@@ -578,6 +601,10 @@ public final class ProjectGateway {
 
     /** Outcome of {@link #refreshScope}: what was re-read from disk and what the rebuild cost. */
     public static final class RefreshResult {
+        public boolean validationRequested;
+        public boolean validationCompleted;
+        public List<String> validationTargets = new ArrayList<>();
+        public String validationMode;
         /** What was refreshed: a project-relative path, or the project name for a whole project. */
         public List<String> resources = new ArrayList<>();
         public long refreshMs;
@@ -585,18 +612,107 @@ public final class ProjectGateway {
         public long waitMs;
         /** Whether the problem count settled within the wait - see ValidationSettle. */
         public boolean settled;
-        /** Whether validation was seen running at all while waiting. */
+        /** Whether explicitly requested object checks completed. */
         public boolean sawValidation;
         public String warning;
     }
 
+    static String validationFqn(String fqn, String modulePath) {
+        if (fqn != null && !fqn.isBlank()) {
+            String exact = fqn.trim();
+            if (modulePath != null && !modulePath.isBlank()) {
+                String fileOwner = validationFqn(null, modulePath);
+                if (fileOwner == null || !fileOwner.equalsIgnoreCase(exact)) return null;
+            }
+            return exact;
+        }
+        if (modulePath == null || modulePath.isBlank()) return null;
+        String path = modulePath.trim().replace('\\', '/');
+        if (path.startsWith("/") || path.contains(":")) return null;
+        String[] parts = path.split("/");
+        for (String part : parts) {
+            if (part.isBlank() || ".".equals(part) || "..".equals(part)) return null;
+        }
+        int start = parts.length > 0 && "src".equals(parts[0]) ? 1 : 0;
+        if (parts.length - start < 2) return null;
+        String type = MetadataPaths.TYPE_BY_FOLDER.get(parts[start]);
+        if (type == null) return null;
+        String owner = type + "." + parts[start + 1];
+        if (parts.length - start >= 4 && "Forms".equals(parts[start + 2])) {
+            return owner + ".Form." + parts[start + 3];
+        }
+        return owner;
+    }
+
+    static Object validationObject(IBmTransaction transaction, String fqn) {
+        Object indexed = transaction.getTopObjectByFqn(fqn);
+        if (indexed == null && fqn.contains(".Form.")) {
+            return FormWriteGateway.resolveForm(transaction, fqn);
+        }
+        return indexed;
+    }
+
+    static RefreshResult revalidateObject(IProject project, String fqn, IBmModel model,
+            ICheckScheduler scheduler, ICheckRepository repository, IDerivedDataManager derived,
+            IProgressMonitor monitor, long timeoutMs) {
+        RefreshResult result = new RefreshResult();
+        result.validationMode = "objectChecks";
+        if (fqn == null || fqn.isBlank() || model == null || scheduler == null
+                || repository == null || derived == null) {
+            result.warning = "Object validation services or the exact target are unavailable; "
+                    + "no whole-project check was requested.";
+            return result;
+        }
+        try {
+            if (repository.isMassiveCheckProcessDisabled(project)) {
+                result.warning = "Automatic checks are disabled for this project; "
+                        + "validation settings were preserved.";
+                return result;
+            }
+            model.executeReadonlyTask(new AbstractBmTask<Void>("edt-bridge.refresh.validateObject") {
+                @Override
+                public Void execute(IBmTransaction transaction, IProgressMonitor taskMonitor) {
+                    if (!transaction.isReadOnly()) {
+                        throw new IllegalStateException("Object validation requires a read-only transaction");
+                    }
+                    Object resolved = validationObject(transaction, fqn);
+                    if (!(resolved instanceof IBmObject object) || object.bmGetId() == IBmObject.BM_NULL_ID) {
+                        result.warning = "The exact validation object was not found; "
+                                + "no whole-project check was requested.";
+                        return null;
+                    }
+                    // An empty check set means all applicable checks, but this target list is never empty.
+                    scheduler.scheduleValidation(project, java.util.Set.of(),
+                            java.util.List.of((Object) Long.valueOf(object.bmGetId())), false,
+                            transaction, monitor);
+                    result.validationRequested = true;
+                    result.validationTargets.add(fqn);
+                    return null;
+                }
+            });
+            if (result.validationRequested) {
+                result.validationCompleted = timeoutMs > 0 && derived.waitAllComputations(timeoutMs)
+                        && derived.isAllComputed();
+                result.sawValidation = result.validationCompleted;
+                if (!result.validationCompleted) {
+                    result.warning = "The requested object checks did not finish within the validation "
+                            + "wait; the problem report is incomplete.";
+                }
+            }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            result.warning = "The object-validation wait was interrupted; the problem report is incomplete.";
+        } catch (RuntimeException | LinkageError failure) {
+            result.warning = "Object validation failed: " + failureDescription(failure);
+        }
+        return result;
+    }
+
     /**
-     * Re-read the narrowed scope from disk and validate it in place: the point fix for a stale
-     * marker. {@code refreshLocal} tells the workspace about the files that changed under it, an
-     * INCREMENTAL build lets EDT's builders process exactly those, and the wait is the one that
-     * follows a clean - the checks run after the build, not in it. Seconds for one module, where
-     * {@link #cleanProject} rebuilds everything for minutes. With nothing to narrow, the project's
-     * sources folder is refreshed - what validation reads.
+     * Re-read resources and run an incremental build. A narrowed metadata scope also requests
+     * active checks for its exact BM top object in a read-only transaction, then waits for the
+     * project's derived-data pipeline and a stable problem count. A failed target resolution never
+     * becomes a whole-project check. Without a narrowing, only the incremental build is requested.
      *
      * <p>A project with no build state yet - never built in this session - gets a full build from
      * the same call: that is how Eclipse answers an incremental request it cannot honour.
@@ -645,14 +761,56 @@ public final class ProjectGateway {
             r.warning = "build failed: " + GatewaySupport.describeCause(e);
         }
         r.buildMs = System.currentTimeMillis() - building;
-        ValidationSettle settle = new ValidationSettle();
         long waiting = System.currentTimeMillis();
-        r.settled = awaitSettle(projectName, settle, (waitSeconds > 0 ? waitSeconds : 120) * 1000L, 1000L);
+        long deadline = waiting + (waitSeconds > 0 ? waitSeconds : 120) * 1000L;
+        boolean narrowed = fqn != null && !fqn.isBlank() || modulePath != null && !modulePath.isBlank();
+        String target = validationFqn(fqn, modulePath);
+        r.validationMode = narrowed ? "objectChecks" : "incrementalBuild";
+        r.validationCompleted = !projects.isEmpty() && r.warning == null;
+        if (narrowed && target == null) {
+            r.validationCompleted = false;
+            r.warning = appendHint(r.warning, "The narrowed scope cannot be resolved to an exact BM object; "
+                    + "no whole-project check was requested.");
+        } else if (r.warning == null) {
+            try {
+                IBmModelManager models = ServiceAccess.get(IBmModelManager.class);
+                IDerivedDataManagerProvider provider =
+                        FormWriteGateway.coreService(IDerivedDataManagerProvider.class);
+                ICheckScheduler scheduler = narrowed ? ServiceAccess.get(ICheckScheduler.class) : null;
+                ICheckRepository checks = narrowed ? ServiceAccess.get(ICheckRepository.class) : null;
+                for (IProject project : projects) {
+                    IDerivedDataManager derived = provider == null ? null : provider.get(project);
+                    if (narrowed) {
+                        RefreshResult validation = revalidateObject(project, target,
+                                models == null ? null : models.getModel(project), scheduler, checks,
+                                derived, monitor, deadline - System.currentTimeMillis());
+                        r.validationRequested |= validation.validationRequested;
+                        r.validationCompleted &= validation.validationCompleted;
+                        r.validationTargets.addAll(validation.validationTargets);
+                        if (validation.warning != null) r.warning = appendHint(r.warning, validation.warning);
+                    } else {
+                        long remaining = deadline - System.currentTimeMillis();
+                        r.validationCompleted &= derived != null && remaining > 0
+                                && derived.waitAllComputations(remaining) && derived.isAllComputed();
+                    }
+                }
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                r.validationCompleted = false;
+                r.warning = appendHint(r.warning, "The validation wait was interrupted.");
+            } catch (RuntimeException | LinkageError failure) {
+                r.validationCompleted = false;
+                r.warning = appendHint(r.warning, "Validation unavailable: " + failureDescription(failure));
+            }
+        }
+        ValidationSettle settle = new ValidationSettle();
+        r.settled = r.validationCompleted && awaitSettle(projectName, settle,
+                Math.max(0L, deadline - System.currentTimeMillis()), 1000L, r.validationCompleted);
         r.waitMs = System.currentTimeMillis() - waiting;
-        r.sawValidation = settle.sawWork();
-        if (!r.settled) {
+        r.sawValidation = r.validationRequested && r.validationCompleted;
+        if (!r.settled && r.warning == null) {
             r.warning = (r.warning == null ? "" : r.warning + "; ")
-                    + "validation was still running when the wait ran out - re-read in a moment";
+                    + "Validation completion or a stable problem count was not established; re-read without refresh.";
         }
         return r;
     }
@@ -662,11 +820,11 @@ public final class ProjectGateway {
      * {@link ValidationSettle} for why a count that merely stopped changing is not enough.
      */
     private boolean awaitSettle(String projectName, ValidationSettle settle, long limitMs,
-            long pollMs) {
+            long pollMs, boolean validationCompleted) {
         long started = System.currentTimeMillis();
         while (System.currentTimeMillis() - started < limitMs) {
             boolean idle = Job.getJobManager().isIdle() && modelsReady(projectName);
-            if (settle.poll(countProblems(projectName), idle)) {
+            if (settle.poll(countProblems(projectName), idle, validationCompleted)) {
                 return true;
             }
             try {
@@ -852,6 +1010,20 @@ public final class ProjectGateway {
 
     /** Outcome of {@link #cleanProject}. */
     public static final class CleanProjectResult {
+        public boolean attempted;
+        public boolean stateMayHaveChanged;
+        public boolean canceled;
+        public boolean monitorCanceled;
+        public boolean threadInterrupted;
+        public String stage;
+        public String cancelCause;
+        public String failureType;
+        public String failureOrigin;
+        public String nextStep;
+        public List<String> completedStages = new ArrayList<>();
+        public StatusDiagnostic status;
+        public List<JobDiagnostic> jobs = new ArrayList<>();
+        public boolean jobsTruncated;
         public boolean ok;
         public boolean applied;
         public String name;
@@ -862,13 +1034,150 @@ public final class ProjectGateway {
         public boolean modelReady;
         public int problemsBefore = -1;
         public int problemsAfter = -1;
+        public boolean validationCompleted;
         public boolean settled;
-        /** Whether validation was seen running at all while waiting - see ValidationSettle. */
+        /** Whether the requested build's derived-data pipeline completed. */
         public boolean sawValidation;
         public long elapsedMs;
         public String plan;
         public String warning;
         public String message;
+    }
+
+    public static final class StatusDiagnostic {
+        public int severity;
+        public int code;
+        public String plugin;
+        public String message;
+        public String exception;
+        public List<StatusDiagnostic> children = new ArrayList<>();
+    }
+
+    public static final class JobDiagnostic {
+        public String name;
+        public int state;
+        public String ruleType;
+        public StatusDiagnostic result;
+    }
+
+    static boolean executeCleanBuild(IProject project, boolean rebuild, IProgressMonitor monitor,
+            IJobManager jobs, CleanProjectResult result) {
+        long started = System.currentTimeMillis();
+        result.ok = false;
+        result.attempted = true;
+        try {
+            result.stage = "CLEAN_BUILD";
+            result.stateMayHaveChanged = true;
+            project.build(IncrementalProjectBuilder.CLEAN_BUILD, monitor);
+            result.applied = true;
+            result.completedStages.add(result.stage);
+            if (rebuild) {
+                result.stage = "FULL_BUILD";
+                project.build(IncrementalProjectBuilder.FULL_BUILD, monitor);
+                result.completedStages.add(result.stage);
+            }
+            result.stage = "JOIN_MANUAL_BUILD";
+            jobs.join(ResourcesPlugin.FAMILY_MANUAL_BUILD, monitor);
+            result.completedStages.add(result.stage);
+            result.stage = "JOIN_AUTO_BUILD";
+            jobs.join(ResourcesPlugin.FAMILY_AUTO_BUILD, monitor);
+            result.completedStages.add(result.stage);
+            result.elapsedMs = System.currentTimeMillis() - started;
+            return true;
+        } catch (CoreException | InterruptedException | RuntimeException e) {
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+            recordCleanFailure(result, e, monitor, jobs);
+            result.elapsedMs = System.currentTimeMillis() - started;
+            return false;
+        }
+    }
+
+    private static void recordCleanFailure(CleanProjectResult result, Throwable failure,
+            IProgressMonitor monitor, IJobManager jobs) {
+        result.ok = false;
+        result.settled = false;
+        result.monitorCanceled = monitor.isCanceled();
+        result.threadInterrupted = Thread.currentThread().isInterrupted();
+        result.canceled = result.monitorCanceled || result.threadInterrupted;
+        Throwable current = failure;
+        Throwable origin = failure;
+        for (int i = 0; i < 6 && current != null; i++) {
+            origin = current;
+            result.canceled |= current instanceof OperationCanceledException || current instanceof InterruptedException;
+            if (current instanceof CoreException) {
+                IStatus status = ((CoreException) current).getStatus();
+                if (result.status == null) result.status = statusDiagnostic(status, 0);
+                result.canceled |= status != null && status.matches(IStatus.CANCEL);
+            }
+            if (current == current.getCause()) break;
+            current = current.getCause();
+        }
+        if (result.canceled) {
+            result.cancelCause = result.threadInterrupted ? "threadInterrupted"
+                    : result.monitorCanceled ? "monitorCanceled" : "unknown";
+        }
+        result.failureType = failure.getClass().getName();
+        if (origin.getStackTrace().length > 0) {
+            result.failureOrigin = diagnosticText(origin.getStackTrace()[0].toString());
+        }
+        result.message = "clean failed at " + result.stage + ": " + failureDescription(failure);
+        result.nextStep = "Read edt_projects and edt_project_errors without refresh to inspect the current state. "
+                + "Investigate cancellation on a separate test project before retrying clean.";
+        try {
+            Job[] active = jobs.find(null);
+            result.jobsTruncated = active.length > 8;
+            for (int i = 0; i < Math.min(8, active.length); i++) {
+                Job job = active[i];
+                JobDiagnostic diagnostic = new JobDiagnostic();
+                diagnostic.name = diagnosticText(job.getName());
+                diagnostic.state = job.getState();
+                diagnostic.ruleType = job.getRule() == null ? null : job.getRule().getClass().getName();
+                diagnostic.result = statusDiagnostic(job.getResult(), 0);
+                result.jobs.add(diagnostic);
+            }
+        } catch (RuntimeException | LinkageError ignored) {
+            // Diagnostic collection must not replace the original failure.
+        }
+    }
+
+    private static StatusDiagnostic statusDiagnostic(IStatus status, int depth) {
+        if (status == null) return null;
+        StatusDiagnostic result = new StatusDiagnostic();
+        result.severity = status.getSeverity();
+        result.code = status.getCode();
+        result.plugin = diagnosticText(status.getPlugin());
+        result.message = diagnosticText(status.getMessage());
+        result.exception = status.getException() == null ? null : failureDescription(status.getException());
+        if (depth < 1) {
+            IStatus[] children = status.getChildren();
+            for (int i = 0; i < Math.min(4, children.length); i++) {
+                result.children.add(statusDiagnostic(children[i], depth + 1));
+            }
+        }
+        return result;
+    }
+
+    private static String failureDescription(Throwable failure) {
+        StringBuilder result = new StringBuilder();
+        Throwable current = failure;
+        for (int i = 0; i < 4 && current != null; i++) {
+            if (i > 0) result.append(" <- ");
+            result.append(current.getClass().getSimpleName());
+            if (current.getMessage() != null) result.append(": ").append(diagnosticText(current.getMessage()));
+            if (current == current.getCause()) break;
+            current = current.getCause();
+        }
+        return diagnosticText(result.toString());
+    }
+
+    private static String diagnosticText(String value) {
+        if (value == null) return null;
+        String safe = value.replaceAll("(?i)\\b(Bearer|Basic)\\s+[A-Za-z0-9._~+/-]+=*", "$1 <redacted>")
+                .replaceAll("(?i)([\"']?)\\b(password|passwd|pwd|token|secret|authorization|proxyPassword)\\1"
+                + "\\s*[:=]\\s*(?:\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])*'|[^\\r\\n,;\\]\\)\\}]+)",
+                        "$2=<redacted>")
+                .replaceAll("[\\r\\n\\t]+", " ");
+        return safe.length() > 400 ? safe.substring(0, 400) + "..." : safe;
     }
 
     /**
@@ -890,6 +1199,7 @@ public final class ProjectGateway {
     public CleanProjectResult cleanProject(String projectName, boolean rebuild, int waitSeconds,
             boolean apply) {
         CleanProjectResult r = new CleanProjectResult();
+        r.stage = "PREFLIGHT";
         r.name = projectName;
         r.rebuild = rebuild;
         if (projectName == null || projectName.isBlank()) {
@@ -916,6 +1226,7 @@ public final class ProjectGateway {
         r.autoBuilding = ResourcesPlugin.getWorkspace().isAutoBuilding();
         r.problemsBefore = countProblems(projectName);
         r.ok = true;
+        r.stage = "PLANNED";
         r.plan = "Clean project \"" + projectName + "\""
                 + (rebuild ? " and run a full build" : "")
                 + " (auto-build is " + (r.autoBuilding ? "on" : "off")
@@ -931,20 +1242,8 @@ public final class ProjectGateway {
         long started = System.currentTimeMillis();
         org.eclipse.core.runtime.IProgressMonitor monitor =
                 new org.eclipse.core.runtime.NullProgressMonitor();
-        try {
-            p.build(org.eclipse.core.resources.IncrementalProjectBuilder.CLEAN_BUILD, monitor);
-            if (rebuild) {
-                p.build(org.eclipse.core.resources.IncrementalProjectBuilder.FULL_BUILD, monitor);
-            }
-            org.eclipse.core.runtime.jobs.Job.getJobManager()
-                    .join(ResourcesPlugin.FAMILY_MANUAL_BUILD, monitor);
-            org.eclipse.core.runtime.jobs.Job.getJobManager()
-                    .join(ResourcesPlugin.FAMILY_AUTO_BUILD, monitor);
-        } catch (CoreException | InterruptedException | RuntimeException e) {
-            if (e instanceof InterruptedException) {
-                Thread.currentThread().interrupt();
-            }
-            r.message = "clean failed: " + GatewaySupport.describeCause(e);
+        IJobManager jobs = Job.getJobManager();
+        if (!executeCleanBuild(p, rebuild, monitor, jobs, r)) {
             r.elapsedMs = System.currentTimeMillis() - started;
             return r;
         }
@@ -954,21 +1253,48 @@ public final class ProjectGateway {
         // a clean it sits at zero because nothing has been reported yet. Waiting for the workspace to
         // go idle as well is what tells "not started" apart from "done".
         long limit = (waitSeconds > 0 ? waitSeconds : 120) * 1000L;
+        long deadline = System.currentTimeMillis() + limit;
+        r.stage = "VALIDATION_WAIT";
         ValidationSettle settle = new ValidationSettle();
-        r.settled = awaitSettle(projectName, settle, limit, 2000L);
-        r.sawValidation = settle.sawWork();
-        r.problemsAfter = settle.problems();
+        try {
+            IDerivedDataManagerProvider provider =
+                    FormWriteGateway.coreService(IDerivedDataManagerProvider.class);
+            IDerivedDataManager derived = provider == null ? null : provider.get(p);
+            r.validationCompleted = (rebuild || r.autoBuilding) && derived != null
+                    && derived.waitAllComputations(limit) && derived.isAllComputed();
+            r.settled = r.validationCompleted && awaitSettle(projectName, settle,
+                    Math.max(0L, deadline - System.currentTimeMillis()), 2000L, r.validationCompleted);
+            if (Thread.currentThread().isInterrupted()) {
+                throw new InterruptedException("Validation wait interrupted");
+            }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            recordCleanFailure(r, interrupted, monitor, jobs);
+            r.elapsedMs = System.currentTimeMillis() - started;
+            return r;
+        } catch (RuntimeException | LinkageError failure) {
+            recordCleanFailure(r, failure, monitor, jobs);
+            r.elapsedMs = System.currentTimeMillis() - started;
+            return r;
+        }
+        r.sawValidation = r.validationCompleted;
+        r.problemsAfter = countProblems(projectName);
         r.modelReady = modelsReady(projectName);
         r.elapsedMs = System.currentTimeMillis() - started;
-        r.applied = true;
+        r.ok = true;
+        r.stage = r.settled ? "COMPLETE" : "VALIDATION_WAIT";
+        if (!r.settled) {
+            r.warning = appendHint(r.warning, "Validation completion or a stable problem count was not established.");
+            r.nextStep = "Read edt_projects and edt_project_errors without refresh before deciding whether to retry.";
+        }
         r.message = "cleaned " + projectName + (rebuild ? " and rebuilt" : "")
                 + "; problems " + r.problemsBefore + " -> " + r.problemsAfter
                 + (r.settled
                         ? (r.sawValidation ? " (settled)"
                                 : " (settled, but validation was never seen running - if the count "
                                         + "looks too good, re-read edt_project_errors in a moment)")
-                        : " - WARNING: still changing when the wait ran out, "
-                                + "re-read edt_project_errors in a moment");
+                        : " - validation completion or a stable problem count was not established; "
+                                + "read edt_project_errors without refresh");
         return r;
     }
 

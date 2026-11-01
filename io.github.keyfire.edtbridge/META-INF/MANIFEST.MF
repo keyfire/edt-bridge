@@ -2,7 +2,7 @@ Manifest-Version: 1.0
 Bundle-ManifestVersion: 2
 Bundle-Name: edt-bridge
 Bundle-SymbolicName: io.github.keyfire.edtbridge;singleton:=true
-Bundle-Version: 0.32.0.qualifier
+Bundle-Version: 0.33.0.qualifier
 Bundle-Vendor: edt-bridge contributors
 Automatic-Module-Name: io.github.keyfire.edtbridge
 Bundle-RequiredExecutionEnvironment: JavaSE-17
@@ -15,6 +15,12 @@ Require-Bundle: org.eclipse.core.runtime,
  org.eclipse.equinox.preferences,
  org.eclipse.jface,
  org.eclipse.ui,
+ org.eclipse.ui.ide,
+ com._1c.g5.v8.dt.htmldocument.model,
+ com._1c.g5.v8.dt.ui,
+ org.eclipse.ui.workbench.texteditor,
+ org.eclipse.ui.forms,
+ com.e1c.g5.v8.dt.check,
  com.google.gson,
  org.eclipse.emf.ecore,
  org.eclipse.emf.common,

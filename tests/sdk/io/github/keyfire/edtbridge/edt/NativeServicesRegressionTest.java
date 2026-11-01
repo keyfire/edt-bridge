@@ -30,6 +30,8 @@ import com._1c.g5.v8.dt.core.model.IModelEditingSupport;
 import com._1c.g5.v8.dt.core.model.EditingMode;
 import com._1c.g5.v8.dt.metadata.mdclass.MdClassFactory;
 import com._1c.g5.v8.dt.platform.services.core.infobases.IInfobaseAssociationManager;
+import com._1c.g5.v8.dt.platform.services.core.infobases.IInfobaseAssociation;
+import com._1c.g5.v8.dt.platform.services.core.infobases.InfobaseAssociationContext;
 import com._1c.g5.v8.dt.platform.services.model.InfobaseReference;
 import com._1c.g5.v8.dt.platform.services.core.infobases.InfobaseReferences;
 import com.e1c.g5.dt.applications.IApplication;
@@ -109,6 +111,12 @@ class NativeServicesRegressionTest {
             associations=(IInfobaseAssociationManager)Proxy.newProxyInstance(IInfobaseAssociationManager.class.getClassLoader(),
                     new Class<?>[]{IInfobaseAssociationManager.class},(proxy,method,args)->switch(method.getName()) {
                         case "associate"->{assertSame(project,args[0]); assertSame(base,args[1]); writes++;linked=true;yield null;}
+                        case "getAssociation"-> linked ? Optional.of((IInfobaseAssociation)Proxy.newProxyInstance(
+                            IInfobaseAssociation.class.getClassLoader(),new Class<?>[]{IInfobaseAssociation.class},
+                            (p,m,a)->switch(m.getName()) {
+                                case "getProject"->project;case "getInfobases"->List.of(base);case "getDefaultInfobase"->base;
+                                default->throw new AssertionError(m.getName());
+                            })) : Optional.empty();
                         default->throw new AssertionError("unexpected association mutation: "+method.getName());
                     });
             applications=(IApplicationManager)Proxy.newProxyInstance(IApplicationManager.class.getClassLoader(),
@@ -123,8 +131,8 @@ class NativeServicesRegressionTest {
         Object associate(boolean apply) throws Exception {
             Class<?> type=Class.forName("io.github.keyfire.edtbridge.edt.ApplicationGateway");
             Method method=type.getDeclaredMethod("associateExisting",IProject.class,InfobaseReference.class,
-                    IInfobaseAssociationManager.class,IApplicationManager.class,boolean.class);
-            method.setAccessible(true);return invoke(method,project,base,associations,applications,apply);
+                    IInfobaseAssociationManager.class,IApplicationManager.class,InfobaseAssociationContext.class,boolean.class);
+            method.setAccessible(true);return invoke(method,project,base,associations,applications,InfobaseAssociationContext.empty(),apply);
         }
     }
     private static Object property(Object result,String name) throws Exception {return result.getClass().getField(name).get(result);}

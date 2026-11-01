@@ -60,19 +60,22 @@ public final class ProjectErrorsTool {
         props.add("countOnly", boolProp("true = return only the counts (total, by severity, by source), no "
                 + "problem list – what a before/after baseline needs on a large configuration. The listed "
                 + "problems are what gets judged for staleness, so there is no staleCount here; the "
-                + "unsynchronized files are still named. Default false."));
+                + "unsynchronized files are still named. Ordinary count-only reports have complete=false "
+                + "because marker freshness was not inspected. Baseline operations inspect the full snapshot "
+                + "before applying display options. Default false."));
         props.add("limit", intProp("Max problems in the returned list (default 1000); ignored when countOnly. "
                 + "Excess sets truncated=true."));
         props.add("brief", boolProp("true = plain text, one line per problem - severity, resource:line, "
                 + "message, [checkId], (stale) - under a one-line summary, instead of the full objects with "
                 + "extraInfo and locations: what the question \"are there errors in this object\" needs. "
                 + "Ignored when countOnly. Default false."));
-        props.add("refresh", boolProp("true = re-read the narrowed scope from disk (refreshLocal), run an "
-                + "INCREMENTAL build of the project and wait for validation to settle before reading the "
-                + "markers – the point fix for a stale marker: seconds for one module, where "
-                + "edt_clean_project rebuilds everything for minutes. Without fqn / modulePath the project's "
-                + "sources folder is refreshed – what validation reads. A project never built in this "
-                + "session gets a full build instead. The result carries refreshed {resources, buildMs}. "
+        props.add("refresh", boolProp("true = re-read the scope from disk, run an INCREMENTAL build, "
+                + "and for a resolved fqn/modulePath request active checks for that exact BM top object. "
+                + "Waits for derived data and stable markers; unresolved or conflicting filters never "
+                + "become a whole-project check. Check settings are preserved. Without a narrowing only "
+                + "the incremental build is requested. The result reports validationRequested, "
+                + "validationCompleted, validationTargets and timings. A project with no build state "
+                + "may receive a full build from Eclipse. "
                 + "Default false."));
 
         JsonObject schema = new JsonObject();
@@ -94,9 +97,13 @@ public final class ProjectErrorsTool {
                 + "is judged against its file: stale=true when the marker predates the file's last change on "
                 + "disk, unsynchronized=true when the workspace has not even read that change. The summary "
                 + "counts them (staleCount, unsynchronized: [paths]) and a hint says what to do; refresh=true "
-                + "revalidates the narrowed scope in place – an incremental build, seconds – where "
-                + "edt_clean_project rebuilds the whole project. "
-                + "modelReady=false or complete=false means the counts are a partial snapshot, not a clean result. The report names the disk folder behind each validated project (locations): the model "
+                + "runs an incremental build and explicitly requests active checks for one resolved "
+                + "BM object, waiting for their pipeline to complete. Missing services, disabled explicit "
+                + "checks or an unresolved target leave complete=false; settings are preserved. "
+                + "modelReady=false or complete=false means the counts are a partial snapshot, not a clean result. "
+                + "markerFreshnessComplete records whether the whole filtered marker set was inspected before "
+                + "presentation limits; ordinary countOnly/truncated reports cannot prove that freshness. "
+                + "The report names the disk folder behind each validated project (locations): the model "
                 + "validates the REGISTERED folder, so check it against the checkout you are editing – a "
                 + "parallel worktree of the same sources is NOT what gets validated.");
         t.addProperty("descriptionRu", "Список проблем валидации EDT по проекту из живой рабочей области: "
@@ -110,8 +117,11 @@ public final class ProjectErrorsTool {
                 + "выведенная проблема сверяется со своим файлом: stale=true, если маркер старше последнего "
                 + "изменения файла на диске, unsynchronized=true, если рабочая область это изменение ещё не "
                 + "прочитала. В сводке – счётчики (staleCount, unsynchronized: [пути]) и подсказка hint; "
-                + "refresh=true перепроверяет суженную область на месте – инкрементальная сборка, секунды, – "
-                + "тогда как edt_clean_project пересобирает весь проект. "
+                + "refresh=true запускает инкрементальную сборку и применимые проверки одного точно "
+                + "разрешенного BM-объекта, затем ждет завершения pipeline проверок. Если сервисы недоступны, "
+                + "явные проверки отключены или объект не разрешен, complete=false; настройки сохраняются. "
+                + "markerFreshnessComplete показывает, проверена ли свежесть всех отфильтрованных маркеров "
+                + "до ограничения вывода. Обычный countOnly или обрезанный список такой проверки не подтверждают. "
                 + "Отчёт называет каталог диска за каждым проверенным проектом (locations): модель проверяет "
                 + "ЗАРЕГИСТРИРОВАННЫЙ каталог – сверьте его с тем, что правите; параллельный worktree тех же "
                 + "исходников проверен НЕ будет.");
@@ -232,6 +242,7 @@ public final class ProjectErrorsTool {
             payload.add("modelStatus", new GsonBuilder().create().toJsonTree(rep.modelStatus));
             payload.addProperty("unresolvedEdtMarkers", rep.unresolvedEdtMarkers);
             payload.addProperty("complete", complete(rep));
+            payload.addProperty("markerFreshnessComplete", rep.markerFreshnessComplete);
             if (baseline != null) payload.add("baseline", baseline);
             payload.addProperty("total", rep.total);
             payload.addProperty("totalBeforeFilter", rep.totalBeforeFilter);
@@ -339,8 +350,9 @@ public final class ProjectErrorsTool {
 
     private static boolean complete(ProjectGateway.ProblemReport report) {
         return report.modelReady && report.unresolvedEdtMarkers == 0 && report.unsynchronizedCount == 0
-                && report.staleCount <= 0 && (report.refreshed == null
-                        || report.refreshed.settled && report.refreshed.warning == null);
+                && report.markerFreshnessComplete && report.staleCount == 0 && (report.refreshed == null
+                        || report.refreshed.settled && report.refreshed.validationCompleted
+                                && report.refreshed.warning == null);
     }
 
     private static ProblemBaselines.Entry entry(ProjectGateway.Problem problem) {
@@ -369,6 +381,12 @@ public final class ProjectErrorsTool {
         o.addProperty("buildMs", res.buildMs);
         o.addProperty("waitMs", res.waitMs);
         o.addProperty("settled", res.settled);
+        o.addProperty("validationRequested", res.validationRequested);
+        o.addProperty("validationCompleted", res.validationCompleted);
+        if (res.validationMode != null) o.addProperty("validationMode", res.validationMode);
+        JsonArray validationTargets = new JsonArray();
+        res.validationTargets.forEach(validationTargets::add);
+        o.add("validationTargets", validationTargets);
         // Whether the checks were seen running at all: "settled" without them is the shape of a
         // wait that finished before validation started - see edt_clean_project.
         o.addProperty("sawValidation", res.sawValidation);

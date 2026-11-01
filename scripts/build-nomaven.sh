@@ -137,10 +137,17 @@ need=(
   org.eclipse.core.jobs
   org.eclipse.ui.workbench
   org.eclipse.ui
+  org.eclipse.ui.ide
   org.eclipse.jface
   org.eclipse.core.commands
   org.eclipse.equinox.preferences
   org.osgi.service.prefs
+  com._1c.g5.v8.dt.htmldocument.model
+  com._1c.g5.v8.dt.ui
+  org.eclipse.ui.workbench.texteditor
+  org.eclipse.ui.forms
+  com.e1c.g5.v8.dt.check
+  org.eclipse.equinox.registry
   com.google.gson
   org.eclipse.emf.ecore
   org.eclipse.emf.common
