@@ -38,6 +38,7 @@ import org.osgi.framework.Version;
 import io.github.keyfire.edtbridge.core.ArgumentNames;
 import io.github.keyfire.edtbridge.edt.ProjectGateway;
 import io.github.keyfire.edtbridge.tools.MoveMethodTool;
+import io.github.keyfire.edtbridge.tools.ReplaceMethodTool;
 import io.github.keyfire.edtbridge.tools.MoveFormItemTool;
 import io.github.keyfire.edtbridge.tools.ModifyObjectTool;
 import io.github.keyfire.edtbridge.tools.UpdateSubsystemTool;
@@ -329,6 +330,7 @@ applyI18n();loadStatus();loadTools();
     private final RemoveFormItemTool removeFormItem = new RemoveFormItemTool();
     private final AddMethodTool addMethod = new AddMethodTool();
     private final MoveMethodTool moveMethod = new MoveMethodTool();
+    private final ReplaceMethodTool replaceMethod = new ReplaceMethodTool();
     private final DeleteMethodTool deleteMethod = new DeleteMethodTool();
     private final RemoveAttributeTool removeAttribute = new RemoveAttributeTool();
     private final ModifyAttributeTool modifyAttribute = new ModifyAttributeTool();
@@ -758,6 +760,7 @@ applyI18n();loadStatus();loadTools();
         tools.add(removeFormItem.descriptor());
         tools.add(addMethod.descriptor());
         tools.add(moveMethod.descriptor());
+        tools.add(replaceMethod.descriptor());
         tools.add(deleteMethod.descriptor());
         tools.add(removeAttribute.descriptor());
         tools.add(modifyAttribute.descriptor());
@@ -936,6 +939,10 @@ applyI18n();loadStatus();loadTools();
         if (removeFormItem.name().equals(name)) {
             JsonObject denied = writeTokenGate(removeFormItem.isWrite(), name);
             return denied != null ? denied : removeFormItem.call(args);
+        }
+        if (replaceMethod.name().equals(name)) {
+            JsonObject denied = writeTokenGate(replaceMethod.isWrite(), name);
+            return denied != null ? denied : replaceMethod.call(args);
         }
         if (moveMethod.name().equals(name)) {
             JsonObject denied = writeTokenGate(moveMethod.isWrite(), name);

@@ -58,6 +58,16 @@ class BslMethodReplacementTest {
         assertEquals(edit.sourceHash(), edit.resultHash());
         assertEquals("head\nbody\n", edit.text());
     }
+    @Test void anExactMethodRoundTripPreservesIndentationAndTrailingSpaces() {
+        for (String method : new String[] {"\tProcedure Run()\n\tEndProcedure", "// docs  \r\n    Procedure Run()\r\n    EndProcedure // tail  "}) {
+            String newline = method.contains("\r\n") ? "\r\n" : "\n";
+            String source = "// header" + newline + newline + method + newline + "// neighbor";
+            int from = source.indexOf(method);
+            var edit = BslMethodReplacement.plan(source, from, from + method.length(), method, null);
+            assertEquals(method, edit.newText());
+            assertTrue(edit.unchanged());
+        }
+    }
     @Test void rejectsInvalidRangesAndMissingReplacement() {
         assertThrows(IllegalArgumentException.class, () -> BslMethodReplacement.plan("abc", -1, 2, "x", null));
         assertThrows(IllegalArgumentException.class, () -> BslMethodReplacement.plan("abc", 1, 4, "x", null));

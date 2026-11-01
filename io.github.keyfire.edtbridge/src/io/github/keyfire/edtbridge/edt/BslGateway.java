@@ -1313,11 +1313,15 @@ public final class BslGateway {
             var pn = NodeModelUtils.getNode(pragma);
             if (pn != null) start = Math.min(start, pn.getOffset());
         }
-        start = text.lastIndexOf('\n', Math.max(0, start - 1)) + 1;
-        while (start > 0) {
-            int previous = text.lastIndexOf('\n', Math.max(0, start - 2)) + 1;
-            if (!text.substring(previous, start).stripLeading().startsWith("//")) break;
-            start = previous;
+        int lineStart = text.lastIndexOf('\n', Math.max(0, start - 1)) + 1;
+        // Earlier code on the same physical line belongs to the module or a neighbor.
+        if (text.substring(lineStart, start).isBlank()) {
+            start = lineStart;
+            while (start > 0) {
+                int previous = text.lastIndexOf('\n', Math.max(0, start - 2)) + 1;
+                if (!text.substring(previous, start).stripLeading().startsWith("//")) break;
+                start = previous;
+            }
         }
         int end = node.getEndOffset();
         int nl = text.indexOf('\n', end);

@@ -1947,6 +1947,57 @@
       }
     },
     {
+      "name": "edt_replace_method",
+      "description": "WRITE: replace one existing BSL method using EDT's parsed method range. Dry-run returns exact oldText/newText, sourceHash and resultHash. apply requires force=true and expectedHash from a current dry-run. Keeps the method name and kind; attached comments and pragmas are part of methodText and are removed if omitted. Refuses extra methods, module-level code, wrappers, parse errors, dirty editors and stale sources. Preserves surrounding source and its BOM, normalizing only the replacement's line endings. Does not refactor callers; check references and run edt_project_errors after changing a signature. Requires a configured write token and caller verification of edt_support_status=EDITABLE.",
+      "descriptionRu": "ЗАПИСЬ: заменить один существующий метод BSL по диапазону из модели EDT. По умолчанию dry-run: точные oldText/newText, sourceHash и resultHash без записи. Для apply нужны force=true и expectedHash из актуального dry-run. Имя и вид метода сохраняются; прилегающие комментарии и директивы входят в methodText и удаляются, если их не передать. Второй метод, код уровня модуля, обертки областей/препроцессора, ошибки разбора, несохраненный редактор и устаревший источник дают отказ. Окружающий код и BOM сохраняются, окончания строк нормализуются только в новом фрагменте. Вызовы не меняются: после изменения сигнатуры проверьте ссылки и edt_project_errors. Нужны токен записи и предварительная проверка вызывающим edt_support_status=EDITABLE.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Module owner FQN: CommonModule.X, a form, or an object + moduleType. Alternative to modulePath."
+          },
+          "moduleType": {
+            "type": "string",
+            "description": "For an object with several modules: ObjectModule, ManagerModule, etc. Optional."
+          },
+          "modulePath": {
+            "type": "string",
+            "description": "Project-relative .bsl path. If fqn is also given, both must identify the same module."
+          },
+          "methodName": {
+            "type": "string",
+            "description": "Existing procedure/function name, case-insensitive. Ambiguous names are refused."
+          },
+          "methodText": {
+            "type": "string",
+            "description": "Full replacement for exactly one same-named, same-kind method, including its attached documentation, pragmas and trailing comment. Omitted attachments are removed. No module-level statements, variables, regions or preprocessor wrappers. Parameters and export may change; callers are not rewritten."
+          },
+          "expectedHash": {
+            "type": "string",
+            "description": "sourceHash from a current dry-run: SHA-256 of the entire UTF-8 module, including any BOM. Required for apply; a changed source is refused."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = validate and return oldText/newText and sourceHash, without writing. true = replace after checking expectedHash; requires force=true. Check edt_support_status=EDITABLE first."
+          },
+          "force": {
+            "type": "boolean",
+            "description": "false (default) = refuse apply. true = allow this replacement after source and syntax checks. Does not bypass a hash mismatch or dirty editor."
+          }
+        },
+        "required": [
+          "projectName",
+          "methodName",
+          "methodText"
+        ]
+      }
+    },
+    {
       "name": "edt_delete_method",
       "description": "WRITE (Phase 2): delete a procedure/function from a module's BSL – the inverse of edt_add_method. Dry-run by default – parses the module, locates the method by name via the model (never a regex), and returns the plan + the exact text that would be removed WITHOUT writing. apply=true cuts the method (with its adjacent leading doc comments and the blank line above) and writes the .bsl, but only if the result re-parses cleanly and loses exactly this one method (safety invariant), AND force=true (destructive; deleting an EXPORTED method breaks consumers – check callers via edt_find_references method mode and prefer deprecation). Requires a configured token; caller must verify edt_support_status EDITABLE before apply.",
       "descriptionRu": "ЗАПИСЬ (Phase 2): удалить процедуру/функцию из BSL модуля – обратная операция к edt_add_method. По умолчанию dry-run – парсит модуль, находит метод по имени через модель (не regex) и возвращает план + точный текст, который будет удалён, БЕЗ записи. apply=true вырезает метод (вместе с прилегающим комментарием-описанием и пустой строкой над ним) и пишет .bsl, но только если результат парсится без ошибок и теряет ровно этот один метод (инвариант безопасности), И передан force=true (деструктивно; удаление ЭКСПОРТНОГО метода ломает вызывающий код – проверьте вызовы через edt_find_references по методу, предпочитайте deprecated). Требует токен; перед apply вызывающий обязан проверить edt_support_status = EDITABLE.",

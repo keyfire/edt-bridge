@@ -42,7 +42,19 @@ public final class BslMethodReplacement {
         if (expectedHash != null && !sourceHash.equalsIgnoreCase(expectedHash)) {
             throw new IllegalArgumentException("source hash mismatch; read the module and repeat the dry-run");
         }
-        String normalized = replacement.strip().replace("\r\n", "\n").replace("\r", "\n");
+        String normalized = replacement.replace("\r\n", "\n").replace("\r", "\n");
+        int start = 0, end = normalized.length();
+        while (start < end) {
+            int newline = normalized.indexOf('\n', start);
+            if (newline < 0 || !normalized.substring(start, newline).isBlank()) break;
+            start = newline + 1;
+        }
+        while (end > start) {
+            int newline = normalized.lastIndexOf('\n', end - 1);
+            if (newline < start || !normalized.substring(newline + 1, end).isBlank()) break;
+            end = newline;
+        }
+        normalized = normalized.substring(start, end);
         if (source.contains("\r\n")) normalized = normalized.replace("\n", "\r\n");
         String result = source.substring(0, from) + normalized + source.substring(to);
         return new Plan(sourceHash, hash(result), source.substring(from, to), normalized,
