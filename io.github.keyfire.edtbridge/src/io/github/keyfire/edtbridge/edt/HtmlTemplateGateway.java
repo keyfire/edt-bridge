@@ -26,6 +26,7 @@ import org.eclipse.emf.ecore.EObject;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.IEditorInput;
 import org.eclipse.ui.IEditorPart;
+import org.eclipse.ui.IFileEditorInput;
 import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.part.MultiPageEditorPart;
 import org.eclipse.ui.texteditor.ITextEditor;
@@ -370,7 +371,8 @@ public final class HtmlTemplateGateway {
         }
 
         private static boolean matchesFile(IEditorInput input, Target target) {
-            IFile file = input == null ? null : input.getAdapter(IFile.class);
+            IFile file = input instanceof IFileEditorInput fileInput ? fileInput.getFile()
+                    : input == null ? null : input.getAdapter(IFile.class);
             return file != null && files(target).contains(file);
         }
 

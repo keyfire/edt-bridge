@@ -93,6 +93,7 @@ $need = @(
   'org.eclipse.core.jobs',
   'org.eclipse.ui.workbench',
   'org.eclipse.ui',
+  'org.eclipse.ui.ide',
   'org.eclipse.jface',
   'org.eclipse.core.commands',
   'org.eclipse.equinox.preferences',

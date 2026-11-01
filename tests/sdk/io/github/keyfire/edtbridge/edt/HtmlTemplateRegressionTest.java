@@ -5,6 +5,7 @@
 package io.github.keyfire.edtbridge.edt;
 
 import static org.junit.jupiter.api.Assertions.*;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.lang.reflect.Proxy;
@@ -16,10 +17,43 @@ import com._1c.g5.v8.dt.metadata.mdclass.TemplateType;
 import io.github.keyfire.edtbridge.core.ExactTextReplacement;
 import org.junit.jupiter.api.Test;
 import org.eclipse.core.filebuffers.ITextFileBuffer;
+import org.eclipse.core.resources.IFile;
+import org.eclipse.core.resources.IProject;
+import org.eclipse.core.runtime.Path;
 import org.eclipse.core.runtime.Status;
 import org.eclipse.jface.text.Document;
+import org.eclipse.ui.IEditorInput;
+import org.eclipse.ui.part.FileEditorInput;
 
 class HtmlTemplateRegressionTest {
+    @Test void fileEditorInputsWithoutFileAdaptersStillMatchOnlyTemplateFiles() throws Exception {
+        Map<String, IFile> files = new LinkedHashMap<>();
+        IProject project = (IProject) Proxy.newProxyInstance(IProject.class.getClassLoader(),
+                new Class<?>[] {IProject.class}, (proxy, method, arguments) -> switch (method.getName()) {
+                    case "getFile" -> files.get(arguments[0].toString());
+                    case "getName" -> "Demo";
+                    default -> null;
+                });
+        String ru = "src/CommonTemplates/Notice/ru/Template.html";
+        String en = "src/CommonTemplates/Notice/en/Template.html";
+        String metadata = "src/CommonTemplates/Notice/Notice.mdo";
+        String document = "src/CommonTemplates/Notice/Template.htmldocument";
+        for (String path : List.of(ru, en, metadata, document)) files.put(path, editorFile(project, path));
+        var target = new HtmlTemplateGateway.Target("Demo", "CommonTemplate.Notice", "original-uuid", "HTMLDocument",
+                "ru", List.of("ru", "en"), Map.of("ru", ru, "en", en), files.get(ru), files.get(metadata), files.get(document));
+        for (String path : List.of(ru, en, metadata, document)) {
+            assertTrue(matchesEditorFile(new FileEditorInput(files.get(path)), target),
+                    "A native file editor must match its template file without IFile adaptation: " + path);
+        }
+        assertFalse(matchesEditorFile(new FileEditorInput(editorFile(project,
+                "src/CommonTemplates/Other/ru/Template.html")), target));
+        assertFalse(matchesEditorFile(null, target));
+        IEditorInput adapted = (IEditorInput) Proxy.newProxyInstance(IEditorInput.class.getClassLoader(),
+                new Class<?>[] {IEditorInput.class}, (proxy, method, arguments) ->
+                    method.getName().equals("getAdapter") && arguments[0] == IFile.class ? files.get(ru) : null);
+        assertTrue(matchesEditorFile(adapted, target));
+    }
+
     @Test void resolvesCommonAndIndexedNestedTemplatesAndRefusesNonTemplateObjects() {
         var common = MdClassFactory.eINSTANCE.createCommonTemplate(); common.setName("Notice");
         var owner = MdClassFactory.eINSTANCE.createDataProcessor(); owner.setName("Demo");
@@ -207,6 +241,27 @@ class HtmlTemplateRegressionTest {
         access.onSavedCheck = () -> { access.text = "new saved source"; access.stamp++; };
         assertFalse(gateway.read("Demo", "CommonTemplate.Notice", "ru").ok);
         assertEquals("new saved source", access.text); assertEquals(0, access.writes);
+    }
+
+    private static IFile editorFile(IProject project, String path) {
+        return (IFile) Proxy.newProxyInstance(IFile.class.getClassLoader(), new Class<?>[] {IFile.class},
+                (proxy, method, arguments) -> switch (method.getName()) {
+                    case "getProject" -> project;
+                    case "getProjectRelativePath" -> new Path(path);
+                    case "getFullPath" -> new Path("/Demo/" + path);
+                    case "getName" -> new Path(path).lastSegment();
+                    case "equals" -> proxy == arguments[0];
+                    case "hashCode" -> System.identityHashCode(proxy);
+                    case "toString" -> path;
+                    default -> null;
+                });
+    }
+
+    private static boolean matchesEditorFile(IEditorInput input, HtmlTemplateGateway.Target target) throws Exception {
+        var access = Class.forName(HtmlTemplateGateway.class.getName() + "$EdtAccess");
+        var matches = access.getDeclaredMethod("matchesFile", IEditorInput.class, HtmlTemplateGateway.Target.class);
+        matches.setAccessible(true);
+        return (Boolean) matches.invoke(null, input, target);
     }
 
     private static final class MemoryAccess implements HtmlTemplateGateway.Access {
