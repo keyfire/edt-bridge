@@ -27,7 +27,8 @@ package io.github.keyfire.edtbridge.core;
  *
  * <p>So two conditions, not one: the count must repeat AND the workspace must be idle - no jobs
  * running - for the same stretch. Idleness is what tells "validation has not started" apart from
- * "validation is done".
+ * "validation is done". A caller that requested explicit checks must separately establish their
+ * completion and use the three-argument poll; idleness alone is not that evidence.
  *
  * <p>Pure arithmetic, kept out of the gateway so the boundary cases are under test rather than
  * observed in production.
@@ -55,6 +56,17 @@ public final class ValidationSettle {
         quiet = (problems >= 0 && problems == previous && jobsIdle) ? quiet + 1 : 0;
         previous = problems;
         return settled();
+    }
+
+    /** A quiet count is usable only after the requested validation has completed. */
+    public boolean poll(int problems, boolean jobsIdle, boolean validationCompleted) {
+        if (!validationCompleted) {
+            if (!jobsIdle) sawBusy = true;
+            quiet = 0;
+            previous = problems;
+            return false;
+        }
+        return poll(problems, jobsIdle);
     }
 
     /** True when the last {@link #poll} left the count final. */

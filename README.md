@@ -100,6 +100,8 @@ Together the tools close the whole cycle without leaving MCP: create, develop, b
 | `edt_search_queries` | Searches the query fields of dynamic lists in `Form.form` and datasets in `Template.dcs`, by text or Unicode regular expression. Returns the path, form/attribute or template/dataset, query line and XML field line. Parse errors and truncation set `complete=false`. |
 | `edt_validate_query` | Checks a 1C query against the project's live metadata: syntax and semantics, so unknown tables and fields and type errors come back with positions. Takes the query text, or a module address (`modulePath`, optionally one `method`). Given a module, the bridge pulls the `\|`-framed query literals out of the live module itself and checks each one. The batch is followed as a whole too, which EDT does not do. A query that reads a temporary table no earlier query puts there (`ПОМЕСТИТЬ`), or one an earlier query has dropped, makes the text invalid. For a module literal that is an `INFO` note instead, because the table may come from a shared temporary table manager or from another literal. |
 | `edt_form_structure` · `edt_form_render` · `edt_picture_export` | Return a managed form's structure, its image, and the content of a configuration picture. The structure includes a tree of fields, groups, tables, buttons, and decorations. Items include data bindings, static visible/enabled/readOnly, event handlers, input-field properties, command-to-button links, and conditional appearance. Form attributes, commands, parameters, and handlers are also returned. EDT's offscreen renderer renders the form to PNG with a choice of interface variant and theme. For CommonPicture, the content of Picture.zip is returned. |
+| `edt_read_html_template` | Exact UTF-8 source and `sourceHash` for one existing common or nested HTML-template locale. Requires explicit `templateFqn` and `language`; returns available languages and the model-resolved file path. |
+| `edt_form_identifiers` | Full-containment audit of visual IDs, including tooltips, menus and command bars. Returns duplicate occurrence paths and a snapshot hash without allocating IDs. Attributes and commands have separate namespaces. |
 | `edt_platform_help` | Search the 1C:Enterprise platform Syntax Helper supplied with EDT by name or read a page as text. The Russian and English API reference covers objects, methods, properties, and events. |
 
 Dynamic-list queries are first parsed with the EDT Ql language. A syntax error triggers a second
@@ -109,9 +111,9 @@ parse with QlDcs, which supports data-composition extensions such as `{WHERE ...
 
 ### Write
 
-Write tools change the model through EDT's own engine, not by editing text. Every one of them needs
-the token, and every one does nothing until asked: `apply=false` is the default and returns a plan.
-`apply=true` makes the change and serializes the `.mdo`.
+Write tools resolve targets through EDT. Metadata operations export the model; source replacement
+tools write the resolved workspace file. Apply requires a configured token. `apply=false` returns
+a plan by default.
 
 `edt_delete_object` separates EDT's indexed references from lexical candidates in `referenceAudit`.
 `scanComplete` describes the stated file scan; `complete=false` keeps semantic coverage explicit.
@@ -139,10 +141,40 @@ the response states the limits of the export wait and after-audit.
 | `edt_create_extension` · `edt_create_external_object` | Create a configuration extension project or an external data processor project. The extension uses `IExtensionProjectManager`. Its root Configuration is adopted from the base configuration as in EDT's wizard, making the project loadable into an infobase. A name prefix, purpose (Customization, AddOn or Patch), and synonym are also set. An external processor project is used for the "processor → .epf" build process. |
 | `edt_clean_project` · `edt_delete_project` | Clear build results or remove a project. The clean operation invokes EDT's "Clean" function, reports problem counts before and after, and waits for the count to stabilize so validation can run again. For one module changed on disk, use `edt_project_errors` with `refresh=true`. Project removal uses the Eclipse workspace to update its resource tree and requires `force` because it cannot be undone. |
 | `edt_build_extension` · `edt_dump_external_object` | Builds the binaries: a `.cfe` from an extension project, an `.epf` or `.erf` from an external data processor or report. Both can go around EDT's platform resolver when it serves no thick client. They export designer XML in-process, then assemble the file with a full on-disk 1C install in a temporary infobase that is deleted afterwards. `logPath` keeps the platform's build log next to the artefact. The dump falls back to the on-disk route when EDT's own dumper refuses, `route` pins it to `edt` or `disk`, and the auto-dump generation is put back if the refusal switched it off. |
+| `edt_replace_html_template` | Replaces the exact complete source of one existing HTML locale. Preview returns old/new text and hashes. Apply requires `expectedHash`, `force=true`, `apply=true` and a token. Dirty editors, changed locale mappings, stale/read-only resources and malformed UTF-8 refuse the write. Other locales are preserved. |
+| `edt_form_identifiers` | With explicit `itemPaths`, previews selected duplicate occurrences to renumber. Apply needs the current `expectedHash` and token. Unselected IDs, object data and order are preserved. Reserved IDs, ambiguous numeric references and any open matching form editor prevent repair. |
 | `edt_replace_method` | Replaces one existing method after parsing it with EDT. Dry-run returns exact oldText/newText and the whole-module sourceHash. Apply requires that hash and force=true; stale source, unsaved editors and invalid replacements are refused. The method name and kind stay the same, and surrounding source is preserved. |
 | `edt_move_method` | Moves a method within its module, preserving its exact text, documentation and directives. Supports nested region paths and neighboring methods, checks the intermediate and final module with the EDT parser, and requires `apply=true, force=true`. |
 | `edt_move_form_item` | Moves an existing form item by sibling index or anchor while preserving identity, id, children, properties and events. Refuses cycles and moves that require converting the item kind or data binding. |
 | `edt_import_external_object` | Imports an existing `.epf` or `.erf` into a new EDT project, optionally with `baseProjectName`. Uses EDT or a full platform installation to unpack XML, then the native EDT importer. The source is preserved and the tool removes its own partial project after a failed import. |
+
+
+#### HTML source, form IDs and validation
+
+Read the requested HTML locale before replacing it. The hash covers exact UTF-8 bytes:
+a physical BOM is represented by a leading U+FEFF character in `text`. Include that
+character to retain the BOM. Line endings and trailing whitespace are written as supplied.
+An empty string deliberately empties the locale; omitted text is refused. A no-op writes
+nothing. Save affected template editors before replacement.
+
+For duplicate form IDs, audit first and select paths from `audit.items`. Leave one
+occurrence of each duplicate ID unselected. Preview those `itemPaths`, close the matching
+form editor, then apply with its current `expectedHash`. The tool resets native allocator
+caches, as does adding items, attributes and commands. `exportAccepted` confirms acceptance
+of the export request; check saved `Form.form` and validation for the persistent result.
+Audit and preview do not require a write token.
+
+Application association uses the active EDT context, including the Git branch.
+`associationVerified` confirms the saved relation; `verified` confirms its native application.
+Repeated calls reuse the application and do not update the database.
+
+With exact `fqn` or `modulePath`, `edt_project_errors` and `refresh=true` explicitly schedule
+applicable checks for that BM object. Unresolved or conflicting addresses never expand
+this request to the whole project. `validationRequested` and `validationCompleted` report
+scheduling and completion. Uninspected count-only or truncated snapshots cannot establish
+marker freshness. For full clean, inspect `stage`, `completedStages`, elapsed time and
+cancellation/status details. `ok=false` with `applied=true` reports a later failure after
+clean changed build state. Job state alone does not establish the cause of cancellation.
 
 #### Replace an existing BSL method
 

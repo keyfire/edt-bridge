@@ -92,6 +92,9 @@ import io.github.keyfire.edtbridge.tools.FindReferencesTool;
 import io.github.keyfire.edtbridge.tools.FormRenderTool;
 import io.github.keyfire.edtbridge.tools.FormStructureTool;
 import io.github.keyfire.edtbridge.tools.SupportStatusTool;
+import io.github.keyfire.edtbridge.tools.FormIdentifiersTool;
+import io.github.keyfire.edtbridge.tools.ReadHtmlTemplateTool;
+import io.github.keyfire.edtbridge.tools.ReplaceHtmlTemplateTool;
 import io.github.keyfire.edtbridge.tools.ApplicationsTool;
 import io.github.keyfire.edtbridge.tools.MetadataDetailsTool;
 import io.github.keyfire.edtbridge.tools.MetadataObjectsTool;
@@ -311,6 +314,9 @@ applyI18n();loadStatus();loadTools();
     private final GoToDefinitionTool goToDefinition = new GoToDefinitionTool();
     private final SymbolInfoTool symbolInfo = new SymbolInfoTool();
     private final SupportStatusTool supportStatus = new SupportStatusTool();
+    private final FormIdentifiersTool formIdentifiers = new FormIdentifiersTool();
+    private final ReadHtmlTemplateTool readHtmlTemplate = new ReadHtmlTemplateTool();
+    private final ReplaceHtmlTemplateTool replaceHtmlTemplate = new ReplaceHtmlTemplateTool();
     private final ApplicationsTool applications = new ApplicationsTool();
     private final FormStructureTool formStructure = new FormStructureTool();
     private final FormRenderTool formRender = new FormRenderTool();
@@ -733,6 +739,9 @@ applyI18n();loadStatus();loadTools();
         tools.add(goToDefinition.descriptor());
         tools.add(symbolInfo.descriptor());
         tools.add(supportStatus.descriptor());
+        tools.add(formIdentifiers.descriptor());
+        tools.add(readHtmlTemplate.descriptor());
+        tools.add(replaceHtmlTemplate.descriptor());
         tools.add(applications.descriptor());
         tools.add(formStructure.descriptor());
         tools.add(formRender.descriptor());
@@ -844,6 +853,15 @@ applyI18n();loadStatus();loadTools();
             return symbolInfo.call(args);
         }
         if (supportStatus.name().equals(name)) { return supportStatus.call(args); }
+        if (formIdentifiers.name().equals(name)) {
+            JsonObject denied = writeTokenGate(formIdentifiers.isWrite(args), name);
+            return denied != null ? denied : formIdentifiers.call(args);
+        }
+        if (readHtmlTemplate.name().equals(name)) return readHtmlTemplate.call(args);
+        if (replaceHtmlTemplate.name().equals(name)) {
+            JsonObject denied = writeTokenGate(replaceHtmlTemplate.isWrite(), name);
+            return denied != null ? denied : replaceHtmlTemplate.call(args);
+        }
         if (applications.name().equals(name)) {
             JsonObject denied = writeTokenGate(applications.isWrite(args), name);
             return denied != null ? denied : applications.call(args);

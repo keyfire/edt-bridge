@@ -2,8 +2,8 @@
   "tools": [
     {
       "name": "edt_project_errors",
-      "description": "List EDT validation problems for a project from the live workspace: both standard Eclipse markers (syntax/build) and EDT check results (Standards, e.g. com.e1c.v8codestyle) read from EDT's own marker store. Each problem carries source (eclipse|edt-check), severity, message, resource, line, and for EDT checks the checkId and EDT grade. Narrow with fqn / modulePath / severity, or pass countOnly for just the counts – on a large configuration the unfiltered result is thousands of problems, so filter or count instead; brief gives one text line per problem. A marker is a snapshot and can outlive the code that caused it, so every listed problem is judged against its file: stale=true when the marker predates the file's last change on disk, unsynchronized=true when the workspace has not even read that change. The summary counts them (staleCount, unsynchronized: [paths]) and a hint says what to do; refresh=true revalidates the narrowed scope in place – an incremental build, seconds – where edt_clean_project rebuilds the whole project. modelReady=false or complete=false means the counts are a partial snapshot, not a clean result. The report names the disk folder behind each validated project (locations): the model validates the REGISTERED folder, so check it against the checkout you are editing – a parallel worktree of the same sources is NOT what gets validated.",
-      "descriptionRu": "Список проблем валидации EDT по проекту из живой рабочей области: и стандартные маркеры Eclipse (синтаксис/сборка), и результаты проверок EDT (Стандарты, напр. com.e1c.v8codestyle) из собственного хранилища маркеров EDT. У каждой проблемы – источник (eclipse|edt-check), важность, сообщение, ресурс, строка, а у проверок EDT – checkId и класс важности. Сужение через fqn / modulePath / severity либо countOnly для одних счётчиков – на большой конфигурации полный список это тысячи проблем, фильтруйте или считайте; brief даёт по одной текстовой строке на проблему. Маркер – это снимок, и он может пережить код, который его вызвал, поэтому каждая выведенная проблема сверяется со своим файлом: stale=true, если маркер старше последнего изменения файла на диске, unsynchronized=true, если рабочая область это изменение ещё не прочитала. В сводке – счётчики (staleCount, unsynchronized: [пути]) и подсказка hint; refresh=true перепроверяет суженную область на месте – инкрементальная сборка, секунды, – тогда как edt_clean_project пересобирает весь проект. Отчёт называет каталог диска за каждым проверенным проектом (locations): модель проверяет ЗАРЕГИСТРИРОВАННЫЙ каталог – сверьте его с тем, что правите; параллельный worktree тех же исходников проверен НЕ будет.",
+      "description": "List EDT validation problems for a project from the live workspace: both standard Eclipse markers (syntax/build) and EDT check results (Standards, e.g. com.e1c.v8codestyle) read from EDT's own marker store. Each problem carries source (eclipse|edt-check), severity, message, resource, line, and for EDT checks the checkId and EDT grade. Narrow with fqn / modulePath / severity, or pass countOnly for just the counts – on a large configuration the unfiltered result is thousands of problems, so filter or count instead; brief gives one text line per problem. A marker is a snapshot and can outlive the code that caused it, so every listed problem is judged against its file: stale=true when the marker predates the file's last change on disk, unsynchronized=true when the workspace has not even read that change. The summary counts them (staleCount, unsynchronized: [paths]) and a hint says what to do; refresh=true runs an incremental build and explicitly requests active checks for one resolved BM object, waiting for their pipeline to complete. Missing services, disabled explicit checks or an unresolved target leave complete=false; settings are preserved. modelReady=false or complete=false means the counts are a partial snapshot, not a clean result. markerFreshnessComplete records whether the whole filtered marker set was inspected before presentation limits; ordinary countOnly/truncated reports cannot prove that freshness. The report names the disk folder behind each validated project (locations): the model validates the REGISTERED folder, so check it against the checkout you are editing – a parallel worktree of the same sources is NOT what gets validated.",
+      "descriptionRu": "Список проблем валидации EDT по проекту из живой рабочей области: и стандартные маркеры Eclipse (синтаксис/сборка), и результаты проверок EDT (Стандарты, напр. com.e1c.v8codestyle) из собственного хранилища маркеров EDT. У каждой проблемы – источник (eclipse|edt-check), важность, сообщение, ресурс, строка, а у проверок EDT – checkId и класс важности. Сужение через fqn / modulePath / severity либо countOnly для одних счётчиков – на большой конфигурации полный список это тысячи проблем, фильтруйте или считайте; brief даёт по одной текстовой строке на проблему. Маркер – это снимок, и он может пережить код, который его вызвал, поэтому каждая выведенная проблема сверяется со своим файлом: stale=true, если маркер старше последнего изменения файла на диске, unsynchronized=true, если рабочая область это изменение ещё не прочитала. В сводке – счётчики (staleCount, unsynchronized: [пути]) и подсказка hint; refresh=true запускает инкрементальную сборку и применимые проверки одного точно разрешенного BM-объекта, затем ждет завершения pipeline проверок. Если сервисы недоступны, явные проверки отключены или объект не разрешен, complete=false; настройки сохраняются. markerFreshnessComplete показывает, проверена ли свежесть всех отфильтрованных маркеров до ограничения вывода. Обычный countOnly или обрезанный список такой проверки не подтверждают. Отчёт называет каталог диска за каждым проверенным проектом (locations): модель проверяет ЗАРЕГИСТРИРОВАННЫЙ каталог – сверьте его с тем, что правите; параллельный worktree тех же исходников проверен НЕ будет.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -37,7 +37,7 @@
           },
           "countOnly": {
             "type": "boolean",
-            "description": "true = return only the counts (total, by severity, by source), no problem list – what a before/after baseline needs on a large configuration. The listed problems are what gets judged for staleness, so there is no staleCount here; the unsynchronized files are still named. Default false."
+            "description": "true = return only the counts (total, by severity, by source), no problem list – what a before/after baseline needs on a large configuration. The listed problems are what gets judged for staleness, so there is no staleCount here; the unsynchronized files are still named. Ordinary count-only reports have complete=false because marker freshness was not inspected. Baseline operations inspect the full snapshot before applying display options. Default false."
           },
           "limit": {
             "type": "integer",
@@ -49,7 +49,7 @@
           },
           "refresh": {
             "type": "boolean",
-            "description": "true = re-read the narrowed scope from disk (refreshLocal), run an INCREMENTAL build of the project and wait for validation to settle before reading the markers – the point fix for a stale marker: seconds for one module, where edt_clean_project rebuilds everything for minutes. Without fqn / modulePath the project's sources folder is refreshed – what validation reads. A project never built in this session gets a full build instead. The result carries refreshed {resources, buildMs}. Default false."
+            "description": "true = re-read the scope from disk, run an INCREMENTAL build, and for a resolved fqn/modulePath request active checks for that exact BM top object. Waits for derived data and stable markers; unresolved or conflicting filters never become a whole-project check. Check settings are preserved. Without a narrowing only the incremental build is requested. The result reports validationRequested, validationCompleted, validationTargets and timings. A project with no build state may receive a full build from Eclipse. Default false."
           }
         },
         "required": []
@@ -408,6 +408,114 @@
         "required": [
           "projectName",
           "objectFqn"
+        ]
+      }
+    },
+    {
+      "name": "edt_form_identifiers",
+      "description": "Audit visual-item IDs across complete form containment, including command bars, tooltips and context menus. Commands and attributes have separate ID namespaces. Optional itemPaths previews targeted duplicate-ID repair; apply=true requires expectedHash and a token. Preserves all unselected IDs and object data, resets native allocator caches. Refuses reserved IDs, ambiguous numeric references and any open matching form editor, including a clean editor.",
+      "descriptionRu": "Проверить ID визуальных элементов во всей модели формы, включая командные панели, подсказки и контекстные меню. У команд и реквизитов отдельные пространства ID. itemPaths задает выбранные повторные вхождения для плана исправления; apply=true требует expectedHash и токен. Остальные ID и данные объектов сохраняются, штатные кеши генераторов сбрасываются. Зарезервированные ID, неоднозначные числовые ссылки и открытый редактор этой формы, включая сохраненный, блокируют запись.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "formFqn": {
+            "type": "string",
+            "description": "Form FQN with English type prefixes, e.g. Catalog.Контрагенты.Form.ФормаЭлемента, DataProcessor.X.Form.Форма, CommonForm.Y"
+          },
+          "itemPaths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Exact paths from audit.items for duplicate occurrences to renumber. Omit to audit only. Leave at least one occurrence of each duplicate ID unselected."
+          },
+          "expectedHash": {
+            "type": "string",
+            "description": "sourceHash from the preview. Required for apply=true; a changed form is refused. Allocator caches are excluded from the hash."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default): audit or preview without allocating IDs. true: repair selected duplicate occurrences and request Form.form export; requires a configured token."
+          }
+        },
+        "required": [
+          "projectName",
+          "formFqn"
+        ]
+      }
+    },
+    {
+      "name": "edt_read_html_template",
+      "description": "Read exact saved UTF-8 source of one existing HTML_DOCUMENT template locale. Resolves common and nested templates through EDT's live model, returning availableLanguages, path, text and sourceHash. The SHA-256 hash includes any BOM and original line endings. language must exactly match an existing locale. Refuses unsupported encodings, unresolved/missing templates, dirty text or metadata editors and out-of-sync resources. Does not create a locale, switch the editing language or save editors.",
+      "descriptionRu": "Прочитать точный сохраненный UTF-8-текст одного языка существующего макета HTML_DOCUMENT. Общий или вложенный макет определяется по живой модели EDT. Результат содержит availableLanguages, path, text и sourceHash. Хеш SHA-256 учитывает BOM и исходные окончания строк. language должен точно совпадать с существующим языком. Неподдерживаемая кодировка, отсутствующий макет, несохраненный текст или метаданные и рассинхронизация файла дают отказ. Язык не создается и не переключается, редакторы не сохраняются.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "Loaded EDT project name."
+          },
+          "templateFqn": {
+            "type": "string",
+            "description": "Existing CommonTemplate.Name or nested owner FQN, e.g. DataProcessor.Demo.Template.Notice."
+          },
+          "language": {
+            "type": "string",
+            "description": "Exact existing page language code, e.g. ru or en. No fallback or locale creation."
+          }
+        },
+        "required": [
+          "projectName",
+          "templateFqn",
+          "language"
+        ]
+      }
+    },
+    {
+      "name": "edt_replace_html_template",
+      "description": "WRITE: replace complete source of one existing HTML_DOCUMENT locale, resolved through the live EDT model. Dry-run returns exact oldText/newText, sourceHash and resultHash. Apply requires current expectedHash and force=true. Preserves every supplied character, whitespace and line ending; a leading BOM is literal and must be included to retain it. An empty string is allowed; omitted/null text is refused. Refuses dirty text/metadata editors, changed template identity or locale mapping, stale or out-of-sync source, invalid Unicode and non-UTF-8 encoding. Writes only the existing locale file and rereads the result. Does not create locales, rewrite other locales, format HTML, save metadata or change the editing language. Requires a configured write token and caller verification of edt_support_status=EDITABLE.",
+      "descriptionRu": "ЗАПИСЬ: заменить полный текст одного существующего языка макета HTML_DOCUMENT через живую модель EDT. Dry-run возвращает точные oldText/newText, sourceHash и resultHash без записи. Для apply нужны актуальный expectedHash и force=true. Все переданные символы, пробелы и окончания строк сохраняются буквально; для сохранения BOM его нужно включить в text. Пустая строка допустима, отсутствующий или null-текст дает отказ. Несохраненный редактор, смена макета или привязки языка, устаревший источник, рассинхронизация, ошибочный Unicode и кодировка кроме UTF-8 дают отказ. Записывается только существующий файл языка, результат перечитывается. Языки не создаются, HTML не форматируется, метаданные не сохраняются, язык редактирования не меняется. Нужны токен записи и предварительная проверка вызывающим edt_support_status=EDITABLE.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "Loaded EDT project name."
+          },
+          "templateFqn": {
+            "type": "string",
+            "description": "Existing CommonTemplate.Name or nested owner FQN, e.g. DataProcessor.Demo.Template.Notice."
+          },
+          "language": {
+            "type": "string",
+            "description": "Exact existing page language code, e.g. ru or en. No fallback or locale creation."
+          },
+          "text": {
+            "type": "string",
+            "description": "Complete exact UTF-8 source for the selected locale. An empty string intentionally empties the file. All whitespace, line endings and any leading BOM are taken literally; include the BOM to retain it."
+          },
+          "expectedHash": {
+            "type": "string",
+            "description": "sourceHash from a current read or dry-run: SHA-256 of exact UTF-8 source including any BOM. Required for apply."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default): return exact oldText/newText and hashes without writing. true: apply with current expectedHash and force=true. Verify edt_support_status=EDITABLE first."
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Required with apply=true. Does not bypass dirty editors, changed identities, locale mappings, encodings or stale-source checks."
+          }
+        },
+        "required": [
+          "projectName",
+          "templateFqn",
+          "language",
+          "text"
         ]
       }
     },
@@ -2847,8 +2955,8 @@
     },
     {
       "name": "edt_clean_project",
-      "description": "WRITE (Phase 2): discard a project's build results and let them be recomputed - the programmatic equivalent of EDT's \"Clean\" dialog. EDT hangs its checks off the build, so this is what makes validation actually run again: a marker can otherwise survive long after the code that caused it was fixed, and reading a stale marker is worse than reading none. Reports the problem count before and after, waiting until it stops changing. Sources are untouched, so no force is needed - but it does need a configured token. Use it before trusting edt_project_errors after an edit – or, for one module changed on disk, pass refresh=true to edt_project_errors instead: an incremental build of that scope, seconds instead of a full rebuild.",
-      "descriptionRu": "ЗАПИСЬ (Phase 2): сбросить результаты сборки проекта и дать пересчитать их заново - программный аналог диалога \"Очистить\" в EDT. Проверки EDT висят на сборке, поэтому именно это заставляет валидацию отработать снова: иначе замечание может пережить исправление кода, а читать устаревший маркер хуже, чем не читать вовсе. Возвращает число замечаний до и после, дождавшись, пока оно перестанет меняться. Исходники не трогаются, force не нужен - но нужен токен. Вызывать перед тем, как доверять edt_project_errors после правок, – либо, для одного модуля, изменённого на диске, передать edt_project_errors refresh=true: инкрементальная сборка этой области, секунды вместо полной пересборки.",
+      "description": "WRITE (Phase 2): discard a project's build results and let them be recomputed - the programmatic equivalent of EDT's \"Clean\" dialog. EDT hangs its checks off the build, so this is what makes validation actually run again: a marker can otherwise survive long after the code that caused it was fixed, and reading a stale marker is worse than reading none. Reports the problem count before and after, waiting until it stops changing. Sources are untouched, so no force is needed - but it does need a configured token. Use it before trusting edt_project_errors after an edit – or, for one module changed on disk, pass refresh=true to edt_project_errors instead: an incremental build plus active checks of the resolved object. A failure reports its stage, completed stages, cancellation and bounded job/status diagnostics. applied=true may mean the clean finished before a later rebuild or wait failed.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): сбросить результаты сборки проекта и дать пересчитать их заново - программный аналог диалога \"Очистить\" в EDT. Проверки EDT висят на сборке, поэтому именно это заставляет валидацию отработать снова: иначе замечание может пережить исправление кода, а читать устаревший маркер хуже, чем не читать вовсе. Возвращает число замечаний до и после, дождавшись, пока оно перестанет меняться. Исходники не трогаются, force не нужен - но нужен токен. Вызывать перед тем, как доверять edt_project_errors после правок, – либо, для одного модуля, изменённого на диске, передать edt_project_errors refresh=true: инкрементальная сборка и применимые проверки разрешенного объекта. При сбое возвращаются этап, завершенные этапы, отмена и ограниченная диагностика jobs/status. applied=true может означать, что очистка выполнена, а последующая пересборка или ожидание завершились ошибкой.",
       "inputSchema": {
         "type": "object",
         "properties": {

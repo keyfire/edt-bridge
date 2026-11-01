@@ -818,6 +818,12 @@ public final class FormWriteGateway {
             r.message = r.message + " - apply refused (nothing written).";
             return r;
         }
+        String editorProblem = FormIdentifiersGateway.editorProblem(model, formFqn);
+        if (editorProblem != null) {
+            r.ok = false;
+            r.message = editorProblem;
+            return r;
+        }
         final Version version = GatewaySupport.projectVersion(p);
         final MetadataWriteGateway types = new MetadataWriteGateway();
         final String[] failure = {null};
@@ -851,6 +857,7 @@ public final class FormWriteGateway {
                         attribute = plain;
                     }
                     attribute.setName(name);
+                    FormIdentifierService.INSTANCE.clearCaches(form);
                     attribute.setId(FormIdentifierService.INSTANCE.getNextAttributeId(form));
                     attribute.setValueType(td);
                     attribute.setView(adjustable(true));
@@ -1114,6 +1121,12 @@ public final class FormWriteGateway {
             r.message = r.message + " - apply refused (nothing written).";
             return r;
         }
+        String editorProblem = FormIdentifiersGateway.editorProblem(model, formFqn);
+        if (editorProblem != null) {
+            r.ok = false;
+            r.message = editorProblem;
+            return r;
+        }
         final String[] failure = {null};
         try {
             model.execute(new AbstractBmTask<Object>("edt-bridge.addFormCommand.apply") {
@@ -1126,6 +1139,7 @@ public final class FormWriteGateway {
                     }
                     FormCommand command = FormFactory.eINSTANCE.createFormCommand();
                     command.setName(name);
+                    FormIdentifierService.INSTANCE.clearCaches(form);
                     command.setId(FormIdentifierService.INSTANCE.getNextCommandId(form));
                     if (titleRu != null && !titleRu.isBlank()) {
                         command.getTitle().put("ru", titleRu);
@@ -1771,7 +1785,7 @@ public final class FormWriteGateway {
     }
 
     /** The BM FQN of the form content object, which is what {@code forceExport} serializes. */
-    private static String formTopFqn(IBmModel model, String formFqn) {
+    static String formTopFqn(IBmModel model, String formFqn) {
         return model.executeReadonlyTask(new AbstractBmTask<String>("edt-bridge.formMember.topFqn") {
             @Override
             public String execute(IBmTransaction tx, IProgressMonitor monitor) {
@@ -1782,7 +1796,7 @@ public final class FormWriteGateway {
     }
 
     /** Resolve a form by FQN, accepting both the content object and the {@code Owner.Form.Name} form. */
-    private static Form resolveForm(IBmTransaction tx, String formFqn) {
+    static Form resolveForm(IBmTransaction tx, String formFqn) {
         Form form = asFormContent(tx.getTopObjectByFqn(formFqn));
         if (form != null) {
             return form;
@@ -1809,7 +1823,7 @@ public final class FormWriteGateway {
     }
 
     /** The editable content object: a {@code BasicForm} only carries it via {@code AbstractForm}. */
-    private static Form asFormContent(EObject candidate) {
+    static Form asFormContent(EObject candidate) {
         if (candidate instanceof Form) {
             return (Form) candidate;
         }
@@ -2190,6 +2204,12 @@ public final class FormWriteGateway {
                     + " - apply refused (nothing added).";
             return r;
         }
+        String editorProblem = FormIdentifiersGateway.editorProblem(model, formFqn);
+        if (editorProblem != null) {
+            r.ok = false;
+            r.message = editorProblem;
+            return r;
+        }
         IFormItemManagementService items = formItemService();
         if (items == null) {
             r.message = "form item management service unavailable (EDT form plugin not active)";
@@ -2232,6 +2252,7 @@ public final class FormWriteGateway {
                     }
                     FormNewItemDescriptor descriptor = new FormNewItemDescriptor(
                             (name == null || name.isBlank()) ? null : name, title, false);
+                    if (!"button".equals(itemKind)) FormIdentifierService.INSTANCE.clearCaches(form);
                     FormItem created;
                     switch (itemKind) {
                         case "field":
@@ -2382,6 +2403,7 @@ public final class FormWriteGateway {
     /** EDT derives button names from the command, ignoring the descriptor's explicit name. */
     static Button addButtonWithName(IFormItemManagementService items, FormItemContainer parent,
             FormCommand command, Form form, FormNewItemDescriptor descriptor) {
+        FormIdentifierService.INSTANCE.clearCaches(form);
         Button button = items.addButton(parent, command, null, form, descriptor);
         String requestedName = descriptor.getItemName();
         if (button != null && requestedName != null && !requestedName.isBlank()
