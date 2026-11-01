@@ -29,7 +29,7 @@ import com.google.gson.JsonObject;
  * legal BSL method whose name is free, computes the insertion point from the model (region / server block /
  * after the last method) and returns the plan + a preview WITHOUT writing. apply=true splices the method
  * text and writes the .bsl, but ONLY if the spliced module re-parses cleanly (the safety invariant).
- * Requires a configured token (write tool); the caller must verify bsl_support_status EDITABLE before apply.
+ * Requires a configured token (write tool); the caller must verify edt_support_status EDITABLE before apply.
  */
 public final class AddMethodTool {
 
@@ -64,7 +64,7 @@ public final class AddMethodTool {
         props.add("serverBlock", boolProp("Optional: place the method inside the module's server preprocessor "
                 + "block (#Если Сервер ... #КонецЕсли). Combined with region = the region inside that block."));
         props.add("apply", boolProp("false (default) = dry-run: validate + return the plan, write nothing. "
-                + "true = write the .bsl (only if the result parses cleanly). Verify bsl_support_status "
+                + "true = write the .bsl (only if the result parses cleanly). Verify edt_support_status "
                 + "EDITABLE, first."));
 
         JsonArray req = new JsonArray();
@@ -87,7 +87,7 @@ public final class AddMethodTool {
                 + "only if the spliced module re-parses cleanly (safety invariant – a bad methodText or "
                 + "offset can never corrupt the module, worst case is a refused apply). Additive (a new "
                 + "method is non-breaking) – no force. Requires a configured token; caller must verify "
-                + "bsl_support_status EDITABLE before apply (cannot add to vendor-locked modules).");
+                + "edt_support_status EDITABLE before apply (cannot add to vendor-locked modules).");
         t.addProperty("descriptionRu",
                 "ЗАПИСЬ (Phase 2): добавить новую процедуру/функцию в BSL модуля. Отсутствующий файл "
                 + "создается только для существующего владельца fqn с пустым модулем известного типа. По умолчанию "
@@ -97,7 +97,7 @@ public final class AddMethodTool {
                 + "только если результат парсится без ошибок (инвариант безопасности – плохой methodText или "
                 + "смещение не могут испортить модуль, худший случай – отказ). Аддитивно (новый метод не "
                 + "ломает совместимость) – без force. Требует токен; перед apply вызывающий обязан проверить "
-                + "bsl_support_status = EDITABLE (в vendor-locked модули добавлять нельзя).");
+                + "edt_support_status = EDITABLE (в vendor-locked модули добавлять нельзя).");
         t.add("inputSchema", schema);
         return t;
     }

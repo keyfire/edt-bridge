@@ -28,7 +28,7 @@ import com.google.gson.JsonObject;
  * DESTRUCTIVE: removing an attribute is a schema change (drops the column in a real infobase). Checks
  * inbound references first (BM cross-reference index); if the attribute is referenced, removal is
  * blocked unless force=true. Dry-run by default (apply=false) reports the references and the plan.
- * Requires a configured token; the caller must verify bsl_support_status EDITABLE before apply.
+ * Requires a configured token; the caller must verify edt_support_status EDITABLE before apply.
  */
 public final class RemoveAttributeTool {
 
@@ -49,7 +49,7 @@ public final class RemoveAttributeTool {
         props.add("ownerFqn", strProp("Object to remove the attribute from, e.g. Catalog.Контрагенты"));
         props.add("name", strProp("Attribute name to remove (Cyrillic)"));
         props.add("apply", boolProp("false (default) = dry-run: report references + plan, remove nothing. "
-                + "true = perform the removal (commit + serialize). Verify bsl_support_status EDITABLE first."));
+                + "true = perform the removal (commit + serialize). Verify edt_support_status EDITABLE first."));
         props.add("force", boolProp("false (default) = refuse if the attribute has inbound references. "
                 + "true = remove even if referenced (WILL break those references – last resort)."));
 
@@ -69,13 +69,13 @@ public final class RemoveAttributeTool {
                 "WRITE (Phase 2): remove an attribute from a metadata object. DESTRUCTIVE – a schema "
                 + "change. Dry-run by default: checks inbound references (BM xref) and returns the plan "
                 + "WITHOUT removing. apply=true removes (commit + serialize); blocked if referenced unless "
-                + "force=true. Requires a configured token. Verify bsl_support_status EDITABLE before apply "
+                + "force=true. Requires a configured token. Verify edt_support_status EDITABLE before apply "
                 + ".");
         t.addProperty("descriptionRu",
                 "ЗАПИСЬ (Phase 2): удалить реквизит объекта метаданных. ДЕСТРУКТИВНО – изменение схемы. "
                 + "По умолчанию dry-run: проверяет входящие ссылки (BM xref) и возвращает план БЕЗ удаления. "
                 + "apply=true удаляет (фиксирует + сериализует); если на реквизит ссылаются – блокируется, "
-                + "пока не задан force=true. Требует токен. Перед apply проверить bsl_support_status = EDITABLE.");
+                + "пока не задан force=true. Требует токен. Перед apply проверить edt_support_status = EDITABLE.");
         t.add("inputSchema", schema);
         return t;
     }

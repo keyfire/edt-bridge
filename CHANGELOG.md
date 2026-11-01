@@ -13,6 +13,28 @@ Every entry ends with a link to the pull request it came from -
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
+## Unreleased
+
+### Added
+
+- Attribute writers accept `use` and `multiLine`. Managed-form fields support HTML documents, dimensions, stretch and choice options; tables expose row-set, insertion, ordering and read-only controls. Write replies include observed model properties.
+  ([#58](https://github.com/keyfire/edt-bridge/pull/58))
+- `edt_support_status` reads the object's direct-edit policy and reports `EDITABLE`, `READ_ONLY` or `UNKNOWN`.
+  ([#58](https://github.com/keyfire/edt-bridge/pull/58))
+- `edt_applications` lists native EDT applications, associates an existing registered infobase and starts or stops its thin client. Stop is limited to the exact process returned to this bridge instance.
+  ([#58](https://github.com/keyfire/edt-bridge/pull/58))
+
+### Fixed
+
+- The Bash build includes the native application-manager dependencies. A regression checks that Bash and PowerShell compile against the same bundles.
+  ([#58](https://github.com/keyfire/edt-bridge/pull/58))
+- Form creation assigns the default slot for the requested form kind, including catalog item and folder forms. Unlimited strings receive an explicit string qualifier.
+  ([#58](https://github.com/keyfire/edt-bridge/pull/58))
+- Form traversal includes the native `AutoCommandBar`. Buttons can be added or moved to it while the structural bar itself cannot be moved or removed.
+  ([#58](https://github.com/keyfire/edt-bridge/pull/58))
+- Reimporting an already registered project reopens it when closed and reuses it when open, preserving its settings and infobase associations.
+  ([#58](https://github.com/keyfire/edt-bridge/pull/58))
+
 ## 2026-10-30 – 0.30.0
 
 ### Added

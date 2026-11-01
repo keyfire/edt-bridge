@@ -26,7 +26,7 @@ import com.google.gson.JsonObject;
  * MCP tool: edt_modify_attribute - WRITE (Phase 2). Changes an existing attribute's type, ru synonym
  * and/or comment. Changing the TYPE may break backward compatibility (data + code) – a warning is
  * returned. Dry-run by default (apply=false). Requires a configured token; the caller must verify
- * bsl_support_status EDITABLE before apply.
+ * edt_support_status EDITABLE before apply.
  */
 public final class ModifyAttributeTool {
 
@@ -55,8 +55,9 @@ public final class ModifyAttributeTool {
         props.add("newType", strProp("New value type (same syntax as edt_add_attribute). Optional – omit to keep."));
         props.add("newSynonymRu", strProp("New Russian synonym. Optional; empty string clears it."));
         props.add("newComment", strProp("New comment. Optional; empty string clears it."));
+        MetadataFieldToolOptions.properties(props);
         props.add("apply", boolProp("false (default) = dry-run: validate + return current→new plan, change nothing. "
-                + "true = perform the change (commit + serialize). Verify bsl_support_status EDITABLE first."));
+                + "true = perform the change (commit + serialize). Verify edt_support_status EDITABLE first."));
 
         JsonArray req = new JsonArray();
         req.add("projectName");
@@ -74,12 +75,12 @@ public final class ModifyAttributeTool {
                 "WRITE (Phase 2): modify an attribute, register resource or dimension – type, ru synonym and/or comment (provide at "
                 + "least one). Dry-run by default: validates and returns the current→new plan WITHOUT changing. "
                 + "apply=true performs the change. Changing the type may break backward compatibility (warned). "
-                + "Requires a configured token. Verify bsl_support_status EDITABLE before apply.");
+                + "Requires a configured token. Verify edt_support_status EDITABLE before apply.");
         t.addProperty("descriptionRu",
                 "ЗАПИСЬ (Phase 2): изменить реквизит, ресурс или измерение регистра – тип, синоним(ru) и/или comment (хотя бы одно). "
                 + "По умолчанию dry-run: проверяет и возвращает план было→стало БЕЗ изменения. apply=true применяет. "
                 + "Смена типа может нарушить обратную совместимость (предупреждение). Требует токен. Перед apply "
-                + "проверить bsl_support_status = EDITABLE.");
+                + "проверить edt_support_status = EDITABLE.");
         t.add("inputSchema", schema);
         return t;
     }
@@ -97,10 +98,11 @@ public final class ModifyAttributeTool {
         boolean apply = args.has("apply") && !args.get("apply").isJsonNull() && args.get("apply").getAsBoolean();
         try {
             MetadataWriteGateway.ModifyAttrResult res =
-                    gateway.modifyAttribute(project, ownerFqn, name, newType, newSynonymRu, newComment, getStr(args, "kind"), apply);
+                    gateway.modifyAttribute(project, ownerFqn, name, newType, newSynonymRu, newComment, getStr(args, "kind"), MetadataFieldToolOptions.values(args), apply);
             JsonObject o = new JsonObject();
             o.addProperty("ok", res.ok);
             o.addProperty("applied", res.applied);
+            o.add("properties", new GsonBuilder().create().toJsonTree(res.properties));
             o.addProperty("ownerFqn", res.ownerFqn);
             o.addProperty("ownerFound", res.ownerFound);
             if (res.ownerType != null) {

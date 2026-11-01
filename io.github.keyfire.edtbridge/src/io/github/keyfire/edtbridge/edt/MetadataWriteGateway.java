@@ -111,6 +111,7 @@ public final class MetadataWriteGateway {
         public boolean ownerSupportsAttributes;
         public String name;
         public String kind;
+        public Map<String, Object> properties = new java.util.LinkedHashMap<>();
         public List<String> conflictingFqns = new ArrayList<>();
         public Boolean nameAvailable; // null if not checked (owner missing)
         public String typeInput;
@@ -134,8 +135,8 @@ public final class MetadataWriteGateway {
      *       name/synonym/comment/type/uuid, attach it to the selected field list, and commit in
      *       a BM read-write transaction. The write is skipped when validation fails (nothing written).
      * </ul>
-     * The {@code bsl_support_status = EDITABLE} gate before an apply is the caller's
-     * responsibility – the EDT support API is not on the surface, so it stays a process gate for now.
+     * The {@code edt_support_status = EDITABLE} gate before an apply is the caller's
+     * responsibility; query edt_support_status for the owner before applying.
      */
     public AddAttrResult addAttribute(String projectName, String ownerFqnRaw, String name, String typeSpec,
             String synonymRu, String comment, boolean apply) {
@@ -144,6 +145,11 @@ public final class MetadataWriteGateway {
 
     public AddAttrResult addAttribute(String projectName, String ownerFqnRaw, String name, String typeSpec,
             String synonymRu, String comment, String kind, boolean apply) {
+        return addAttribute(projectName, ownerFqnRaw, name, typeSpec, synonymRu, comment, kind, Map.of(), apply);
+    }
+
+    public AddAttrResult addAttribute(String projectName, String ownerFqnRaw, String name, String typeSpec,
+            String synonymRu, String comment, String kind, Map<String, Object> options, boolean apply) {
         final String fieldKind = MetadataFields.kind(kind);
         AddAttrResult r = new AddAttrResult();
         r.kind = fieldKind;
@@ -186,7 +192,11 @@ public final class MetadataWriteGateway {
                 }
                 r.ownerFound = true;
                 r.ownerType = o.eClass().getName();
-                MetadataFields.reference(o, fieldKind);
+                try {
+                    MetadataFields.validateOptions(MetadataFields.reference(o, fieldKind).getEReferenceType(), options);
+                } catch (IllegalArgumentException invalid) {
+                    r.message = invalid.getMessage(); return null;
+                }
                 r.ownerSupportsAttributes = true;
                 var conflicts = MetadataFields.matches(o, name);
                 r.nameAvailable = conflicts.isEmpty();
@@ -228,6 +238,7 @@ public final class MetadataWriteGateway {
                     && r.typeValid && (r.refFqn == null || Boolean.TRUE.equals(r.refResolved));
             r.plan = "Add " + fieldKind + " \"" + name + "\" of type " + (r.typeParsed != null ? r.typeParsed : typeSpec)
                     + " to " + ownerFqn + (synonymRu != null && !synonymRu.isBlank() ? " (synonym: " + synonymRu + ")" : "");
+            if (!options.isEmpty()) { r.plan += " properties " + options; }
             if (!r.typeValid) {
                 r.message = "type not recognized: \"" + typeSpec + "\" (supported: Строка(N), Число(N,M), "
                         + "Булево, Дата/ДатаВремя/Время, ХранилищеЗначения, ОпределяемыйТип.X, and a reference "
@@ -253,7 +264,10 @@ public final class MetadataWriteGateway {
                     public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
                         IBmObject o = tx.getTopObjectByFqn(ownerFqn);
                         if (!fieldTypeAllowed(o, fieldKind, typeSpec)) throw new IllegalArgumentException(resourceTypeMessage());
-                        MetadataFields.add(o, fieldKind, name, buildTypeDescription(tx, pt, version), synonymRu, comment);
+                        MetadataFields.validateOptions(MetadataFields.reference(o, fieldKind).getEReferenceType(), options);
+                        MdObject added = MetadataFields.add(o, fieldKind, name, buildTypeDescription(tx, pt, version), synonymRu, comment);
+                        MetadataFields.applyOptions(added, options);
+                        r.properties = MetadataFields.readOptions(added);
                         return null;
                     }
                 });
@@ -323,7 +337,7 @@ public final class MetadataWriteGateway {
      * the plan without writing. {@code apply=true} creates the url template and its method through the
      * model (uuids from {@link UUID#randomUUID}, the same source the other writers use) and serialises the
      * {@code .mdo}; {@code createHandler} additionally splices a handler stub into the service module via
-     * {@link BslGateway#addMethod}, addressing it by the service FQN. The {@code bsl_support_status =
+     * {@link BslGateway#addMethod}, addressing it by the service FQN. The {@code edt_support_status =
      * EDITABLE} gate before an apply is the caller's responsibility, as with the other write tools.
      */
     public AddRouteResult addRoute(String projectName, String serviceFqnRaw, String name, String template,
@@ -593,7 +607,7 @@ public final class MetadataWriteGateway {
      * attribute is a schema change (drops the column in a real infobase). Checks inbound references
      * first (BM cross-reference index): if referenced, removal is blocked unless {@code force=true}.
      * Dry-run by default ({@code apply=false}) reports references + the plan. The caller must verify
-     * {@code bsl_support_status = EDITABLE} before any apply.
+     * {@code edt_support_status = EDITABLE} before any apply.
      */
     public RemoveAttrResult removeAttribute(String projectName, String ownerFqnRaw, String name,
             boolean apply, boolean force) {
@@ -750,6 +764,7 @@ public final class MetadataWriteGateway {
         public boolean attrFound;
         public String name;
         public String kind;
+        public Map<String, Object> properties = new java.util.LinkedHashMap<>();
         public String currentType;    // rendered current value type
         public boolean typeChange;
         public String newType;        // parsed display of the requested type
@@ -767,7 +782,7 @@ public final class MetadataWriteGateway {
      * Phase-2 write tool: modify an existing attribute – its type, ru synonym and/or comment. At least
      * one change must be requested. Changing the TYPE may break backward compatibility (data + code) –
      * a warning is returned. Dry-run by default ({@code apply=false}). Caller verifies
-     * {@code bsl_support_status = EDITABLE} before apply.
+     * {@code edt_support_status = EDITABLE} before apply.
      */
     public ModifyAttrResult modifyAttribute(String projectName, String ownerFqnRaw, String name,
             String newType, String newSynonymRu, String newComment, boolean apply) {
@@ -776,6 +791,11 @@ public final class MetadataWriteGateway {
 
     public ModifyAttrResult modifyAttribute(String projectName, String ownerFqnRaw, String name,
             String newType, String newSynonymRu, String newComment, String kind, boolean apply) {
+        return modifyAttribute(projectName, ownerFqnRaw, name, newType, newSynonymRu, newComment, kind, Map.of(), apply);
+    }
+
+    public ModifyAttrResult modifyAttribute(String projectName, String ownerFqnRaw, String name,
+            String newType, String newSynonymRu, String newComment, String kind, Map<String, Object> options, boolean apply) {
         final String fieldKind = MetadataFields.kind(kind);
         ModifyAttrResult r = new ModifyAttrResult();
         r.kind = fieldKind;
@@ -794,7 +814,7 @@ public final class MetadataWriteGateway {
         boolean wantType = newType != null && !newType.isBlank();
         boolean wantSyn = newSynonymRu != null;
         boolean wantComment = newComment != null;
-        if (!wantType && !wantSyn && !wantComment) {
+        if (!wantType && !wantSyn && !wantComment && options.isEmpty()) {
             r.message = "nothing to change – provide at least one of newType, newSynonymRu, newComment";
             return r;
         }
@@ -830,6 +850,9 @@ public final class MetadataWriteGateway {
                     return null;
                 }
                 r.attrFound = true;
+                r.properties = MetadataFields.readOptions(attr);
+                try { MetadataFields.validateOptions(attr.eClass(), options); }
+                catch (IllegalArgumentException invalid) { r.message = invalid.getMessage(); return null; }
                 if (attr instanceof BasicFeature) {
                     r.currentType = GatewaySupport.renderType(((BasicFeature) attr).getType());
                 }
@@ -857,7 +880,7 @@ public final class MetadataWriteGateway {
             }
         });
 
-        if (!r.attrFound) {
+        if (!r.attrFound || r.message != null) {
             return r;
         }
         r.ok = (!wantType || (r.typeValid && (r.refFqn == null || Boolean.TRUE.equals(r.refResolved))));
@@ -871,6 +894,7 @@ public final class MetadataWriteGateway {
         if (wantComment) {
             plan.append(" comment → \"").append(newComment).append("\"");
         }
+        if (!options.isEmpty()) { plan.append(" properties ").append(options); }
         r.plan = plan.toString();
         if (wantType) {
             r.warning = "changing a field's type can break backward compatibility (infobase data and code).";
@@ -896,9 +920,12 @@ public final class MetadataWriteGateway {
                         if (wantType && !fieldTypeAllowed(o, fieldKind, newType)) {
                             throw new IllegalArgumentException(resourceTypeMessage());
                         }
-                        MetadataFields.modify(o, fieldKind, name,
+                        MetadataFields.validateOptions(MetadataFields.find(o, fieldKind, name).eClass(), options);
+                        MdObject modified = MetadataFields.modify(o, fieldKind, name,
                                 wantType ? buildTypeDescription(tx, pt, version) : null,
                                 newSynonymRu, newComment);
+                        MetadataFields.applyOptions(modified, options);
+                        r.properties = MetadataFields.readOptions(modified);
                         return null;
                     }
                 });
@@ -984,7 +1011,7 @@ public final class MetadataWriteGateway {
      * </ul>
      * Renaming is the widest backward-compatibility surface: a rename is breaking for peer
      * configurations, so an apply additionally requires {@code force=true} (the owner's explicit
-     * override) on top of the configured token. The {@code bsl_support_status = EDITABLE} gate before an
+     * override) on top of the configured token. The {@code edt_support_status = EDITABLE} gate before an
      * apply is the caller's responsibility.
      */
     public RenameResult renameObject(String projectName, String targetFqn, String newName,
@@ -1608,7 +1635,7 @@ public final class MetadataWriteGateway {
      *       → set name/synonym/comment → {@code tx.toTransactionObject} → {@code tx.attachTopObject(fqn)}
      *       → add to the config feature → {@code factory.fillDefaultReferences}, then forceExport the new
      *       object AND the Configuration. Creating an object is additive (non-breaking) → no
-     *       {@code force}; still token-gated and {@code bsl_support_status} EDITABLE is the caller's gate.
+     *       {@code force}; still token-gated and {@code edt_support_status} EDITABLE is the caller's gate.
      * </ul>
      */
     public CreateObjectResult createObject(String projectName, String objectType, String name,
@@ -2828,13 +2855,15 @@ public final class MetadataWriteGateway {
             // qualifiers to apply, and switching on a null kind would blow up.
             return;
         }
+        applyTypeQualifiers(td, part);
+    }
+
+    private static void applyTypeQualifiers(TypeDescription td, ParsedType part) {
         switch (part.kind) {
             case STRING:
-                if (part.length > 0) {
-                    StringQualifiers sq = McoreFactory.eINSTANCE.createStringQualifiers();
-                    sq.setLength(part.length);
-                    td.setStringQualifiers(sq);
-                }
+                StringQualifiers sq = McoreFactory.eINSTANCE.createStringQualifiers();
+                sq.setLength(part.length);
+                td.setStringQualifiers(sq);
                 break;
             case NUMBER:
                 if (part.precision > 0) {

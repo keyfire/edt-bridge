@@ -30,7 +30,7 @@ import com.google.gson.JsonObject;
  * EDT's OWN refactoring engine – not a brittle text replace. Dry-run by default (apply=false) returns
  * the engine's full change list + validation problems. Renaming is the widest backward-compatibility
  * surface: an apply requires a configured token AND force=true (the owner's explicit
- * breaking-change override); the caller must verify bsl_support_status EDITABLE before apply.
+ * breaking-change override); the caller must verify edt_support_status EDITABLE before apply.
  */
 public final class RenameTool {
 
@@ -60,7 +60,7 @@ public final class RenameTool {
         props.add("newName", strProp("New name (a valid 1C identifier, Cyrillic allowed)"));
         props.add("apply", boolProp("false (default) = dry-run: build the refactoring and return the full "
                 + "change list + problems, perform nothing. true = perform the cascade (metadata + BSL). "
-                + "Verify bsl_support_status EDITABLE first."));
+                + "Verify edt_support_status EDITABLE first."));
         props.add("force", boolProp("false (default) = refuse apply (rename is breaking for peer "
                 + "configurations). true = the owner's explicit breaking-change override; "
                 + "required for any apply. Has no effect on a dry-run."));
@@ -81,7 +81,7 @@ public final class RenameTool {
                 + "resource/...) and cascade every reference in metadata AND BSL via EDT's native refactoring "
                 + "engine. Preview reports known file paths and nativeTextEditCount. editCount is null when model operations expose no text edits; coverageComplete=false identifies unmapped metadata items. Dry-run by default: returns the engine's change list + validation problems WITHOUT "
                 + "changing. apply=true performs the cascade; requires a configured token AND force=true (rename "
-                + "is breaking for peer configurations –, owner approval). Verify bsl_support_status "
+                + "is breaking for peer configurations –, owner approval). Verify edt_support_status "
                 + "EDITABLE before apply.");
         t.addProperty("descriptionRu",
                 "ЗАПИСЬ (Phase 2): переименовать метод BSL (methodName), объект метаданных или его член (реквизит/измерение/"
@@ -89,7 +89,7 @@ public final class RenameTool {
                 + "рефакторинга EDT. Предпросмотр возвращает известные пути и nativeTextEditCount; editCount=null означает отсутствие текстового счетчика, coverageComplete=false отмечает неполное покрытие. По умолчанию dry-run: возвращает список изменений и проблемы БЕЗ применения. "
                 + "apply=true выполняет каскад; требует токен И force=true (переименование ломает обратную "
                 + "совместимость для конфигураций-партнёров –, нужно одобрение владельца). Перед apply "
-                + "проверить bsl_support_status = EDITABLE.");
+                + "проверить edt_support_status = EDITABLE.");
         t.add("inputSchema", schema);
         return t;
     }

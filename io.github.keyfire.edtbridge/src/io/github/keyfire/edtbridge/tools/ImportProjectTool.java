@@ -49,20 +49,20 @@ public final class ImportProjectTool {
                 + "declares. Two checkouts of one repository declare the SAME name and the workspace "
                 + "allows a name once - overriding it here is what lets the second one in."));
         props.add("apply", ToolJson.boolProp("false (default) = dry-run: report what would be "
-                + "registered and under which name. true = register the project and open it."));
+                + "registered and under which name. true = register and open it, or reopen the existing closed project without reimport."));
         return ToolJson.descriptor(name(),
                 "WRITE (Phase 2): register an EXISTING project directory in the workspace - the "
                 + "programmatic form of \"Import existing project\". Needed whenever a second project "
                 + "must join the workspace: an extension in modification-and-control mode is checked "
                 + "against a BASE project on the target release, and that one comes from another "
                 + "worktree. Sources are not touched - only the workspace learns about them. Reports "
-                + "the declared name, the name it will take and whether that name is already busy.",
+                + "the declared name, workspace name and open state. An already imported closed project is reopened without changing its settings or infobase associations.",
                 "ЗАПИСЬ (Phase 2): зарегистрировать в workspace СУЩЕСТВУЮЩИЙ каталог проекта - "
                 + "программный аналог \"Импорт существующего проекта\". Нужно, когда в workspace "
                 + "должен появиться второй проект: расширение в режиме изменения и контроля сверяется "
                 + "с БАЗОВЫМ проектом на целевом релизе, а он лежит в другом worktree. Исходники не "
                 + "трогаются - о них узнаёт только workspace. Возвращает объявленное имя, имя под "
-                + "которым проект будет зарегистрирован, и занято ли оно.",
+                + "которым проект будет зарегистрирован, и открытость. Уже зарегистрированный закрытый проект открывается без повторного импорта и изменения связей с базами.",
                 props, "path");
     }
 

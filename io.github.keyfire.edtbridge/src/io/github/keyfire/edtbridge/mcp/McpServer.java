@@ -90,6 +90,8 @@ import io.github.keyfire.edtbridge.tools.ImportProjectTool;
 import io.github.keyfire.edtbridge.tools.FindReferencesTool;
 import io.github.keyfire.edtbridge.tools.FormRenderTool;
 import io.github.keyfire.edtbridge.tools.FormStructureTool;
+import io.github.keyfire.edtbridge.tools.SupportStatusTool;
+import io.github.keyfire.edtbridge.tools.ApplicationsTool;
 import io.github.keyfire.edtbridge.tools.MetadataDetailsTool;
 import io.github.keyfire.edtbridge.tools.MetadataObjectsTool;
 import io.github.keyfire.edtbridge.tools.ProjectErrorsTool;
@@ -307,6 +309,8 @@ applyI18n();loadStatus();loadTools();
     private final ValidateQueryTool validateQuery = new ValidateQueryTool();
     private final GoToDefinitionTool goToDefinition = new GoToDefinitionTool();
     private final SymbolInfoTool symbolInfo = new SymbolInfoTool();
+    private final SupportStatusTool supportStatus = new SupportStatusTool();
+    private final ApplicationsTool applications = new ApplicationsTool();
     private final FormStructureTool formStructure = new FormStructureTool();
     private final FormRenderTool formRender = new FormRenderTool();
     private final AddAttributeTool addAttribute = new AddAttributeTool();
@@ -726,6 +730,8 @@ applyI18n();loadStatus();loadTools();
         tools.add(validateQuery.descriptor());
         tools.add(goToDefinition.descriptor());
         tools.add(symbolInfo.descriptor());
+        tools.add(supportStatus.descriptor());
+        tools.add(applications.descriptor());
         tools.add(formStructure.descriptor());
         tools.add(formRender.descriptor());
         tools.add(addAttribute.descriptor());
@@ -833,6 +839,11 @@ applyI18n();loadStatus();loadTools();
         }
         if (symbolInfo.name().equals(name)) {
             return symbolInfo.call(args);
+        }
+        if (supportStatus.name().equals(name)) { return supportStatus.call(args); }
+        if (applications.name().equals(name)) {
+            JsonObject denied = writeTokenGate(applications.isWrite(args), name);
+            return denied != null ? denied : applications.call(args);
         }
         if (formStructure.name().equals(name)) {
             return formStructure.call(args);

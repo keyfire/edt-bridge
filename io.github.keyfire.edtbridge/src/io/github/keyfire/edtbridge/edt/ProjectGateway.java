@@ -1112,6 +1112,30 @@ public final class ProjectGateway {
      * @param name      name to register it under; {@code null} keeps the declared one
      * @param apply     {@code false} reports the plan; {@code true} registers and opens the project
      */
+    static void reuseExistingProject(IProject project, ImportProjectResult result, boolean apply) {
+        result.name = project.getName();
+        if (!project.exists()) {
+            result.message = "the registered project no longer exists: " + result.name;
+            return;
+        }
+        result.already = true;
+        result.open = project.isOpen();
+        result.ok = true;
+        result.plan = result.open ? "Keep existing open project " + result.name : "Open existing project " + result.name;
+        if (result.open || !apply) return;
+        try {
+            project.open(new NullProgressMonitor());
+            result.open = project.isOpen();
+            result.ok = result.open;
+            result.applied = result.open;
+            result.message = result.open ? "opened existing project without reimport: " + result.name
+                    : "EDT did not open the existing project: " + result.name;
+        } catch (CoreException | RuntimeException failure) {
+            result.ok = false;
+            result.message = "could not open the existing project: " + GatewaySupport.describeCause(failure);
+        }
+    }
+
     public ImportProjectResult importProject(String path, String name, boolean apply) {
         ImportProjectResult r = new ImportProjectResult();
         r.location = path;
@@ -1170,11 +1194,7 @@ public final class ProjectGateway {
         if (existing.exists()) {
             java.io.File where = (existing.getLocation() == null) ? null : existing.getLocation().toFile();
             if (where != null && where.toPath().toAbsolutePath().normalize().equals(dir)) {
-                r.ok = true;
-                r.already = true;
-                r.open = existing.isOpen();
-                r.message = "this directory is already imported as \"" + r.name + "\""
-                        + (r.open ? "" : " (closed - open it in EDT or reopen the workspace)");
+                reuseExistingProject(existing, r, apply);
                 return r;
             }
             r.nameTaken = true;

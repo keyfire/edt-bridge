@@ -36,7 +36,9 @@ import com._1c.g5.v8.dt.mcore.*;
 public final class FormItemEdits {
     private FormItemEdits() { }
     private static final Set<String> SETTINGS = Set.of("groupDirection", "representation", "showTitle",
-            "united", "titleLocation", "maxHeight", "verticalStretch", "fieldType", "choiceList");
+            "united", "titleLocation", "maxHeight", "verticalStretch", "fieldType", "choiceList", "width", "height", "horizontalStretch",
+            "choiceButton", "clearButton", "textEdit", "listChoiceMode", "readOnly",
+            "changeRowSet", "autoInsertNewRow", "changeRowOrder");
 
     /** A zero-based destination index in the sibling list after excluding the moved item. */
     public static final class Position {
@@ -64,6 +66,9 @@ public final class FormItemEdits {
     /** No model object is changed while resolving the destination. Omitted parent keeps a moved item's parent. */
     public static Position position(Form form, FormItem item, String parentName, Integer index,
             String beforeItem, String afterItem) {
+        if (item != null && !isListMember(item)) {
+            throw new IllegalArgumentException("a structural command bar cannot be moved");
+        }
         int selectors = (index == null ? 0 : 1) + (beforeItem == null ? 0 : 1) + (afterItem == null ? 0 : 1);
         if (selectors > 1) { throw new IllegalArgumentException("index, beforeItem and afterItem are mutually exclusive"); }
         FormItemContainer parent;
@@ -75,7 +80,7 @@ public final class FormItemEdits {
         } else if (parentName == null || parentName.isBlank()) {
             parent = form;
         } else {
-            FormItem target = findUnique(form.getItems(), parentName);
+            FormItem target = findUnique(form, parentName);
             if (!(target instanceof FormItemContainer)) {
                 throw new IllegalArgumentException("parent container not found: " + parentName);
             }
@@ -107,6 +112,26 @@ public final class FormItemEdits {
         return new Position(item, parent, destination);
     }
 
+    public static boolean isListMember(FormItem item) {
+        return item.eContainer() instanceof FormItemContainer
+                && ((FormItemContainer) item.eContainer()).getItems().contains(item);
+    }
+
+    /** Include the native command bar without turning it into a regular group. */
+    public static List<FormItem> children(FormItemContainer parent) {
+        List<FormItem> result = new ArrayList<>();
+        if (parent instanceof CommandBarHolder) {
+            AutoCommandBar bar = ((CommandBarHolder) parent).getAutoCommandBar();
+            if (bar != null) { result.add(bar); }
+        }
+        result.addAll(parent.getItems());
+        return result;
+    }
+
+    public static FormItem findUnique(Form form, String name) {
+        return findUnique(children(form), name);
+    }
+
     public static FormItem findUnique(List<FormItem> roots, String name) {
         List<FormItem> matches = new ArrayList<>();
         collectMatches(roots, name, matches);
@@ -116,7 +141,7 @@ public final class FormItemEdits {
     private static void collectMatches(List<FormItem> roots, String name, List<FormItem> matches) {
         for (FormItem item : roots) {
             if (name != null && name.equalsIgnoreCase(item.getName())) { matches.add(item); }
-            if (item instanceof FormItemContainer) { collectMatches(((FormItemContainer) item).getItems(), name, matches); }
+            if (item instanceof FormItemContainer) { collectMatches(children((FormItemContainer) item), name, matches); }
         }
     }
     private static Table tableOf(EObject item) {
@@ -124,6 +149,7 @@ public final class FormItemEdits {
         return null;
     }
     private static boolean commandContainer(EObject item) {
+        if (item instanceof AutoCommandBar) { return true; }
         if (!(item instanceof FormGroup)) { return false; }
         ManagedFormGroupType type = ((FormGroup) item).getType();
         return type == ManagedFormGroupType.COMMAND_BAR || type == ManagedFormGroupType.BUTTON_GROUP
@@ -135,7 +161,7 @@ public final class FormItemEdits {
         if (sourceTable != targetTable && (sourceTable != null || targetTable != null)) {
             throw new IllegalArgumentException("moving across table boundaries would change data bindings; move within the same table");
         }
-        if (commandContainer(item.eContainer()) != commandContainer(parent)) {
+        if (commandContainer(item.eContainer()) != commandContainer(parent) && !(item instanceof Button)) {
             throw new IllegalArgumentException("moving across command-bar boundaries would change the item kind");
         }
         if (item instanceof FormGroup) {
@@ -146,6 +172,10 @@ public final class FormItemEdits {
                     || targetTable == null && itemType == ManagedFormGroupType.COLUMN_GROUP) {
                 throw new IllegalArgumentException("the destination would require changing the group kind");
             }
+        }
+        if (commandContainer(parent) && !(item instanceof Button)
+                && (!(item instanceof FormGroup) || !commandContainer(item))) {
+            throw new IllegalArgumentException("a command container accepts buttons and command groups");
         }
         if (parent instanceof FormGroup) {
             ManagedFormGroupType type = ((FormGroup) parent).getType();
@@ -166,13 +196,14 @@ public final class FormItemEdits {
 
     public static ManagedFormFieldType fieldType(Object name) {
         if (!(name instanceof String)) { throw new IllegalArgumentException("fieldType must be a string"); }
-        for (ManagedFormFieldType type : List.of(ManagedFormFieldType.INPUT_FIELD,
-                ManagedFormFieldType.RADIO_BUTTON_FIELD, ManagedFormFieldType.CHECK_BOX_FIELD)) {
+        for (ManagedFormFieldType type : ManagedFormFieldType.values()) {
+            if (!Set.of("InputField", "RadioButtonField", "CheckBoxField", "HTMLDocumentField").contains(type.getLiteral())) { continue; }
             if (type.getLiteral().equalsIgnoreCase((String) name) || type.name().equalsIgnoreCase((String) name)) { return type; }
         }
-        throw new IllegalArgumentException("fieldType must be InputField, RadioButtonField or CheckBoxField");
+        throw new IllegalArgumentException("fieldType must be InputField, RadioButtonField, CheckBoxField or HTMLDocumentField");
     }
     private static FieldExtInfo fieldInfo(ManagedFormFieldType type) {
+        if ("HTMLDocumentField".equals(type.getLiteral())) { return FormFactory.eINSTANCE.createHtmlFieldExtInfo(); }
         switch (type) {
             case INPUT_FIELD: return FormFactory.eINSTANCE.createInputFieldExtInfo();
             case RADIO_BUTTON_FIELD: return FormFactory.eINSTANCE.createRadioButtonsFieldExtInfo();
@@ -233,8 +264,17 @@ public final class FormItemEdits {
             if (!(info instanceof UsualGroupExtInfo)) { throw new IllegalArgumentException(key + " requires a usual group"); }
             return info;
         }
-        if ("maxHeight".equals(key) || "verticalStretch".equals(key) && item instanceof FormField) {
+        if (Set.of("choiceButton", "clearButton", "textEdit", "listChoiceMode").contains(key)) {
             if (!(info instanceof InputFieldExtInfo)) { throw new IllegalArgumentException(key + " requires an input field"); }
+            return info;
+        }
+        if (Set.of("changeRowSet", "autoInsertNewRow", "changeRowOrder").contains(key)
+                && !(item instanceof Table)) {
+            throw new IllegalArgumentException(key + " requires a table");
+        }
+        if ("maxHeight".equals(key) || item instanceof FormField
+                && Set.of("width", "height", "horizontalStretch", "verticalStretch").contains(key)) {
+            if (info == null) { throw new IllegalArgumentException(key + " requires field ext-info"); }
             return info;
         }
         return item;
@@ -322,14 +362,15 @@ public final class FormItemEdits {
                 } else {
                     target.eSet(feature, change.value);
                 }
-                if ("maxHeight".equals(change.key)) { ((InputFieldExtInfo) info).setAutoMaxHeight(false); }
+                if ("maxHeight".equals(change.key) && info instanceof InputFieldExtInfo) { ((InputFieldExtInfo) info).setAutoMaxHeight(false); }
             }
         }
     }
     public static Map<String, Object> readSettings(FormItem item) {
         Map<String, Object> result = new LinkedHashMap<>();
         EObject info = effectiveInfo(item, Map.of());
-        for (String key : List.of("groupDirection", "representation", "showTitle", "united", "titleLocation", "maxHeight", "verticalStretch")) {
+        for (String key : SETTINGS.stream().sorted().toList()) {
+            if ("fieldType".equals(key) || "choiceList".equals(key)) { continue; }
             try {
                 EObject target = propertyTarget(item, info, key);
                 EStructuralFeature feature = target.eClass().getEStructuralFeature(featureName(item, key));
