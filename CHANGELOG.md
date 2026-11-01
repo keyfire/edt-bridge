@@ -15,10 +15,14 @@ to the code and the reasoning behind it.
 
 <a id="2026-11-01--0310"></a>
 
-## 2026-11-01 – 0.31.0, 0.32.0
+## 2026-11-01 – 0.31.0, 0.32.0, 0.33.0
 
 ### Added
 
+- `edt_form_identifiers` audits every visual form ID and repairs selected duplicates. New items use EDT's allocator; open form editors block conflicting writes.
+  ([#60](https://github.com/keyfire/edt-bridge/pull/60))
+- `edt_read_html_template` and `edt_replace_html_template` read and replace the exact saved HTML source for one language. Hash checks and unsaved-editor guards protect the source; other languages stay unchanged.
+  ([#60](https://github.com/keyfire/edt-bridge/pull/60))
 - `edt_replace_method` edits an existing BSL method while preserving the rest of its module. Preview the replacement before applying it; stale source and unsaved editors prevent the write.
   ([#59](https://github.com/keyfire/edt-bridge/pull/59))
 - Attribute writers accept `use` and `multiLine`. Managed-form fields support HTML documents, dimensions, stretch and choice options; tables expose row-set, insertion, ordering and read-only controls. Write replies include observed model properties.
@@ -30,6 +34,10 @@ to the code and the reasoning behind it.
 
 ### Fixed
 
+- Associating an existing infobase uses the current branch context and verifies that the native EDT application appears. Repeated association does not create a duplicate.
+  ([#60](https://github.com/keyfire/edt-bridge/pull/60))
+- Scoped project checks request native metadata validation and report marker freshness, incomplete coverage and cancellation. Diagnostic messages redact credentials.
+  ([#60](https://github.com/keyfire/edt-bridge/pull/60))
 - Method ranges keep module code that precedes a method on the same line outside the edit. Replacing or moving a method leaves that code intact.
   ([#59](https://github.com/keyfire/edt-bridge/pull/59))
 - The Bash build includes the native application-manager dependencies. A regression checks that Bash and PowerShell compile against the same bundles.
