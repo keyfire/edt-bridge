@@ -26,6 +26,8 @@ to the code and the reasoning behind it.
 
 ### Fixed
 
+- The Bash build includes the native application-manager dependencies. A regression checks that Bash and PowerShell compile against the same bundles.
+  ([#58](https://github.com/keyfire/edt-bridge/pull/58))
 - Form creation assigns the default slot for the requested form kind, including catalog item and folder forms. Unlimited strings receive an explicit string qualifier.
   ([#58](https://github.com/keyfire/edt-bridge/pull/58))
 - Form traversal includes the native `AutoCommandBar`. Buttons can be added or moved to it while the structural bar itself cannot be moved or removed.
