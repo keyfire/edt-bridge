@@ -37,7 +37,7 @@ public final class FormItemEdits {
     private FormItemEdits() { }
     private static final Set<String> SETTINGS = Set.of("groupDirection", "representation", "showTitle",
             "united", "titleLocation", "maxHeight", "verticalStretch", "fieldType", "choiceList", "width", "height", "horizontalStretch",
-            "choiceButton", "clearButton", "textEdit", "listChoiceMode", "readOnly",
+            "choiceButton", "clearButton", "textEdit", "listChoiceMode", "choiceFoldersAndItems", "readOnly",
             "changeRowSet", "autoInsertNewRow", "changeRowOrder");
 
     /** A zero-based destination index in the sibling list after excluding the moved item. */
@@ -264,7 +264,7 @@ public final class FormItemEdits {
             if (!(info instanceof UsualGroupExtInfo)) { throw new IllegalArgumentException(key + " requires a usual group"); }
             return info;
         }
-        if (Set.of("choiceButton", "clearButton", "textEdit", "listChoiceMode").contains(key)) {
+        if (Set.of("choiceButton", "clearButton", "textEdit", "listChoiceMode", "choiceFoldersAndItems").contains(key)) {
             if (!(info instanceof InputFieldExtInfo)) { throw new IllegalArgumentException(key + " requires an input field"); }
             return info;
         }

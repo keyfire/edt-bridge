@@ -13,6 +13,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import org.eclipse.core.filebuffers.FileBuffers;
 import org.eclipse.core.filebuffers.ITextFileBuffer;
@@ -49,6 +54,16 @@ import io.github.keyfire.edtbridge.core.ExactTextReplacement;
 
 /** Resolve one existing HTML locale through EDT and replace only its exact UTF-8 source. */
 public final class HtmlTemplateGateway {
+    /** How long a write waits for EDT to free the project before it answers busy. */
+    static final long EXCLUSIVE_WAIT_MS = 15_000;
+    /** How long a check waits for the UI thread. A modal dialog's event loop still runs it. */
+    static final long UI_WAIT_MS = 30_000;
+
+    /** EDT is occupied by another operation; nothing was written and the call may be repeated. */
+    static final class BusyException extends IllegalStateException {
+        BusyException(String message) { super(message); }
+    }
+
     record Target(String projectName, String templateFqn, String templateUuid, String templateType,
             String language, List<String> languages, Map<String, String> pagePaths, IFile file,
             IFile metadataFile, IFile documentFile) {
@@ -70,7 +85,7 @@ public final class HtmlTemplateGateway {
     }
 
     public static final class Result {
-        public boolean ok, found, applied, verified, unchanged, applyPending, valid, force, writeAttempted;
+        public boolean ok, found, applied, verified, unchanged, applyPending, valid, force, writeAttempted, busy;
         public String projectName, templateFqn, templateUuid, templateType, language, path, charset;
         public String hashPolicy = "sha256-utf8-exact";
         public String text, oldText, newText, sourceHash, resultHash, message;
@@ -162,6 +177,7 @@ public final class HtmlTemplateGateway {
             result.message = "exact HTML locale source replaced and reread; other locales and metadata were not written";
         } catch (Exception exception) {
             result.ok = false;
+            result.busy = !result.writeAttempted && rootCause(exception) instanceof BusyException;
             result.message = (result.applied ? "HTML source was written but verification failed: "
                     : result.writeAttempted ? "HTML write failed; reread the template before retrying: "
                     : "HTML template replacement refused or failed: ") + cause(exception);
@@ -341,9 +357,15 @@ public final class HtmlTemplateGateway {
         }
 
         public void exclusive(Target target, Runnable operation) {
-            // Acquire the UI thread before the project operation; never wait for UI under a BM transaction.
-            onWorkbench(() -> operations().performExclusiveOperation(operation, ProjectPipelineJob.BUILD,
-                    new NullProgressMonitor(), project(target.projectName())));
+            // EDT's own jobs take the project operation first and then wait for the UI thread, for example
+            // an infobase update asking a question. Taking the locks in the opposite order deadlocks, so the
+            // operation is awaited here, off the UI thread and with a deadline, and checks inside it are bounded.
+            if (PlatformUI.isWorkbenchRunning() && Display.getCurrent() != null) {
+                throw new BusyException("an HTML write cannot wait for an EDT project operation on the UI thread");
+            }
+            IProject project = project(target.projectName());
+            performBounded((run, monitor) -> operations().performExclusiveOperation(run, ProjectPipelineJob.BUILD,
+                    monitor, project), operation, EXCLUSIVE_WAIT_MS);
         }
 
         public void requireWritable(Target target) {
@@ -429,16 +451,60 @@ public final class HtmlTemplateGateway {
         if (!PlatformUI.isWorkbenchRunning()) { operation.run(); return; }
         Display display = PlatformUI.getWorkbench().getDisplay();
         if (display == null || display.isDisposed()) throw new IllegalStateException("EDT workbench is unavailable");
-        if (Display.getCurrent() == display) operation.run(); else dispatchChecked(display::syncExec, operation);
+        if (Display.getCurrent() == display) operation.run(); else dispatchBounded(display::asyncExec, operation, UI_WAIT_MS);
     }
 
-    static void dispatchChecked(Consumer<Runnable> dispatcher, Runnable operation) {
+    /**
+     * Runs an operation on another thread and waits at most {@code waitMs} for it to start. An operation
+     * that has not started by then is abandoned and never runs; one that has started is awaited to the end.
+     */
+    static void dispatchBounded(Consumer<Runnable> dispatcher, Runnable operation, long waitMs) {
+        AtomicInteger state = new AtomicInteger(); // 0 queued, 1 running, 2 abandoned
+        CountDownLatch finished = new CountDownLatch(1);
         Throwable[] failure = {null};
         dispatcher.accept(() -> {
+            if (!state.compareAndSet(0, 1)) return;
             try { operation.run(); } catch (RuntimeException | Error exception) { failure[0] = exception; }
+            finally { finished.countDown(); }
         });
+        try {
+            if (!finished.await(waitMs, TimeUnit.MILLISECONDS)) {
+                if (state.compareAndSet(0, 2)) {
+                    throw new BusyException("the EDT UI thread did not respond in " + waitMs + " ms; nothing was written");
+                }
+                finished.await();
+            }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            if (state.compareAndSet(0, 2)) throw new BusyException("interrupted while waiting for the EDT UI thread");
+            throw new IllegalStateException("interrupted while an EDT UI check was running", interrupted);
+        }
         if (failure[0] instanceof RuntimeException exception) throw exception;
         if (failure[0] instanceof Error error) throw error;
+    }
+
+    /**
+     * Starts an EDT project operation that polls its monitor while queued. When the deadline passes before
+     * EDT starts it, EDT drops the queued operation and this method reports busy; a started one is not cancelled.
+     */
+    static void performBounded(BiConsumer<Runnable, IProgressMonitor> perform, Runnable operation, long waitMs) {
+        AtomicBoolean started = new AtomicBoolean();
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(waitMs);
+        IProgressMonitor monitor = new NullProgressMonitor() {
+            @Override public boolean isCanceled() {
+                return super.isCanceled() || !started.get() && System.nanoTime() - deadline >= 0;
+            }
+        };
+        perform.accept(() -> { started.set(true); operation.run(); }, monitor);
+        if (!started.get()) {
+            throw new BusyException("another EDT operation holds the project (for example an infobase update "
+                    + "waiting for an answer); nothing was written, retry after it completes");
+        }
+    }
+
+    private static Throwable rootCause(Throwable exception) {
+        while (exception.getCause() != null && exception.getCause() != exception) exception = exception.getCause();
+        return exception;
     }
 
     private static String cause(Throwable exception) {

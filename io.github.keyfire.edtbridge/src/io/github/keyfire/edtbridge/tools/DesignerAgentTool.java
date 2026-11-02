@@ -45,7 +45,12 @@ public final class DesignerAgentTool {
     public JsonObject descriptor() {
         JsonObject action = new JsonObject();
         action.addProperty("type", "string");
-        action.addProperty("description", "list (default), start, stop or sweep. sweep clears what a "
+        action.addProperty("description", "list (default), start, stop, stop-edt or sweep. list also "
+                + "shows the configurator sessions EDT keeps for its own infobases (edtSessions: origin, "
+                + "infobase, projects, pid, state live/dead/external) and other configurator processes "
+                + "nobody registered (otherConfigurators). stop-edt closes EDT's session for ONE "
+                + "registered infobase through EDT, which shuts down the agent EDT started; an agent EDT "
+                + "did not start is only disconnected. sweep clears what a "
                 + "dead agent left behind: the orphaned Designer session of one whose process is gone "
                 + "- the session that holds the infobase's configuration lock - and its temporary "
                 + "directory. list says of each leftover whether this bridge process or an earlier "
@@ -55,6 +60,7 @@ public final class DesignerAgentTool {
         values.add("list");
         values.add("start");
         values.add("stop");
+        values.add("stop-edt");
         values.add("sweep");
         action.add("enum", values);
 
@@ -67,8 +73,8 @@ public final class DesignerAgentTool {
         JsonObject props = new JsonObject();
         props.add("action", action);
         props.add("stopRunning", stopRunning);
-        props.add("infobase", strProp("Infobase registered in EDT - name or uuid. Required for start "
-                + "and stop."));
+        props.add("infobase", strProp("Infobase registered in EDT - name or uuid. Required for start, "
+                + "stop and stop-edt."));
         props.add("infobaseUser", strProp("1C infobase user the agent authenticates as, e.g. "
                 + "Администратор. Empty for an infobase without users. Bound to the agent AT START: "
                 + "an agent already running keeps the identity it was started with, and a call "
@@ -119,6 +125,8 @@ public final class DesignerAgentTool {
                         getStr(args, "infobasePassword"), getStr(args, "platformVersion"));
             } else if ("stop".equalsIgnoreCase(action)) {
                 res = gateway.stop(infobase);
+            } else if ("stop-edt".equalsIgnoreCase(action)) {
+                res = gateway.stopEdt(infobase);
             } else if ("sweep".equalsIgnoreCase(action)) {
                 res = gateway.sweepLeftovers(getBool(args, "stopRunning"));
             } else {
@@ -153,6 +161,24 @@ public final class DesignerAgentTool {
                     leftovers.add(one);
                 }
                 o.add("leftovers", leftovers);
+            }
+            if (!res.edtSessions.isEmpty()) {
+                JsonArray sessions = new JsonArray();
+                for (java.util.Map<String, Object> session : res.edtSessions) {
+                    JsonObject one = new JsonObject();
+                    session.forEach((k, v) -> {
+                        if (v instanceof Boolean flag) one.addProperty(k, flag);
+                        else if (v instanceof Number number) one.addProperty(k, number);
+                        else one.addProperty(k, v == null ? null : String.valueOf(v));
+                    });
+                    sessions.add(one);
+                }
+                o.add("edtSessions", sessions);
+            }
+            if (!res.otherConfigurators.isEmpty()) {
+                JsonArray others = new JsonArray();
+                res.otherConfigurators.forEach(others::add);
+                o.add("otherConfigurators", others);
             }
             if (res.plan != null) {
                 o.addProperty("plan", res.plan);

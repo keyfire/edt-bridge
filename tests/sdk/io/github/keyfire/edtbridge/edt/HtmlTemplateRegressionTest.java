@@ -28,21 +28,61 @@ import org.eclipse.ui.part.FileEditorInput;
 class HtmlTemplateRegressionTest {
     @Test void checkedDispatchRethrowsRuntimeFailureConsumedByDispatcher() {
         int[] calls = {0};
-        HtmlTemplateGateway.dispatchChecked(Runnable::run, () -> calls[0]++);
+        HtmlTemplateGateway.dispatchBounded(Runnable::run, () -> calls[0]++, 1_000);
         assertEquals(1, calls[0]);
         var failure = new IllegalArgumentException("unsaved template editor");
         assertSame(failure, assertThrows(IllegalArgumentException.class, () ->
-            HtmlTemplateGateway.dispatchChecked(operation -> {
+            HtmlTemplateGateway.dispatchBounded(operation -> {
                 try { operation.run(); } catch (RuntimeException ignored) {}
-            }, () -> { throw failure; })));
+            }, () -> { throw failure; }, 1_000)));
     }
 
     @Test void checkedDispatchRethrowsErrorConsumedByDispatcher() {
         var failure = new AssertionError("editor dispatch failed");
         assertSame(failure, assertThrows(AssertionError.class, () ->
-            HtmlTemplateGateway.dispatchChecked(operation -> {
+            HtmlTemplateGateway.dispatchBounded(operation -> {
                 try { operation.run(); } catch (Error ignored) {}
-            }, () -> { throw failure; })));
+            }, () -> { throw failure; }, 1_000)));
+    }
+
+    @Test void unresponsiveUiThreadIsReportedBusyAndTheQueuedCheckNeverRuns() {
+        Runnable[] queued = {null}; int[] calls = {0};
+        assertThrows(HtmlTemplateGateway.BusyException.class,
+                () -> HtmlTemplateGateway.dispatchBounded(operation -> queued[0] = operation, () -> calls[0]++, 50));
+        queued[0].run();
+        assertEquals(0, calls[0]);
+    }
+
+    @Test void startedUiCheckIsAwaitedPastTheDeadline() {
+        int[] calls = {0};
+        HtmlTemplateGateway.dispatchBounded(operation -> new Thread(operation).start(), () -> {
+            try { Thread.sleep(200); } catch (InterruptedException ignored) { }
+            calls[0]++;
+        }, 20);
+        assertEquals(1, calls[0]);
+    }
+
+    @Test void queuedExclusiveOperationPastTheDeadlineIsDroppedAsBusy() {
+        int[] calls = {0};
+        // EDT polls the monitor while another operation holds the project and drops the queued one on cancel.
+        assertThrows(HtmlTemplateGateway.BusyException.class, () -> HtmlTemplateGateway.performBounded((run, monitor) -> {
+            long until = System.nanoTime() + 2_000_000_000L;
+            while (!monitor.isCanceled() && System.nanoTime() < until) Thread.onSpinWait();
+            if (!monitor.isCanceled()) run.run();
+        }, () -> calls[0]++, 30));
+        assertEquals(0, calls[0]);
+        HtmlTemplateGateway.performBounded((run, monitor) -> { run.run(); assertFalse(monitor.isCanceled()); },
+                () -> calls[0]++, 30);
+        assertEquals(1, calls[0]);
+    }
+
+    @Test void busyRefusalIsFlaggedAndWritesNothing() {
+        var access = new MemoryAccess(); var gateway = new HtmlTemplateGateway(access);
+        access.onExclusive = () -> { throw new HtmlTemplateGateway.BusyException("infobase update is waiting for an answer"); };
+        var result = gateway.replace("Demo", "CommonTemplate.Notice", "ru", "replacement",
+                ExactTextReplacement.hash(access.text), true, true);
+        assertFalse(result.ok); assertTrue(result.busy, result.message); assertFalse(result.writeAttempted);
+        assertEquals(0, access.writes); assertEquals("old\r\n", access.text);
     }
 
     @Test void swallowedExclusiveDirtyRefusalCannotReportSuccessOrWrite() {

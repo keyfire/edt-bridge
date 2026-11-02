@@ -126,6 +126,24 @@ class BacklogModelRegressionTest {
         assertEquals(16, FormItemEdits.readSettings(field).get("width"));
     }
 
+    @Test void choiceFoldersAndItemsIsTypedAndLimitedToInputFields() {
+        FormField field = input();
+        assertEquals("Auto", FormItemEdits.readSettings(field).get("choiceFoldersAndItems"));
+        settings(field, Map.of("width", 12));
+        settings(field, Map.of("choiceFoldersAndItems", "Folders"));
+        assertEquals("Folders", FormItemEdits.readSettings(field).get("choiceFoldersAndItems"));
+        assertEquals(12, FormItemEdits.readSettings(field).get("width"));
+        settings(field, Map.of("choiceFoldersAndItems", "foldersAndItems"));
+        assertEquals("FoldersAndItems", FormItemEdits.readSettings(field).get("choiceFoldersAndItems"));
+        assertThrows(IllegalArgumentException.class, () -> settings(field, Map.of("choiceFoldersAndItems", "Groups")));
+        assertThrows(IllegalArgumentException.class, () -> settings(field, Map.of("choiceFoldersAndItems", true)));
+        assertEquals("FoldersAndItems", FormItemEdits.readSettings(field).get("choiceFoldersAndItems"));
+        FormField box = FormFactory.eINSTANCE.createFormField();
+        box.setType(ManagedFormFieldType.CHECK_BOX_FIELD); box.setExtInfo(FormFactory.eINSTANCE.createCheckBoxFieldExtInfo());
+        assertThrows(IllegalArgumentException.class, () -> settings(box, Map.of("choiceFoldersAndItems", "Folders")));
+        assertFalse(FormItemEdits.readSettings(box).containsKey("choiceFoldersAndItems"));
+    }
+
     @Test void tableControlsAreIndependentFromCellEditing() {
         com._1c.g5.v8.dt.form.model.Table table = FormFactory.eINSTANCE.createTable();
         table.setChangeRowSet(true); table.setAutoInsertNewRow(true); table.setChangeRowOrder(true);

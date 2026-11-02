@@ -356,6 +356,29 @@ class BslRefactorRegressionTest {
         ((org.eclipse.emf.ecore.InternalEObject) proxy).eSetProxyURI(otherOwner.appendFragment("/0")); owner.setModule(proxy);
         assertNotNull(BslGateway.emptyModuleSlotProblem(owner, "Module.bsl", otherOwner));
     }
+    @Test void typedObjectModuleMayInitializeItsCanonicalAbsentResourceProxy() {
+        // A non-ASCII owner name exercises the encoded platform URI the model actually stores.
+        String name = "Товары";
+        var catalog = com._1c.g5.v8.dt.metadata.mdclass.MdClassFactory.eINSTANCE.createCatalog(); catalog.setName(name);
+        var processor = com._1c.g5.v8.dt.metadata.mdclass.MdClassFactory.eINSTANCE.createDataProcessor(); processor.setName(name);
+        for (var owner : List.<org.eclipse.emf.ecore.EObject>of(catalog, processor)) {
+            String folder = owner == catalog ? "Catalogs" : "DataProcessors";
+            URI expected = URI.createPlatformResourceURI("/Demo/src/" + folder + "/" + name + "/ObjectModule.bsl", true);
+            var slot = owner.eClass().getEStructuralFeature("objectModule");
+            var proxy = BslFactory.eINSTANCE.createModule();
+            ((org.eclipse.emf.ecore.InternalEObject) proxy).eSetProxyURI(expected.appendFragment("/0"));
+            owner.eSet(slot, proxy);
+            assertNull(BslGateway.emptyModuleSlotProblem(owner, "ObjectModule.bsl", expected), folder);
+            // A sibling owner's file is refused for this owner's slot.
+            URI sibling = URI.createPlatformResourceURI("/Demo/src/" + folder + "/Other/ObjectModule.bsl", true);
+            ((org.eclipse.emf.ecore.InternalEObject) proxy).eSetProxyURI(sibling.appendFragment("/0"));
+            assertNotNull(BslGateway.emptyModuleSlotProblem(owner, "ObjectModule.bsl", sibling), folder);
+            assertNotNull(BslGateway.emptyModuleSlotProblem(owner, "ObjectModule.bsl", expected), folder);
+        }
+        assertFalse(BslGateway.isCanonicalMissingModule(catalog, "ObjectModule.bsl",
+                URI.createURI("platform:/resource/Demo/src/Catalogs/Other/ObjectModule.bsl#/0"),
+                URI.createURI("platform:/resource/Demo/src/Catalogs/Other/ObjectModule.bsl")));
+    }
     @Test void missingModuleCannotOverwriteNonblankOrDirtyEditorContent() {
         assertNull(BslGateway.moduleBufferProblem("", false));
         assertNotNull(BslGateway.moduleBufferProblem("// Unsaved source", false));
