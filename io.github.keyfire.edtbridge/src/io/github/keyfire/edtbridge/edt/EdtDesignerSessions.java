@@ -25,6 +25,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.eclipse.core.resources.IProject;
+import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.Platform;
 import org.osgi.framework.Bundle;
 
@@ -32,6 +34,7 @@ import com._1c.g5.v8.dt.platform.services.core.infobases.IInfobaseAssociationMan
 import com._1c.g5.v8.dt.platform.services.core.infobases.IInfobaseManager;
 import com._1c.g5.v8.dt.platform.services.core.infobases.InfobaseReferences;
 import com._1c.g5.v8.dt.platform.services.core.runtimes.IRuntimeInstallationManager;
+import com._1c.g5.v8.dt.platform.services.model.IConnectionString;
 import com._1c.g5.v8.dt.platform.services.model.InfobaseReference;
 import com._1c.g5.v8.dt.platform.services.model.RuntimeInstallation;
 import com._1c.g5.wiring.ServiceAccess;
@@ -80,7 +83,7 @@ final class EdtDesignerSessions {
             m.put("infobase", infobase);
             m.put("infobaseUuid", infobaseUuid);
             m.put("connectionString", connectionString);
-            m.put("projects", String.join(", ", projects));
+            if (!projects.isEmpty()) m.put("projects", String.join(", ", projects));
             m.put("platform", platformVersion);
             m.put("pid", pid);
             m.put("state", state);
@@ -187,13 +190,21 @@ final class EdtDesignerSessions {
                 : infobases.findInfobaseByUuid((UUID) uuid).orElse(null);
         if (reference != null) {
             s.infobase = reference.getName();
-            s.connectionString = String.valueOf(reference.getConnectionString());
+            IConnectionString connectionString = reference.getConnectionString();
+            s.connectionString = connectionString == null ? null : connectionString.asConnectionString();
             if (associations != null) {
-                try {
-                    associations.getAssociation(reference)
-                            .ifPresent(association -> s.projects.add(association.getProject().getName()));
-                } catch (Exception unknown) {
-                    // A broken association does not hide the session itself.
+                // Asked per project: by infobase EDT returns one association even when several
+                // projects are bound to the same base.
+                for (IProject project : ResourcesPlugin.getWorkspace().getRoot().getProjects()) {
+                    if (!project.isOpen()) continue;
+                    try {
+                        associations.getAssociation(project)
+                                .filter(association -> association.getInfobases().stream()
+                                        .anyMatch(bound -> uuid.equals(bound.getUuid())))
+                                .ifPresent(association -> s.projects.add(project.getName()));
+                    } catch (Exception unknown) {
+                        // A broken association does not hide the session itself.
+                    }
                 }
             }
         }
