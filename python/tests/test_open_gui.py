@@ -8,6 +8,7 @@ whose whole job is to end one. And the tool has to be served by the WRAPPER: a t
 EDT cannot report on the EDT it just stopped.
 """
 import argparse
+import os
 import subprocess
 
 import pytest
@@ -260,6 +261,7 @@ def test_a_gui_workbench_is_neither_a_runtime_nor_another_workspace(monkeypatch)
     assert backend.gui_pids() == [300]
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Windows paths only parse as paths on Windows")
 def test_windows_matches_the_session_by_workspace_as_well(monkeypatch):
     backend = _table(monkeypatch, True, [
         (10, 1, r'"C:\EDT\1cedtcli.exe" -data D:\ws-a -vmargs -Dedt.bridge.port=8770'),
