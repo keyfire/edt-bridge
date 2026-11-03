@@ -16,16 +16,16 @@
 ### Добавлено
 
 - `edt_designer_agent list` показывает в `edtSessions` сеансы конфигуратора, которые EDT держит для своих баз (база, связанные проекты, pid, состояние `live`/`dead`/`external`), а в `otherConfigurators` – прочие процессы толстого клиента. `action=stop-edt` закрывает сеанс EDT для одной зарегистрированной базы средствами EDT.
-  ([#61](https://github.com/keyfire/edt-bridge/pull/61))
+  ([#62](https://github.com/keyfire/edt-bridge/pull/62))
 - `edt_modify_form_item` и `edt_add_form_item` принимают для поля ввода `choiceFoldersAndItems`: `Auto`, `Items`, `Folders` или `FoldersAndItems`. Значение показывает `edt_form_structure`.
-  ([#61](https://github.com/keyfire/edt-bridge/pull/61))
+  ([#62](https://github.com/keyfire/edt-bridge/pull/62))
 
 ### Исправлено
 
 - `edt_add_method` создает первый метод отсутствующего типизированного модуля существующего объекта, например `ObjectModule` справочника. Проверка ссылки на модуль учитывала только общие модули и отклоняла такие слоты.
-  ([#61](https://github.com/keyfire/edt-bridge/pull/61))
+  ([#62](https://github.com/keyfire/edt-bridge/pull/62))
 - `edt_replace_html_template` больше не блокирует EDT, когда обновление базы ждет ответа на вопрос. Запись ждет операцию проекта вне потока интерфейса с ограничением по времени и, если EDT не освобождает проект, возвращает `busy=true` без записи.
-  ([#61](https://github.com/keyfire/edt-bridge/pull/61))
+  ([#62](https://github.com/keyfire/edt-bridge/pull/62))
 
 <a id="01112026--0310"></a>
 

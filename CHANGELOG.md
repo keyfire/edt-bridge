@@ -18,16 +18,16 @@ to the code and the reasoning behind it.
 ### Added
 
 - `edt_designer_agent list` reports the configurator sessions EDT keeps for its own infobases in `edtSessions` (infobase, bound projects, pid, `live`/`dead`/`external` state) and other thick-client processes in `otherConfigurators`. `action=stop-edt` closes EDT's session for one registered infobase through EDT.
-  ([#61](https://github.com/keyfire/edt-bridge/pull/61))
+  ([#62](https://github.com/keyfire/edt-bridge/pull/62))
 - `edt_modify_form_item` and `edt_add_form_item` accept `choiceFoldersAndItems` for input fields: `Auto`, `Items`, `Folders` or `FoldersAndItems`. `edt_form_structure` reports the value.
-  ([#61](https://github.com/keyfire/edt-bridge/pull/61))
+  ([#62](https://github.com/keyfire/edt-bridge/pull/62))
 
 ### Fixed
 
 - `edt_add_method` creates the first method of a missing typed module of an existing object, such as a catalog's `ObjectModule`. The proxy check was limited to common modules and refused these slots.
-  ([#61](https://github.com/keyfire/edt-bridge/pull/61))
+  ([#62](https://github.com/keyfire/edt-bridge/pull/62))
 - `edt_replace_html_template` no longer blocks EDT when an infobase update is waiting for an answer. The write waits for the project operation off the UI thread with a deadline and returns `busy=true` without writing when EDT does not release the project.
-  ([#61](https://github.com/keyfire/edt-bridge/pull/61))
+  ([#62](https://github.com/keyfire/edt-bridge/pull/62))
 
 <a id="2026-11-01--0310"></a>
 
