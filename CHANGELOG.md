@@ -13,6 +13,15 @@ Every entry ends with a link to the pull request it came from -
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
+## Unreleased
+
+### Fixed
+
+- `shutdown` reports the headless session down only after its processes have exited. On Linux it also stops the runtime that the CLI starts from `1cedt -console`, together with the JVM under it. Fixes [issue #61](https://github.com/keyfire/edt-bridge/issues/61).
+  ([#63](https://github.com/keyfire/edt-bridge/pull/63))
+- `shutdown --force`, `gui` and the keepalive cleanup only touch the session of the requested workspace, installation and port. Before, they matched processes by name and could close another bridge's EDT on the same machine.
+  ([#63](https://github.com/keyfire/edt-bridge/pull/63))
+
 ## 2026-11-03 – 0.34.0
 
 ### Added

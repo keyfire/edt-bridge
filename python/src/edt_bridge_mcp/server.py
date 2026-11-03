@@ -26,10 +26,8 @@ Registration in Claude Code:
 from __future__ import annotations
 
 import argparse
-import csv
 import difflib
 import http.client
-import io
 import json
 import os
 import re
@@ -55,7 +53,7 @@ _WINDOWS = os.name == "nt"
 
 
 def _console_encoding() -> str:
-    """The codepage console tools answer in - the OEM one on Windows, not UTF-8 (see _pids_of)."""
+    """The codepage console tools answer in - the OEM one on Windows, not UTF-8."""
     if not _WINDOWS:
         return "utf-8"
     try:
@@ -72,7 +70,11 @@ _CONSOLE_ENCODING = _console_encoding()
 #: take the workspace.
 GUI_IMAGE = "1cedt.exe" if _WINDOWS else "1cedt"
 CLI_IMAGE = "1cedtcli.exe" if _WINDOWS else "1cedtcli"
-HEADLESS_IMAGES = (CLI_IMAGE, "1cedtc.exe" if _WINDOWS else "1cedtc")
+RUNTIME_IMAGE = "1cedtc.exe" if _WINDOWS else "1cedtc"
+HEADLESS_IMAGES = (CLI_IMAGE, RUNTIME_IMAGE)
+#: The switch the CLI passes to the runtime it spawns. On Linux that runtime is the workbench
+#: binary itself (1cedt), so this switch is the only thing telling it apart from a GUI EDT.
+CONSOLE_SWITCH = "-console"
 #: How long to wait for the workbench WINDOW after the process is up. The window is what a
 #: person is waiting for, but a large workspace loads for minutes - waiting that out would hang
 #: the command, so a miss is reported and the next run brings the window forward.
@@ -445,56 +447,55 @@ class Backend:
             tail = ""
         return message + (f"\nLast EDT output:\n{tail}" if tail else "")
 
-    def _pids_of(self, image: str) -> list[int]:
-        """Live pids of one EDT image - a list, not a flag: a hung process is killed by pid.
-
-        The name is matched exactly, so asking for the GUI (1cedt) never returns the headless
-        CLI (1cedtcli).
-        """
-        try:
-            if os.name == "nt":
-                # BYTES, decoded by hand: tasklist prints in the console OEM codepage, and
-                # text=True decodes as UTF-8 - on a localized Windows that raises inside the
-                # reader thread and leaves the output EMPTY. The old boolean checks read that
-                # emptiness as "no such process": the GUI guard never fired here.
-                raw = subprocess.run(
-                    ["tasklist", "/FI", f"IMAGENAME eq {image}", "/FO", "CSV", "/NH"],
-                    capture_output=True, timeout=15, check=False,
-                    stdin=subprocess.DEVNULL,
-                ).stdout
-                out = raw.decode(_CONSOLE_ENCODING, errors="replace")
-                pids = []
-                for row in csv.reader(io.StringIO(out)):
-                    # A miss prints an info line, not a CSV row - it simply does not parse.
-                    if len(row) >= 2 and row[0].lower() == image.lower():
-                        try:
-                            pids.append(int(row[1]))
-                        except ValueError:
-                            pass
-                return pids
-            out = subprocess.run(
-                ["pgrep", "-x", image], capture_output=True, text=True, encoding="utf-8",
-                errors="replace", timeout=15, check=False, stdin=subprocess.DEVNULL,
-            ).stdout
-            return [int(item) for item in out.split() if item.isdigit()]
-        except OSError:
-            return []
-
     def gui_pids(self) -> list[int]:
-        return self._pids_of(GUI_IMAGE)
+        """The GUI workbench, never a headless runtime that runs the same 1cedt binary.
+
+        With a workspace or an installation configured, only the workbench on it: another EDT
+        on the machine is somebody else's, and open_gui must neither raise nor count it.
+        """
+        return [process["ProcessId"] for process in self._edt_processes()
+                if self._process_matches(process, GUI_IMAGE) and not self._is_console_runtime(process)]
 
     def headless_pids(self) -> list[int]:
-        """Both halves of a headless session: the CLI launcher and the runtime it spawns."""
-        pids = []
-        for image in HEADLESS_IMAGES:
-            pids.extend(self._pids_of(image))
-        return pids
+        """Every process of THIS bridge's headless session - the CLI, the runtime and, outside
+        Windows, what they spawned.
+
+        Matched the way _process_matches matches - workspace, installation, port - and never by
+        image name alone: several EDTs on one machine are a supported setup, and a name-only
+        search let shutdown --force for one bridge kill the EDT of another. The workspace is the
+        key that holds the halves together: the runtime does not always carry the port, but it
+        always carries the -data of the CLI that started it.
+        """
+        processes = self._edt_processes()
+        clis = [process for process in processes
+                if self._process_matches(process, CLI_IMAGE, match_port=True)]
+        if self.workspace:
+            workspaces = {self._path_key(self.workspace)}
+        else:
+            workspaces = {key for process in clis if (key := self._workspace_key(process))}
+        pids = {process["ProcessId"] for process in clis}
+        for process in processes:
+            runtime = (self._process_matches(process, RUNTIME_IMAGE)
+                       or (self._process_matches(process, GUI_IMAGE) and self._is_console_runtime(process)))
+            # Without a workspace and without a live CLI (it already exited) the port is all
+            # that is left to recognize an orphaned runtime by.
+            if runtime and (self._workspace_key(process) in workspaces if workspaces
+                            else self._port_matches(process)):
+                pids.add(process["ProcessId"])
+        if not _WINDOWS:
+            # taskkill /T takes the whole tree on Windows; SIGKILL takes one process, and the
+            # JVM a Linux launcher spawned outlived it holding the workspace lock.
+            for _ in range(8):  # depth cap - a pid loop must not spin
+                children = {process["ProcessId"] for process in processes
+                            if process.get("ParentProcessId") in pids} - pids
+                if not children:
+                    break
+                pids |= children
+        return sorted(pids)
 
     def _gui_edt_running(self) -> bool:
         """True when a GUI EDT (1cedt) process exists - we then refuse to launch headless
         (the GUI holds the workspace lock; the user likely just lacks the plugin there)."""
-        if self.workspace or self.edt_dir:
-            return any(self._process_matches(process, GUI_IMAGE) for process in self._edt_processes())
         return bool(self.gui_pids())
 
     def _edt_processes(self) -> list[dict]:
@@ -510,23 +511,42 @@ class Backend:
                                      stdin=subprocess.DEVNULL).stdout
                 rows = json.loads(raw.decode("utf-8", errors="replace") or "[]")
                 return rows if isinstance(rows, list) else [rows]
-            out = subprocess.run(["ps", "-eo", "pid=,args="], capture_output=True, text=True,
+            out = subprocess.run(["ps", "-eo", "pid=,ppid=,args="], capture_output=True, text=True,
                                  encoding="utf-8", errors="replace", timeout=15, check=False,
                                  stdin=subprocess.DEVNULL).stdout
-            return [{"ProcessId": int(pid), "CommandLine": command}
-                    for line in out.splitlines() if len(parts := line.strip().split(None, 1)) == 2
-                    for pid, command in [parts] if pid.isdigit()]
+            return [{"ProcessId": int(pid), "ParentProcessId": int(parent), "CommandLine": command}
+                    for line in out.splitlines() if len(parts := line.strip().split(None, 2)) == 3
+                    for pid, parent, command in [parts] if pid.isdigit() and parent.isdigit()]
         except (OSError, ValueError, subprocess.SubprocessError):
             return []
 
-    def _process_matches(self, process: dict, image: str, match_port: bool = False,
-                         match_install: bool = True) -> bool:
+    @staticmethod
+    def _args(process: dict) -> list[str]:
         command = process.get("CommandLine") or ""
         try:
-            args = ([part.strip('"') for part in re.findall(r'"[^"]*"|\S+', command)]
+            return ([part.strip('"') for part in re.findall(r'"[^"]*"|\S+', command)]
                     if _WINDOWS else shlex.split(command))
         except ValueError:
-            return False
+            return []
+
+    def _workspace_key(self, process: dict) -> str | None:
+        args = self._args(process)
+        try:
+            return self._path_key(args[args.index("-data") + 1])
+        except (ValueError, IndexError):
+            return None
+
+    def _is_console_runtime(self, process: dict) -> bool:
+        return CONSOLE_SWITCH in self._args(process)
+
+    def _port_matches(self, process: dict) -> bool:
+        port_arg = next((arg.split("=", 1)[1] for arg in self._args(process)
+                         if arg.startswith("-Dedt.bridge.port=")), "8770")
+        return port_arg == str(self.port)
+
+    def _process_matches(self, process: dict, image: str, match_port: bool = False,
+                         match_install: bool = True) -> bool:
+        args = self._args(process)
         if not args:
             return False
         executable = process.get("ExecutablePath") or args[0]
@@ -535,19 +555,9 @@ class Backend:
         if (match_install and self.edt_dir
                 and self._path_key(str(Path(executable).parent)) != self._path_key(self.edt_dir)):
             return False
-        if self.workspace:
-            try:
-                actual_workspace = args[args.index("-data") + 1]
-            except (ValueError, IndexError):
-                return False
-            if self._path_key(actual_workspace) != self._path_key(self.workspace):
-                return False
-        if match_port:
-            port_arg = next((arg.split("=", 1)[1] for arg in args
-                             if arg.startswith("-Dedt.bridge.port=")), "8770")
-            if port_arg != str(self.port):
-                return False
-        return True
+        if self.workspace and self._workspace_key(process) != self._path_key(self.workspace):
+            return False
+        return not match_port or self._port_matches(process)
 
     def _headless_cli_running(self) -> bool:
         return any(self._process_matches(process, CLI_IMAGE, match_port=True)
@@ -692,7 +702,7 @@ class Backend:
 
         It is the PARENT of 1cedtcli, so killing the tree below the CLI does not reach it, and
         while it lives it keeps the dropins jar locked. Matched by command line - the same
-        marker scripts/toggle-headless.ps1 uses.
+        marker scripts/toggle-headless.ps1 uses - and by being the parent of THIS session's CLI.
         """
         if self._headless_process is not None and self._headless_process.poll() is None:
             return [self._headless_process.pid]
@@ -723,8 +733,19 @@ class Backend:
                                  stdin=subprocess.DEVNULL).stdout
         except (OSError, subprocess.SubprocessError):
             return []
-        return [int(item) for item in raw.decode(_CONSOLE_ENCODING, errors="replace").split()
-                if item.isdigit()]
+        candidates = {int(item) for item in raw.decode(_CONSOLE_ENCODING, errors="replace").split()
+                      if item.isdigit()}
+        # Every headless EDT on the machine is kept alive the same way, so the marker alone also
+        # finds the keepalive of another bridge - and closing it ends that EDT. Only the shell
+        # above THIS session's CLI is ours, with the pipe it spawned (cmd -> cmd -> ping).
+        parents = self._parents()
+        ours = {parents.get(pid) for pid in self.headless_pids()} & candidates
+        for _ in range(8):  # depth cap - a pid loop must not spin
+            grown = {pid for pid in candidates if parents.get(pid) in ours} - ours
+            if not grown:
+                break
+            ours |= grown
+        return sorted(ours)
 
     def _kill(self, pid: int) -> None:
         """Kill one process and its children - the headless CLI is started from a keepalive shell."""

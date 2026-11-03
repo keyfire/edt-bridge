@@ -91,7 +91,6 @@ def _launch_target(tmp_path, monkeypatch, process_command):
     backend.workspace = str(tmp_path / "workspace")
     backend.edt_dir = str(install)
     backend.port = 9001
-    monkeypatch.setattr(backend, "_pids_of", lambda image: [31] if image == server.CLI_IMAGE else [])
     def processes(command, **kwargs):
         if command[0] == "powershell":
             return subprocess.CompletedProcess(command, 0, json.dumps([{
