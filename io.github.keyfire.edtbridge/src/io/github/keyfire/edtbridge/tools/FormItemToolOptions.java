@@ -58,6 +58,9 @@ final class FormItemToolOptions {
         props.add("clearButton", ToolJson.boolProp("Show the input field's clear button. Optional."));
         props.add("textEdit", ToolJson.boolProp("Allow typing in an input field. Optional."));
         props.add("listChoiceMode", ToolJson.boolProp("Restrict an input field to its choice list. Optional."));
+        JsonObject folders = ToolJson.strProp("What an input field bound to a hierarchical reference lets the user choose: Auto, Items, Folders or FoldersAndItems. Optional; InputField only.");
+        JsonArray folderModes = new JsonArray(); folderModes.add("Auto"); folderModes.add("Items"); folderModes.add("Folders"); folderModes.add("FoldersAndItems");
+        folders.add("enum", folderModes); props.add("choiceFoldersAndItems", folders);
         props.add("readOnly", ToolJson.boolProp("Read-only field, table or table column. Optional."));
         props.add("changeRowSet", ToolJson.boolProp("Allow adding and deleting table rows. Optional; table only."));
         props.add("autoInsertNewRow", ToolJson.boolProp("Automatically insert a new table row. Optional; table only."));
@@ -81,7 +84,7 @@ final class FormItemToolOptions {
         Map<String, Object> result = new LinkedHashMap<>();
         if (args.has("group") && args.has("groupDirection")) { throw new IllegalArgumentException("group and groupDirection are aliases; pass one"); }
         for (String key : List.of("groupDirection", "group", "representation", "showTitle", "united", "titleLocation", "maxHeight", "verticalStretch", "fieldType", "choiceList", "width", "height", "horizontalStretch", "choiceButton",
-                "clearButton", "textEdit", "listChoiceMode", "readOnly", "changeRowSet", "autoInsertNewRow", "changeRowOrder")) {
+                "clearButton", "textEdit", "listChoiceMode", "choiceFoldersAndItems", "readOnly", "changeRowSet", "autoInsertNewRow", "changeRowOrder")) {
             if (args.has(key)) {
                 result.put("group".equals(key) ? "groupDirection" : key, value(args.get(key)));
             }

@@ -741,8 +741,8 @@ public final class BslGateway {
             if (originalSource != null) return originalSource;
             if (canonicalMissingResource != null && rawModule.eIsProxy()) {
                 URI address = ((org.eclipse.emf.ecore.InternalEObject) rawModule).eProxyURI();
-                if (!isCanonicalMissingCommonModule(owner, moduleFile, address, canonicalMissingResource)) {
-                    return "module slot proxy does not match the canonical CommonModule source: " + address;
+                if (!isCanonicalMissingModule(owner, moduleFile, address, canonicalMissingResource)) {
+                    return "module slot proxy does not match the owner's canonical module source: " + address;
                 }
             }
         }
@@ -754,7 +754,7 @@ public final class BslGateway {
         if (sourceProblem != null) return sourceProblem;
         if (module.eIsProxy()) {
             URI proxyUri = ((org.eclipse.emf.ecore.InternalEObject) module).eProxyURI();
-            if (isCanonicalMissingCommonModule(owner, moduleFile, proxyUri, canonicalMissingResource)) {
+            if (isCanonicalMissingModule(owner, moduleFile, proxyUri, canonicalMissingResource)) {
                 Resource resource = owner.eResource();
                 String cached = cachedModuleResourceProblem(resource == null ? null : resource.getResourceSet(),
                         canonicalMissingResource, null);
@@ -765,16 +765,27 @@ public final class BslGateway {
         return null;
     }
 
-    private static boolean isCanonicalMissingCommonModule(EObject owner, String moduleFile,
-            URI proxy, URI expected) {
-        if (!(owner instanceof com._1c.g5.v8.dt.metadata.mdclass.CommonModule common)
-                || !"Module.bsl".equals(moduleFile) || common.getName() == null || common.getName().isBlank()
-                || expected == null || !expected.isPlatformResource() || expected.query() != null
+    /**
+     * True when an unresolved module proxy points exactly at the owner's absent canonical file:
+     * the same platform resource, the root fragment and the owner's own folder. Typed slots of any
+     * metadata object qualify (ObjectModule, ManagerModule, ...); a common module keeps its folder check.
+     */
+    static boolean isCanonicalMissingModule(EObject owner, String moduleFile, URI proxy, URI expected) {
+        if (moduleFile == null || expected == null || !expected.isPlatformResource() || expected.query() != null
                 || expected.fragment() != null || proxy == null || !proxy.isPlatformResource()
                 || proxy.query() != null || !"/0".equals(proxy.fragment())) return false;
         String path = expected.toPlatformString(true);
-        return path.equals(proxy.trimFragment().toPlatformString(true))
-                && path.endsWith("/CommonModules/" + common.getName() + "/Module.bsl");
+        if (!path.equals(proxy.trimFragment().toPlatformString(true)) || !path.endsWith("/" + moduleFile)) return false;
+        if (owner instanceof com._1c.g5.v8.dt.metadata.mdclass.CommonModule common) {
+            return "Module.bsl".equals(moduleFile) && common.getName() != null && !common.getName().isBlank()
+                    && path.endsWith("/CommonModules/" + common.getName() + "/Module.bsl");
+        }
+        if (owner instanceof MdObject md) {
+            return md.getName() != null && !md.getName().isBlank()
+                    && path.endsWith("/" + md.getName() + "/" + moduleFile);
+        }
+        // A form module lives next to its form; the caller already matched the canonical path of its owner.
+        return owner instanceof AbstractForm && "Module.bsl".equals(moduleFile);
     }
 
     private static String moduleSourceStateProblem(Module module) {

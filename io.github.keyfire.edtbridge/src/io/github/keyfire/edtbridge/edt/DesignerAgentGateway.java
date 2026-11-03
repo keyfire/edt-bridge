@@ -185,6 +185,10 @@ public final class DesignerAgentGateway {
         public final List<Agent> agents = new ArrayList<>();
         /** Base directories of agents an earlier bridge process left behind, with what is known of them. */
         public final List<Map<String, Object>> leftovers = new ArrayList<>();
+        /** Configurator sessions EDT itself keeps for its infobases; the bridge does not own them. */
+        public final List<Map<String, Object>> edtSessions = new ArrayList<>();
+        /** Thick-client processes that are neither the bridge's agents nor EDT's, as pid and executable. */
+        public final List<String> otherConfigurators = new ArrayList<>();
         public String plan;
         public String message;
     }
@@ -386,12 +390,25 @@ public final class DesignerAgentGateway {
         AGENTS.values().removeIf(a -> a.process == null || !a.process.isAlive());
         r.agents.addAll(AGENTS.values());
         r.leftovers.addAll(inspectLeftovers());
+        EdtDesignerSessions.Inventory edt = EdtDesignerSessions.inventory();
+        Set<Long> known = new HashSet<>();
+        for (Agent a : r.agents) known.add(a.pid);
+        for (EdtDesignerSessions.Session session : edt.sessions) {
+            r.edtSessions.add(session.describe());
+            if (session.pid != null) known.add(session.pid);
+        }
+        r.otherConfigurators.addAll(configuratorProcessList(known));
         long idle = idleMinutes();
         String leftovers = AgentLeftovers.summary(countLeftovers(r, AgentLeftovers.FROM_THIS_PROCESS),
                 countLeftovers(r, AgentLeftovers.FROM_EARLIER_PROCESS));
         r.message = (r.agents.isEmpty() ? "no agent is running" : r.agents.size() + " agent(s) running")
                 + (idle > 0 ? ", idle timeout " + idle + " min" : ", idle timeout off")
-                + (leftovers.isEmpty() ? "" : ", " + leftovers);
+                + (leftovers.isEmpty() ? "" : ", " + leftovers)
+                + (edt.problem != null ? "; " + edt.problem
+                        : edt.sessions.isEmpty() ? "; EDT keeps no designer session"
+                        : "; EDT keeps " + edt.sessions.size() + " designer session(s) of its own, see edtSessions")
+                + (r.otherConfigurators.isEmpty() ? "" : "; " + r.otherConfigurators.size()
+                        + " other configurator process(es), see otherConfigurators");
         return r;
     }
 
@@ -408,6 +425,36 @@ public final class DesignerAgentGateway {
         r.agents.addAll(AGENTS.values());
         r.leftovers.addAll(inspectLeftovers());
         r.message = done.isEmpty() ? "nothing to sweep" : String.join("; ", done);
+        return r;
+    }
+
+    /**
+     * Close the configurator session EDT keeps for one infobase registered in it, the way EDT closes
+     * it itself. Only that infobase's session is touched; the bridge's own agents are stopped by
+     * {@link #stop}, and processes nobody registered are reported by {@link #list}, never killed.
+     */
+    public AgentResult stopEdt(String infobase) {
+        AgentResult r = new AgentResult();
+        var reference = EdtDesignerSessions.findInfobase(infobase);
+        if (reference == null) {
+            r.message = "EDT has no registered infobase " + (infobase == null ? "(none given)" : "\"" + infobase + "\"")
+                    + "; its designer sessions are keyed by registered infobases - see edt_infobases";
+            return r;
+        }
+        try {
+            String done = EdtDesignerSessions.release(reference);
+            r.ok = true;
+            r.stopped = done != null;
+            r.message = done == null ? "EDT keeps no designer session for " + reference.getName()
+                    : done + " for " + reference.getName();
+        } catch (ReflectiveOperationException | RuntimeException failure) {
+            Throwable cause = failure instanceof java.lang.reflect.InvocationTargetException invocation
+                    && invocation.getCause() != null ? invocation.getCause() : failure;
+            r.message = "EDT did not close its designer session for " + reference.getName() + ": "
+                    + cause.getClass().getSimpleName() + (cause.getMessage() == null ? "" : ": " + cause.getMessage());
+        }
+        EdtDesignerSessions.Inventory after = EdtDesignerSessions.inventory();
+        for (EdtDesignerSessions.Session session : after.sessions) r.edtSessions.add(session.describe());
         return r;
     }
 
@@ -2238,6 +2285,12 @@ public final class DesignerAgentGateway {
                 ours.add(a.pid);
             }
         }
+        List<String> found = configuratorProcessList(ours);
+        return found.isEmpty() ? null : String.join("; ", found);
+    }
+
+    /** Thick-client processes alive on this machine whose pid is not in {@code ours}. */
+    private static List<String> configuratorProcessList(Set<Long> ours) {
         List<String> found = new ArrayList<>();
         for (ProcessHandle handle : ProcessHandle.allProcesses().toList()) {
             if (ours.contains(handle.pid())) {
@@ -2254,7 +2307,7 @@ public final class DesignerAgentGateway {
                 found.add("pid " + handle.pid() + " " + command);
             }
         }
-        return found.isEmpty() ? null : String.join("; ", found);
+        return found;
     }
 
     /**
