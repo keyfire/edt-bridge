@@ -7,6 +7,9 @@ process a person hunts. Nothing may auto-start a headless EDT on the way, least 
 whose whole job is to end one. And the tool has to be served by the WRAPPER: a tool living inside
 EDT cannot report on the EDT it just stopped.
 """
+import argparse
+import subprocess
+
 import pytest
 
 from edt_bridge_mcp import cli, server
@@ -192,30 +195,105 @@ def test_a_free_workspace_lock_is_preserved_when_handing_over_to_gui(tmp_path, m
 # -- reading the process table ------------------------------------------------
 
 
-def _tasklist(monkeypatch, payload: bytes):
-    """Substitute tasklist with a canned answer - in BYTES, as the real one speaks."""
+def _table(monkeypatch, windows: bool, rows: list[tuple]):
+    """A canned process table: (pid, parent, command line), as _edt_processes reads it."""
+    monkeypatch.setattr(server, "_WINDOWS", windows)
+    suffix = ".exe" if windows else ""
+    monkeypatch.setattr(server, "GUI_IMAGE", "1cedt" + suffix)
+    monkeypatch.setattr(server, "CLI_IMAGE", "1cedtcli" + suffix)
+    monkeypatch.setattr(server, "RUNTIME_IMAGE", "1cedtc" + suffix)
+    backend = server.Backend()
+    monkeypatch.setattr(backend, "_edt_processes", lambda: [
+        {"ProcessId": pid, "ParentProcessId": parent, "CommandLine": command}
+        for pid, parent, command in rows])
+    return backend
+
+
+#: The Linux session of issue #61: the CLI, the runtime it spawned from the workbench binary with
+#: -console, and the JVM under that runtime - the last two outlived the CLI.
+LINUX_A = [
+    (100, 1, "/opt/edt-a/1cedtcli -data /home/u/ws-a -nl en_US -vmargs -Dedt.bridge.port=8770"),
+    (101, 100, "/opt/edt-a/1cedt --launcher.ini /tmp/1cedt.ini -nosplash -console -data /home/u/ws-a"),
+    (102, 101, "/opt/java/bin/java -Dosgi.noShutdown=true -jar launcher.jar -data /home/u/ws-a"),
+]
+LINUX_B = [
+    (200, 1, "/opt/edt-b/1cedtcli -data /home/u/ws-b -nl en_US -vmargs -Dedt.bridge.port=8771"),
+    (201, 200, "/opt/edt-b/1cedt --launcher.ini /tmp/1cedt.ini -nosplash -console -data /home/u/ws-b"),
+]
+
+
+def test_a_linux_runtime_and_its_jvm_belong_to_the_headless_session(monkeypatch):
+    backend = _table(monkeypatch, False, LINUX_A)
+    backend.workspace = "/home/u/ws-a"
+    assert backend.headless_pids() == [100, 101, 102]
+    assert backend.gui_pids() == []
+
+
+def test_the_runtime_left_after_the_cli_still_holds_the_session_open(monkeypatch):
+    """The CLI exited; reporting the session down here left the workspace locked."""
+    backend = _table(monkeypatch, False, LINUX_A[1:])
+    backend.workspace = "/home/u/ws-a"
+    assert backend.headless_pids() == [101, 102]
+
+
+def test_another_bridge_on_the_same_machine_is_not_part_of_this_session(monkeypatch):
+    backend = _table(monkeypatch, False, LINUX_A + LINUX_B)
+    backend.workspace, backend.edt_dir, backend.port = "/home/u/ws-b", "/opt/edt-b", 8771
+    assert backend.headless_pids() == [200, 201]
+    backend.workspace, backend.edt_dir, backend.port = "/home/u/ws-c", "/opt/edt-b", 8771
+    assert backend.headless_pids() == []
+
+
+def test_without_a_workspace_the_port_picks_the_session_and_its_workspace_the_runtime(monkeypatch):
+    backend = _table(monkeypatch, False, LINUX_A + LINUX_B)
+    backend.workspace = backend.edt_dir = None
+    backend.port = 8771
+    assert backend.headless_pids() == [200, 201]
+
+
+def test_a_gui_workbench_is_neither_a_runtime_nor_another_workspace(monkeypatch):
+    rows = LINUX_A + [(300, 1, "/opt/edt-a/1cedt -data /home/u/ws-a"),
+                      (301, 1, "/opt/edt-a/1cedt -data /home/u/ws-other")]
+    backend = _table(monkeypatch, False, rows)
+    backend.workspace = "/home/u/ws-a"
+    assert backend.headless_pids() == [100, 101, 102]
+    assert backend.gui_pids() == [300]
+
+
+def test_windows_matches_the_session_by_workspace_as_well(monkeypatch):
+    backend = _table(monkeypatch, True, [
+        (10, 1, r'"C:\EDT\1cedtcli.exe" -data D:\ws-a -vmargs -Dedt.bridge.port=8770'),
+        (11, 10, r'C:\EDT\1cedtc.exe -console -data "D:\ws-a" -vmargs -Dedt.bridge.port=8770'),
+        (20, 1, r'"C:\EDT\1cedtcli.exe" -data D:\ws-b -vmargs -Dedt.bridge.port=8771'),
+        (21, 20, r'C:\EDT\1cedtc.exe -console -data "D:\ws-b" -vmargs -Dedt.bridge.port=8771'),
+    ])
+    backend.workspace, backend.port = r"D:\ws-b", 8771
+    assert backend.headless_pids() == [20, 21]
+
+
+def test_only_the_keepalive_above_this_session_is_closed(monkeypatch):
+    """Every headless EDT is kept alive by the same cmd -> cmd -> ping pipe, so the marker also
+    finds the keepalive of another bridge; closing that one ends the other EDT."""
     monkeypatch.setattr(server, "_WINDOWS", True)
-    monkeypatch.setattr(server.os, "name", "nt")
-
-    class _Done:
-        stdout = payload
-
-    monkeypatch.setattr(server.subprocess, "run", lambda *a, **k: _Done())
-
-
-def test_a_localized_console_does_not_hide_the_processes(monkeypatch):
-    """The defect a live run exposed: tasklist answers in the OEM codepage, and decoding it as
-    UTF-8 blows up in the reader thread and yields an EMPTY listing - which every caller then
-    read as "no such process". A headless EDT was running at the time."""
-    payload = '"1cedtcli.exe","17276","Консоль","1","1 500 000 КБ"\r\n'.encode("cp866")
-    _tasklist(monkeypatch, payload)
-    assert server.Backend()._pids_of("1cedtcli.exe") == [17276]
+    backend = server.Backend()
+    monkeypatch.setattr(server.subprocess, "run",
+                        lambda *a, **k: subprocess.CompletedProcess(a, 0, b"500\r\n501\r\n502\r\n600\r\n601\r\n"))
+    monkeypatch.setattr(backend, "headless_pids", lambda: [100, 101])
+    monkeypatch.setattr(backend, "_parents", lambda: {
+        100: 500, 101: 100, 501: 500, 502: 501,  # this session: bat -> cli, bat -> cmd -> ping
+        200: 600, 601: 600})                      # the other bridge's session
+    assert backend._keepalive_pids() == [500, 501, 502]
 
 
-def test_nothing_running_reads_as_an_empty_list(monkeypatch):
-    """A miss prints a localized info line, not a CSV row."""
-    _tasklist(monkeypatch, "ИНФОРМАЦИЯ: нет задач, соответствующих условиям.\r\n".encode("cp866"))
-    assert server.Backend()._pids_of("1cedtcli.exe") == []
+def test_shutdown_reports_the_session_down_only_when_its_processes_are_gone(monkeypatch, capsys):
+    """Issue #61, step 1: "the bridge is down" came while the CLI and the runtime lived on."""
+    backend = server.Backend()
+    edt = _Edt(headless=[17276, 18448], keepalive=[27796]).install(backend, monkeypatch)
+    code = cli._shutdown(backend, argparse.Namespace(force=False, no_wait=False))
+    out = capsys.readouterr().out
+    assert code == 0
+    assert edt.killed == [27796]
+    assert "the bridge is down" in out and "the headless session is down" in out
 
 
 # -- the MCP surface ----------------------------------------------------------
