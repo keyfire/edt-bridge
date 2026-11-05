@@ -16,12 +16,16 @@
 ### Добавлено
 
 - `status` показывает `wrapperVersion`. Если плагин в EDT и обвязка разных версий, обвязка один раз пишет об этом в stderr: в любой команде и в режиме MCP-сервера. Раньше плагин, до которого `self-update` не добрался, незаметно оставался старым. Часть [issue #64](https://github.com/keyfire/edt-bridge/issues/64).
+  ([#65](https://github.com/keyfire/edt-bridge/pull/65))
 
 ### Исправлено
 
 - На Windows `self-update`, автозапуск без окна, `gui` и скрипты `run-*.ps1` находят EDT, установленный 1C:Установщиком в `%ProgramFiles%\1C\1CE\components`. Раньше поиск шел только по установкам 1cedtstart и просил задать `EDT_BRIDGE_EDT_DIR`. Версии сравниваются по числам: 2026.1.10 новее 2026.1.9. Часть [issue #64](https://github.com/keyfire/edt-bridge/issues/64).
+  ([#65](https://github.com/keyfire/edt-bridge/pull/65))
 - `edtInstall` в `/status` сохраняет `+` в имени каталога компонента, например `1c-edt-2026.1.2+2-x86_64`. Раньше он превращался в пробел, и `status --all` не находил `dropins` этой установки. Часть [issue #64](https://github.com/keyfire/edt-bridge/issues/64).
+  ([#65](https://github.com/keyfire/edt-bridge/pull/65))
 - Если нет прав на запись в `dropins`, доставка jar называет решение (закрыть EDT и запустить от администратора) и больше не завершается необработанным исключением, когда папку надо создать. Автозапуск сообщает настоящую причину вместо сбоя загрузки с GitHub, а подсказки описывают каталог установки EDT вместо `.../1cedt`. Часть [issue #64](https://github.com/keyfire/edt-bridge/issues/64).
+  ([#65](https://github.com/keyfire/edt-bridge/pull/65))
 
 <a id="03112026--0340"></a>
 

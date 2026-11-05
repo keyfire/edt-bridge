@@ -18,12 +18,16 @@ to the code and the reasoning behind it.
 ### Added
 
 - `status` reports `wrapperVersion`. When the plugin running in EDT and the wrapper are on different versions, the wrapper says so once on stderr, in every command and in the MCP-server mode. Before, a plugin that `self-update` could not reach stayed behind unnoticed. Part of [issue #64](https://github.com/keyfire/edt-bridge/issues/64).
+  ([#65](https://github.com/keyfire/edt-bridge/pull/65))
 
 ### Fixed
 
 - On Windows `self-update`, the headless auto-start, `gui` and the `run-*.ps1` scripts find EDT installed by 1C:Installer under `%ProgramFiles%\1C\1CE\components`. Before, they looked only in the 1cedtstart installations and asked for `EDT_BRIDGE_EDT_DIR`. Versions compare number by number, so 2026.1.10 is newer than 2026.1.9. Part of [issue #64](https://github.com/keyfire/edt-bridge/issues/64).
+  ([#65](https://github.com/keyfire/edt-bridge/pull/65))
 - `edtInstall` in `/status` keeps the `+` of a component directory such as `1c-edt-2026.1.2+2-x86_64`. It used to turn into a space, and `status --all` could not find that installation's `dropins`. Part of [issue #64](https://github.com/keyfire/edt-bridge/issues/64).
+  ([#65](https://github.com/keyfire/edt-bridge/pull/65))
 - With no write access to `dropins`, the jar delivery names the cure (close EDT, run as administrator) and no longer ends in an unhandled exception when the folder has to be created. The auto-start reports the actual reason instead of a failed download from GitHub, and the hints describe the EDT install directory instead of `.../1cedt`. Part of [issue #64](https://github.com/keyfire/edt-bridge/issues/64).
+  ([#65](https://github.com/keyfire/edt-bridge/pull/65))
 
 <a id="2026-11-03--0340"></a>
 
