@@ -36,6 +36,7 @@ import org.osgi.framework.FrameworkUtil;
 import org.osgi.framework.Version;
 
 import io.github.keyfire.edtbridge.core.ArgumentNames;
+import io.github.keyfire.edtbridge.core.FileUrlPaths;
 import io.github.keyfire.edtbridge.edt.ProjectGateway;
 import io.github.keyfire.edtbridge.tools.MoveMethodTool;
 import io.github.keyfire.edtbridge.tools.ReplaceMethodTool;
@@ -655,7 +656,7 @@ applyI18n();loadStatus();loadTools();
             }
             var installation = org.eclipse.core.runtime.Platform.getInstallLocation();
             if (installation != null && "file".equals(installation.getURL().getProtocol())) {
-                o.addProperty("edtInstall", new java.io.File(java.net.URLDecoder.decode(installation.getURL().getPath(), java.nio.charset.StandardCharsets.UTF_8)).getAbsolutePath());
+                o.addProperty("edtInstall", new java.io.File(FileUrlPaths.decode(installation.getURL().getPath())).getAbsolutePath());
             }
         } catch (Exception unavailable) {
             o.addProperty("edtStatusHint", "Some EDT installation details are not available: " + unavailable.getClass().getSimpleName());
