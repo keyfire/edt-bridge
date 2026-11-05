@@ -194,3 +194,13 @@ def test_non_text_content_is_skipped(monkeypatch):
     cli._print_result({"content": [{"type": "image", "data": "..."}]}, raw=False)
 
     assert out.getvalue() == ""
+
+
+def test_status_reports_the_wrapper_version(monkeypatch, capsys):
+    from edt_bridge_mcp import __version__, server, update
+
+    monkeypatch.setattr(server.Backend, "status", lambda _self: {"version": "0.24.0"})
+    monkeypatch.setattr(update, "_find_dropins", lambda: None)
+
+    assert cli.run("status", []) == 0
+    assert json.loads(capsys.readouterr().out)["wrapperVersion"] == __version__

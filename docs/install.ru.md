@@ -30,7 +30,8 @@ sidebar:
 
 1. Скачать jar со [страницы Releases](https://github.com/keyfire/edt-bridge/releases), где также
    находится `SHA256SUMS.txt`, или собрать его, как описано ниже.
-2. Скопировать jar в `dropins/` EDT: на Windows `.../installations/<EDT>/1cedt/dropins/`, на **macOS**
+2. Скопировать jar в `dropins/` EDT: на Windows `.../installations/<EDT>/1cedt/dropins/` или
+   `.../1C/1CE/components/1c-edt-<ver>-x86_64/dropins/`, на **macOS**
    `.../1c-edt-<ver>-x86_64/1cedt (<ver>).app/Contents/Eclipse/dropins/`, создав папку, если ее нет.
    Оставить только один jar EDT-Bridge: при наличии двух файлов Equinox может загрузить любой из них.
 3. **Перезапустить EDT.** Плагин запускает MCP-сервер на `http://127.0.0.1:8770/mcp` или на
@@ -62,7 +63,7 @@ MCP-клиент может обращаться к плагину напрям�
 | `EDT_BRIDGE_PORT_SCAN` | – | `20` | сколько портов подряд начиная с этого просматривать. Занятый порт плагин отдает следующему свободному, и в этом же окне мост потом ищется |
 | `EDT_BRIDGE_TOKEN` | – | пусто | токен инструментов записи. Передается в заголовке `Authorization: Bearer` и передается в JVM headless-экземпляра |
 | `EDT_BRIDGE_WORKSPACE` | `--workspace` | – | рабочая область EDT для автоматического запуска headless |
-| `EDT_BRIDGE_EDT_DIR` | `--edt-dir` | самая свежая установка | каталог установки EDT (`.../1cedt`) |
+| `EDT_BRIDGE_EDT_DIR` | `--edt-dir` | самая свежая установка | каталог установки EDT (папка с 1cedtcli и dropins) |
 | `EDT_BRIDGE_START_TIMEOUT` | `--start-timeout` | `360` | сколько секунд ожидать запуск моста |
 | `EDT_BRIDGE_AUTOSTART` | `--no-autostart` | включен | `0` – не запускать EDT и только пересылать запросы |
 | `EDT_BRIDGE_WINDOW_WAIT` | – | `90` | сколько секунд команда `gui` ждет появления окна EDT. Загрузка большой рабочей области может занять несколько минут; если окно не появилось, команду можно повторить |

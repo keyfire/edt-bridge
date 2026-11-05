@@ -384,7 +384,7 @@ def _run(command: str, argv: list[str]) -> int:
         if status is None:
             print("no bridge is running in the scanned port range", file=sys.stderr)
             return 1
-        status = _with_jar_on_disk(status)
+        status = {**_with_jar_on_disk(status), "wrapperVersion": __version__}
         _emit(json.dumps(status, ensure_ascii=False, indent=2))
         jar = status.get("jarOnDisk")
         if jar and not jar["current"]:

@@ -471,7 +471,8 @@ EDT создает `HtmlFieldExtInfo` и сохраняет путь к данн
 
 1. Скачать jar со [страницы Releases](https://github.com/keyfire/edt-bridge/releases), где также
    находится `SHA256SUMS.txt`, или собрать его, как описано ниже.
-2. Скопировать jar в `dropins/` EDT: на Windows `.../installations/<EDT>/1cedt/dropins/`, на **macOS**
+2. Скопировать jar в `dropins/` EDT: на Windows `.../installations/<EDT>/1cedt/dropins/` или
+   `.../1C/1CE/components/1c-edt-<ver>-x86_64/dropins/`, на **macOS**
    `.../1c-edt-<ver>-x86_64/1cedt (<ver>).app/Contents/Eclipse/dropins/`, создав папку, если ее нет.
    Оставить только один jar EDT-Bridge: при наличии двух файлов Equinox может загрузить любой из них.
 3. **Перезапустить EDT.** Плагин запускает MCP-сервер на `http://127.0.0.1:8770/mcp` или на

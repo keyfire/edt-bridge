@@ -29,7 +29,7 @@ usage: edt-bridge-mcp [опции]                   (без команды: з�
 |---|---|
 | `-h, --help` | показать эту справку и выйти |
 | `--workspace WORKSPACE` | рабочая область EDT для автозапуска headless |
-| `--edt-dir EDT_DIR` | каталог установки EDT (.../1cedt); без флага определяется сам |
+| `--edt-dir EDT_DIR` | каталог установки EDT (папка с 1cedtcli и dropins); без флага определяется сам |
 | `--port PORT` | порт моста (по умолчанию 8770) |
 | `--start-timeout START_TIMEOUT` | сколько секунд ждать поднимающийся мост |
 | `--no-autostart` | не поднимать headless EDT ни при каких условиях |
@@ -77,7 +77,7 @@ usage: edt-bridge-mcp call [-h] [--json JSON | --json-file PATH | --stdin] [--ra
 | `--stdin` | читать объект JSON из потока ввода |
 | `--raw` | напечатать сырой JSON-результат вместо текста, который вернул инструмент |
 | `--workspace WORKSPACE` | рабочая область EDT для автозапуска headless |
-| `--edt-dir EDT_DIR` | каталог установки EDT (.../1cedt); без флага определяется сам |
+| `--edt-dir EDT_DIR` | каталог установки EDT (папка с 1cedtcli и dropins); без флага определяется сам |
 | `--port PORT` | порт моста (по умолчанию 8770) |
 | `--start-timeout START_TIMEOUT` | сколько секунд ждать поднимающийся мост |
 | `--no-autostart` | не поднимать headless EDT ни при каких условиях |
@@ -102,7 +102,7 @@ usage: edt-bridge-mcp tools [-h] [--raw] [--workspace WORKSPACE] [--edt-dir EDT_
 | `-h, --help` | показать эту справку и выйти |
 | `--raw` | напечатать сырой JSON-результат вместо текста, который вернул инструмент |
 | `--workspace WORKSPACE` | рабочая область EDT для автозапуска headless |
-| `--edt-dir EDT_DIR` | каталог установки EDT (.../1cedt); без флага определяется сам |
+| `--edt-dir EDT_DIR` | каталог установки EDT (папка с 1cedtcli и dropins); без флага определяется сам |
 | `--port PORT` | порт моста (по умолчанию 8770) |
 | `--start-timeout START_TIMEOUT` | сколько секунд ждать поднимающийся мост |
 | `--no-autostart` | не поднимать headless EDT ни при каких условиях |
@@ -110,7 +110,7 @@ usage: edt-bridge-mcp tools [-h] [--raw] [--workspace WORKSPACE] [--edt-dir EDT_
 
 ## `edt-bridge-mcp status`
 
-Состояние моста без его запуска и версия jar в dropins - кода, который EDT загрузит при следующем запуске.
+Состояние моста без его запуска и версия jar в dropins - кода, который EDT загрузит при следующем запуске. Если плагин в EDT и обвязка разных версий, команда пишет об этом в stderr.
 
 ```bash
 usage: edt-bridge-mcp status [-h] [--all] [--ports PORTS] [--workspace WORKSPACE]
@@ -127,7 +127,7 @@ usage: edt-bridge-mcp status [-h] [--all] [--ports PORTS] [--workspace WORKSPACE
 | `--all` | проверить все порты диапазона без фильтра рабочей области и запуска EDT |
 | `--ports PORTS` | порты для `--all`, через запятую или диапазон: 8770,8772-8774 (до 128 портов) |
 | `--workspace WORKSPACE` | рабочая область EDT для автозапуска headless |
-| `--edt-dir EDT_DIR` | каталог установки EDT (.../1cedt); без флага определяется сам |
+| `--edt-dir EDT_DIR` | каталог установки EDT (папка с 1cedtcli и dropins); без флага определяется сам |
 | `--port PORT` | порт моста (по умолчанию 8770) |
 | `--start-timeout START_TIMEOUT` | сколько секунд ждать поднимающийся мост |
 | `--no-autostart` | не поднимать headless EDT ни при каких условиях |
@@ -152,7 +152,7 @@ usage: edt-bridge-mcp shutdown [-h] [--force] [--no-wait] [--workspace WORKSPACE
 | `--force` | разрешить завершение GUI EDT; без этого флага завершение GUI запрещено |
 | `--no-wait` | не ждать остановки (по умолчанию ожидание закрытия порта составляет до 60 секунд) |
 | `--workspace WORKSPACE` | рабочая область EDT для автозапуска headless |
-| `--edt-dir EDT_DIR` | каталог установки EDT (.../1cedt); без флага определяется сам |
+| `--edt-dir EDT_DIR` | каталог установки EDT (папка с 1cedtcli и dropins); без флага определяется сам |
 | `--port PORT` | порт моста (по умолчанию 8770) |
 | `--start-timeout START_TIMEOUT` | сколько секунд ждать поднимающийся мост |
 | `--no-autostart` | не поднимать headless EDT ни при каких условиях |
@@ -176,7 +176,7 @@ usage: edt-bridge-mcp gui [-h] [--force] [--timeout TIMEOUT] [--workspace WORKSP
 | `--force` | завершить headless принудительно, если он не остановился за отведенное время |
 | `--timeout TIMEOUT` | сколько секунд ждать завершения headless (по умолчанию 90) |
 | `--workspace WORKSPACE` | рабочая область EDT для автозапуска headless |
-| `--edt-dir EDT_DIR` | каталог установки EDT (.../1cedt); без флага определяется сам |
+| `--edt-dir EDT_DIR` | каталог установки EDT (папка с 1cedtcli и dropins); без флага определяется сам |
 | `--port PORT` | порт моста (по умолчанию 8770) |
 | `--start-timeout START_TIMEOUT` | сколько секунд ждать поднимающийся мост |
 | `--no-autostart` | не поднимать headless EDT ни при каких условиях |
@@ -198,7 +198,7 @@ usage: edt-bridge-mcp plugins [-h] [--workspace WORKSPACE] [--edt-dir EDT_DIR]
 |---|---|
 | `-h, --help` | показать эту справку и выйти |
 | `--workspace WORKSPACE` | рабочая область EDT для автозапуска headless |
-| `--edt-dir EDT_DIR` | каталог установки EDT (.../1cedt); без флага определяется сам |
+| `--edt-dir EDT_DIR` | каталог установки EDT (папка с 1cedtcli и dropins); без флага определяется сам |
 | `--port PORT` | порт моста (по умолчанию 8770) |
 | `--start-timeout START_TIMEOUT` | сколько секунд ждать поднимающийся мост |
 | `--no-autostart` | не поднимать headless EDT ни при каких условиях |

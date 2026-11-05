@@ -29,7 +29,7 @@ usage: edt-bridge-mcp [options]           (no command: run as an MCP server)
 |---|---|
 | `-h, --help` | show this help message and exit |
 | `--workspace WORKSPACE` | EDT workspace path for the headless auto-start |
-| `--edt-dir EDT_DIR` | EDT install dir (.../1cedt); auto-detected when omitted |
+| `--edt-dir EDT_DIR` | EDT install dir (the folder with 1cedtcli and dropins); auto-detected when omitted |
 | `--port PORT` | bridge port (default 8770) |
 | `--start-timeout START_TIMEOUT` | seconds to wait for a starting backend |
 | `--no-autostart` | never launch a headless EDT |
@@ -77,7 +77,7 @@ usage: edt-bridge-mcp call [-h] [--json JSON | --json-file PATH | --stdin] [--ra
 | `--stdin` | read the JSON object from standard input |
 | `--raw` | print the raw JSON result instead of the text the tool returned |
 | `--workspace WORKSPACE` | EDT workspace path for the headless auto-start |
-| `--edt-dir EDT_DIR` | EDT install dir (.../1cedt); auto-detected when omitted |
+| `--edt-dir EDT_DIR` | EDT install dir (the folder with 1cedtcli and dropins); auto-detected when omitted |
 | `--port PORT` | bridge port (default 8770) |
 | `--start-timeout START_TIMEOUT` | seconds to wait for a starting backend |
 | `--no-autostart` | never launch a headless EDT |
@@ -102,7 +102,7 @@ usage: edt-bridge-mcp tools [-h] [--raw] [--workspace WORKSPACE] [--edt-dir EDT_
 | `-h, --help` | show this help message and exit |
 | `--raw` | print the raw JSON result instead of the text the tool returned |
 | `--workspace WORKSPACE` | EDT workspace path for the headless auto-start |
-| `--edt-dir EDT_DIR` | EDT install dir (.../1cedt); auto-detected when omitted |
+| `--edt-dir EDT_DIR` | EDT install dir (the folder with 1cedtcli and dropins); auto-detected when omitted |
 | `--port PORT` | bridge port (default 8770) |
 | `--start-timeout START_TIMEOUT` | seconds to wait for a starting backend |
 | `--no-autostart` | never launch a headless EDT |
@@ -110,7 +110,7 @@ usage: edt-bridge-mcp tools [-h] [--raw] [--workspace WORKSPACE] [--edt-dir EDT_
 
 ## `edt-bridge-mcp status`
 
-Report the running bridge (does not start one) and the version of the jar in dropins - the code EDT will load next time it starts.
+Report the running bridge (does not start one) and the version of the jar in dropins - the code EDT will load next time it starts. When the plugin in EDT and this wrapper are on different versions, it says so on stderr.
 
 ```bash
 usage: edt-bridge-mcp status [-h] [--all] [--ports PORTS] [--workspace WORKSPACE]
@@ -127,7 +127,7 @@ usage: edt-bridge-mcp status [-h] [--all] [--ports PORTS] [--workspace WORKSPACE
 | `--all` | inspect every port in the scan range without filtering workspaces or starting EDT |
 | `--ports PORTS` | ports for `--all`, comma-separated or ranges: 8770,8772-8774 (up to 128 ports) |
 | `--workspace WORKSPACE` | EDT workspace path for the headless auto-start |
-| `--edt-dir EDT_DIR` | EDT install dir (.../1cedt); auto-detected when omitted |
+| `--edt-dir EDT_DIR` | EDT install dir (the folder with 1cedtcli and dropins); auto-detected when omitted |
 | `--port PORT` | bridge port (default 8770) |
 | `--start-timeout START_TIMEOUT` | seconds to wait for a starting backend |
 | `--no-autostart` | never launch a headless EDT |
@@ -152,7 +152,7 @@ usage: edt-bridge-mcp shutdown [-h] [--force] [--no-wait] [--workspace WORKSPACE
 | `--force` | shut a GUI EDT down too: without this flag the bridge refuses rather than close somebody's window |
 | `--no-wait` | do not wait for the bridge to go down (the default waits up to 60 seconds) |
 | `--workspace WORKSPACE` | EDT workspace path for the headless auto-start |
-| `--edt-dir EDT_DIR` | EDT install dir (.../1cedt); auto-detected when omitted |
+| `--edt-dir EDT_DIR` | EDT install dir (the folder with 1cedtcli and dropins); auto-detected when omitted |
 | `--port PORT` | bridge port (default 8770) |
 | `--start-timeout START_TIMEOUT` | seconds to wait for a starting backend |
 | `--no-autostart` | never launch a headless EDT |
@@ -176,7 +176,7 @@ usage: edt-bridge-mcp gui [-h] [--force] [--timeout TIMEOUT] [--workspace WORKSP
 | `--force` | kill the headless session when it does not stop within the timeout |
 | `--timeout TIMEOUT` | seconds to wait for the headless EDT to stop (default 90) |
 | `--workspace WORKSPACE` | EDT workspace path for the headless auto-start |
-| `--edt-dir EDT_DIR` | EDT install dir (.../1cedt); auto-detected when omitted |
+| `--edt-dir EDT_DIR` | EDT install dir (the folder with 1cedtcli and dropins); auto-detected when omitted |
 | `--port PORT` | bridge port (default 8770) |
 | `--start-timeout START_TIMEOUT` | seconds to wait for a starting backend |
 | `--no-autostart` | never launch a headless EDT |
@@ -198,7 +198,7 @@ usage: edt-bridge-mcp plugins [-h] [--workspace WORKSPACE] [--edt-dir EDT_DIR]
 |---|---|
 | `-h, --help` | show this help message and exit |
 | `--workspace WORKSPACE` | EDT workspace path for the headless auto-start |
-| `--edt-dir EDT_DIR` | EDT install dir (.../1cedt); auto-detected when omitted |
+| `--edt-dir EDT_DIR` | EDT install dir (the folder with 1cedtcli and dropins); auto-detected when omitted |
 | `--port PORT` | bridge port (default 8770) |
 | `--start-timeout START_TIMEOUT` | seconds to wait for a starting backend |
 | `--no-autostart` | never launch a headless EDT |

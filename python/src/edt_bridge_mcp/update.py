@@ -85,18 +85,53 @@ def _sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+def _newest_first(dirs) -> list[Path]:
+    """Highest version first, number by number: compared as text, 2026.1.9 beats 2026.1.10."""
+    return sorted(dirs, key=lambda d: [int(n) for n in re.findall(r"\d+", d.name)], reverse=True)
+
+
+def windows_installs() -> list[Path]:
+    """Where EDT may be installed on Windows, in order of preference. The directories are not
+    checked for an executable - that is up to the caller, who knows which one it needs.
+
+    The 1cedtstart launcher keeps EDT in the `1cedt` subfolder of a per-user installation. 1C:Installer
+    puts it directly into a component under Program Files, with `dropins` beside `1cedt.exe`. The
+    `1c-edt-start-*` component next to those is the launcher, not EDT.
+    """
+    installs: list[Path] = []
+    local = os.environ.get("LOCALAPPDATA")
+    if local:
+        base = Path(local) / "1C" / "1cedtstart" / "installations"
+        installs += [inst / "1cedt" for inst in _newest_first(base.glob("*"))]
+    programs = os.environ.get("ProgramFiles")
+    if programs:
+        components = Path(programs) / "1C" / "1CE" / "components"
+        installs += _newest_first(components.glob("1c-edt-[0-9]*"))
+    return installs
+
+
+def plugin_version_gap(live: str | None) -> str | None:
+    """A sentence for a plugin on another version than this wrapper; None when they agree.
+
+    They update separately, and nothing else compares them: a 0.34.1 wrapper talked to a 0.11.2
+    plugin without a word.
+    A wrapper post-release (`0.34.1.post1`) still belongs to the plugin's `0.34.1`.
+    """
+    if not live or __version__ == live or __version__.startswith(f"{live}."):
+        return None
+    return (f"the plugin running in EDT is {live}, this wrapper is {__version__} - "
+            "run edt-bridge-mcp self-update and restart EDT to put both on one version")
+
+
 def _find_dropins() -> Path | None:
     edt_dir = (os.environ.get("EDT_BRIDGE_EDT_DIR") or "").strip()
     if edt_dir:
         d = Path(edt_dir) / "dropins"
         return d if d.parent.exists() else None
     if os.name == "nt":
-        base = Path(os.environ.get("LOCALAPPDATA", "")) / "1C" / "1cedtstart" / "installations"
-        if base.is_dir():
-            for inst in sorted(base.iterdir(), reverse=True):
-                edt = inst / "1cedt"
-                if (edt / ("1cedtcli.exe")).exists() or (edt / "1cedt.exe").exists():
-                    return edt / "dropins"
+        for edt in windows_installs():
+            if (edt / "1cedtcli.exe").exists() or (edt / "1cedt.exe").exists():
+                return edt / "dropins"
     return None
 
 
@@ -159,6 +194,15 @@ def has_jar(dropins: Path | None) -> bool:
     return any(dropins.glob(JAR_PREFIX + "*.jar"))
 
 
+def _placement_failure(exc: OSError) -> str:
+    """Why the jar did not reach dropins. Under Program Files that takes administrator rights, and
+    a running EDT holds its jar open - both surface as a bare access error."""
+    message = f"cannot place the jar into dropins: {exc}"
+    if isinstance(exc, PermissionError):
+        message += " - close EDT and run edt-bridge-mcp self-update --jar-only as administrator"
+    return message
+
+
 def install_latest_jar(dropins: Path, emit=log) -> bool:
     """Download the latest release jar (checksum-verified) into ``dropins``, dropping older
     copies. Shared by the ``self-update`` command and the wrapper's first-run delivery."""
@@ -175,7 +219,11 @@ def install_latest_jar(dropins: Path, emit=log) -> bool:
     if jar_asset is None:
         emit(f"the latest release ({release.get('tag_name')}) carries no plugin jar – nothing to do")
         return False
-    dropins.mkdir(parents=True, exist_ok=True)
+    try:
+        dropins.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        emit(_placement_failure(exc))
+        return False
 
     name = jar_asset["name"]
     existing = dropins / name
@@ -224,7 +272,7 @@ def install_latest_jar(dropins: Path, emit=log) -> bool:
             target.unlink()
         tmp.replace(target)
     except OSError as exc:
-        emit(f"cannot place the jar into dropins: {exc}")
+        emit(_placement_failure(exc))
         return False
     removed = 0
     for old in dropins.glob(JAR_PREFIX + "*.jar"):
@@ -271,7 +319,8 @@ def warn_stale_configurations(dropins: Path, emit=log) -> None:
 def update_jar() -> bool:
     dropins = _find_dropins()
     if dropins is None:
-        log("EDT dropins not found – pass EDT_BRIDGE_EDT_DIR pointing at the .../1cedt folder")
+        log("EDT dropins not found – set EDT_BRIDGE_EDT_DIR to the EDT install directory "
+            "(the folder with 1cedtcli and dropins)")
         return False
     ok = install_latest_jar(dropins)
     if ok:

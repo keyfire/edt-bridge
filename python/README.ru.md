@@ -105,7 +105,7 @@ Editable-установку обновление не перезаписывае
 | `EDT_BRIDGE_PORT` | `--port` | порт моста (по умолчанию 8770) |
 | `EDT_BRIDGE_TOKEN` | – | токен инструментов записи; передается в заголовке `Authorization: Bearer` и передается в JVM headless-экземпляра |
 | `EDT_BRIDGE_WORKSPACE` | `--workspace` | путь к рабочей области EDT, обязателен для автозапуска headless |
-| `EDT_BRIDGE_EDT_DIR` | `--edt-dir` | каталог установки EDT (`.../1cedt`); без него берется самая свежая установка |
+| `EDT_BRIDGE_EDT_DIR` | `--edt-dir` | каталог установки EDT (папка с 1cedtcli и dropins); без него берется самая свежая установка |
 | `EDT_BRIDGE_START_TIMEOUT` | `--start-timeout` | сколько секунд ожидать запуск моста (по умолчанию 360) |
 | `EDT_BRIDGE_AUTOSTART` | `--no-autostart` | `0` или флаг – только пересылать запросы и ничего не запускать |
 

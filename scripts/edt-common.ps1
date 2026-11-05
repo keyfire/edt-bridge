@@ -19,13 +19,24 @@
 function Resolve-EdtDir {
   param([string]$EdtDir, [Parameter(Mandatory = $true)][string]$RequireExe)
   if ($EdtDir) { return $EdtDir }
+  # Number by number: compared as text, 2026.1.9 would beat 2026.1.10.
+  $newest = { ($_.Name -replace '^\D*(\d+(\.\d+)*).*$', '$1') -as [version] }
   $base = Join-Path $env:LOCALAPPDATA "1C\1cedtstart\installations"
-  $found = Get-ChildItem $base -Directory -ErrorAction SilentlyContinue |
-    Sort-Object Name -Descending |
-    ForEach-Object { Join-Path $_.FullName "1cedt" } |
+  # 1C:Installer puts EDT directly into a component; 1c-edt-start-* next to it is the launcher.
+  $components = Join-Path $env:ProgramFiles "1C\1CE\components"
+  $candidates = @(
+    Get-ChildItem $base -Directory -ErrorAction SilentlyContinue |
+      Sort-Object $newest, Name -Descending |
+      ForEach-Object { Join-Path $_.FullName "1cedt" }
+    Get-ChildItem $components -Directory -Filter "1c-edt-*" -ErrorAction SilentlyContinue |
+      Where-Object { $_.Name -match '^1c-edt-\d' } |
+      Sort-Object $newest, Name -Descending |
+      ForEach-Object { $_.FullName }
+  )
+  $found = $candidates |
     Where-Object { Test-Path (Join-Path $_ $RequireExe) } |
     Select-Object -First 1
-  if (-not $found) { throw "Could not auto-detect 1C:EDT with $RequireExe under $base; pass -EdtDir <...\1cedt>." }
+  if (-not $found) { throw "Could not auto-detect 1C:EDT with $RequireExe under $base or $components; pass -EdtDir <the folder with $RequireExe>." }
   return $found
 }
 

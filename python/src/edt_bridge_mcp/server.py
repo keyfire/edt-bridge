@@ -15,7 +15,7 @@ Configuration (CLI flags override the environment):
     EDT_BRIDGE_PORT           bridge port (default 8770)
     EDT_BRIDGE_TOKEN          write-tools token, forwarded as Authorization: Bearer
     EDT_BRIDGE_WORKSPACE      EDT workspace path - required for the headless auto-start
-    EDT_BRIDGE_EDT_DIR        EDT install dir (.../1cedt); auto-detected when omitted
+    EDT_BRIDGE_EDT_DIR        EDT install dir (the folder with 1cedtcli and dropins); auto-detected when omitted
     EDT_BRIDGE_START_TIMEOUT  seconds to wait for a starting backend (default 360)
     EDT_BRIDGE_AUTOSTART      set to 0/false to never launch anything (proxy-only)
 
@@ -163,6 +163,7 @@ class Backend:
         self._headless_process = None
         self._headless_state = None
         self._headless_output = None
+        self._plugin_version_noted = False
 
     # -- probing ---------------------------------------------------------
 
@@ -204,6 +205,7 @@ class Backend:
         upward scan used to stop at."""
         s = self._target_status(self._active_port)
         if s is not None:
+            self._note_plugin_version(s)
             return s
         others = [port for port in range(self.port, self.port + self.scan_range + 1)
                   if port != self._active_port]
@@ -230,11 +232,23 @@ class Backend:
                 s = answer.result()
                 if s is not None:
                     self._active_port = port
+                    self._note_plugin_version(s)
                     return s
         finally:
             for answer in answers:
                 answer.cancel()
         return None
+
+    def _note_plugin_version(self, status: dict) -> None:
+        """Say once per process when the plugin answering is not on this wrapper's version."""
+        if self._plugin_version_noted:
+            return
+        self._plugin_version_noted = True
+        from . import update
+
+        gap = update.plugin_version_gap(status.get("version"))
+        if gap:
+            log(gap)
 
     def status_all(self, ports: list[int] | None = None) -> list[dict]:
         """Inspect every target without changing forwarding state, filtering workspaces, or starting EDT."""
@@ -599,12 +613,12 @@ class Backend:
             p = Path(self.edt_dir) / exe
             return p if p.exists() else None
         if os.name == "nt":
-            base = Path(os.environ.get("LOCALAPPDATA", "")) / "1C" / "1cedtstart" / "installations"
-            if base.is_dir():
-                for inst in sorted(base.iterdir(), reverse=True):
-                    p = inst / "1cedt" / exe
-                    if p.exists():
-                        return p
+            from . import update
+
+            for edt in update.windows_installs():
+                p = edt / exe
+                if p.exists():
+                    return p
         else:
             for pattern in ("~/1C/1CE/components/*/1cedt*/Contents/Eclipse", "~/1cedt"):
                 for cand in sorted(Path().glob(os.path.expanduser(pattern)), reverse=True):
@@ -626,11 +640,18 @@ class Backend:
         if update.has_jar(dropins):
             return True, "jar present"
         log("plugin jar is missing in dropins – delivering the latest release jar")
-        if update.install_latest_jar(dropins, emit=log):
+        notes: list[str] = []
+
+        def note(message: str) -> None:
+            log(message)
+            notes.append(message)
+
+        if update.install_latest_jar(dropins, emit=note):
             return True, "jar delivered"
         return False, (
-            "the edt-bridge plugin jar is missing in EDT's dropins and could not be "
-            "downloaded from GitHub Releases – install it manually (see the repository README)"
+            "the edt-bridge plugin jar is missing in EDT's dropins and could not be delivered"
+            + (f" ({notes[-1]})" if notes else "")
+            + " – install it manually (see the repository README)"
         )
 
     def _launch_headless(self) -> tuple[bool, str]:
@@ -666,7 +687,7 @@ class Backend:
         if cli is None:
             return False, (
                 "1cedtcli not found – pass --edt-dir or set EDT_BRIDGE_EDT_DIR to the "
-                ".../1cedt install folder"
+                "EDT install directory (the folder with 1cedtcli and dropins)"
             )
         jar_ok, jar_msg = self._ensure_plugin_jar(cli.parent)
         if not jar_ok:
@@ -903,7 +924,7 @@ class Backend:
         if exe is None:
             return False, (
                 f"{GUI_IMAGE} not found - pass --edt-dir or set EDT_BRIDGE_EDT_DIR to the "
-                ".../1cedt install folder"
+                "EDT install directory (the folder with 1cedtcli and dropins)"
             )
         # Same care as the launch scripts: one jar in dropins, and it is the current one -
         # otherwise the GUI comes up without the bridge, or with two versions of it.

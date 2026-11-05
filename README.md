@@ -469,7 +469,8 @@ The pipx wrapper delivers the jar and starts EDT for you. To run the plugin your
 
 1. Get the jar from the [Releases page](https://github.com/keyfire/edt-bridge/releases), which also
    includes `SHA256SUMS.txt`, or build it as described below.
-2. Copy it into EDT's `dropins/`: on Windows `.../installations/<EDT>/1cedt/dropins/`, on **macOS**
+2. Copy it into EDT's `dropins/`: on Windows `.../installations/<EDT>/1cedt/dropins/` or
+   `.../1C/1CE/components/1c-edt-<ver>-x86_64/dropins/`, on **macOS**
    `.../1c-edt-<ver>-x86_64/1cedt (<ver>).app/Contents/Eclipse/dropins/`, creating the folder if it
    is not there. Keep only one EDT-Bridge jar in it, because two make Equinox load an arbitrary one.
 3. **Restart EDT.** The plugin starts the MCP server on `http://127.0.0.1:8770/mcp`, or on the next

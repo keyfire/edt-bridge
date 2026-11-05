@@ -85,8 +85,8 @@ MESSAGES = {
         "en": "EDT workspace path for the headless auto-start",
     },
     "conn.edt-dir": {
-        "ru": "каталог установки EDT (.../1cedt); без флага определяется сам",
-        "en": "EDT install dir (.../1cedt); auto-detected when omitted",
+        "ru": "каталог установки EDT (папка с 1cedtcli и dropins); без флага определяется сам",
+        "en": "EDT install dir (the folder with 1cedtcli and dropins); auto-detected when omitted",
     },
     "conn.port": {
         "ru": "порт моста (по умолчанию 8770)",
@@ -119,9 +119,11 @@ MESSAGES = {
     },
     "status.description": {
         "ru": "Состояние моста без его запуска и версия jar в dropins - "
-              "кода, который EDT загрузит при следующем запуске.",
+              "кода, который EDT загрузит при следующем запуске. Если плагин в EDT и обвязка "
+              "разных версий, команда пишет об этом в stderr.",
         "en": "Report the running bridge (does not start one) and the version of the jar in "
-              "dropins - the code EDT will load next time it starts.",
+              "dropins - the code EDT will load next time it starts. When the plugin in EDT and "
+              "this wrapper are on different versions, it says so on stderr.",
     },
     "shutdown.description": {
         "ru": "Штатно завершить EDT, обслуживающую мост, - вместо taskkill по процессам. "

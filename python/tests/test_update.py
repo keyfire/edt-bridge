@@ -5,9 +5,11 @@ jar silently keeps serving old code next to a freshly delivered one, which cost 
 before `purge_stale_jars` existed. The editable guard matters just as much: unpacking a wheel over a
 checkout would wreck the repository.
 """
+import os
+
 import pytest
 
-from edt_bridge_mcp import update
+from edt_bridge_mcp import server, update
 
 _JARS = (
     "io.github.keyfire.edtbridge_0.5.0.202607192303.jar",
@@ -429,3 +431,158 @@ def test_everything_succeeding_is_zero_and_says_so():
     assert update.verdict([("plugin jar", True), ("wrapper", True)], emit=lines.append) == 0
     assert any("all done" in line for line in lines)
     assert update.verdict([], emit=lambda _msg: None) == 0
+
+
+# -- where EDT is installed on Windows -------------------------------------------------
+
+
+def _windows_roots(monkeypatch, tmp_path):
+    local, programs = tmp_path / "local", tmp_path / "programs"
+    monkeypatch.setenv("LOCALAPPDATA", str(local))
+    monkeypatch.setenv("ProgramFiles", str(programs))
+    return (local / "1C" / "1cedtstart" / "installations",
+            programs / "1C" / "1CE" / "components")
+
+
+def _edt(directory):
+    directory.mkdir(parents=True)
+    (directory / "1cedt.exe").write_bytes(b"")
+    (directory / "1cedtcli.exe").write_bytes(b"")
+    return directory
+
+
+def test_windows_installs_compare_versions_as_numbers(monkeypatch, tmp_path):
+    _, components = _windows_roots(monkeypatch, tmp_path)
+    older = _edt(components / "1c-edt-2026.1.9+1-x86_64")
+    newer = _edt(components / "1c-edt-2026.1.10+1-x86_64")
+
+    assert update.windows_installs() == [newer, older]
+
+
+def test_windows_installs_skip_the_launcher_component(monkeypatch, tmp_path):
+    _, components = _windows_roots(monkeypatch, tmp_path)
+    (components / "1c-edt-start-0.9.0+277-x86_64").mkdir(parents=True)
+    edt = _edt(components / "1c-edt-2026.1.2+2-x86_64")
+
+    assert update.windows_installs() == [edt]
+
+
+def test_windows_installs_prefer_the_launcher_installations(monkeypatch, tmp_path):
+    """What the auto-detection found before 1C:Installer was known keeps being found."""
+    installations, components = _windows_roots(monkeypatch, tmp_path)
+    component = _edt(components / "1c-edt-2026.1.2+2-x86_64")
+    launcher = _edt(installations / "2025.2.0" / "1cedt")
+
+    assert update.windows_installs() == [launcher, component]
+
+
+def test_windows_installs_without_the_variables_look_nowhere(monkeypatch):
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
+    monkeypatch.delenv("ProgramFiles", raising=False)
+
+    assert update.windows_installs() == []
+
+
+@pytest.mark.skipif(os.name != "nt", reason="the Windows branch runs only on Windows")
+def test_dropins_and_executables_are_found_in_a_component(monkeypatch, tmp_path):
+    """The reported install: no `1cedt` subfolder, and `dropins` right in the component."""
+    monkeypatch.delenv("EDT_BRIDGE_EDT_DIR", raising=False)
+    _, components = _windows_roots(monkeypatch, tmp_path)
+    (components / "1c-edt-start-0.9.0+277-x86_64").mkdir(parents=True)
+    edt = _edt(components / "1c-edt-2026.1.2+2-x86_64")
+
+    assert update._find_dropins() == edt / "dropins"
+    assert server.Backend()._find_cli() == edt / "1cedtcli.exe"
+
+
+# -- no write access to dropins ----------------------------------------------------------
+
+
+def _latest_release(monkeypatch):
+    jar = update.JAR_PREFIX + "0.34.1.202611030809.jar"
+    monkeypatch.setattr(update, "_fetch_json", lambda _url: {
+        "tag_name": "v0.34.1",
+        "assets": [{"name": jar, "size": 1, "browser_download_url": "https://example.invalid/jar"}],
+    })
+    monkeypatch.setattr(update, "_download", lambda _url, target: target.write_bytes(b"jar"))
+
+
+def test_a_denied_write_into_dropins_names_the_cure(monkeypatch, tmp_path):
+    _latest_release(monkeypatch)
+
+    def denied(_self, _target):
+        raise PermissionError(13, "Access is denied")
+
+    monkeypatch.setattr(update.Path, "replace", denied)
+    lines = []
+
+    assert update.install_latest_jar(tmp_path, emit=lines.append) is False
+    assert "cannot place the jar into dropins" in lines[-1]
+    assert "as administrator" in lines[-1]
+
+
+def test_a_denied_mkdir_of_dropins_is_reported_not_raised(monkeypatch, tmp_path):
+    _latest_release(monkeypatch)
+
+    def denied(*_args, **_kwargs):
+        raise PermissionError(13, "Access is denied")
+
+    monkeypatch.setattr(update.Path, "mkdir", denied)
+    lines = []
+
+    assert update.install_latest_jar(tmp_path / "dropins", emit=lines.append) is False
+    assert "as administrator" in lines[-1]
+
+
+def test_other_placement_failures_do_not_blame_the_rights():
+    assert "administrator" not in update._placement_failure(OSError("the disk is full"))
+
+
+def test_the_auto_start_reports_why_the_jar_was_not_delivered(monkeypatch, tmp_path):
+    """It used to blame a download from GitHub for whatever went wrong."""
+    def refused(_dropins, emit):
+        emit("cannot place the jar into dropins: denied")
+        return False
+
+    monkeypatch.setattr(update, "install_latest_jar", refused)
+
+    ok, message = server.Backend()._ensure_plugin_jar(tmp_path)
+
+    assert ok is False
+    assert "cannot place the jar into dropins" in message
+    assert "GitHub" not in message
+
+
+# -- the plugin and the wrapper on one version --------------------------------------------
+
+
+@pytest.mark.parametrize("live", [update.__version__, None, ""])
+def test_no_gap_for_the_same_version_or_an_unknown_one(live):
+    assert update.plugin_version_gap(live) is None
+
+
+def test_a_wrapper_post_release_belongs_to_its_plugin(monkeypatch):
+    monkeypatch.setattr(update, "__version__", "0.34.1.post1")
+
+    assert update.plugin_version_gap("0.34.1") is None
+
+
+def test_a_gap_names_both_versions(monkeypatch):
+    monkeypatch.setattr(update, "__version__", "0.34.1")
+
+    gap = update.plugin_version_gap("0.11.2")
+
+    assert "0.11.2" in gap and "0.34.1" in gap and "self-update" in gap
+
+
+def test_the_gap_is_said_once_and_only_on_stderr(monkeypatch, capsys):
+    monkeypatch.setattr(update, "__version__", "0.34.1")
+    backend = server.Backend()
+    monkeypatch.setattr(backend, "_target_status", lambda _port: {"version": "0.11.2"})
+
+    backend.status()
+    backend.status()
+
+    captured = capsys.readouterr()
+    assert captured.err.count("0.11.2") == 1
+    assert captured.out == ""
