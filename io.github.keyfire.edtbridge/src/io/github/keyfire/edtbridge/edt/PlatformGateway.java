@@ -18,6 +18,7 @@ package io.github.keyfire.edtbridge.edt;
 
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -48,7 +49,9 @@ import com._1c.g5.v8.dt.platform.services.core.infobases.sync.IInfobaseUpdateCon
 import com._1c.g5.v8.dt.platform.services.core.infobases.sync.InfobaseConflictResolution;
 import io.github.keyfire.edtbridge.core.ArtifactBuild;
 import io.github.keyfire.edtbridge.core.IbcmdArgs;
+import io.github.keyfire.edtbridge.core.PlatformBuildProbe;
 import io.github.keyfire.edtbridge.core.PlatformInstallations;
+import io.github.keyfire.edtbridge.core.PlatformProcess;
 import io.github.keyfire.edtbridge.core.PlatformLog;
 import io.github.keyfire.edtbridge.core.PlatformSelection;
 import io.github.keyfire.edtbridge.core.Versions;
@@ -330,6 +333,48 @@ public final class PlatformGateway {
         public String uuid;
         public String typeId;
         public String note;
+    }
+
+    public static final class BuildReadinessResult {
+        public boolean ok;
+        public String requestedVersion;
+        public String platformVersion;
+        public String installation;
+        public List<String> availableVersions = List.of();
+        public PlatformBuildProbe.Stage createInfobase = PlatformBuildProbe.notChecked();
+        public PlatformBuildProbe.Stage designer = PlatformBuildProbe.notChecked();
+        public String cleanup = "notChecked";
+    }
+
+    /** Check the disk platform selected for this build or version line. */
+    public BuildReadinessResult platformBuildReadiness(String platformVersion, Duration timeout) {
+        BuildReadinessResult result = new BuildReadinessResult();
+        if (PlatformSelection.problem(platformVersion) != null) {
+            result.installation = "invalidVersion";
+            return result;
+        }
+        result.requestedVersion = platformVersion == null ? null : platformVersion.strip();
+        List<DiskPlatform> scanned = scanFullPlatforms();
+        result.availableVersions = scanned.stream().map(platform -> platform.version).distinct().toList();
+        for (DiskPlatform platform : scanned) {
+            if (!PlatformSelection.reusable(platform.version, platformVersion)) {
+                continue;
+            }
+            java.nio.file.Path exe = firstExisting(platform.binDir, "1cv8.exe", "1cv8");
+            if (exe == null) {
+                continue;
+            }
+            result.platformVersion = platform.version;
+            result.installation = "passed";
+            var probe = PlatformBuildProbe.check(exe.toAbsolutePath(), timeout);
+            result.createInfobase = probe.createInfobase();
+            result.designer = probe.designer();
+            result.cleanup = probe.cleanup();
+            result.ok = probe.ok();
+            return result;
+        }
+        result.installation = scanned.isEmpty() ? "platformNotFound" : "incompatibleVersion";
+        return result;
     }
 
     /** A full (thick-client) install found on disk, for {@link #platformInstallations}. */
@@ -944,12 +989,12 @@ public final class PlatformGateway {
                 java.nio.file.Files.deleteIfExists(ib);
                 String err = runCreateInfobase(exe, ib);
                 if (err != null && !java.nio.file.Files.exists(ib.resolve("1Cv8.1CD"))) {
-                    tried.append(dp.version).append(" (CREATEINFOBASE: ").append(err).append("); ");
+                    tried.append(dp.version).append(" (").append(err).append("); ");
                     continue;
                 }
                 java.nio.file.Files.deleteIfExists(log);
                 java.nio.file.Path sourceXml = source;
-                err = ArtifactBuild.build(target, output -> runIbcmd(exe, "DESIGNER", "/F", ib.toString(),
+                err = ArtifactBuild.build(target, output -> runPlatformCommand(exe, "DESIGNER", "/F", ib.toString(),
                         "/DisableStartupDialogs", "/DisableStartupMessages",
                         "/LoadExternalDataProcessorOrReportFromFiles", sourceXml.toString(),
                         output.toString(), "/Out", log.toString()));
@@ -961,7 +1006,9 @@ public final class PlatformGateway {
                 String logged = null;
                 if (java.nio.file.Files.exists(log)) {
                     try {
-                        logged = PlatformLog.decode(java.nio.file.Files.readAllBytes(log)).trim();
+                        try (InputStream input = java.nio.file.Files.newInputStream(log)) {
+                            logged = PlatformLog.decode(input.readNBytes(8192)).trim();
+                        }
                     } catch (java.io.IOException logError) {
                         logged = "could not read the build log: " + GatewaySupport.describeCause(logError);
                     }
@@ -1077,32 +1124,22 @@ public final class PlatformGateway {
         return null;
     }
 
-    /** Run {@code 1cv8 CREATEINFOBASE} in batch mode for an empty file base; null on success, else an error. */
+    /** Run {@code 1cv8 CREATEINFOBASE} in batch mode for an empty file base. */
     static String runCreateInfobase(java.nio.file.Path exe, java.nio.file.Path dir) {
         java.nio.file.Path out = null;
         try {
             out = java.nio.file.Files.createTempFile("edtbridge-createib-", ".log");
-            String conn = dir.toString().indexOf(' ') >= 0 ? "File=\"" + dir + "\"" : "File=" + dir;
-            ProcessBuilder pb = new ProcessBuilder(exe.toString(), "CREATEINFOBASE", conn,
-                    "/DisableStartupDialogs", "/DisableStartupMessages", "/Out", out.toString());
-            pb.redirectErrorStream(true);
-            Process proc = pb.start();
-            boolean done = proc.waitFor(180, java.util.concurrent.TimeUnit.SECONDS);
-            if (!done) {
-                proc.destroyForcibly();
-                return "timed out after 180s";
+            Duration timeout = Duration.ofSeconds(180);
+            var result = PlatformProcess.run(exe, PlatformBuildProbe.createInfobaseArgs(dir, out),
+                    null, timeout, null);
+            if (result.end() == PlatformProcess.End.EXITED && result.exitCode() == 0) {
+                return null;
             }
-            int code = proc.exitValue();
-            if (code != 0) {
-                String log = readSmall(out);
-                return "exit " + code + (log.isBlank() ? "" : ": " + log.trim());
-            }
-            return null;
-        } catch (java.io.IOException | InterruptedException ex) {
-            if (ex instanceof InterruptedException) {
-                Thread.currentThread().interrupt();
-            }
-            return ex.getClass().getSimpleName() + (ex.getMessage() != null ? ": " + ex.getMessage() : "");
+            String error = result.problem(exe, "CREATEINFOBASE", timeout);
+            String log = readSmall(out);
+            return log.isBlank() ? error : error + ": " + log.trim();
+        } catch (java.io.IOException ex) {
+            return exe.getFileName() + " CREATEINFOBASE log could not be created";
         } finally {
             if (out != null) {
                 try {
@@ -1114,12 +1151,11 @@ public final class PlatformGateway {
         }
     }
 
-    private static String readSmall(java.nio.file.Path p) {
-        try {
-            byte[] b = java.nio.file.Files.readAllBytes(p);
-            String s = PlatformLog.decode(b);
-            return s.length() > 500 ? s.substring(0, 500) : s;
-        } catch (java.io.IOException e) {
+    private static String readSmall(java.nio.file.Path path) {
+        try (InputStream input = java.nio.file.Files.newInputStream(path)) {
+            String log = PlatformLog.decode(input.readNBytes(2048));
+            return log.length() > 500 ? log.substring(0, 500) : log;
+        } catch (java.io.IOException ex) {
             return "";
         }
     }
@@ -1268,10 +1304,10 @@ public final class PlatformGateway {
             java.nio.file.Path tempData = tempRoot.resolve("data");
             java.nio.file.Files.createDirectories(tempData);
             java.nio.file.Path tempDb = tempRoot.resolve("db"); // ibcmd creates the base here
-            String err = runIbcmd(ibcmd, "infobase", "create",
+            String err = runPlatformCommand(ibcmd, "infobase", "create",
                     "--data=" + tempData, "--database-path=" + tempDb);
             if (err == null) {
-                err = runIbcmd(ibcmd, "config", "import", "--data=" + tempData,
+                err = runPlatformCommand(ibcmd, "config", "import", "--data=" + tempData,
                         "--database-path=" + tempDb, "--extension=" + extName, xmlDir.toString());
             }
             if (err == null) {
@@ -1282,7 +1318,7 @@ public final class PlatformGateway {
                 if (parent != null) {
                     java.nio.file.Files.createDirectories(parent);
                 }
-                err = runIbcmd(ibcmd, "config", "save", "--data=" + tempData,
+                err = runPlatformCommand(ibcmd, "config", "save", "--data=" + tempData,
                         "--database-path=" + tempDb, "--extension=" + extName, outputPath);
             }
             if (err != null) {
@@ -1537,7 +1573,7 @@ public final class PlatformGateway {
         upd.addAll(conn);
         upd.add("--name=" + r.name);
         upd.addAll(sets);
-        String err = runIbcmd(ibcmd, upd.toArray(new String[0]));
+        String err = runPlatformCommand(ibcmd, upd.toArray(new String[0]));
         if (err != null) {
             r.ok = false;
             r.message = "ibcmd extension update failed: " + err;
@@ -1614,7 +1650,7 @@ public final class PlatformGateway {
                 ? v.substring(1, v.length() - 1) : v;
     }
 
-    /** Like {@link #runIbcmd} but returns the output on success (null on failure). */
+    /** Like {@link #runPlatformCommand} but returns the output on success (null on failure). */
     private static String runIbcmdCapturing(java.nio.file.Path exe, String... args) {
         IbcmdGateway.Run run = IbcmdGateway.run(exe, List.of(args));
         return run.ok ? run.output : null;
@@ -1631,13 +1667,13 @@ public final class PlatformGateway {
     }
 
     /**
-     * Run an {@code ibcmd} sub-command in batch mode; null on success, else an error string.
+     * Run a platform command in batch mode; null on success, else an error string.
      *
      * <p>Delegates to {@link IbcmdGateway#run}, which is the single place that knows how to launch
      * the utility - notably that its stdin must go to the null device, or an infobase asking for
      * credentials leaves the call waiting on a prompt nobody will answer.
      */
-    private static String runIbcmd(java.nio.file.Path exe, String... args) {
+    private static String runPlatformCommand(java.nio.file.Path exe, String... args) {
         IbcmdGateway.Run run = IbcmdGateway.run(exe, List.of(args));
         return run.ok ? null : run.error;
     }

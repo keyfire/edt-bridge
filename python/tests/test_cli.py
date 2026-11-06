@@ -76,8 +76,8 @@ def test_argument_sources_are_mutually_exclusive():
         _call(["edt_projects", "--json", "{}", "--stdin"])
 
 
-def test_every_command_parses_the_connection_flags():
-    for command in cli.COMMANDS:
+def test_bridge_commands_parse_the_connection_flags():
+    for command in cli.BRIDGE_COMMANDS:
         argv = ["edt_projects"] if command == "call" else []
         args = cli._parse(command, argv + ["--port", "8899", "--no-autostart"])
         assert args.port == 8899

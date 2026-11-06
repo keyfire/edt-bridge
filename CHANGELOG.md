@@ -8,10 +8,38 @@ that day are named in the heading. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
 
-Every entry ends with a link to the pull request it came from -
+Each released entry ends with a link to the pull request it came from –
 `([#12](https://github.com/keyfire/edt-bridge/pull/12))`. That is why changes come in through pull
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
+
+## 2026-11-07 – 0.36.0
+
+### Added
+
+- `edt_projects` and `edt_project_errors` report model and validation progress, workspace jobs,
+  and the time of observed changes.
+  ([#66](https://github.com/keyfire/edt-bridge/pull/66))
+- `GET /status` reports JVM memory, garbage collection and available Linux cgroup v2 metrics.
+  ([#66](https://github.com/keyfire/edt-bridge/pull/66))
+- `edt_platform_build_readiness` tests the selected Designer's ability to run against a temporary
+  file infobase.
+  ([#66](https://github.com/keyfire/edt-bridge/pull/66))
+- `edt-bridge-mcp test-form` checks a command on an EPF's main managed form in a file test
+  infobase and saves a JSON report and PNG screenshot on Linux with Xvfb.
+  ([#66](https://github.com/keyfire/edt-bridge/pull/66))
+
+### Fixed
+
+- Platform command failures identify the executable, operation and exit code.
+  ([#66](https://github.com/keyfire/edt-bridge/pull/66))
+- `edt_form_render` identifies missing display or renderer prerequisites and reports the stage
+  when EDT cannot produce a PNG. Windows headless was verified for TAXI and VERSION8_5;
+  the tested Linux GTK/Xvfb profile still fails in the native SCom renderer.
+  ([#66](https://github.com/keyfire/edt-bridge/pull/66))
+- `edt_add_form_item` accepts `decorationType=Label` or `decorationType=Picture` and creates the
+  decoration through EDT with matching `extInfo`.
+  ([#66](https://github.com/keyfire/edt-bridge/pull/66))
 
 ## 2026-11-06 – 0.35.0
 

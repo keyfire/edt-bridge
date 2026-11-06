@@ -39,6 +39,54 @@ MESSAGES = {
         "en": "show the version and exit",
     },
     # -- the no-command server (server.py) --
+    "test-form.description": {
+        "ru": "В изолированном Linux открыть EPF в явно выбранной файловой тестовой базе и выполнить команду его основной формы.",
+        "en": "Open an EPF in an explicitly selected file test infobase and run a command on its main form in isolated Linux.",
+    },
+    "test-form.platform-bin": {
+        "ru": "каталог платформы с исполняемыми файлами 1cv8 и ibcmd",
+        "en": "platform directory containing the 1cv8 and ibcmd executables",
+    },
+    "test-form.test-infobase": {
+        "ru": "каталог выделенной файловой тестовой базы с файлом 1Cv8.1CD",
+        "en": "dedicated file test infobase directory containing 1Cv8.1CD",
+    },
+    "test-form.scope": {
+        "ru": "область проверки: пустая база (empty), контрольная конфигурация (fixture) или прикладное окружение (application)",
+        "en": "declared test scope: empty infobase, fixture configuration, or application environment",
+    },
+    "test-form.epf": {
+        "ru": "файл проверяемой внешней обработки",
+        "en": "external data processor file to check",
+    },
+    "test-form.form": {
+        "ru": "полное имя основной управляемой формы внешней обработки",
+        "en": "fully qualified name of the external data processor's main managed form",
+    },
+    "test-form.form-title": {
+        "ru": "точный заголовок формы в клиенте",
+        "en": "exact form title in the client",
+    },
+    "test-form.button": {
+        "ru": "точный заголовок кнопки, выполняющей команду",
+        "en": "exact title of the button that invokes the command",
+    },
+    "test-form.expect-message": {
+        "ru": "точное новое сообщение после команды для подтверждения результата",
+        "en": "exact new user message required to confirm the command result",
+    },
+    "test-form.user": {
+        "ru": "имя пользователя тестовой базы, если оно необходимо для входа без пароля",
+        "en": "test infobase user name for a login that does not require a password",
+    },
+    "test-form.output-dir": {
+        "ru": "новый каталог для отчета JSON и снимка PNG",
+        "en": "new directory for the JSON report and PNG screenshot",
+    },
+    "test-form.timeout": {
+        "ru": "предел времени проверки в секундах, по умолчанию 120",
+        "en": "check time limit in seconds, default 120",
+    },
     "server.usage": {
         "ru": "%(prog)s [опции]                   (без команды: запуск MCP-сервера)\n"
               "       %(prog)s <команда> [опции]",
@@ -49,11 +97,11 @@ MESSAGES = {
         "ru": "MCP-сервер stdio для плагина edt-bridge к 1С:EDT: передает запросы в\n"
               "запущенную EDT и запускает headless EDT при отсутствии работающей среды.\n\n"
               "Без команды обвязка использует JSON-RPC через stdin/stdout. Ее запускает\n"
-              "MCP-клиент. Команды ниже адресуют тот же мост из командной строки.",
+              "MCP-клиент. Команды работы с мостом адресуют его из командной строки.",
         "en": "stdio MCP front-end for the edt-bridge 1C:EDT plugin: proxies to a running\n"
               "EDT, or auto-starts a headless one.\n\n"
               "With no command it speaks JSON-RPC over stdin/stdout - that is how an MCP\n"
-              "client launches it. The commands below drive the same bridge from a shell.",
+              "client launches it. The bridge commands drive the same bridge from a shell.",
     },
     "server.epilog": {
         "ru": "команды:\n"
@@ -63,10 +111,11 @@ MESSAGES = {
               "  shutdown            штатно завершить EDT, обслуживающую мост\n"
               "  gui                 остановить headless и открыть клиентскую EDT\n"
               "  plugins             перечислить плагины обвязки и их инструменты\n"
+              "  test-form           проверить команду формы EPF в тестовой базе\n"
               "  self-update         обновить jar плагина и саму обвязку\n"
               "\n"
               "Опции команды: edt-bridge-mcp <команда> --help.\n"
-              "Опции выше относятся и к режиму MCP-сервера, и к каждой команде.",
+              "Опции подключения относятся к серверу MCP и командам работы с мостом.",
         "en": "commands:\n"
               "  call <tool>   call one bridge tool and print what it returned\n"
               "  tools         list the tools the running bridge serves\n"
@@ -74,12 +123,13 @@ MESSAGES = {
               "  shutdown      shut down the EDT behind the bridge\n"
               "  gui           stop the headless EDT and open the GUI one\n"
               "  plugins       list the wrapper's plugins and their tools\n"
+              "  test-form     check an EPF form command in a test infobase\n"
               "  self-update   refresh the plugin jar and this wrapper\n"
               "\n"
               "Run 'edt-bridge-mcp <command> --help' for a command's own options.\n"
-              "The options above apply to the MCP-server mode and to every command.",
+              "Connection options apply to the MCP server mode and the bridge commands.",
     },
-    # -- connection flags, shared by the server and every command (cli.py) --
+    # -- connection flags, shared by the server and the bridge commands (cli.py) --
     "conn.workspace": {
         "ru": "рабочая область EDT для автозапуска headless",
         "en": "EDT workspace path for the headless auto-start",

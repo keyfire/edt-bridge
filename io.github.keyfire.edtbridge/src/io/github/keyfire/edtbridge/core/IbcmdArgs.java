@@ -18,6 +18,9 @@ package io.github.keyfire.edtbridge.core;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.List;
 
 /**
@@ -35,6 +38,9 @@ public final class IbcmdArgs {
 
     /** Placeholder shown instead of a password in anything a caller may see or log. */
     public static final String REDACTED = "***";
+
+    private static final Pattern CREDENTIAL_FLAG = Pattern.compile(
+            "--(?:[a-z]+-)*(?:password|pwd|user)=", Pattern.CASE_INSENSITIVE);
 
     private IbcmdArgs() {
     }
@@ -148,6 +154,20 @@ public final class IbcmdArgs {
             }
         }
         return safe;
+    }
+
+    /** Remove echoed credential options and mask credential values repeated in utility errors. */
+    public static String safeOutput(String output, List<String> args) {
+        List<String> values = args.stream().filter(a -> CREDENTIAL_FLAG.matcher(a).lookingAt())
+                .map(a -> a.substring(a.indexOf('=') + 1)).filter(v -> !v.isEmpty())
+                .distinct().sorted(Comparator.comparingInt(String::length).reversed()).toList();
+        if (values.isEmpty()) {
+            return output;
+        }
+        String safe = output.lines().filter(line -> !CREDENTIAL_FLAG.matcher(line).find())
+                .collect(Collectors.joining("\n"));
+        Pattern secrets = Pattern.compile(values.stream().map(Pattern::quote).collect(Collectors.joining("|")));
+        return secrets.matcher(safe).replaceAll(REDACTED);
     }
 
     private static boolean notBlank(String value) {

@@ -96,6 +96,7 @@ import com._1c.g5.v8.dt.form.layout.model.platform.IPlatformVisualComputer;
 import com._1c.g5.v8.dt.form.layout.service.HippoLayoutService;
 import com._1c.g5.v8.dt.form.layout.service.IHippoLayModelSession;
 import com._1c.g5.v8.dt.form.layout.service.ILayoutRenderService;
+import com._1c.g5.v8.dt.form.layout.service.NativeRenderService;
 import com._1c.g5.v8.dt.form.layout.service.LayoutTransformationService;
 import com._1c.g5.v8.dt.form.layout.service.RenderServiceProvider;
 import com._1c.g5.v8.dt.form.layout.service.TransformatorServiceProvider;
@@ -932,6 +933,28 @@ public final class FormGateway {
         public Integer height;
         public String variant;
         public String theme;
+        public RenderDiagnostics diagnostics;
+    }
+
+    /** Observed state of the visual subsystem for the render attempt. */
+    public static final class RenderDiagnostics {
+        public final String runtime;
+        public final String swtPlatform = SWT.getPlatform();
+        public final boolean x11DisplayConfigured = hasDisplayVariable("DISPLAY");
+        public final boolean waylandDisplayConfigured = hasDisplayVariable("WAYLAND_DISPLAY");
+        public boolean displayInitialized;
+        public Boolean nativeRendererEnabled;
+        public Boolean bufferedRendererEnabled;
+        public String stage = "swt-display";
+
+        RenderDiagnostics(boolean gui) {
+            runtime = gui ? "gui" : "headless";
+        }
+
+        private static boolean hasDisplayVariable(String name) {
+            String value = System.getenv(name);
+            return value != null && !value.isBlank();
+        }
     }
 
     /**
@@ -939,7 +962,7 @@ public final class FormGateway {
      * editor's WYSIWYG preview): build an offscreen SWT scaffold, a desktop theme projection for the
      * chosen interface variant (TAXI / VERSION8_5) + theme, then drive {@code HippoLayoutService
      * .createHippoSession(...)} inside a read transaction and save {@code session.getFormImageData()}.
-     * Must run on the SWT UI thread (the Display thread); the MCP single-thread executor owns it.
+     * Runs on the workbench Display thread in GUI EDT or a dedicated Display thread in headless EDT.
      */
     public RenderResult renderForm(String projectName, String fqn, String variantName, String themeName,
             String densityName, int commonRatio, int width, int height, int scale, String outPath) {
@@ -975,7 +998,9 @@ public final class FormGateway {
         // dedicated single thread (created once, reused). Pick per runtime:
         try {
             Display workbenchDisplay = workbenchDisplayOrNull();
-            if (workbenchDisplay != null && !workbenchDisplay.isDisposed()) {
+            boolean gui = workbenchDisplay != null && !workbenchDisplay.isDisposed();
+            r.diagnostics = new RenderDiagnostics(gui);
+            if (gui) {
                 // GUI EDT: marshal onto the workbench UI thread. syncExec briefly blocks the editor
                 // for the render (~1-2 s) – the same thread EDT's own form preview uses.
                 final Display wd = workbenchDisplay;
@@ -994,6 +1019,11 @@ public final class FormGateway {
         } catch (Exception e) {
             if (r.message == null) {
                 r.message = describeThrowable(e);
+                if (r.diagnostics != null && !r.diagnostics.displayInitialized
+                        && "headless".equals(r.diagnostics.runtime) && "gtk".equals(r.diagnostics.swtPlatform)) {
+                    r.message = "EDT could not initialize a graphical session. Start headless EDT with a working "
+                            + "X server such as Xvfb, or use the form preview in GUI EDT. " + r.message;
+                }
             }
         }
         return r;
@@ -1027,7 +1057,22 @@ public final class FormGateway {
         IThemeProjection projection = null;
         ILayoutRenderService renderService = null;
         LayoutTransformationService transformator = null;
+        RenderDiagnostics diagnostics = r.diagnostics;
+        diagnostics.displayInitialized = true;
         try {
+            diagnostics.stage = "renderer-settings";
+            diagnostics.nativeRendererEnabled = NativeRenderService.isNativeRender();
+            diagnostics.bufferedRendererEnabled = NativeRenderService.isBufferedRender();
+            if (!diagnostics.nativeRendererEnabled) {
+                r.message = "EDT's native form renderer is disabled. Start EDT with -DnativeFormLayoutRender=true.";
+                return;
+            }
+            if (!diagnostics.bufferedRendererEnabled) {
+                r.message = "EDT's buffered form renderer is disabled. "
+                        + "Start EDT with -DnativeFormBufferedLayoutRender=true to capture PNG files.";
+                return;
+            }
+            diagnostics.stage = "swt-window";
             // 1) offscreen SWT scaffold (the native renderer casts only to Composite / ScrolledComposite)
             shell = new Shell(d, SWT.NO_TRIM);
             shell.setSize(w, h);
@@ -1046,6 +1091,7 @@ public final class FormGateway {
 
             // 2) theme projection for the chosen variant (HippoThemeTaxi lives in a non-exported
             //    package → reflection). Compatibility mode comes from the configuration.
+            diagnostics.stage = "theme";
             CompatibilityMode compat = readCompatibilityMode(model);
             scratch = new Image(d, 1, 1);
             gc = new GC(scratch);
@@ -1057,6 +1103,7 @@ public final class FormGateway {
             // 3) services + wire the offscreen windows. EDT's own composite doubles as the image
             //    supplier + mouse listener, so a null supplier/listener trips SWT's null check –
             //    pass a real backing image and a no-op listener.
+            diagnostics.stage = "renderer-services";
             renderService = new RenderServiceProvider().get(version);
             transformator = new TransformatorServiceProvider().get();
             winImg = new Image(d, w, h);
@@ -1072,6 +1119,7 @@ public final class FormGateway {
             // 4) drive the render in a read-WRITE transaction that is ROLLED BACK: the layout/render
             //    pipeline mutates the form model (e.g. setVerticalScroll), so a read-only transaction
             //    fails; executeAndRollback is what EDT's own WYSIWYG uses – changes never persist.
+            diagnostics.stage = "hippo-session";
             model.executeAndRollback(new AbstractBmTask<Object>("edt-bridge.renderForm") {
                 @Override
                 public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
@@ -1108,9 +1156,15 @@ public final class FormGateway {
                 return;
             }
             if (out[0] == null) {
-                r.message = "render produced no image (getFormImageData == null)";
+                r.message = "EDT's native form renderer returned no image. See .metadata/.log in the EDT workspace "
+                        + "for form layout or visualizer startup errors and verify the graphical session. "
+                        + "Look for native worker crash reports (hs_err_pid*.log) in the EDT working directory. "
+                        + "Use the form preview in a working GUI EDT session. For an external data "
+                        + "processor, build its EPF and run edt-bridge-mcp test-form against an explicitly "
+                        + "selected test infobase to verify a form command.";
                 return;
             }
+            diagnostics.stage = "png-output";
             // The native render is fixed at 100% (device zoom crashes the native renderer headless),
             // so scale > 100 raster-upscales the finished PNG to match a Hi-DPI screen.
             ImageData img = out[0];
@@ -1126,6 +1180,7 @@ public final class FormGateway {
             r.height = img.height;
             r.variant = variant.getName();
             r.theme = theme.getName();
+            diagnostics.stage = "complete";
         } catch (Throwable t) {
             r.message = describeThrowable(t);
         } finally {
@@ -1168,6 +1223,11 @@ public final class FormGateway {
     private CommandInterfaceMapping buildCmi(Form form, IBmModel model, IBmModelManager mm) {
         MappingController controller = new MappingController();
         FormCommandInterfaceMapping mapping = new FormCommandInterfaceMapping(form, model, mm);
+        var injector = FormWriteGateway.formInjector();
+        if (injector == null) {
+            throw new IllegalStateException("EDT form mapping injector unavailable");
+        }
+        injector.injectMembers(mapping);
         controller.register(mapping);
         return controller.getMappingRoot(CommandInterfaceMapping.class);
     }

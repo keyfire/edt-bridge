@@ -41,4 +41,7 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 
 [tool.setuptools.package-data]
-edt_bridge_mcp = ["tool_catalog.json"]
+edt_bridge_mcp = [
+    "tool_catalog.json",
+    "native_form_manager.bsl",
+]

@@ -80,6 +80,8 @@ import io.github.keyfire.edtbridge.tools.InfobasesTool;
 import io.github.keyfire.edtbridge.tools.PlatformHelpTool;
 import io.github.keyfire.edtbridge.tools.PlatformInstallationsTool;
 import io.github.keyfire.edtbridge.tools.RegisterPlatformTool;
+import io.github.keyfire.edtbridge.tools.PlatformBuildReadinessTool;
+import io.github.keyfire.edtbridge.core.RuntimeResources;
 import io.github.keyfire.edtbridge.tools.CreateInfobaseTool;
 import io.github.keyfire.edtbridge.tools.BuildExtensionTool;
 import io.github.keyfire.edtbridge.tools.ExtensionPropertiesTool;
@@ -278,7 +280,7 @@ function renderStatus(){var g=document.getElementById('status');g.textContent=''
 function loadStatus(){fetch('/status').then(function(r){return r.json();}).then(function(s){STATUS=s;renderStatus();if(s.tokenRequired){var bar=document.getElementById('tokbar');bar.className='panel';bar.textContent='';bar.appendChild(el('span',null,t('needtok')));var inp=el('input','tok');inp.oninput=function(){TOKEN=inp.value.trim();clearTimeout(TOKTIMER);TOKTIMER=setTimeout(loadTools,400);};bar.appendChild(inp);}}).catch(function(e){STATUS=null;document.getElementById('status').textContent='status error: '+e;});}
 function template(td){var req=(td.inputSchema&&td.inputSchema.required)||[];var o={};req.forEach(function(k){o[k]='';});return JSON.stringify(o,null,2);}
 // Keep in sync with the token-gated write tools - anything missing here is shown as a read tool.
-var WRITE_TOOLS=['edt_add_attribute','edt_add_form','edt_add_form_attribute','edt_add_form_command','edt_add_form_item','edt_add_method','edt_add_route','edt_build_extension','edt_infobase_dump','edt_clean_project','edt_create_extension','edt_create_external_object','edt_create_infobase','edt_create_object','edt_delete_method','edt_delete_object','edt_delete_project','edt_designer_agent','edt_dump_external_object','edt_modify_attribute','edt_modify_form_attribute','edt_modify_form_command','edt_modify_form_item','edt_register_platform','edt_remove_attribute','edt_remove_form_attribute','edt_remove_form_command','edt_remove_form_item','edt_rename','edt_update_infobase'];
+var WRITE_TOOLS=['edt_add_attribute','edt_add_form','edt_add_form_attribute','edt_add_form_command','edt_add_form_item','edt_add_method','edt_add_route','edt_build_extension','edt_infobase_dump','edt_clean_project','edt_create_extension','edt_create_external_object','edt_create_infobase','edt_create_object','edt_delete_method','edt_delete_object','edt_delete_project','edt_designer_agent','edt_dump_external_object','edt_modify_attribute','edt_modify_form_attribute','edt_modify_form_command','edt_modify_form_item','edt_register_platform','edt_platform_build_readiness','edt_remove_attribute','edt_remove_form_attribute','edt_remove_form_command','edt_remove_form_item','edt_rename','edt_update_infobase'];
 function groupOf(n,tl){if(n.indexOf('edt_debug_')===0||n==='edt_evaluate'){return 'debug';}if(WRITE_TOOLS.indexOf(n)>=0){return 'write';}
 // Fallback so a write tool nobody remembered to list still lands in the right group: every write
 // tool is dry-run by default, so it takes an "apply". Only edt_register_platform does not, hence the list.
@@ -361,6 +363,7 @@ applyI18n();loadStatus();loadTools();
     private final UpdateInfobaseTool updateInfobase = new UpdateInfobaseTool();
     private final PlatformInstallationsTool platformInstallations = new PlatformInstallationsTool();
     private final RegisterPlatformTool registerPlatform = new RegisterPlatformTool();
+    private final PlatformBuildReadinessTool platformBuildReadiness = new PlatformBuildReadinessTool();
     private final CreateInfobaseTool createInfobase = new CreateInfobaseTool();
     private final RegisterInfobaseTool registerInfobase = new RegisterInfobaseTool();
     private final BuildExtensionTool buildExtension = new BuildExtensionTool();
@@ -665,6 +668,15 @@ applyI18n();loadStatus();loadTools();
         o.addProperty("port", port);
         o.addProperty("tokenRequired", token() != null);
         o.addProperty("serverTime", java.time.OffsetDateTime.now().toString());
+        try {
+            o.add("resources", gson.toJsonTree(RuntimeResources.snapshot()));
+        } catch (RuntimeException | LinkageError unavailable) {
+            JsonObject resources = new JsonObject();
+            resources.addProperty("available", false);
+            resources.addProperty("unavailableReason", unavailable.getClass().getSimpleName());
+            o.add("resources", resources);
+        }
+        o.add("backgroundJobs", gson.toJsonTree(gateway.backgroundJobs()));
         JsonArray projects = new JsonArray();
         try {
             for (String n : gateway.listOpenProjects()) {
@@ -786,6 +798,7 @@ applyI18n();loadStatus();loadTools();
         tools.add(updateInfobase.descriptor());
         tools.add(platformInstallations.descriptor());
         tools.add(registerPlatform.descriptor());
+        tools.add(platformBuildReadiness.descriptor());
         tools.add(createInfobase.descriptor());
         tools.add(registerInfobase.descriptor());
         tools.add(buildExtension.descriptor());
@@ -1020,6 +1033,10 @@ applyI18n();loadStatus();loadTools();
         }
         if (platformInstallations.name().equals(name)) {
             return platformInstallations.call(args);
+        }
+        if (platformBuildReadiness.name().equals(name)) {
+            JsonObject denied = writeTokenGate(platformBuildReadiness.isWrite(), name);
+            return denied != null ? denied : platformBuildReadiness.call(args);
         }
         if (registerPlatform.name().equals(name)) {
             JsonObject denied = writeTokenGate(registerPlatform.isWrite(), name);

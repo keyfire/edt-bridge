@@ -45,11 +45,15 @@ public final class ProjectsTool {
         t.addProperty("description",
                 "READ: list the workspace projects – name, disk location, natures, open state, and whether "
                 + "each is a 1C:EDT project. Use it to discover what is addressable (e.g. which project name "
-                + "maps to which folder) before calling the other tools.");
+                + "maps to which folder) before calling the other tools. Readiness diagnostics separate model locks, "
+                + "derived-data stages and workspace jobs, with observation times and explicit unavailable values. "
+                + "This read does not start validation.");
         t.addProperty("descriptionRu",
                 "ЧТЕНИЕ: список проектов рабочей области – имя, путь на диске, natures, открыт ли, и является "
                 + "ли проектом 1C:EDT. Помогает понять, что вообще можно адресовать (какое имя проекта какой "
-                + "папке соответствует), до вызова остальных инструментов.");
+                + "папке соответствует), до вызова остальных инструментов. Диагностика различает блокировку модели, "
+                + "стадии вычисляемых данных и фоновые работы. Указаны время наблюдения и причины недоступности "
+                + "показателей. Чтение не запускает проверку.");
         t.add("inputSchema", schema);
         return t;
     }
@@ -69,6 +73,7 @@ public final class ProjectsTool {
                 o.addProperty("modelPresent", pi.modelPresent);
                 o.addProperty("modelReady", pi.modelReady);
                 o.addProperty("derivedDataPending", pi.derivedDataPending);
+                if (pi.diagnostics != null) o.add("diagnostics", new GsonBuilder().create().toJsonTree(pi.diagnostics));
                 if (pi.modelHint != null) {
                     o.addProperty("modelHint", pi.modelHint);
                 }
@@ -82,6 +87,7 @@ public final class ProjectsTool {
             JsonObject payload = new JsonObject();
             payload.addProperty("count", arr.size());
             payload.add("projects", arr);
+            payload.add("backgroundJobs", new GsonBuilder().create().toJsonTree(gateway.backgroundJobs()));
             return McpServer.textResult(new GsonBuilder().setPrettyPrinting().create().toJson(payload));
         } catch (Exception e) {
             return McpServer.toolError("edt_projects failed: " + e.getMessage());
