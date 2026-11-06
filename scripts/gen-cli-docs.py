@@ -21,6 +21,7 @@ import os
 import re
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -222,12 +223,30 @@ def stubs(entries: list) -> set[int]:
     return skip
 
 
+def stable_usage(usage: str) -> str:
+    """Reflow usage independently of argparse's Python-version-specific wrapping."""
+    result = []
+    # The top-level parser has two separate invocation forms. Keep that boundary;
+    # the more deeply indented continuation lines are only presentation wrapping.
+    for invocation in re.split(r"\n(?= {0,8}edt-bridge-mcp )", usage):
+        first = invocation.split("\n", 1)[0]
+        indent = first[:len(first) - len(first.lstrip())]
+        prefix = re.match(r"(?:usage: )?edt-bridge-mcp(?: [a-z][a-z-]*)?", first.lstrip())
+        continuation = len(prefix.group()) + 1 if prefix else 7
+        result.append(textwrap.fill(
+            " ".join(line.strip() for line in invocation.splitlines()), width=88,
+            initial_indent=indent, subsequent_indent=indent + " " * continuation,
+            break_long_words=False, break_on_hyphens=False,
+        ))
+    return "\n".join(result)
+
+
 def render(help_text: str, t: dict) -> str:
     p = parse(help_text)
     out = io.StringIO()
     if p["description"]:
         out.write(esc_text(p["description"], without_yo=t.get("without_yo", False)) + "\n\n")
-    out.write("```bash\n" + p["usage"] + "\n```\n\n")
+    out.write("```bash\n" + stable_usage(p["usage"]) + "\n```\n\n")
     for title, entries in p["sections"]:
         if not entries:
             continue

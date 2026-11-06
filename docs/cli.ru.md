@@ -57,8 +57,7 @@ usage: edt-bridge-mcp [опции]                   (без команды: з�
 ```bash
 usage: edt-bridge-mcp call [-h] [--json JSON | --json-file PATH | --stdin] [--raw]
                            [--workspace WORKSPACE] [--edt-dir EDT_DIR] [--port PORT]
-                           [--start-timeout START_TIMEOUT] [--no-autostart]
-                           [--version]
+                           [--start-timeout START_TIMEOUT] [--no-autostart] [--version]
                            tool
 ```
 
@@ -115,9 +114,8 @@ usage: edt-bridge-mcp tools [-h] [--raw] [--workspace WORKSPACE] [--edt-dir EDT_
 
 ```bash
 usage: edt-bridge-mcp status [-h] [--all] [--ports PORTS] [--workspace WORKSPACE]
-                             [--edt-dir EDT_DIR] [--port PORT]
-                             [--start-timeout START_TIMEOUT] [--no-autostart]
-                             [--version]
+                             [--edt-dir EDT_DIR] [--port PORT] [--start-timeout
+                             START_TIMEOUT] [--no-autostart] [--version]
 ```
 
 **Параметры**
@@ -140,9 +138,8 @@ usage: edt-bridge-mcp status [-h] [--all] [--ports PORTS] [--workspace WORKSPACE
 
 ```bash
 usage: edt-bridge-mcp shutdown [-h] [--force] [--no-wait] [--workspace WORKSPACE]
-                               [--edt-dir EDT_DIR] [--port PORT]
-                               [--start-timeout START_TIMEOUT] [--no-autostart]
-                               [--version]
+                               [--edt-dir EDT_DIR] [--port PORT] [--start-timeout
+                               START_TIMEOUT] [--no-autostart] [--version]
 ```
 
 **Параметры**
@@ -165,8 +162,8 @@ usage: edt-bridge-mcp shutdown [-h] [--force] [--no-wait] [--workspace WORKSPACE
 
 ```bash
 usage: edt-bridge-mcp gui [-h] [--force] [--timeout TIMEOUT] [--workspace WORKSPACE]
-                          [--edt-dir EDT_DIR] [--port PORT]
-                          [--start-timeout START_TIMEOUT] [--no-autostart] [--version]
+                          [--edt-dir EDT_DIR] [--port PORT] [--start-timeout
+                          START_TIMEOUT] [--no-autostart] [--version]
 ```
 
 **Параметры**
@@ -188,9 +185,9 @@ usage: edt-bridge-mcp gui [-h] [--force] [--timeout TIMEOUT] [--workspace WORKSP
 Перечислить плагины обвязки: пакеты, точки расширения и добавленные ими инструменты. Плагины установлены в окружении обвязки (pipx inject), мост для этой команды не нужен.
 
 ```bash
-usage: edt-bridge-mcp plugins [-h] [--workspace WORKSPACE] [--edt-dir EDT_DIR]
-                              [--port PORT] [--start-timeout START_TIMEOUT]
-                              [--no-autostart] [--version]
+usage: edt-bridge-mcp plugins [-h] [--workspace WORKSPACE] [--edt-dir EDT_DIR] [--port
+                              PORT] [--start-timeout START_TIMEOUT] [--no-autostart]
+                              [--version]
 ```
 
 **Параметры**
@@ -210,13 +207,11 @@ usage: edt-bridge-mcp plugins [-h] [--workspace WORKSPACE] [--edt-dir EDT_DIR]
 В изолированном Linux открыть EPF в явно выбранной файловой тестовой базе и выполнить команду его основной формы.
 
 ```bash
-usage: edt-bridge-mcp test-form [-h] --platform-bin PLATFORM_BIN
-                                --test-infobase TEST_INFOBASE
-                                --scope {empty,fixture,application} --epf EPF
-                                --form FORM --form-title FORM_TITLE --button BUTTON
+usage: edt-bridge-mcp test-form [-h] --platform-bin PLATFORM_BIN --test-infobase
+                                TEST_INFOBASE --scope {empty,fixture,application} --epf
+                                EPF --form FORM --form-title FORM_TITLE --button BUTTON
                                 [--expect-message EXPECT_MESSAGE] [--user USER]
-                                --output-dir OUTPUT_DIR [--timeout TIMEOUT]
-                                [--version]
+                                --output-dir OUTPUT_DIR [--timeout TIMEOUT] [--version]
 ```
 
 **Параметры**
@@ -249,10 +244,9 @@ usage: edt-bridge-mcp test-form [-h] --platform-bin PLATFORM_BIN
 
 ```bash
 usage: edt-bridge-mcp self-update [-h] [--jar-only | --pip-only | --plugins-only]
-                                  [--from PATH | --version X.Y.Z]
-                                  [--workspace WORKSPACE] [--edt-dir EDT_DIR]
-                                  [--port PORT] [--start-timeout START_TIMEOUT]
-                                  [--no-autostart]
+                                  [--from PATH | --version X.Y.Z] [--workspace
+                                  WORKSPACE] [--edt-dir EDT_DIR] [--port PORT]
+                                  [--start-timeout START_TIMEOUT] [--no-autostart]
 ```
 
 **Параметры**

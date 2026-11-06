@@ -57,8 +57,7 @@ Call one bridge tool and print its result.
 ```bash
 usage: edt-bridge-mcp call [-h] [--json JSON | --json-file PATH | --stdin] [--raw]
                            [--workspace WORKSPACE] [--edt-dir EDT_DIR] [--port PORT]
-                           [--start-timeout START_TIMEOUT] [--no-autostart]
-                           [--version]
+                           [--start-timeout START_TIMEOUT] [--no-autostart] [--version]
                            tool
 ```
 
@@ -115,9 +114,8 @@ Report the running bridge and the version of the JAR in dropins. Version mismatc
 
 ```bash
 usage: edt-bridge-mcp status [-h] [--all] [--ports PORTS] [--workspace WORKSPACE]
-                             [--edt-dir EDT_DIR] [--port PORT]
-                             [--start-timeout START_TIMEOUT] [--no-autostart]
-                             [--version]
+                             [--edt-dir EDT_DIR] [--port PORT] [--start-timeout
+                             START_TIMEOUT] [--no-autostart] [--version]
 ```
 
 **Options**
@@ -140,9 +138,8 @@ Shut down the EDT behind the bridge - instead of killing its processes. A headle
 
 ```bash
 usage: edt-bridge-mcp shutdown [-h] [--force] [--no-wait] [--workspace WORKSPACE]
-                               [--edt-dir EDT_DIR] [--port PORT]
-                               [--start-timeout START_TIMEOUT] [--no-autostart]
-                               [--version]
+                               [--edt-dir EDT_DIR] [--port PORT] [--start-timeout
+                               START_TIMEOUT] [--no-autostart] [--version]
 ```
 
 **Options**
@@ -165,8 +162,8 @@ Hand the workspace over to the GUI EDT: stop the headless one, wait until its pr
 
 ```bash
 usage: edt-bridge-mcp gui [-h] [--force] [--timeout TIMEOUT] [--workspace WORKSPACE]
-                          [--edt-dir EDT_DIR] [--port PORT]
-                          [--start-timeout START_TIMEOUT] [--no-autostart] [--version]
+                          [--edt-dir EDT_DIR] [--port PORT] [--start-timeout
+                          START_TIMEOUT] [--no-autostart] [--version]
 ```
 
 **Options**
@@ -188,9 +185,9 @@ usage: edt-bridge-mcp gui [-h] [--force] [--timeout TIMEOUT] [--workspace WORKSP
 List the wrapper's plugins: packages, entry points and the tools they add. Plugins are installed in the wrapper's environment (pipx inject); no bridge is needed for this command.
 
 ```bash
-usage: edt-bridge-mcp plugins [-h] [--workspace WORKSPACE] [--edt-dir EDT_DIR]
-                              [--port PORT] [--start-timeout START_TIMEOUT]
-                              [--no-autostart] [--version]
+usage: edt-bridge-mcp plugins [-h] [--workspace WORKSPACE] [--edt-dir EDT_DIR] [--port
+                              PORT] [--start-timeout START_TIMEOUT] [--no-autostart]
+                              [--version]
 ```
 
 **Options**
@@ -210,13 +207,11 @@ usage: edt-bridge-mcp plugins [-h] [--workspace WORKSPACE] [--edt-dir EDT_DIR]
 Open an EPF in an explicitly selected file test infobase and run a command on its main form in isolated Linux.
 
 ```bash
-usage: edt-bridge-mcp test-form [-h] --platform-bin PLATFORM_BIN
-                                --test-infobase TEST_INFOBASE
-                                --scope {empty,fixture,application} --epf EPF
-                                --form FORM --form-title FORM_TITLE --button BUTTON
+usage: edt-bridge-mcp test-form [-h] --platform-bin PLATFORM_BIN --test-infobase
+                                TEST_INFOBASE --scope {empty,fixture,application} --epf
+                                EPF --form FORM --form-title FORM_TITLE --button BUTTON
                                 [--expect-message EXPECT_MESSAGE] [--user USER]
-                                --output-dir OUTPUT_DIR [--timeout TIMEOUT]
-                                [--version]
+                                --output-dir OUTPUT_DIR [--timeout TIMEOUT] [--version]
 ```
 
 **Options**
@@ -249,10 +244,9 @@ Update the plugin jar in EDT's dropins, the wrapper and its plugins.
 
 ```bash
 usage: edt-bridge-mcp self-update [-h] [--jar-only | --pip-only | --plugins-only]
-                                  [--from PATH | --version X.Y.Z]
-                                  [--workspace WORKSPACE] [--edt-dir EDT_DIR]
-                                  [--port PORT] [--start-timeout START_TIMEOUT]
-                                  [--no-autostart]
+                                  [--from PATH | --version X.Y.Z] [--workspace
+                                  WORKSPACE] [--edt-dir EDT_DIR] [--port PORT]
+                                  [--start-timeout START_TIMEOUT] [--no-autostart]
 ```
 
 **Options**
