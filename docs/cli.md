@@ -110,7 +110,7 @@ usage: edt-bridge-mcp tools [-h] [--raw] [--workspace WORKSPACE] [--edt-dir EDT_
 
 ## `edt-bridge-mcp status`
 
-Report the running bridge (does not start one) and the version of the jar in dropins - the code EDT will load next time it starts. When the plugin in EDT and this wrapper are on different versions, it says so on stderr.
+Report the running bridge and the version of the JAR in dropins. Version mismatches between the wrapper and the plugin are reported on stderr. With `--all`, check each bridge found.
 
 ```bash
 usage: edt-bridge-mcp status [-h] [--all] [--ports PORTS] [--workspace WORKSPACE]
@@ -206,26 +206,36 @@ usage: edt-bridge-mcp plugins [-h] [--workspace WORKSPACE] [--edt-dir EDT_DIR]
 
 ## `edt-bridge-mcp self-update`
 
-Refresh the plugin jar in EDT's dropins, this wrapper in its own environment, and the wrapper plugins.
+Update the plugin jar in EDT's dropins, the wrapper and its plugins.
 
 ```bash
-usage: edt-bridge-mcp self-update [options]
+usage: edt-bridge-mcp self-update [-h] [--jar-only | --pip-only | --plugins-only]
+                                  [--from PATH | --version X.Y.Z]
+                                  [--workspace WORKSPACE] [--edt-dir EDT_DIR]
+                                  [--port PORT] [--start-timeout START_TIMEOUT]
+                                  [--no-autostart]
 ```
 
 **Options**
 
 | Option | Description |
 |---|---|
-| `--jar-only` | only the plugin jar (GitHub Releases) |
-| `--pip-only` | only the wrapper (PyPI, or `--from`) |
-| `--plugins-only` | only the wrapper plugins |
-| `--from <path>` | install the wrapper from a checkout instead of PyPI |
-| `-h, --help` | show this message |
-| `0` | every step asked for succeeded |
-| `1` | the bridge itself did not update (jar or wrapper), or nothing did |
-| `2` | the bridge is current and only a wrapper plugin is not |
+| `-h, --help` | show this help message and exit |
+| `--jar-only` | update only the plugin jar |
+| `--pip-only` | update only the wrapper |
+| `--plugins-only` | update only the wrapper plugins |
+| `--from PATH` | install the wrapper from a checkout |
+| `--version X.Y.Z` | install this release of the jar and wrapper, or just the selected component |
+| `--workspace WORKSPACE` | EDT workspace path for the headless auto-start |
+| `--edt-dir EDT_DIR` | EDT install dir (the folder with 1cedtcli and dropins); auto-detected when omitted |
+| `--port PORT` | bridge port (default 8770) |
+| `--start-timeout START_TIMEOUT` | seconds to wait for a starting backend |
+| `--no-autostart` | never launch a headless EDT |
 
-The jar applies on EDT's next restart. The wrapper is replaced inside site-packages; the exes in Scripts are left alone, so restart any running edt-bridge-mcp afterwards. Plugins are updated through pip from the source they were installed from (a git repository or a package index; set EDT_BRIDGE_PLUGIN_INDEX to name the index).
+With `--version`, the command gets the jar from the vX.Y.Z tag on GitHub and the wrapper from PyPI. Both `--version` and `--from` require a mode other than `--plugins-only`. The `--from` option also requires a mode other than `--jar-only`.
 
-exit codes:
+Restart EDT to load the updated jar and restart the MCP client to load the wrapper.
 
+Wrapper plugins are updated through pip from their installation sources. Use EDT_BRIDGE_PLUGIN_INDEX to set the package index URL.
+
+Exit code 0 means all selected steps succeeded. Code 1 means the jar or wrapper update failed, or none of the selected steps succeeded. Code 2 means the arguments are invalid or only the wrapper plugin step failed.

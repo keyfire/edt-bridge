@@ -5,6 +5,11 @@ jar silently keeps serving old code next to a freshly delivered one, which cost 
 before `purge_stale_jars` existed. The editable guard matters just as much: unpacking a wheel over a
 checkout would wreck the repository.
 """
+from hashlib import sha256
+from io import BytesIO
+from zipfile import ZipFile
+
+
 import os
 
 import pytest
@@ -203,11 +208,40 @@ def test_release_ranking_is_numeric_not_lexicographic():
     assert update._version_of("edt_bridge_mcp-0.11.1.tar.gz") == "0.11.1"
 
 
-def test_a_version_the_index_does_not_carry_is_named_as_such(monkeypatch):
-    """A readable index is the answer: no second guess at the lagging JSON."""
+def test_a_yanked_wheel_in_simple_takes_precedence_over_stale_version_json(monkeypatch):
+    filename = "edt_bridge_mcp-0.11.2-py3-none-any.whl"
+    _serve(monkeypatch, _simple_payload(filename, yanked=(filename,)))
+
+    def fetch_json(url):
+        return {
+            "info": {"version": "0.11.2"},
+            "urls": [{"filename": filename, "url": "https://example.invalid/wheel", "yanked": False}],
+        }
+
+    monkeypatch.setattr(update, "_fetch_json", fetch_json)
+    with pytest.raises(update._UpdateError, match="yanked"):
+        update._wheel_url("0.11.2")
+
+
+@pytest.mark.parametrize("yanked", [False, True])
+def test_requested_version_falls_back_to_version_json_if_missing_from_simple(monkeypatch, yanked):
     _serve(monkeypatch, _simple_payload("edt_bridge_mcp-0.11.1-py3-none-any.whl"))
-    with pytest.raises(update._UpdateError, match="no such version"):
-        update._wheel_url("9.9.9")
+    wheel_url = "https://example.invalid/edt_bridge_mcp-0.11.2-py3-none-any.whl"
+
+    def fetch_json(url):
+        assert url == "https://pypi.org/pypi/edt-bridge-mcp/0.11.2/json"
+        return {
+            "info": {"version": "0.11.2"},
+            "urls": [{"filename": "edt_bridge_mcp-0.11.2-py3-none-any.whl",
+                      "url": wheel_url, "yanked": yanked}],
+        }
+
+    monkeypatch.setattr(update, "_fetch_json", fetch_json)
+    if yanked:
+        with pytest.raises(update._UpdateError, match="no wheel"):
+            update._wheel_url("0.11.2")
+    else:
+        assert update._wheel_url("0.11.2") == (wheel_url, "0.11.2")
 
 
 # -- установка из рабочей копии -------------------------------------------------
@@ -433,6 +467,137 @@ def test_everything_succeeding_is_zero_and_says_so():
     assert update.verdict([], emit=lambda _msg: None) == 0
 
 
+@pytest.mark.parametrize("args", [
+    ["--unknown"],
+    ["--ver", "0.6.0"],
+    ["--version"],
+    ["--version", "invalid"],
+    ["--from"],
+    ["--jar-only", "--pip-only"],
+    ["--from", "checkout", "--jar-only"],
+    ["--from", "checkout", "--version", "0.6.0"],
+    ["--plugins-only", "--version", "0.6.0"],
+])
+def test_self_update_rejects_invalid_args_before_any_update(args, monkeypatch, capsys):
+    monkeypatch.setattr(server, "force_utf8_streams", lambda: None)
+    monkeypatch.setattr(server.sys, "argv", ["edt-bridge-mcp", "self-update", *args])
+    steps = []
+
+    def record_step(*args, **kwargs):
+        steps.append((args, kwargs))
+        return True
+
+    for name in ("update_jar", "update_wrapper", "update_plugins"):
+        monkeypatch.setattr(update, name, record_step)
+
+    with pytest.raises(SystemExit) as exc:
+        server.main()
+
+    assert exc.value.code == 2
+    assert "self-update" in capsys.readouterr().err
+    assert steps == []
+
+
+@pytest.mark.parametrize("mode", [[], ["--jar-only"], ["--pip-only"]])
+def test_self_update_selects_the_requested_release(mode, monkeypatch, tmp_path):
+    dropins = tmp_path / "edt" / "dropins"
+    dropins.mkdir(parents=True)
+    jar = "io.github.keyfire.edtbridge_0.6.0.202607211008.jar"
+    newer = "io.github.keyfire.edtbridge_0.7.0.202608010800.jar"
+    _dropins(dropins, [newer])
+    if mode == ["--jar-only"]:
+        _dropins(dropins, [jar])
+    site = _plugins_site(tmp_path)
+    wheel_url = "https://pypi/edt_bridge_mcp-0.6.0-py3-none-any.whl"
+    jar_bytes = b"release jar"
+    wheel = BytesIO()
+    with ZipFile(wheel, "w") as archive:
+        archive.writestr("edt_bridge_mcp/__init__.py", '__version__ = "0.6.0"\n')
+    urls = []
+
+    def urlopen(target, timeout):
+        url = getattr(target, "full_url", target)
+        urls.append(url)
+        if url == "https://api.github.com/repos/keyfire/edt-bridge/releases/tags/v0.6.0":
+            return _FakeResp(_json.dumps({
+                "tag_name": "v0.6.0",
+                "assets": [
+                    {"name": jar, "browser_download_url": "https://example.invalid/jar"},
+                    {"name": "SHA256SUMS.txt",
+                     "browser_download_url": "https://example.invalid/sums"},
+                ],
+            }).encode("utf-8"))
+        if url == update.PYPI_SIMPLE:
+            return _FakeResp(_simple_payload(
+                "edt_bridge_mcp-0.6.0-py3-none-any.whl",
+                "edt_bridge_mcp-0.7.0-py3-none-any.whl",
+            ))
+        if url == "https://example.invalid/jar":
+            return BytesIO(jar_bytes)
+        if url == "https://example.invalid/sums":
+            checksum = sha256(jar_bytes).hexdigest()
+            return BytesIO(f"{checksum}  dist/{jar}\n".encode("utf-8"))
+        assert url == wheel_url
+        return _FakeResp(wheel.getvalue())
+
+    monkeypatch.setattr(update.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(update, "_site_packages", lambda: site)
+    monkeypatch.setattr(update, "_plugin_distributions", list)
+    monkeypatch.setattr(update, "running_bridge_version", lambda: None)
+    monkeypatch.setattr(server, "force_utf8_streams", lambda: None)
+    monkeypatch.delenv("EDT_BRIDGE_EDT_DIR", raising=False)
+    monkeypatch.delenv("EDT_BRIDGE_AUTOSTART", raising=False)
+    monkeypatch.setattr(server.sys, "argv", [
+        "edt-bridge-mcp", "--no-autostart", "self-update", *mode,
+        "--version", "0.6.0", "--edt-dir", str(dropins.parent),
+    ])
+
+    assert server.main() == 0
+
+    if mode == ["--pip-only"]:
+        assert (dropins / newer).exists()
+    else:
+        assert [p.name for p in dropins.glob("*.jar")] == [jar]
+        assert urls[0].endswith("/tags/v0.6.0")
+        assert (dropins / jar).read_bytes() == jar_bytes
+    installed = site / "edt_bridge_mcp" / "__init__.py"
+    if mode == ["--jar-only"]:
+        assert not installed.exists()
+    else:
+        assert installed.read_text(encoding="utf-8") == '__version__ = "0.6.0"\n'
+        assert urls[-1] == wheel_url
+
+
+@pytest.mark.parametrize("replacement", [None, b"invalid download"])
+def test_a_failed_exact_jar_replacement_keeps_the_working_sibling(tmp_path, monkeypatch, replacement):
+    target, working = _JARS[0], _JARS[-1]
+    dropins = tmp_path / "dropins"
+    dropins.mkdir()
+    (dropins / target).write_bytes(b"")
+    (dropins / working).write_bytes(b"working jar")
+    monkeypatch.setattr(update, "_fetch_json", lambda _url: {
+        "tag_name": "v0.5.0",
+        "assets": [
+            {"name": target, "browser_download_url": "https://example.invalid/jar"},
+            {"name": "SHA256SUMS.txt", "browser_download_url": "https://example.invalid/sums"},
+        ],
+    })
+
+    def download(url, destination):
+        if url.endswith("/sums"):
+            destination.write_text(f"{'0' * 64}  {target}\n", encoding="utf-8", newline="")
+        elif replacement is None:
+            raise OSError("download unavailable")
+        else:
+            destination.write_bytes(replacement)
+
+    monkeypatch.setattr(update, "_download", download)
+
+    assert update.install_latest_jar(dropins, version="0.5.0") is False
+    assert (dropins / working).read_bytes() == b"working jar"
+    assert (dropins / target).read_bytes() == b""
+
+
 # -- where EDT is installed on Windows -------------------------------------------------
 
 
@@ -518,7 +683,7 @@ def test_a_denied_write_into_dropins_names_the_cure(monkeypatch, tmp_path):
 
     assert update.install_latest_jar(tmp_path, emit=lines.append) is False
     assert "cannot place the jar into dropins" in lines[-1]
-    assert "as administrator" in lines[-1]
+    assert ("as administrator" in lines[-1]) == (os.name == "nt")
 
 
 def test_a_denied_mkdir_of_dropins_is_reported_not_raised(monkeypatch, tmp_path):
@@ -531,7 +696,7 @@ def test_a_denied_mkdir_of_dropins_is_reported_not_raised(monkeypatch, tmp_path)
     lines = []
 
     assert update.install_latest_jar(tmp_path / "dropins", emit=lines.append) is False
-    assert "as administrator" in lines[-1]
+    assert ("as administrator" in lines[-1]) == (os.name == "nt")
 
 
 def test_other_placement_failures_do_not_blame_the_rights():
@@ -586,3 +751,66 @@ def test_the_gap_is_said_once_and_only_on_stderr(monkeypatch, capsys):
     captured = capsys.readouterr()
     assert captured.err.count("0.11.2") == 1
     assert captured.out == ""
+
+
+def test_windows_installs_orders_build_numbers_without_architecture(monkeypatch, tmp_path):
+    _, components = _windows_roots(monkeypatch, tmp_path)
+    bare = _edt(components / "1c-edt-2026.1.2-x86_64")
+    old_build = _edt(components / "1c-edt-2026.1.2+9-x86_64")
+    new_build = _edt(components / "1c-edt-2026.1.2+10-x86_64")
+
+    assert update.windows_installs() == [new_build, old_build, bare]
+
+
+def test_windows_installs_order_versions_in_launcher_directory_names(monkeypatch, tmp_path):
+    installations, _ = _windows_roots(monkeypatch, tmp_path)
+    older = _edt(installations / "1C_EDT (Lite) 2026.1.9" / "1cedt")
+    newer = _edt(installations / "1C_EDT (Lite) 2026.1.10" / "1cedt")
+
+    assert update.windows_installs() == [newer, older]
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows launcher script")
+def test_powershell_finds_the_newest_component_build(monkeypatch, tmp_path):
+    from pathlib import Path
+    import subprocess
+
+    _, components = _windows_roots(monkeypatch, tmp_path)
+    _edt(components / "1c-edt-2026.1.2+9-x86_64")
+    newest = _edt(components / "1c-edt-2026.1.2+10-x86_64")
+    script = tmp_path / "resolve.ps1"
+    script.write_text(
+        "param($Common, $Programs, $Local)\n"
+        "[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)\n"
+        "$env:ProgramFiles = $Programs\n$env:LOCALAPPDATA = $Local\n"
+        ". $Common\nResolve-EdtDir -RequireExe '1cedtcli.exe'\n",
+        encoding="ascii",
+    )
+    common = Path(__file__).resolve().parents[2] / "scripts" / "edt-common.ps1"
+
+    result = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script),
+         str(common), str(tmp_path / "programs"), str(tmp_path / "local")],
+        capture_output=True, text=True, encoding="utf-8", stdin=subprocess.DEVNULL, timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert Path(result.stdout.strip()) == newest
+
+
+
+def test_pinned_jar_keeps_the_installed_copy_if_staging_is_denied(monkeypatch, tmp_path):
+    _latest_release(monkeypatch)
+    installed = tmp_path / _JARS[0]
+    installed.write_bytes(b"existing jar")
+
+    def denied(**_kwargs):
+        raise PermissionError(13, "Access is denied")
+
+    monkeypatch.setattr(update.tempfile, "TemporaryDirectory", denied)
+    lines = []
+
+    assert update.install_latest_jar(tmp_path, emit=lines.append, version="0.34.1") is False
+    assert installed.read_bytes() == b"existing jar"
+    assert "cannot place the jar into dropins" in lines[-1]
+    assert ("as administrator" in lines[-1]) == (os.name == "nt")

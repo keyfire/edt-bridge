@@ -13,21 +13,24 @@ Every entry ends with a link to the pull request it came from -
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
-## Unreleased
+## 2026-11-06 – 0.35.0
 
 ### Added
 
-- `status` reports `wrapperVersion`. When the plugin running in EDT and the wrapper are on different versions, the wrapper says so once on stderr, in every command and in the MCP-server mode. Before, a plugin that `self-update` could not reach stayed behind unnoticed. Part of [issue #64](https://github.com/keyfire/edt-bridge/issues/64).
-  ([#65](https://github.com/keyfire/edt-bridge/pull/65))
+- `self-update --version X.Y.Z` selects a released wrapper and JAR. The command checks the JAR's
+  SHA256 before replacing it. ([#65](https://github.com/keyfire/edt-bridge/pull/65))
+- `status` reports the wrapper version. `status --all` checks it against each running bridge and
+  reports version mismatches on stderr. ([#65](https://github.com/keyfire/edt-bridge/pull/65))
 
 ### Fixed
 
-- On Windows `self-update`, the headless auto-start, `gui` and the `run-*.ps1` scripts find EDT installed by 1C:Installer under `%ProgramFiles%\1C\1CE\components`. Before, they looked only in the 1cedtstart installations and asked for `EDT_BRIDGE_EDT_DIR`. Versions compare number by number, so 2026.1.10 is newer than 2026.1.9. Part of [issue #64](https://github.com/keyfire/edt-bridge/issues/64).
+- On Windows the wrapper and launch scripts find EDT under `%ProgramFiles%\1C\1CE\components`.
+  They compare version and build numbers numerically. [Issue #64](https://github.com/keyfire/edt-bridge/issues/64).
   ([#65](https://github.com/keyfire/edt-bridge/pull/65))
-- `edtInstall` in `/status` keeps the `+` of a component directory such as `1c-edt-2026.1.2+2-x86_64`. It used to turn into a space, and `status --all` could not find that installation's `dropins`. Part of [issue #64](https://github.com/keyfire/edt-bridge/issues/64).
-  ([#65](https://github.com/keyfire/edt-bridge/pull/65))
-- With no write access to `dropins`, the jar delivery names the cure (close EDT, run as administrator) and no longer ends in an unhandled exception when the folder has to be created. The auto-start reports the actual reason instead of a failed download from GitHub, and the hints describe the EDT install directory instead of `.../1cedt`. Part of [issue #64](https://github.com/keyfire/edt-bridge/issues/64).
-  ([#65](https://github.com/keyfire/edt-bridge/pull/65))
+- `/status` preserves `+` in the EDT installation path. This lets `status --all` find the JAR in
+  `dropins`. ([#65](https://github.com/keyfire/edt-bridge/pull/65))
+- If writing to `dropins` fails, the wrapper reports the cause. On Windows a permission error also
+  explains how to retry the update. ([#65](https://github.com/keyfire/edt-bridge/pull/65))
 
 <a id="2026-11-03--0340"></a>
 

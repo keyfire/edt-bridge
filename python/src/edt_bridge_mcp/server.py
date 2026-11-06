@@ -1404,10 +1404,9 @@ def main() -> int:
     command, rest = split_command(sys.argv[1:])
     if command == "self-update":
         from . import update
-        if "-h" not in rest and "--help" not in rest:
-            args, rest = build_parser().parse_known_args(rest)
-            apply_connection_options(args)
-        return update.run(rest)
+        args = update.parse_args(rest)
+        apply_connection_options(args)
+        return update.run(args)
     if command:
         return cli.run(command, rest)
     args = build_parser().parse_args()

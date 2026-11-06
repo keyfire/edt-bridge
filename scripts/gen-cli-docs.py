@@ -269,7 +269,7 @@ def page(lang: str) -> str:
         out.write(f"## `edt-bridge-mcp {cmd}`\n\n" + render(run([cmd], lang), t))
         if cmd == "call":
             out.write(t["note_args"] + "\n\n")
-    return out.getvalue()
+    return out.getvalue().rstrip() + "\n"
 
 
 def generate() -> dict[str, str]:

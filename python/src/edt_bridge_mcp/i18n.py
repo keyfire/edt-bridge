@@ -118,12 +118,11 @@ MESSAGES = {
         "en": "ports for --all, comma-separated or ranges: 8770,8772-8774 (up to 128 ports)",
     },
     "status.description": {
-        "ru": "Состояние моста без его запуска и версия jar в dropins - "
-              "кода, который EDT загрузит при следующем запуске. Если плагин в EDT и обвязка "
-              "разных версий, команда пишет об этом в stderr.",
-        "en": "Report the running bridge (does not start one) and the version of the jar in "
-              "dropins - the code EDT will load next time it starts. When the plugin in EDT and "
-              "this wrapper are on different versions, it says so on stderr.",
+        "ru": "Состояние запущенного моста и версия JAR в dropins. Команда сообщает в stderr "
+              "о расхождении версий обвязки и плагина. С --all она проверяет каждый найденный мост.",
+        "en": "Report the running bridge and the version of the JAR in dropins. Version mismatches "
+              "between the wrapper and the plugin are reported on stderr. With --all, check each "
+              "bridge found.",
     },
     "shutdown.description": {
         "ru": "Штатно завершить EDT, обслуживающую мост, - вместо taskkill по процессам. "
@@ -187,48 +186,62 @@ MESSAGES = {
         "en": "print the raw JSON result instead of the text the tool returned",
     },
     # -- self-update (update.py) --
-    "update.usage": {
-        "ru": """usage: edt-bridge-mcp self-update [опции]
+    "update.description": {
+        "ru": "Обновить jar плагина в dropins EDT, обвязку в ее окружении и плагины обвязки.",
+        "en": "Update the plugin jar in EDT's dropins, the wrapper and its plugins.",
+    },
+    "update.jar-only": {"ru": "обновить только jar плагина", "en": "update only the plugin jar"},
+    "update.pip-only": {"ru": "обновить только обвязку", "en": "update only the wrapper"},
+    "update.plugins-only": {
+        "ru": "обновить только плагины обвязки",
+        "en": "update only the wrapper plugins",
+    },
+    "update.from": {
+        "ru": "установить обвязку из рабочей копии",
+        "en": "install the wrapper from a checkout",
+    },
+    "update.version": {
+        "ru": "установить указанную версию jar и обвязки или одного из них по выбранному режиму",
+        "en": "install this release of the jar and wrapper, or just the selected component",
+    },
+    "update.empty-source": {"ru": "--from требует путь", "en": "--from requires a path"},
+    "update.source-mode": {
+        "ru": "--from несовместим с --jar-only и --plugins-only",
+        "en": "--from cannot be combined with --jar-only or --plugins-only",
+    },
+    "update.invalid-version": {
+        "ru": "для --version укажите номер релиза в формате X.Y.Z",
+        "en": "--version requires a release number in X.Y.Z format",
+    },
+    "update.version-mode": {
+        "ru": "--version несовместим с --plugins-only",
+        "en": "--version cannot be combined with --plugins-only",
+    },
+    "update.epilog": {
+        "ru": """С параметром --version команда берет jar по тегу vX.Y.Z на GitHub и обвязку с PyPI.
+Параметры --version и --from нельзя сочетать с --plugins-only.
+Параметр --from также несовместим с --jar-only.
 
-Обновить jar плагина в dropins EDT, обвязку в ее окружении и плагины обвязки.
+После обновления перезапустите EDT для загрузки jar и клиент MCP для загрузки обвязки.
 
-параметры:
-  --jar-only        только jar плагина (GitHub Releases)
-  --pip-only        только обвязку (PyPI или --from)
-  --plugins-only    только плагины обвязки
-  --from <путь>     ставить обвязку из рабочей копии, а не с PyPI
-  -h, --help        показать эту справку
+Плагины обвязки обновляются через pip из своих источников установки. Для реестра
+пакетов можно указать адрес в переменной EDT_BRIDGE_PLUGIN_INDEX.
 
-Jar применится при следующем запуске EDT. Обвязка заменяется прямо в site-packages;
-exe в Scripts не трогаются, поэтому запущенные edt-bridge-mcp надо перезапустить.
-Плагины обновляются через pip из своего источника установки (git-репозиторий или
-реестр пакетов; реестру можно указать адрес переменной EDT_BRIDGE_PLUGIN_INDEX).
+Код 0 означает, что все выбранные операции выполнены. Код 1 означает, что
+обновление jar или обвязки не удалось либо не удалась ни одна операция.
+Код 2 означает ошибку аргументов или сбой только при обновлении плагинов обвязки.""",
+        "en": """With --version, the command gets the jar from the vX.Y.Z tag on GitHub and the wrapper from PyPI.
+Both --version and --from require a mode other than --plugins-only.
+The --from option also requires a mode other than --jar-only.
 
-коды возврата:
-  0    все выбранные компоненты обновлены
-  1    не обновился сам мост (jar или обвязка) либо не обновилось ничего
-  2    мост обновлен, плагин обвязки не установлен""",
-        "en": """usage: edt-bridge-mcp self-update [options]
+Restart EDT to load the updated jar and restart the MCP client to load the wrapper.
 
-Refresh the plugin jar in EDT's dropins, this wrapper in its own environment, and
-the wrapper plugins.
+Wrapper plugins are updated through pip from their installation sources. Use
+EDT_BRIDGE_PLUGIN_INDEX to set the package index URL.
 
-options:
-  --jar-only        only the plugin jar (GitHub Releases)
-  --pip-only        only the wrapper (PyPI, or --from)
-  --plugins-only    only the wrapper plugins
-  --from <path>     install the wrapper from a checkout instead of PyPI
-  -h, --help        show this message
-
-The jar applies on EDT's next restart. The wrapper is replaced inside site-packages;
-the exes in Scripts are left alone, so restart any running edt-bridge-mcp afterwards.
-Plugins are updated through pip from the source they were installed from (a git
-repository or a package index; set EDT_BRIDGE_PLUGIN_INDEX to name the index).
-
-exit codes:
-  0    every step asked for succeeded
-  1    the bridge itself did not update (jar or wrapper), or nothing did
-  2    the bridge is current and only a wrapper plugin is not""",
+Exit code 0 means all selected steps succeeded. Code 1 means the jar or wrapper
+update failed, or none of the selected steps succeeded. Code 2 means the arguments
+are invalid or only the wrapper plugin step failed.""",
     },
 }
 
