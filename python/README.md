@@ -105,7 +105,7 @@ CLI flags override the environment.
 | `EDT_BRIDGE_PORT` | `--port` | bridge port (default 8770) |
 | `EDT_BRIDGE_TOKEN` | – | write-tools token, forwarded as `Authorization: Bearer` and injected into the headless JVM |
 | `EDT_BRIDGE_WORKSPACE` | `--workspace` | EDT workspace path, required for the headless start |
-| `EDT_BRIDGE_EDT_DIR` | `--edt-dir` | EDT install dir (`.../1cedt`); the newest install is found automatically when omitted |
+| `EDT_BRIDGE_EDT_DIR` | `--edt-dir` | EDT install dir (the folder with 1cedtcli and dropins); the newest install is found automatically when omitted |
 | `EDT_BRIDGE_START_TIMEOUT` | `--start-timeout` | seconds to wait for a starting bridge (default 360) |
 | `EDT_BRIDGE_AUTOSTART` | `--no-autostart` | set `0` or pass the flag to forward requests and start nothing |
 

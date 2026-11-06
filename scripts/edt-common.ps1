@@ -19,13 +19,35 @@
 function Resolve-EdtDir {
   param([string]$EdtDir, [Parameter(Mandatory = $true)][string]$RequireExe)
   if ($EdtDir) { return $EdtDir }
-  $base = Join-Path $env:LOCALAPPDATA "1C\1cedtstart\installations"
-  $found = Get-ChildItem $base -Directory -ErrorAction SilentlyContinue |
-    Sort-Object Name -Descending |
-    ForEach-Object { Join-Path $_.FullName "1cedt" } |
-    Where-Object { Test-Path (Join-Path $_ $RequireExe) } |
+  # Rank the version and build separately. The architecture suffix is not part of either.
+  $rank = {
+    $parts = [regex]::Match($_.Name, '(?<![0-9.])([0-9]+(?:\.[0-9]+){1,3})(?:\+([0-9]+))?(?=$|[-_\s)])')
+    [pscustomobject]@{
+      Directory = $_.FullName
+      Name = $_.Name
+      Version = $parts.Groups[1].Value -as [version]
+      Build = [long]($parts.Groups[2].Value -as [long])
+    }
+  }
+  $candidates = @(
+    if ($env:LOCALAPPDATA) {
+      $base = Join-Path $env:LOCALAPPDATA "1C\1cedtstart\installations"
+      Get-ChildItem -LiteralPath $base -Directory -ErrorAction SilentlyContinue |
+        ForEach-Object $rank | Sort-Object Version, Build, Name -Descending |
+        ForEach-Object { Join-Path $_.Directory "1cedt" }
+    }
+    if ($env:ProgramFiles) {
+      $components = Join-Path $env:ProgramFiles "1C\1CE\components"
+      Get-ChildItem -LiteralPath $components -Directory -Filter "1c-edt-*" -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '^1c-edt-[0-9]' } |
+        ForEach-Object $rank | Sort-Object Version, Build, Name -Descending |
+        ForEach-Object { $_.Directory }
+    }
+  )
+  $found = $candidates |
+    Where-Object { Test-Path -LiteralPath (Join-Path $_ $RequireExe) -PathType Leaf } |
     Select-Object -First 1
-  if (-not $found) { throw "Could not auto-detect 1C:EDT with $RequireExe under $base; pass -EdtDir <...\1cedt>." }
+  if (-not $found) { throw "Could not auto-detect 1C:EDT with $RequireExe. Pass -EdtDir <the folder with $RequireExe>." }
   return $found
 }
 

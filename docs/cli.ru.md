@@ -29,7 +29,7 @@ usage: edt-bridge-mcp [опции]                   (без команды: з�
 |---|---|
 | `-h, --help` | показать эту справку и выйти |
 | `--workspace WORKSPACE` | рабочая область EDT для автозапуска headless |
-| `--edt-dir EDT_DIR` | каталог установки EDT (.../1cedt); без флага определяется сам |
+| `--edt-dir EDT_DIR` | каталог установки EDT (папка с 1cedtcli и dropins); без флага определяется сам |
 | `--port PORT` | порт моста (по умолчанию 8770) |
 | `--start-timeout START_TIMEOUT` | сколько секунд ждать поднимающийся мост |
 | `--no-autostart` | не поднимать headless EDT ни при каких условиях |
@@ -77,7 +77,7 @@ usage: edt-bridge-mcp call [-h] [--json JSON | --json-file PATH | --stdin] [--ra
 | `--stdin` | читать объект JSON из потока ввода |
 | `--raw` | напечатать сырой JSON-результат вместо текста, который вернул инструмент |
 | `--workspace WORKSPACE` | рабочая область EDT для автозапуска headless |
-| `--edt-dir EDT_DIR` | каталог установки EDT (.../1cedt); без флага определяется сам |
+| `--edt-dir EDT_DIR` | каталог установки EDT (папка с 1cedtcli и dropins); без флага определяется сам |
 | `--port PORT` | порт моста (по умолчанию 8770) |
 | `--start-timeout START_TIMEOUT` | сколько секунд ждать поднимающийся мост |
 | `--no-autostart` | не поднимать headless EDT ни при каких условиях |
@@ -102,7 +102,7 @@ usage: edt-bridge-mcp tools [-h] [--raw] [--workspace WORKSPACE] [--edt-dir EDT_
 | `-h, --help` | показать эту справку и выйти |
 | `--raw` | напечатать сырой JSON-результат вместо текста, который вернул инструмент |
 | `--workspace WORKSPACE` | рабочая область EDT для автозапуска headless |
-| `--edt-dir EDT_DIR` | каталог установки EDT (.../1cedt); без флага определяется сам |
+| `--edt-dir EDT_DIR` | каталог установки EDT (папка с 1cedtcli и dropins); без флага определяется сам |
 | `--port PORT` | порт моста (по умолчанию 8770) |
 | `--start-timeout START_TIMEOUT` | сколько секунд ждать поднимающийся мост |
 | `--no-autostart` | не поднимать headless EDT ни при каких условиях |
@@ -110,7 +110,7 @@ usage: edt-bridge-mcp tools [-h] [--raw] [--workspace WORKSPACE] [--edt-dir EDT_
 
 ## `edt-bridge-mcp status`
 
-Состояние моста без его запуска и версия jar в dropins - кода, который EDT загрузит при следующем запуске.
+Состояние запущенного моста и версия JAR в dropins. Команда сообщает в stderr о расхождении версий обвязки и плагина. С `--all` она проверяет каждый найденный мост.
 
 ```bash
 usage: edt-bridge-mcp status [-h] [--all] [--ports PORTS] [--workspace WORKSPACE]
@@ -127,7 +127,7 @@ usage: edt-bridge-mcp status [-h] [--all] [--ports PORTS] [--workspace WORKSPACE
 | `--all` | проверить все порты диапазона без фильтра рабочей области и запуска EDT |
 | `--ports PORTS` | порты для `--all`, через запятую или диапазон: 8770,8772-8774 (до 128 портов) |
 | `--workspace WORKSPACE` | рабочая область EDT для автозапуска headless |
-| `--edt-dir EDT_DIR` | каталог установки EDT (.../1cedt); без флага определяется сам |
+| `--edt-dir EDT_DIR` | каталог установки EDT (папка с 1cedtcli и dropins); без флага определяется сам |
 | `--port PORT` | порт моста (по умолчанию 8770) |
 | `--start-timeout START_TIMEOUT` | сколько секунд ждать поднимающийся мост |
 | `--no-autostart` | не поднимать headless EDT ни при каких условиях |
@@ -152,7 +152,7 @@ usage: edt-bridge-mcp shutdown [-h] [--force] [--no-wait] [--workspace WORKSPACE
 | `--force` | разрешить завершение GUI EDT; без этого флага завершение GUI запрещено |
 | `--no-wait` | не ждать остановки (по умолчанию ожидание закрытия порта составляет до 60 секунд) |
 | `--workspace WORKSPACE` | рабочая область EDT для автозапуска headless |
-| `--edt-dir EDT_DIR` | каталог установки EDT (.../1cedt); без флага определяется сам |
+| `--edt-dir EDT_DIR` | каталог установки EDT (папка с 1cedtcli и dropins); без флага определяется сам |
 | `--port PORT` | порт моста (по умолчанию 8770) |
 | `--start-timeout START_TIMEOUT` | сколько секунд ждать поднимающийся мост |
 | `--no-autostart` | не поднимать headless EDT ни при каких условиях |
@@ -176,7 +176,7 @@ usage: edt-bridge-mcp gui [-h] [--force] [--timeout TIMEOUT] [--workspace WORKSP
 | `--force` | завершить headless принудительно, если он не остановился за отведенное время |
 | `--timeout TIMEOUT` | сколько секунд ждать завершения headless (по умолчанию 90) |
 | `--workspace WORKSPACE` | рабочая область EDT для автозапуска headless |
-| `--edt-dir EDT_DIR` | каталог установки EDT (.../1cedt); без флага определяется сам |
+| `--edt-dir EDT_DIR` | каталог установки EDT (папка с 1cedtcli и dropins); без флага определяется сам |
 | `--port PORT` | порт моста (по умолчанию 8770) |
 | `--start-timeout START_TIMEOUT` | сколько секунд ждать поднимающийся мост |
 | `--no-autostart` | не поднимать headless EDT ни при каких условиях |
@@ -198,7 +198,7 @@ usage: edt-bridge-mcp plugins [-h] [--workspace WORKSPACE] [--edt-dir EDT_DIR]
 |---|---|
 | `-h, --help` | показать эту справку и выйти |
 | `--workspace WORKSPACE` | рабочая область EDT для автозапуска headless |
-| `--edt-dir EDT_DIR` | каталог установки EDT (.../1cedt); без флага определяется сам |
+| `--edt-dir EDT_DIR` | каталог установки EDT (папка с 1cedtcli и dropins); без флага определяется сам |
 | `--port PORT` | порт моста (по умолчанию 8770) |
 | `--start-timeout START_TIMEOUT` | сколько секунд ждать поднимающийся мост |
 | `--no-autostart` | не поднимать headless EDT ни при каких условиях |
@@ -209,23 +209,33 @@ usage: edt-bridge-mcp plugins [-h] [--workspace WORKSPACE] [--edt-dir EDT_DIR]
 Обновить jar плагина в dropins EDT, обвязку в ее окружении и плагины обвязки.
 
 ```bash
-usage: edt-bridge-mcp self-update [опции]
+usage: edt-bridge-mcp self-update [-h] [--jar-only | --pip-only | --plugins-only]
+                                  [--from PATH | --version X.Y.Z]
+                                  [--workspace WORKSPACE] [--edt-dir EDT_DIR]
+                                  [--port PORT] [--start-timeout START_TIMEOUT]
+                                  [--no-autostart]
 ```
 
 **Параметры**
 
 | Параметр | Описание |
 |---|---|
-| `--jar-only` | только jar плагина (GitHub Releases) |
-| `--pip-only` | только обвязку (PyPI или `--from`) |
-| `--plugins-only` | только плагины обвязки |
-| `--from <путь>` | ставить обвязку из рабочей копии, а не с PyPI |
-| `-h, --help` | показать эту справку |
-| `0` | все выбранные компоненты обновлены |
-| `1` | не обновился сам мост (jar или обвязка) либо не обновилось ничего |
-| `2` | мост обновлен, плагин обвязки не установлен |
+| `-h, --help` | показать эту справку и выйти |
+| `--jar-only` | обновить только jar плагина |
+| `--pip-only` | обновить только обвязку |
+| `--plugins-only` | обновить только плагины обвязки |
+| `--from PATH` | установить обвязку из рабочей копии |
+| `--version X.Y.Z` | установить указанную версию jar и обвязки или одного из них по выбранному режиму |
+| `--workspace WORKSPACE` | рабочая область EDT для автозапуска headless |
+| `--edt-dir EDT_DIR` | каталог установки EDT (папка с 1cedtcli и dropins); без флага определяется сам |
+| `--port PORT` | порт моста (по умолчанию 8770) |
+| `--start-timeout START_TIMEOUT` | сколько секунд ждать поднимающийся мост |
+| `--no-autostart` | не поднимать headless EDT ни при каких условиях |
 
-Jar применится при следующем запуске EDT. Обвязка заменяется прямо в site-packages; exe в Scripts не трогаются, поэтому запущенные edt-bridge-mcp надо перезапустить. Плагины обновляются через pip из своего источника установки (git-репозиторий или реестр пакетов; реестру можно указать адрес переменной EDT_BRIDGE_PLUGIN_INDEX).
+С параметром `--version` команда берет jar по тегу vX.Y.Z на GitHub и обвязку с PyPI. Параметры `--version` и `--from` нельзя сочетать с `--plugins-only`. Параметр `--from` также несовместим с `--jar-only`.
 
-коды возврата:
+После обновления перезапустите EDT для загрузки jar и клиент MCP для загрузки обвязки.
 
+Плагины обвязки обновляются через pip из своих источников установки. Для реестра пакетов можно указать адрес в переменной EDT_BRIDGE_PLUGIN_INDEX.
+
+Код 0 означает, что все выбранные операции выполнены. Код 1 означает, что обновление jar или обвязки не удалось либо не удалась ни одна операция. Код 2 означает ошибку аргументов или сбой только при обновлении плагинов обвязки.

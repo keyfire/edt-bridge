@@ -13,6 +13,25 @@ Every entry ends with a link to the pull request it came from -
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
+## 2026-11-06 – 0.35.0
+
+### Added
+
+- `self-update --version X.Y.Z` selects a released wrapper and JAR. The command checks the JAR's
+  SHA256 before replacing it. ([#65](https://github.com/keyfire/edt-bridge/pull/65))
+- `status` reports the wrapper version. `status --all` checks it against each running bridge and
+  reports version mismatches on stderr. ([#65](https://github.com/keyfire/edt-bridge/pull/65))
+
+### Fixed
+
+- On Windows the wrapper and launch scripts find EDT under `%ProgramFiles%\1C\1CE\components`.
+  They compare version and build numbers numerically. [Issue #64](https://github.com/keyfire/edt-bridge/issues/64).
+  ([#65](https://github.com/keyfire/edt-bridge/pull/65))
+- `/status` preserves `+` in the EDT installation path. This lets `status --all` find the JAR in
+  `dropins`. ([#65](https://github.com/keyfire/edt-bridge/pull/65))
+- If writing to `dropins` fails, the wrapper reports the cause. On Windows a permission error also
+  explains how to retry the update. ([#65](https://github.com/keyfire/edt-bridge/pull/65))
+
 <a id="2026-11-03--0340"></a>
 
 ## 2026-11-03 – 0.34.0, 0.34.1

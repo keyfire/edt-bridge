@@ -11,6 +11,25 @@
 Каждая запись заканчивается ссылкой на пул-реквест, из которого она пришла –
 `([#12](https://github.com/keyfire/edt-bridge/pull/12))`. В пул-реквесте можно найти код и причину изменения.
 
+## 06.11.2026 – 0.35.0
+
+### Добавлено
+
+- `self-update --version X.Y.Z` выбирает указанную версию обвязки и JAR. Перед заменой JAR
+  команда проверяет SHA256. ([#65](https://github.com/keyfire/edt-bridge/pull/65))
+- `status` показывает версию обвязки. С `--all` команда сверяет ее с версией каждого
+  запущенного моста и сообщает о расхождениях в stderr. ([#65](https://github.com/keyfire/edt-bridge/pull/65))
+
+### Исправлено
+
+- На Windows обвязка и скрипты запуска находят EDT в `%ProgramFiles%\1C\1CE\components`.
+  Версии и номера сборок сравниваются по числам. [Issue #64](https://github.com/keyfire/edt-bridge/issues/64).
+  ([#65](https://github.com/keyfire/edt-bridge/pull/65))
+- `/status` сохраняет `+` в пути установки EDT. По этому пути `status --all` находит JAR
+  в `dropins`. ([#65](https://github.com/keyfire/edt-bridge/pull/65))
+- Если запись в `dropins` не удалась, обвязка сообщает причину. При нехватке прав в Windows
+  сообщение подсказывает, как повторить обновление. ([#65](https://github.com/keyfire/edt-bridge/pull/65))
+
 <a id="03112026--0340"></a>
 
 ## 03.11.2026 – 0.34.0, 0.34.1

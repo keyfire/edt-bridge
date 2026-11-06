@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from edt_bridge_mcp import cli, i18n, server
+from edt_bridge_mcp import cli, i18n, server, update
 
 ROOT = Path(__file__).resolve().parents[2]
 DOCS = ROOT / "docs"
@@ -25,16 +25,15 @@ SRC = ROOT / "python" / "src"
 
 CYRILLIC_RE = re.compile(r"[А-Яа-яЁё]")
 
-# self-update parses its flags by presence, not by argparse; its help is one catalog text
-ARGPARSE_COMMANDS = tuple(cli.COMMANDS)
-ALL_COMMANDS = ARGPARSE_COMMANDS + ("self-update",)
+ALL_COMMANDS = server.ALL_COMMANDS
 
 
 def parsers():
     """(command path, parser) for the server mode and every argparse command."""
     yield "edt-bridge-mcp", server.build_parser()
-    for name in ARGPARSE_COMMANDS:
+    for name in cli.COMMANDS:
         yield f"edt-bridge-mcp {name}", cli.build_parser(name)
+    yield "edt-bridge-mcp self-update", update.build_parser()
 
 
 def actions_with_help(parser):
@@ -59,19 +58,16 @@ def test_russian_help_is_russian(monkeypatch):
             assert CYRILLIC_RE.search(help_text or ""), (
                 f"{path}: {dest} is not Russian in the ru run: {help_text!r}"
             )
-    assert CYRILLIC_RE.search(i18n.t("update.usage")), "self-update usage is not Russian"
 
 
 def test_language_versions_differ(monkeypatch):
     # the generator once never passed a language in, so both pages carried the same text
     monkeypatch.setenv(i18n.ENV_LANG, "en")
     english = {p: [h for _, h in actions_with_help(parser)] for p, parser in parsers()}
-    english_update = i18n.t("update.usage")
     monkeypatch.setenv(i18n.ENV_LANG, "ru")
     russian = {p: [h for _, h in actions_with_help(parser)] for p, parser in parsers()}
     assert english.keys() == russian.keys()
     assert english != russian
-    assert english_update != i18n.t("update.usage")
 
 
 def test_parser_shapes_match_between_languages(monkeypatch):

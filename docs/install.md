@@ -30,7 +30,8 @@ The pipx wrapper delivers the jar and starts EDT for you. To run the plugin your
 
 1. Get the jar from the [Releases page](https://github.com/keyfire/edt-bridge/releases), which also
    includes `SHA256SUMS.txt`, or build it as described below.
-2. Copy it into EDT's `dropins/`: on Windows `.../installations/<EDT>/1cedt/dropins/`, on **macOS**
+2. Copy it into EDT's `dropins/`: on Windows `.../installations/<EDT>/1cedt/dropins/` or
+   `.../1C/1CE/components/1c-edt-<ver>-x86_64/dropins/`, on **macOS**
    `.../1c-edt-<ver>-x86_64/1cedt (<ver>).app/Contents/Eclipse/dropins/`, creating the folder if it
    is not there. Keep only one EDT-Bridge jar in it, because two make Equinox load an arbitrary one.
 3. **Restart EDT.** The plugin starts the MCP server on `http://127.0.0.1:8770/mcp`, or on the next
@@ -64,7 +65,7 @@ flag twin, documented in [Commands](/cli).
 | `EDT_BRIDGE_PORT_SCAN` | – | `20` | how many consecutive ports from that one to scan. A busy port makes the plugin take the next free one, and the bridge is then looked for across that same window |
 | `EDT_BRIDGE_TOKEN` | – | empty | the write-tools token. It is sent as an `Authorization: Bearer` header and passed into the headless instance's JVM |
 | `EDT_BRIDGE_WORKSPACE` | `--workspace` | – | the EDT workspace to serve when starting a headless EDT |
-| `EDT_BRIDGE_EDT_DIR` | `--edt-dir` | the newest install | the EDT install directory (`.../1cedt`) |
+| `EDT_BRIDGE_EDT_DIR` | `--edt-dir` | the newest install | the EDT install directory (the folder with 1cedtcli and dropins) |
 | `EDT_BRIDGE_START_TIMEOUT` | `--start-timeout` | `360` | how many seconds to wait for a starting bridge |
 | `EDT_BRIDGE_AUTOSTART` | `--no-autostart` | on | `0` never launches anything and only forwards requests |
 | `EDT_BRIDGE_WINDOW_WAIT` | – | `90` | how many seconds the `gui` command waits for the EDT window. A large workspace loads for minutes, so a miss here is not an error but a reason to run the command again |

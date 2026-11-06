@@ -363,11 +363,15 @@ def _run(command: str, argv: list[str]) -> int:
                 print(str(invalid), file=sys.stderr)
                 return 1
             from pathlib import Path
-            from .update import installed_jar
+            from .update import installed_jar, plugin_version_gap
             bridges = []
             for row in rows:
                 if row["state"] != "bridge":
                     continue
+                row = {**row, "wrapperVersion": __version__}
+                gap = plugin_version_gap(row.get("version"))
+                if gap:
+                    print(f"port {row['port']}: {gap}", file=sys.stderr)
                 install = row.get("edtInstall")
                 found = installed_jar(Path(install) / "dropins") if install else None
                 if found:
@@ -384,7 +388,7 @@ def _run(command: str, argv: list[str]) -> int:
         if status is None:
             print("no bridge is running in the scanned port range", file=sys.stderr)
             return 1
-        status = _with_jar_on_disk(status)
+        status = {**_with_jar_on_disk(status), "wrapperVersion": __version__}
         _emit(json.dumps(status, ensure_ascii=False, indent=2))
         jar = status.get("jarOnDisk")
         if jar and not jar["current"]:

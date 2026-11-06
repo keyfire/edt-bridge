@@ -150,7 +150,7 @@ def test_update_warns_when_workspace_configuration_still_pins_the_old_jar(tmp_pa
                     encoding="utf-8")
     monkeypatch.setenv("EDT_BRIDGE_WORKSPACE", str(workspace))
     monkeypatch.setattr(update, "_find_dropins", lambda: dropins)
-    monkeypatch.setattr(update, "install_latest_jar", lambda path: True)
+    monkeypatch.setattr(update, "install_latest_jar", lambda path, *, version: True)
     monkeypatch.setattr(update, "running_bridge_version", lambda: None)
     assert update.update_jar() is True
     output = capsys.readouterr().out
@@ -162,15 +162,18 @@ def test_update_warns_when_workspace_configuration_still_pins_the_old_jar(tmp_pa
 def test_self_update_connection_flags_identify_the_configuration_to_check(monkeypatch):
     monkeypatch.setattr(server.sys, "argv", ["edt-bridge-mcp", "--workspace", "D:/target",
                                            "self-update", "--jar-only", "--port", "9001"])
+    monkeypatch.delenv("EDT_BRIDGE_WORKSPACE", raising=False)
+    monkeypatch.delenv("EDT_BRIDGE_PORT", raising=False)
     seen = {}
-    def run(arguments):
+
+    def update_jar(version):
         seen["workspace"] = server.os.environ.get("EDT_BRIDGE_WORKSPACE")
         seen["port"] = server.os.environ.get("EDT_BRIDGE_PORT")
-        seen["arguments"] = arguments
-        return 0
-    monkeypatch.setattr(update, "run", run)
+        return True
+
+    monkeypatch.setattr(update, "update_jar", update_jar)
     assert server.main() == 0
-    assert seen == {"workspace": "D:/target", "port": "9001", "arguments": ["--jar-only"]}
+    assert seen == {"workspace": "D:/target", "port": "9001"}
 
 
 @pytest.mark.parametrize("other_port,other_install", [(True, False), (False, True)])

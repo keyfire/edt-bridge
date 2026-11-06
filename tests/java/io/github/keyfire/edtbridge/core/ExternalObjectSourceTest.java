@@ -23,7 +23,7 @@ import org.junit.jupiter.api.io.TempDir;
 class ExternalObjectSourceTest {
     @Test void readsProcessorXmlIncludingUnicodeBom(@TempDir Path dir) throws Exception {
         Path xml=dir.resolve("object.xml");
-        String text="<MetaDataObject xmlns=\"http://v8.1c.ru/8.3/MDClasses\"><ExternalDataProcessor><Properties><Name>Demo</Name></Properties></ExternalDataProcessor></MetaDataObject>";
+        String text="<MetaDataObject xmlns=\"urn:example:metadata\"><ExternalDataProcessor><Properties><Name>Demo</Name></Properties></ExternalDataProcessor></MetaDataObject>";
         for (var encoding : java.util.List.of(StandardCharsets.UTF_8, StandardCharsets.UTF_16LE, StandardCharsets.UTF_16BE)) {
             Files.write(xml,("\uFEFF"+text).getBytes(encoding));
             var source=ExternalObjectSource.read(xml);

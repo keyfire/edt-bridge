@@ -1,7 +1,7 @@
 """self-update: refresh the plugin jar in EDT's dropins from GitHub Releases, the
 python wrapper itself from PyPI (when published), and the wrapper plugins.
 
-    edt-bridge-mcp self-update [--jar-only | --pip-only | --plugins-only] [--from <checkout>]
+    edt-bridge-mcp self-update [--jar-only | --pip-only | --plugins-only] [--from PATH | --version X.Y.Z]
 
 Jar update:
 - downloads the latest release asset ``io.github.keyfire.edtbridge_*.jar`` and verifies it
@@ -39,6 +39,7 @@ Exit codes:
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import os
@@ -52,9 +53,10 @@ import zipfile
 from io import BytesIO
 from pathlib import Path
 
-from . import __version__, i18n, plugins
+from . import __version__, cli, i18n, plugins
 
 RELEASES_LATEST = "https://api.github.com/repos/keyfire/edt-bridge/releases/latest"
+RELEASES_BY_TAG = "https://api.github.com/repos/keyfire/edt-bridge/releases/tags/v{version}"
 JAR_PREFIX = "io.github.keyfire.edtbridge_"
 
 
@@ -85,37 +87,87 @@ def _sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+_WINDOWS_VERSION = re.compile(r"(?<![0-9.])([0-9]+(?:\.[0-9]+){1,3})(?:\+([0-9]+))?(?=$|[-_\s)])")
+
+
+def _newest_first(dirs) -> list[Path]:
+    """Order by the dotted version and optional build number in an installation name."""
+    def rank(directory: Path) -> tuple[tuple[int, ...], int, str]:
+        match = _WINDOWS_VERSION.search(directory.name)
+        if not match:
+            return (), 0, directory.name
+        return tuple(map(int, match[1].split("."))), int(match[2] or 0), directory.name
+
+    return sorted(dirs, key=rank, reverse=True)
+
+
+def windows_installs() -> list[Path]:
+    """Where EDT may be installed on Windows, in order of preference. The directories are not
+    checked for an executable - that is up to the caller, who knows which one it needs.
+
+    The 1cedtstart launcher keeps EDT in the `1cedt` subfolder of a per-user installation. 1C:Installer
+    puts it directly into a component under Program Files, with `dropins` beside `1cedt.exe`. The
+    `1c-edt-start-*` component next to those is the launcher, not EDT.
+    """
+    installs: list[Path] = []
+    local = os.environ.get("LOCALAPPDATA")
+    if local:
+        base = Path(local) / "1C" / "1cedtstart" / "installations"
+        installs += [inst / "1cedt" for inst in _newest_first(base.glob("*"))]
+    programs = os.environ.get("ProgramFiles")
+    if programs:
+        components = Path(programs) / "1C" / "1CE" / "components"
+        installs += _newest_first(components.glob("1c-edt-[0-9]*"))
+    return installs
+
+
+def plugin_version_gap(live: str | None) -> str | None:
+    """A sentence for a plugin on another version than this wrapper; None when they agree.
+
+    They update separately, and nothing else compares them: a 0.34.1 wrapper talked to a 0.11.2
+    plugin without a word.
+    A wrapper post-release (`0.34.1.post1`) still belongs to the plugin's `0.34.1`.
+    """
+    if not live or __version__ == live or __version__.startswith(f"{live}."):
+        return None
+    return (f"the plugin running in EDT is {live}, this wrapper is {__version__} - "
+            "run edt-bridge-mcp self-update and restart EDT to put both on one version")
+
+
 def _find_dropins() -> Path | None:
     edt_dir = (os.environ.get("EDT_BRIDGE_EDT_DIR") or "").strip()
     if edt_dir:
         d = Path(edt_dir) / "dropins"
         return d if d.parent.exists() else None
     if os.name == "nt":
-        base = Path(os.environ.get("LOCALAPPDATA", "")) / "1C" / "1cedtstart" / "installations"
-        if base.is_dir():
-            for inst in sorted(base.iterdir(), reverse=True):
-                edt = inst / "1cedt"
-                if (edt / ("1cedtcli.exe")).exists() or (edt / "1cedt.exe").exists():
-                    return edt / "dropins"
+        for edt in windows_installs():
+            if (edt / "1cedtcli.exe").exists() or (edt / "1cedt.exe").exists():
+                return edt / "dropins"
     return None
 
 
-def purge_stale_jars(dropins: Path | None, emit=log) -> int:
-    """Keep only the newest edt-bridge jar in dropins, deleting the rest. Two singletons of the
-    same bundle make Equinox resolve an arbitrary (often older) one, so a stale jar left next to a
-    freshly delivered one silently loads the wrong code. Returns how many were removed."""
+def purge_stale_jars(dropins: Path | None, emit=log, *, keep: Path | None = None) -> int:
+    """Remove all edt-bridge jars except the selected one, or keep the newest by default.
+
+    Two copies of the same bundle can make Equinox load the wrong version."""
     if not dropins or not dropins.is_dir():
         return 0
     jars = sorted(dropins.glob(JAR_PREFIX + "*.jar"), key=lambda p: p.name)
+    if not jars:
+        return 0
+    if keep is None:
+        keep = jars[-1]
     removed = 0
-    for old in jars[:-1]:  # all but the lexically-newest (version+timestamp sort)
+    for old in jars:
+        if old == keep:
+            continue
         try:
             old.unlink()
             removed += 1
         except OSError:
             emit(f"stale jar is locked (a running EDT?): {old.name} – remove it after a restart")
     if removed:
-        emit(f"purged {removed} stale jar(s) from dropins, kept {jars[-1].name}")
+        emit(f"purged {removed} stale jar(s) from dropins, kept {keep.name}")
     return removed
 
 
@@ -159,83 +211,98 @@ def has_jar(dropins: Path | None) -> bool:
     return any(dropins.glob(JAR_PREFIX + "*.jar"))
 
 
-def install_latest_jar(dropins: Path, emit=log) -> bool:
-    """Download the latest release jar (checksum-verified) into ``dropins``, dropping older
-    copies. Shared by the ``self-update`` command and the wrapper's first-run delivery."""
-    emit("querying the latest GitHub release...")
+def _placement_failure(exc: OSError) -> str:
+    """Why the jar did not reach dropins. Under Program Files that takes administrator rights, and
+    a running EDT holds its jar open - both surface as a bare access error."""
+    message = f"cannot place the jar into dropins: {exc}"
+    if os.name == "nt" and isinstance(exc, PermissionError):
+        message += " - close EDT and run edt-bridge-mcp self-update --jar-only as administrator"
+    return message
+
+
+def install_latest_jar(dropins: Path, emit=log, *, version: str | None = None) -> bool:
+    """Install a release jar in dropins. Use the latest release when no version is given."""
+    url = RELEASES_LATEST if version is None else RELEASES_BY_TAG.format(version=version)
+    requested = "the latest GitHub release" if version is None else f"GitHub release v{version}"
+    emit(f"querying {requested}...")
     try:
-        release = _fetch_json(RELEASES_LATEST)
+        release = _fetch_json(url)
     except (OSError, ValueError) as exc:
-        emit(f"cannot query releases: {exc}")
+        emit(f"cannot query {requested}: {exc}")
         return False
     assets = release.get("assets") or []
-    jar_asset = next((a for a in assets if a.get("name", "").startswith(JAR_PREFIX)
+    jar_prefix = JAR_PREFIX if version is None else f"{JAR_PREFIX}{version}."
+    jar_asset = next((a for a in assets if a.get("name", "").startswith(jar_prefix)
                       and a.get("name", "").endswith(".jar")), None)
     sums_asset = next((a for a in assets if a.get("name") == "SHA256SUMS.txt"), None)
     if jar_asset is None:
-        emit(f"the latest release ({release.get('tag_name')}) carries no plugin jar – nothing to do")
+        emit(f"{requested} has no matching plugin jar")
         return False
-    dropins.mkdir(parents=True, exist_ok=True)
+    try:
+        dropins.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        emit(_placement_failure(exc))
+        return False
 
     name = jar_asset["name"]
-    existing = dropins / name
-    if existing.exists():
-        # Still collapse dropins to one jar: a hand-built sibling next to the release jar is the
-        # exact situation Equinox resolves arbitrarily, and returning early used to leave it there
-        # for good - the purge only ran on the path that downloads something.
+    target = dropins / name
+    if version is None and target.exists():
+        # Keep the newest copy on the first-run delivery and unpinned update paths.
         purge_stale_jars(dropins, emit)
-        emit(f"already at the latest release jar: {name}")
+        emit(f"release jar already present: {name}")
         return True
 
-    tmp = Path(tempfile.gettempdir()) / name
+    # Stage beside the target so the replacement stays on one filesystem. Use a
+    # temporary name that Equinox will not recognize as a plugin.
     emit(f"downloading {name} ({jar_asset.get('size', 0)} bytes)...")
     try:
-        _download(jar_asset["browser_download_url"], tmp)
+        staging = tempfile.TemporaryDirectory(dir=dropins)
     except OSError as exc:
-        emit(f"download failed: {exc}")
+        emit(_placement_failure(exc))
         return False
-
-    if sums_asset is not None:
+    with staging as directory:
+        tmp = Path(directory) / "download"
         try:
-            sums_tmp = Path(tempfile.gettempdir()) / "edtbridge-SHA256SUMS.txt"
-            _download(sums_asset["browser_download_url"], sums_tmp)
-            expected = None
-            for line in sums_tmp.read_text(encoding="utf-8").splitlines():
-                parts = line.split()
-                # `sha256sum dist/<jar>` writes the path with its dist/ prefix; match on the
-                # basename so a path-prefixed checksum line still verifies the downloaded asset.
-                if len(parts) >= 2 and parts[-1].lstrip("*").rsplit("/", 1)[-1] == name:
-                    expected = parts[0].lower()
-            actual = _sha256(tmp)
-            if expected is None:
-                emit("checksum file has no entry for the jar – proceeding unverified")
-            elif expected != actual:
-                emit(f"CHECKSUM MISMATCH: expected {expected}, got {actual} – aborting")
-                tmp.unlink(missing_ok=True)
-                return False
-            else:
-                emit("checksum verified")
+            _download(jar_asset["browser_download_url"], tmp)
         except OSError as exc:
-            emit(f"checksum download failed ({exc}) – proceeding unverified")
+            emit(f"download failed: {exc}")
+            return False
 
-    target = dropins / name
-    try:
-        if target.exists():
-            target.unlink()
-        tmp.replace(target)
-    except OSError as exc:
-        emit(f"cannot place the jar into dropins: {exc}")
-        return False
-    removed = 0
-    for old in dropins.glob(JAR_PREFIX + "*.jar"):
-        if old.name != name:
+        expected = None
+        if sums_asset is not None:
             try:
-                old.unlink()
-                removed += 1
-            except OSError:
-                emit(f"old jar is locked (a running EDT?): {old.name} – remove it after a restart")
-    emit(f"installed {name} into {dropins} (removed {removed} old cop{'ies' if removed != 1 else 'y'})")
-    return True
+                sums_tmp = Path(directory) / "SHA256SUMS.txt"
+                _download(sums_asset["browser_download_url"], sums_tmp)
+                for line in sums_tmp.read_text(encoding="utf-8").splitlines():
+                    parts = line.split()
+                    # sha256sum dist/<jar> writes the path with its dist/ prefix.
+                    if len(parts) >= 2 and parts[-1].lstrip("*").rsplit("/", 1)[-1] == name:
+                        expected = parts[0].lower()
+            except (OSError, UnicodeError) as exc:
+                emit(f"could not read release checksums: {exc}")
+
+        if expected is None:
+            if version is not None:
+                emit(f"no checksum available for {name}; the installed jars were left in place")
+                return False
+            if sums_asset is not None:
+                emit("no checksum available for the jar; proceeding unverified")
+        else:
+            actual = _sha256(tmp)
+            if expected != actual:
+                emit(f"checksum mismatch for {name}: expected {expected}, got {actual}")
+                return False
+            emit("checksum verified")
+
+        try:
+            tmp.replace(target)
+        except OSError as exc:
+            emit(_placement_failure(exc))
+            return False
+
+    purge_stale_jars(dropins, emit, keep=target)
+    emit(f"installed {name} into {dropins}")
+    return version is None or not any(p != target for p in dropins.glob(JAR_PREFIX + "*.jar"))
 
 
 def warn_stale_configurations(dropins: Path, emit=log) -> None:
@@ -268,12 +335,13 @@ def warn_stale_configurations(dropins: Path, emit=log) -> None:
                      "installed jar before restarting; copying a jar into dropins is insufficient.")
 
 
-def update_jar() -> bool:
+def update_jar(version: str | None = None) -> bool:
     dropins = _find_dropins()
     if dropins is None:
-        log("EDT dropins not found – pass EDT_BRIDGE_EDT_DIR pointing at the .../1cedt folder")
+        log("EDT dropins not found – set EDT_BRIDGE_EDT_DIR to the EDT install directory "
+            "(the folder with 1cedtcli and dropins)")
         return False
-    ok = install_latest_jar(dropins)
+    ok = install_latest_jar(dropins, version=version)
     if ok:
         warn_stale_configurations(dropins)
         log("a running EDT (GUI or headless) keeps the old code until restarted")
@@ -320,12 +388,10 @@ class _UpdateError(RuntimeError):
 
 
 def _simple_files() -> list[dict]:
-    """Files of the project from the simple index: `{"filename", "url", "version"}` each.
+    """Files from the Simple API, with filename, URL, version and yanked status.
 
-    Empty list when the index cannot be read as JSON (a mirror that answers HTML, a network
-    failure) - the caller then falls back to the JSON metadata, which reports the outage in its
-    own words. Yanked files are dropped here: a yanked release must not win the "latest" race
-    nor be installed by name.
+    Return an empty list if the index cannot be read as JSON. Keep yanked entries
+    so their status can take precedence over a cached response from the JSON API.
     """
     request = urllib.request.Request(PYPI_SIMPLE, headers={"Accept": SIMPLE_ACCEPT})
     try:
@@ -336,11 +402,12 @@ def _simple_files() -> list[dict]:
     files = []
     for item in data.get("files") or []:
         name, url = str(item.get("filename") or ""), str(item.get("url") or "")
-        if not name or not url or item.get("yanked"):
+        if not name or not url:
             continue
         version = _version_of(name)
         if version:
-            files.append({"filename": name, "url": url, "version": version})
+            files.append({"filename": name, "url": url, "version": version,
+                          "yanked": bool(item.get("yanked"))})
     return files
 
 
@@ -381,25 +448,23 @@ def _latest_release(files: list[dict]) -> str:
 def _wheel_url(version: str | None) -> tuple[str, str]:
     """URL and exact version of the py3-none-any wheel on PyPI (latest, or the one asked for).
 
-    The file list is taken from the SIMPLE index, not from the JSON metadata. Caught on the
-    toolkit engine on 31.07.2026 and true here for the same reason: the JSON is a cache that
-    catches up minutes after an upload, so right after a release the command answers "already
-    current" - or, with an explicit version, "no wheel", because the files are read from that
-    same lagging document. The JSON stays as the fallback for an index that does not answer
-    PEP 691 (and it is the one that reports an outage in words). Only the WRAPPER is affected:
-    the jar half of the update reads the assets of a GitHub release, a different source.
+    Read the Simple API first because the project JSON metadata can lag after an upload.
+    Fall back to JSON if the index does not provide a matching wheel. For a requested version,
+    query that version directly so a lagging index does not prevent the update.
     """
     files = _simple_files()
     if files:
-        target = version or _latest_release(files)
+        available = [item for item in files if not item["yanked"]]
+        target = version or _latest_release(available)
         entries = [
             item for item in files
             if item["version"] == target and item["filename"].endswith("-py3-none-any.whl")
         ]
-        if target and entries:
-            return entries[0]["url"], target
-        if version:  # the index is readable and simply does not carry this version
-            raise _UpdateError("no such version on PyPI")
+        for item in entries:
+            if not item["yanked"]:
+                return item["url"], target
+        if version is not None and entries:
+            raise _UpdateError(f"the wheel for edt-bridge-mcp {version} is yanked on PyPI")
     url = PYPI_VERSION.format(version=version) if version else PYPI_LATEST
     try:
         data = _fetch_json(url)
@@ -411,8 +476,10 @@ def _wheel_url(version: str | None) -> tuple[str, str]:
     except OSError as error:
         raise _UpdateError(f"could not reach PyPI: {error}") from error
     resolved = data["info"]["version"]
+    if version is not None and resolved != version:
+        raise _UpdateError(f"PyPI returned {resolved} for requested version {version}")
     for entry in data["urls"]:
-        if entry["filename"].endswith("-py3-none-any.whl"):
+        if entry["filename"].endswith("-py3-none-any.whl") and not entry.get("yanked"):
             return entry["url"], resolved
     raise _UpdateError(f"PyPI has no wheel for edt-bridge-mcp {resolved}")
 
@@ -687,27 +754,46 @@ def verdict(steps: list[tuple[str, bool]], emit=log) -> int:
     return EXIT_ADDON_FAILED
 
 
-def run(argv: list[str]) -> int:
-    if "-h" in argv or "--help" in argv:
-        # Without this, asking for help would perform the update - the flags are parsed by
-        # presence, so an unrecognised one means "do everything".
-        print(i18n.t("update.usage"))
-        return 0
-    jar_only = "--jar-only" in argv
-    pip_only = "--pip-only" in argv
-    plugins_only = "--plugins-only" in argv
-    source = None
-    if "--from" in argv:
-        index = argv.index("--from")
-        if index + 1 >= len(argv):
-            log("--from needs a path to a checkout, e.g. --from <repo>/python")
-            return 1
-        source = argv[index + 1]
+def build_parser() -> argparse.ArgumentParser:
+    parser = i18n.ArgumentParser(
+        prog="edt-bridge-mcp self-update",
+        description=i18n.t("update.description"),
+        epilog=i18n.t("update.epilog"),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        allow_abbrev=False,
+    )
+    mode = parser.add_mutually_exclusive_group()
+    for option in ("jar-only", "pip-only", "plugins-only"):
+        mode.add_argument(f"--{option}", action="store_true", help=i18n.t(f"update.{option}"))
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument("--from", dest="source", metavar="PATH", help=i18n.t("update.from"))
+    source.add_argument("--version", metavar="X.Y.Z", help=i18n.t("update.version"))
+    cli.add_connection_flags(parser)
+    return parser
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.source is not None:
+        if not args.source:
+            parser.error(i18n.t("update.empty-source"))
+        if args.jar_only or args.plugins_only:
+            parser.error(i18n.t("update.source-mode"))
+    if args.version is not None:
+        if not re.fullmatch(r"(?:0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*)){2}", args.version):
+            parser.error(i18n.t("update.invalid-version"))
+        if args.plugins_only:
+            parser.error(i18n.t("update.version-mode"))
+    return args
+
+
+def run(args: argparse.Namespace) -> int:
     steps: list[tuple[str, bool]] = []
-    if not pip_only and not plugins_only:
-        steps.append(("plugin jar", update_jar()))
-    if not jar_only and not plugins_only:
-        steps.append(("wrapper", update_wrapper(source)))
-    if not jar_only and not pip_only:
+    if not args.pip_only and not args.plugins_only:
+        steps.append(("plugin jar", update_jar(args.version)))
+    if not args.jar_only and not args.plugins_only:
+        steps.append(("wrapper", update_wrapper(source=args.source, version=args.version)))
+    if not args.jar_only and not args.pip_only:
         steps.append(("wrapper plugins", update_plugins()))
     return verdict(steps)

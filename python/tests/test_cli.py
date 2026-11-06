@@ -194,3 +194,32 @@ def test_non_text_content_is_skipped(monkeypatch):
     cli._print_result({"content": [{"type": "image", "data": "..."}]}, raw=False)
 
     assert out.getvalue() == ""
+
+
+def test_status_reports_the_wrapper_version(monkeypatch, capsys):
+    from edt_bridge_mcp import __version__, server, update
+
+    monkeypatch.setattr(server.Backend, "status", lambda _self: {"version": "0.24.0"})
+    monkeypatch.setattr(update, "_find_dropins", lambda: None)
+
+    assert cli.run("status", []) == 0
+    assert json.loads(capsys.readouterr().out)["wrapperVersion"] == __version__
+
+
+def test_status_all_compares_wrapper_version_for_each_bridge(monkeypatch, capsys):
+    from edt_bridge_mcp import __version__, server
+
+    rows = [
+        {"state": "bridge", "port": 8772, "version": "0.11.2"},
+        {"state": "bridge", "port": 8773, "version": __version__},
+        {"state": "unavailable", "port": 8774},
+    ]
+    monkeypatch.setattr(server.Backend, "status_all", lambda _self, _ports: rows)
+
+    assert cli.run("status", ["--all", "--ports", "8772-8774"]) == 0
+
+    captured = capsys.readouterr()
+    bridges = json.loads(captured.out)["bridges"]
+    assert [row["wrapperVersion"] for row in bridges] == [__version__, __version__]
+    assert "8772" in captured.err and "0.11.2" in captured.err and __version__ in captured.err
+    assert "8773" not in captured.err
