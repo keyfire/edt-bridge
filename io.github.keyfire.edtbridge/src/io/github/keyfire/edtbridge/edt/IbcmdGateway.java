@@ -17,7 +17,6 @@
 package io.github.keyfire.edtbridge.edt;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.Charset;
@@ -27,11 +26,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
+import java.util.Set;
 
 import io.github.keyfire.edtbridge.core.IbcmdArgs;
+import io.github.keyfire.edtbridge.core.PlatformProcess;
 import io.github.keyfire.edtbridge.core.PlatformSelection;
 import io.github.keyfire.edtbridge.core.TreeRemoval;
 
@@ -98,84 +99,23 @@ public final class IbcmdGateway {
         return tool;
     }
 
-    /** Hard cap on captured output. ibcmd can emit hundreds of megabytes of a repeated prompt. */
-    private static final int MAX_OUTPUT_BYTES = 1 << 20;
-
-    /**
-     * Run ibcmd once, capturing its combined output. Never throws; failures land in {@link Run#error}.
-     *
-     * <p>The output is read incrementally rather than with {@code readAllBytes}, and that is not a
-     * refinement - it is the difference between an error and a hang. When an infobase authenticates
-     * its users and no {@code --user} was given, ibcmd asks for a name and KEEPS ASKING: it ignores a
-     * closed stdin and reprints the prompt forever (measured: 134 MB in 60 seconds). Waiting for the
-     * stream to end therefore never returns. So the loop watches for that prompt and for a runaway
-     * output size, and kills the process the moment either shows up.
-     */
+    /** Run a platform utility with bounded output and no interactive input. */
     public static Run run(Path exe, List<String> args) {
         Run r = new Run();
-        List<String> cmd = new ArrayList<>();
-        cmd.add(exe.toString());
-        cmd.addAll(args);
-        Process proc = null;
-        try {
-            ProcessBuilder pb = new ProcessBuilder(cmd);
-            pb.redirectErrorStream(true);
-            // Nothing will answer a prompt here, so do not pretend otherwise. (ibcmd asks anyway -
-            // see above - but an inherited stdin would be worse still.)
-            pb.redirectInput(ProcessBuilder.Redirect.from(nullDevice()));
-            proc = pb.start();
-
-            java.io.ByteArrayOutputStream captured = new java.io.ByteArrayOutputStream();
-            long deadline = System.currentTimeMillis() + TIMEOUT_SECONDS * 1000L;
-            String abort = null;
-            byte[] chunk = new byte[8192];
-            try (InputStream in = proc.getInputStream()) {
-                int read;
-                while ((read = in.read(chunk)) >= 0) {
-                    captured.write(chunk, 0, read);
-                    if (needsInfobaseUser(decode(captured.toByteArray()))) {
-                        abort = "the infobase requires authentication - pass infobaseUser (and "
-                                + "infobasePassword). Note this is the 1C user, not the DBMS one.";
-                        break;
-                    }
-                    if (captured.size() > MAX_OUTPUT_BYTES) {
-                        abort = "ibcmd produced more than " + MAX_OUTPUT_BYTES
-                                + " bytes of output and was stopped";
-                        break;
-                    }
-                    if (System.currentTimeMillis() > deadline) {
-                        abort = "ibcmd timed out after " + TIMEOUT_SECONDS + "s";
-                        break;
-                    }
-                }
-            }
-            r.output = decode(captured.toByteArray());
-            if (abort != null) {
-                proc.destroyForcibly();
-                proc.waitFor(10, TimeUnit.SECONDS);
-                r.error = describe(args) + ": " + abort;
-                return r;
-            }
-            if (!proc.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
-                proc.destroyForcibly();
-                r.error = "ibcmd timed out after " + TIMEOUT_SECONDS + "s: " + describe(args);
-                return r;
-            }
-            r.exitCode = proc.exitValue();
-            r.ok = r.exitCode == 0 && !looksLikeFailure(r.output);
-            if (!r.ok) {
-                r.error = describe(args) + (r.exitCode == 0 ? "" : " exit " + r.exitCode)
-                        + ": " + tail(r.output);
-            }
-        } catch (IOException | InterruptedException ex) {
-            if (proc != null) {
-                proc.destroyForcibly();
-            }
-            if (ex instanceof InterruptedException) {
-                Thread.currentThread().interrupt();
-            }
-            r.error = ex.getClass().getSimpleName()
-                    + (ex.getMessage() != null ? ": " + ex.getMessage() : "");
+        Duration timeout = Duration.ofSeconds(TIMEOUT_SECONDS);
+        var run = PlatformProcess.run(exe, args, null, timeout, bytes -> needsInfobaseUser(decode(bytes)));
+        r.output = decode(run.output());
+        r.exitCode = run.exitCode() == null ? -1 : run.exitCode();
+        r.ok = run.end() == PlatformProcess.End.EXITED && r.exitCode == 0 && !looksLikeFailure(r.output);
+        if (r.ok) {
+            return r;
+        }
+        r.error = run.problem(exe, stage(exe, args), timeout);
+        if (run.end() == PlatformProcess.End.STOP_REQUESTED) {
+            r.error += ": the infobase requires authentication - pass infobaseUser (and "
+                    + "infobasePassword). This is the 1C user, not the DBMS one.";
+        } else if (run.end() == PlatformProcess.End.EXITED) {
+            r.error += ": " + tail(IbcmdArgs.safeOutput(r.output, args));
         }
         return r;
     }
@@ -310,18 +250,36 @@ public final class IbcmdGateway {
                 || output.contains("User name:");
     }
 
-    /** The platform's bit bucket, so a child process reading stdin gets EOF instead of waiting. */
-    private static java.io.File nullDevice() {
-        boolean windows = System.getProperty("os.name", "").toLowerCase().contains("win");
-        return new java.io.File(windows ? "NUL" : "/dev/null");
-    }
+    private static final Set<String> MODES = Set.of("config", "infobase", "extension", "cluster",
+            "session", "lock");
+    private static final Set<String> OPERATIONS = Set.of("create", "dump", "import", "save", "list",
+            "info", "update", "terminate", "summary");
+    private static final List<String> DESIGNER_OPERATIONS = List.of(
+            "/LoadExternalDataProcessorOrReportFromFiles", "/DumpExternalDataProcessorOrReportToFiles");
 
-    /** The command being run, for messages - the arguments never include the password. */
-    private static String describe(List<String> args) {
-        List<String> safe = IbcmdArgs.redact(args);
-        return safe.stream().filter(a -> !a.startsWith("--")).findFirst().map(first ->
-                "ibcmd " + String.join(" ", safe.subList(0, Math.min(2, safe.size()))))
-                .orElse("ibcmd");
+    /** Select operation names only. Other arguments may contain connection data or credentials. */
+    private static String stage(Path executable, List<String> args) {
+        String name = executable.getFileName().toString();
+        int modeIndex = name.equals("rac") || name.equalsIgnoreCase("rac.exe") ? 1 : 0;
+        if (args.size() <= modeIndex) {
+            return "";
+        }
+        String mode = args.get(modeIndex);
+        if ("DESIGNER".equals(mode)) {
+            for (String operation : DESIGNER_OPERATIONS) {
+                if (args.contains(operation)) {
+                    return mode + " " + operation;
+                }
+            }
+            return mode;
+        }
+        if (!MODES.contains(mode)) {
+            return "";
+        }
+        if (args.size() > modeIndex + 1 && OPERATIONS.contains(args.get(modeIndex + 1))) {
+            return mode + " " + args.get(modeIndex + 1);
+        }
+        return mode;
     }
 
     private static String tail(String output) {

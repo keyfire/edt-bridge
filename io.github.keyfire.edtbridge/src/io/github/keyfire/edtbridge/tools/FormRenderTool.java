@@ -111,7 +111,11 @@ public final class FormRenderTool {
             } else {
                 o.addProperty("message", res.message);
             }
-            return McpServer.textResult(new GsonBuilder().setPrettyPrinting().create().toJson(o));
+            var gson = new GsonBuilder().setPrettyPrinting().create();
+            if (res.diagnostics != null) {
+                o.add("diagnostics", gson.toJsonTree(res.diagnostics));
+            }
+            return McpServer.textResult(gson.toJson(o));
         } catch (Exception e) {
             return McpServer.toolError("edt_form_render failed: " + e.getMessage());
         }

@@ -25,7 +25,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "python" / "src"
-COMMANDS = ["call", "tools", "status", "shutdown", "gui", "plugins", "self-update"]
+COMMANDS = ["call", "tools", "status", "shutdown", "gui", "plugins", "test-form", "self-update"]
 
 TEXT = {
     "ru": {
@@ -38,8 +38,9 @@ TEXT = {
             "Обвязка `edt-bridge-mcp` работает как stdio MCP-сервер для клиента. Из командной "
             "строки можно проверить состояние моста, получить список инструментов и вызвать "
             "инструмент без запуска агента.\n\n"
-            "Без команды обвязка работает как MCP-сервер. Команды ниже обращаются к тому же мосту.\n\n"
-            "Код возврата **1** означает, что вызов не состоялся: мост не запустился или "
+            "Без команды обвязка работает как MCP-сервер. Команды работы с мостом используют тот же "
+            "экземпляр EDT. `test-form` запускает отдельные сеансы платформы.\n\n"
+            "Для вызовов инструментов код возврата **1** означает, что мост не запустился или "
             "аргументы неверны. Код **2** означает, что инструмент выполнился и вернул ошибку."
         ),
         "common": "Без команды: запуск MCP-сервера",
@@ -53,6 +54,20 @@ TEXT = {
             "ввода (`--stdin`). На Windows передавать кириллицу в файле: консольная кодировка "
             "может исказить аргументы командной строки."
         ),
+        "note_native": (
+            "Запускайте проверку в изолированном Linux-окружении с `1cv8`, `ibcmd`, "
+            "`Xvfb` и `libX11`. Выберите файловую тестовую базу и основную управляемую форму, "
+            "указанную в EPF. Укажите полный заголовок из клиента, включая имя обработки, "
+            "если оно отображается.\n\n"
+            "Перед первым запуском подтвердите открытие именно этого EPF в выбранной тестовой "
+            "базе под тем же пользователем. Платформа сохраняет разрешение для конкретного "
+            "файла. Если предупреждение появилось во время проверки, оно останется на снимке.\n\n"
+            "Команда сохраняет `result.json` и, если доступен экран клиента, `screenshot.png`. "
+            "Для успешной проверки укажите `--expect-message`. Заданный текст должен появиться "
+            "после нажатия кнопки. Без этого параметра команда сохраняет наблюдение "
+            "`command_observed` и возвращает код **2**. Предел времени включает подготовку и "
+            "взаимодействие с клиентом. Для завершения процессов предусмотрен отдельный короткий срок."
+        ),
     },
     "en": {
         "title": "Commands",
@@ -63,9 +78,9 @@ TEXT = {
             "The `edt-bridge-mcp` wrapper runs as a stdio MCP server for a client. From the "
             "command line, you can check bridge status, list tools, and call a tool without "
             "starting an agent.\n\n"
-            "With no command, the wrapper runs as an MCP server. The commands below use the "
-            "same bridge.\n\n"
-            "Exit code **1** means the call did not run because the bridge did not start or "
+            "With no command, the wrapper runs as an MCP server. Bridge commands use the "
+            "same EDT instance. `test-form` starts separate platform sessions.\n\n"
+            "For tool calls, exit code **1** means the bridge did not start or "
             "the arguments were invalid. Exit code **2** means the tool ran and returned an error."
         ),
         "common": "No command: running as an MCP server",
@@ -78,6 +93,20 @@ TEXT = {
             "Tool arguments come from `--json`, a file (`--json-file`) or standard input "
             "(`--stdin`). On Windows, pass non-ASCII arguments in a file because the console code "
             "page can corrupt them on the command line."
+        ),
+        "note_native": (
+            "Run the check in an isolated Linux environment with `1cv8`, `ibcmd`, "
+            "`Xvfb`, and `libX11`. Select a file test infobase and the main managed form "
+            "declared in the EPF. Use the full title shown in the client, including the processing "
+            "name if it appears.\n\n"
+            "Before the first run, authorize opening the exact EPF in the selected test infobase "
+            "under the same test user. The platform retains authorization for that file. "
+            "If the security prompt appears during the check, the screenshot captures it.\n\n"
+            "The command writes `result.json` and, when the client display is available, "
+            "`screenshot.png`. To pass the check, set `--expect-message`. The specified text must "
+            "appear after the click. A run without that option records `command_observed` and "
+            "returns exit code **2**. The time limit covers setup and client interaction. Process "
+            "cleanup has a separate short deadline."
         ),
     },
 }
@@ -269,6 +298,8 @@ def page(lang: str) -> str:
         out.write(f"## `edt-bridge-mcp {cmd}`\n\n" + render(run([cmd], lang), t))
         if cmd == "call":
             out.write(t["note_args"] + "\n\n")
+        if cmd == "test-form":
+            out.write(t["note_native"] + "\n\n")
     return out.getvalue().rstrip() + "\n"
 
 

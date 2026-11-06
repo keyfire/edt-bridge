@@ -76,6 +76,7 @@ import com._1c.g5.v8.dt.form.model.FormAttributeColumn;
 import com._1c.g5.v8.dt.form.model.FormCommand;
 import com._1c.g5.v8.dt.form.model.FormCommandHandlerContainer;
 import com._1c.g5.v8.dt.form.model.FormFactory;
+import com._1c.g5.v8.dt.form.model.ManagedFormDecorationType;
 import com._1c.g5.v8.dt.form.model.FormItem;
 import com._1c.g5.v8.dt.form.model.FormField;
 import com._1c.g5.v8.dt.form.model.FormGroup;
@@ -90,6 +91,7 @@ import com._1c.g5.v8.dt.form.service.FormItemInformationService;
 import com._1c.g5.v8.dt.form.service.item.FormNewItemDescriptor;
 import com._1c.g5.v8.dt.form.service.item.IFormItemManagementService;
 import com._1c.g5.v8.dt.form.service.item.IFormItemMovementService;
+import com._1c.g5.v8.dt.form.service.item.IFormItemTypeInformationService;
 import com._1c.g5.v8.dt.form.service.item.IFormItemTypeManagementService;
 import com._1c.g5.v8.dt.mcore.Event;
 import com._1c.g5.v8.dt.mcore.ParamSet;
@@ -676,7 +678,7 @@ public final class FormWriteGateway {
         }
     }
 
-    private static Injector formInjector() {
+    static Injector formInjector() {
         return pluginInjector("com._1c.g5.v8.dt.form", "com._1c.g5.v8.dt.internal.form.FormPlugin");
     }
 
@@ -2078,6 +2080,15 @@ public final class FormWriteGateway {
     public FormItemResult addFormItem(String projectName, String formFqn, String kind, String name,
             String parentName, String dataPath, String command, String groupType, String titleRu,
             Integer index, String beforeItem, String afterItem, Map<String, Object> settings, boolean apply) {
+        return addFormItem(projectName, formFqn, kind, name, parentName, dataPath, command, groupType,
+                titleRu, index, beforeItem, afterItem, settings, null, apply);
+    }
+
+    /** Add an item with an optional explicit decoration type. */
+    public FormItemResult addFormItem(String projectName, String formFqn, String kind, String name,
+            String parentName, String dataPath, String command, String groupType, String titleRu,
+            Integer index, String beforeItem, String afterItem, Map<String, Object> settings,
+            String decorationType, boolean apply) {
         Map<String, Object> options = settings == null ? Map.of() : new LinkedHashMap<>(settings);
         FormItemResult r = new FormItemResult();
         r.projectName = projectName;
@@ -2088,6 +2099,11 @@ public final class FormWriteGateway {
         r.command = command;
         String itemKind = (kind == null) ? "" : kind.trim().toLowerCase(Locale.ROOT);
         r.kind = itemKind;
+        boolean isDecoration = "decoration".equals(itemKind);
+        if (decorationType != null && !isDecoration) {
+            throw new IllegalArgumentException("decorationType requires kind=decoration");
+        }
+        final ManagedFormDecorationType requestedDecoration = parseDecorationType(decorationType);
 
         IProject p = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
         if (!p.exists() || !p.isOpen()) {
@@ -2162,6 +2178,10 @@ public final class FormWriteGateway {
                     FormItemEdits.Position destination = FormItemEdits.position(form, null, parentName,
                             index, beforeItem, afterItem);
                     placement[0] = destination.describe();
+                    if (isDecoration) {
+                        ManagedFormDecorationType type = resolveDecorationType(requestedDecoration, destination.parent);
+                        r.properties.put("decorationType", type.getLiteral());
+                    }
                     if (!options.isEmpty()) {
                         FormItem prototype = itemPrototype(itemKind, group, dataPath, destination.parent,
                                 form, GatewaySupport.projectVersion(p));
@@ -2187,6 +2207,9 @@ public final class FormWriteGateway {
                 + " to " + formFqn
                 + (parentName == null || parentName.isBlank() ? " (form root)" : " inside " + parentName);
         if (placement[0] != null) { r.plan += " at " + placement[0]; }
+        if (r.properties.containsKey("decorationType")) {
+            r.plan += " as " + r.properties.get("decorationType");
+        }
         if (!options.isEmpty()) { r.plan += " with " + options; }
         if (Boolean.FALSE.equals(r.nameAvailable)) {
             r.message = "the form already has an item named \"" + name + "\"";
@@ -2204,9 +2227,9 @@ public final class FormWriteGateway {
                     + " - apply refused (nothing added).";
             return r;
         }
+        r.ok = false;
         String editorProblem = FormIdentifiersGateway.editorProblem(model, formFqn);
         if (editorProblem != null) {
-            r.ok = false;
             r.message = editorProblem;
             return r;
         }
@@ -2274,7 +2297,9 @@ public final class FormWriteGateway {
                             created = items.addGroup(parent, group, form, descriptor);
                             break;
                         default:
-                            created = items.addDecoration(parent, form, descriptor);
+                            ManagedFormDecorationType type = resolveDecorationType(requestedDecoration, parent);
+                            created = items.addDecoration(parent, type, form, descriptor);
+                            r.properties.put("decorationType", type.getLiteral());
                             break;
                     }
                     if (created == null) {
@@ -2300,8 +2325,45 @@ public final class FormWriteGateway {
             r.message = "apply failed (nothing committed): " + failure[0];
             return r;
         }
+        r.ok = true;
         finishItem(r, mm, model, formFqn, "added " + itemKind + " \"" + r.name + "\" to ");
         return r;
+    }
+
+    private static ManagedFormDecorationType parseDecorationType(String value) {
+        if (value == null) {
+            return null;
+        }
+        String type = value.trim();
+        if ("Label".equalsIgnoreCase(type)) {
+            return ManagedFormDecorationType.LABEL;
+        }
+        if ("Picture".equalsIgnoreCase(type)) {
+            return ManagedFormDecorationType.PICTURE;
+        }
+        throw new IllegalArgumentException("decorationType must be Label or Picture");
+    }
+
+    private static ManagedFormDecorationType resolveDecorationType(ManagedFormDecorationType requested,
+            FormItemContainer parent) {
+        Injector injector = formInjector();
+        if (injector == null) {
+            throw new IllegalStateException("form item type information service unavailable");
+        }
+        IFormItemTypeInformationService types = injector.getInstance(IFormItemTypeInformationService.class);
+        var available = types.getAvailableDecorationTypes(parent);
+        ManagedFormDecorationType type = requested;
+        if (type == null) {
+            // Preserve the model's implicit type where EDT allows it. Pass it explicitly so EDT
+            // initializes extInfo even when the new object already has the requested type.
+            type = available.contains(ManagedFormDecorationType.PICTURE) ? ManagedFormDecorationType.PICTURE
+                    : types.getDefaultDecorationType(parent);
+        }
+        if (type == null || !available.contains(type)) {
+            throw new IllegalArgumentException(requested == null ? "this container does not support decorations"
+                    : "this container does not support " + requested.getLiteral() + " decorations");
+        }
+        return type;
     }
 
     private static FormItem itemPrototype(String kind, ManagedFormGroupType groupType, String path,

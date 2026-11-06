@@ -18,6 +18,7 @@ package io.github.keyfire.edtbridge.tools;
 
 import io.github.keyfire.edtbridge.edt.FormWriteGateway;
 import io.github.keyfire.edtbridge.mcp.McpServer;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 
 /**
@@ -51,6 +52,13 @@ public final class AddFormItemTool {
         props.add("groupType", ToolJson.strProp("Group kind: usual group, page, pages, command bar, "
                 + "button group, column group, popup (Russian names accepted). Optional, defaults to a "
                 + "usual group."));
+        JsonObject decorationType = ToolJson.strProp("Decoration type. Optional for kind=decoration. "
+                + "Defaults to Picture where allowed by the container.");
+        JsonArray decorationTypes = new JsonArray();
+        decorationTypes.add("Label");
+        decorationTypes.add("Picture");
+        decorationType.add("enum", decorationTypes);
+        props.add("decorationType", decorationType);
         props.add("titleRu", ToolJson.strProp("Russian title. Optional."));
         FormItemToolOptions.positionProps(props, false);
         FormItemToolOptions.settingsProps(props);
@@ -62,12 +70,16 @@ public final class AddFormItemTool {
                 + "decoration - through EDT's own IFormItemManagementService, the service the form editor "
                 + "itself calls. Naming, ids, a field's actual type and a table's auto-filled columns are "
                 + "decided by EDT, not assembled here. A table bound to a value-table attribute gets its "
-                + "columns filled in. index/beforeItem/afterItem select an exclusive insertion position. Typed group/field options and scalar choiceList are validated before writing. Dry-run by default. Additive - no force - but requires a token.",
+                + "columns filled in. Use decorationType to create a Label or Picture. "
+                + "index/beforeItem/afterItem select an exclusive insertion position. Typed group/field "
+                + "options and scalar choiceList are validated before writing. Dry-run by default. "
+                + "Additive - no force - but requires a token.",
                 "ЗАПИСЬ (Phase 2): добавить элемент управляемой формы - поле, таблицу, кнопку, группу "
                 + "или декорацию - через штатный IFormItemManagementService, тот самый, который вызывает "
                 + "редактор форм. Имена, идентификаторы, фактический вид поля и автозаполнение колонок "
                 + "таблицы определяет EDT, а не сборка здесь. Таблица, связанная с реквизитом типа "
-                + "ТаблицаЗначений, получает колонки автоматически. index/beforeItem/afterItem задают одно место вставки. Свойства групп/полей и scalar choiceList проверяются до записи. По умолчанию dry-run. Аддитивно - "
+                + "ТаблицаЗначений, получает колонки автоматически. decorationType задает вид декорации Label или Picture. "
+                + "index/beforeItem/afterItem задают одно место вставки. Свойства групп/полей и scalar choiceList проверяются до записи. По умолчанию dry-run. Аддитивно - "
                 + "force не нужен - но требует токен.",
                 props, "projectName", "formFqn", "kind");
     }
@@ -86,7 +98,7 @@ public final class AddFormItemTool {
                     ToolJson.getStr(args, "groupType"), ToolJson.getStr(args, "titleRu"),
                     FormItemToolOptions.index(args), ToolJson.getStr(args, "beforeItem"),
                     ToolJson.getStr(args, "afterItem"), FormItemToolOptions.settings(args),
-                    ToolJson.getBool(args, "apply"))));
+                    ToolJson.getStr(args, "decorationType"), ToolJson.getBool(args, "apply"))));
         } catch (Exception e) {
             return McpServer.toolError("edt_add_form_item failed: " + e.getMessage());
         }

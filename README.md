@@ -109,6 +109,51 @@ parse with QlDcs, which supports data-composition extensions such as `{WHERE ...
 `{LEFT JOIN ...}`. If parsing still fails, `queryFailures` reports the failure and
 `queryCoverageComplete` remains false. Use `edt_search_queries` to search those query fields by text.
 
+#### Project and runtime diagnostics
+
+`edt_projects` reports model state in each available project `diagnostics` entry. `pendingReasons`
+lists conditions such as a model lock or pending derived data. `derivedData` reports the pipeline
+stage and the work EDT exposes for active segments. `backgroundJobs` is scoped to the workspace.
+
+`edt_project_errors` reports `diagnostics.pendingReasons`, workspace jobs, validation completion
+and the observed problem count. An object check can finish while workspace jobs are still active.
+Read again with `refresh` and `baseline` omitted to sample the current state. Use `complete` to assess the
+result. For a refresh, also check `refreshed.settled`.
+
+Observations use epoch milliseconds. `firstObservedAt` marks the first sample in the bridge's
+retained history. `unchangedSince` marks the first sample of the current value. The first sample
+has `lastChangeKnown=false`. After a different value is sampled, `lastChangeObservedAt` records
+when the bridge saw the difference. History is limited to the current process. Metrics that EDT
+cannot provide include `available=false` and `unavailableReason`.
+
+`GET /status` reports `resources` for the running bridge. The `jvm` section includes heap and
+non-heap usage, committed memory, the maximum where defined, and the JVM's collection count and
+time for each garbage collector. The `container` section reports the current process's cgroup
+v2 memory usage, limits, events, pressure, CPU quota and CPU counters on Linux when readable.
+The snapshot uses read-only JVM and cgroup queries. Unavailable measurements include a reason.
+`processStartedAt` records when the current process started. `previousExitCause` is `unknown`.
+
+#### Managed-form preview
+
+`edt_form_render` uses the native EDT renderer for `TAXI` and `VERSION8_5`. Enable native
+rendering and buffered image capture with the JVM options `-DnativeFormLayoutRender=true` and
+`-DnativeFormBufferedLayoutRender=true`. Headless EDT with GTK also needs a working graphical
+session, for example an X server provided by Xvfb.
+When passing extra JVM options to the GUI launcher `1cedt`, use `--launcher.appendVmargs`
+to preserve the arguments from the product INI file.
+
+Use `ok=true`, `pngPath` and a positive `fileBytes` to verify that the call produced an image.
+The result's `diagnostics` can report the SWT platform, display initialization, renderer settings
+and render stage. If EDT returns no image, see `.metadata/.log` in the EDT workspace or use the
+form preview in GUI EDT. Native worker crashes can also produce `hs_err_pid*.log` in the EDT
+working directory.
+
+With EDT 2026.2.2 and platform 8.5.1.1529, Windows headless EDT with SWT win32 produced PNGs
+for both variants. In the tested Linux GTK/Xvfb profile, both GUI and headless EDT reached a
+native SCom worker that crashed during initialization. That profile did not produce a preview.
+For a compiled EPF, `edt-bridge-mcp test-form` can verify a command and capture the actual client
+in an explicitly selected test infobase; see [the native form check](cli.md#edt-bridge-mcp-test-form).
+
 ### Write
 
 Write tools resolve targets through EDT. Metadata operations export the model; source replacement
@@ -292,6 +337,7 @@ tools above.
 | Tool | Through | What it does |
 |------|---------|--------------|
 | `edt_infobases` · `edt_platform_installations` | EDT | Lists infobases registered in EDT with their names, UUIDs, connection strings and associated open projects. Also lists the 1C:Enterprise installations EDT resolves for `.epf` or `.erf` export and infobase creation, each with a thick client, plus full installations found on disk. |
+| `edt_platform_build_readiness` | disk install | Runs Designer against a temporary file infobase to check batch execution and license access. Requires a write token. |
 | `edt_designer_agent` | agent | The lifecycle of the configurator agents the bridge drives: list, start, stop, sweep. An agent is a configurator in `/AgentMode` holding an open infobase session and authenticating as the infobase user, which is how the bridge reaches an infobase the other transports cannot. It starts on demand and stays up between calls, and stopping one frees the session it holds on the server. An agent idle past `EDT_BRIDGE_AGENT_IDLE_MINUTES` stops by itself, because a standing agent costs a client license and a Designer session; the default is 30 minutes, and `off` keeps agents forever. A crashed agent leaves behind a session that holds the infobase's configuration lock. That remnant is swept before every start, on a `stop` for the infobase whose agent has died, and on demand with `action=sweep`. Ownership is proven by the record each agent writes about itself, never guessed from the session's host and user. `list` also returns `edtSessions`, the configurator sessions EDT keeps for its own infobases, with the infobase, bound projects, pid and state (`live`, `dead` or `external` for an agent EDT did not start), and `otherConfigurators`, thick-client processes that belong to neither. `action=stop-edt` closes EDT's session for one registered infobase through EDT: EDT shuts down the agent it started and only disconnects from one it did not start. |
 | `edt_infobase_config_state` | agent | Checks whether the database configuration executed by sessions is applied or an update is pending. The update is started but its confirmation is refused, so no changes are applied. A pending update returns the full list of structure changes. The call uses a configurator agent, so a server infobase with user authentication is supported. |
 | `edt_update_database_config` | agent | Applies the database configuration. This is the step that makes running sessions execute the configuration the infobase holds. Loading a project into an infobase does not do it, and until it happens every session keeps running the previous code; a freshly added HTTP route answering 404 is what that looks like. Returns a plan by default. `sessionTermination=force` ends the sessions holding the base when an exclusive lock is needed. |
@@ -303,6 +349,25 @@ tools above.
 | `edt_infobase_sessions` | rac | The 1C cluster's sessions through `rac`: list them for one infobase or one application, and end them. Neither the agent nor `ibcmd` can, because the cluster manager controls sessions. Reach for this when an infobase refuses to be configured. A designer session that was killed rather than closed still holds the configuration lock, and it shows up here as a `Designer` session. Terminating returns a plan by default and needs force. |
 | `edt_infobase_maintenance` | rac | Manages a maintenance window for a database update. `begin` sets `scheduled-jobs-deny` and optionally `sessions-deny` with a permission code, waits for sessions to finish, and returns "clear to update". `end` clears both flags, including `sessions-deny` set by another `begin` call, and reports any flag that remains set. `status` reports the state. BackgroundJob sessions are recreated every minute on a running infobase; setting the denial prevents them from being recreated. Needs the infobase administrator, and returns a plan by default. |
 | `edt_infobase_dump` | ibcmd | Dumps an infobase to a `.dt` through `ibcmd`. This is the backup to take before applying a configuration to the database, and the bridge had no way to make it before. Addresses the infobase by file path or by DBMS coordinates, refuses to overwrite an existing file, and returns a plan by default. Nothing in the infobase changes, but the dump reads all of its data, so it needs the token. |
+
+#### Check platform build readiness
+
+Use `edt_platform_installations` to list the full installations available to EDT and on disk.
+To exercise the local platform, call `edt_platform_build_readiness` with a configured write
+token. Pass `platformVersion` to select the exact four-part build or the newest full
+installation in the specified version line. Omit it to check the newest full installation.
+`timeoutSeconds` sets the time limit for each process (1–120 seconds, default 30).
+
+The probe creates a file infobase in a temporary directory and runs `1cv8 DESIGNER /DumpCfg`
+against it using the host's platform and license access. It then attempts to remove the
+temporary files and reports the outcome in `cleanup`. `installation` distinguishes
+`platformNotFound` from `incompatibleVersion`. The `createInfobase` and `designer` stages
+report their status, including `licenseRefused`, `launchFailed`, `timedOut` or `notChecked`,
+and provide the executable name and exit code when available. A pass confirms that the
+selected Designer could dump an empty configuration in this environment.
+
+Platform command failures report the executable name, operation and exit code when the process
+exited. Diagnostic labels omit the command arguments.
 
 #### Incremental configuration loading
 
@@ -427,6 +492,11 @@ port, bridge bundle version, EDT product version and project readiness. Unreacha
 other HTTP services are distinguished from a running bridge.
 
 **Managed-form properties**
+
+For `kind=decoration`, `edt_add_form_item` accepts `decorationType=Label` or
+`decorationType=Picture`. When omitted, the tool selects `Picture` if the parent container
+allows it, otherwise it uses EDT's default for that container. A dry run checks the container and
+returns `properties.decorationType`. Apply creates the decoration through EDT with matching `extInfo`.
 
 `edt_add_form_item` and `edt_modify_form_item` accept `fieldType=HTMLDocumentField`.
 EDT initializes its `HtmlFieldExtInfo` and preserves the data path when changing the field kind.

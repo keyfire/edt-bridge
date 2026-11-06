@@ -239,6 +239,7 @@ public final class ProjectErrorsTool {
             rep.locations.forEach(locations::addProperty);
             payload.add("locations", locations);
             payload.addProperty("modelReady", rep.modelReady);
+            payload.add("diagnostics", new GsonBuilder().create().toJsonTree(rep.diagnostics));
             payload.add("modelStatus", new GsonBuilder().create().toJsonTree(rep.modelStatus));
             payload.addProperty("unresolvedEdtMarkers", rep.unresolvedEdtMarkers);
             payload.addProperty("complete", complete(rep));
@@ -381,6 +382,8 @@ public final class ProjectErrorsTool {
         o.addProperty("buildMs", res.buildMs);
         o.addProperty("waitMs", res.waitMs);
         o.addProperty("settled", res.settled);
+        o.addProperty("quietPolls", res.quietPolls);
+        o.add("diagnostics", new GsonBuilder().create().toJsonTree(res.diagnostics));
         o.addProperty("validationRequested", res.validationRequested);
         o.addProperty("validationCompleted", res.validationCompleted);
         if (res.validationMode != null) o.addProperty("validationMode", res.validationMode);

@@ -192,6 +192,7 @@ public final class ProjectGateway {
         public boolean modelReady;
         public java.util.List<ProjInfo> modelStatus = new ArrayList<>();
         public int unresolvedEdtMarkers;
+        public java.util.Map<String, Object> diagnostics;
     }
 
     /**
@@ -332,6 +333,9 @@ public final class ProjectGateway {
             r.hint = appendHint(r.hint, "Some EDT markers could not be traced to files; modulePath coverage "
                     + "is incomplete. Use fqn to include object-presentation markers.");
         }
+        r.diagnostics = ProjectProgress.report(projectName, r.totalBeforeFilter, r.modelReady,
+                refreshed == null ? null : refreshed.validationCompleted,
+                refreshed == null ? null : refreshed.settled, refreshed == null ? -1 : refreshed.quietPolls);
         return r;
     }
 
@@ -614,6 +618,8 @@ public final class ProjectGateway {
         public boolean settled;
         /** Whether explicitly requested object checks completed. */
         public boolean sawValidation;
+        public int quietPolls;
+        public java.util.Map<String, Object> diagnostics;
         public String warning;
     }
 
@@ -807,6 +813,9 @@ public final class ProjectGateway {
         r.settled = r.validationCompleted && awaitSettle(projectName, settle,
                 Math.max(0L, deadline - System.currentTimeMillis()), 1000L, r.validationCompleted);
         r.waitMs = System.currentTimeMillis() - waiting;
+        r.quietPolls = settle.quietPolls();
+        r.diagnostics = ProjectProgress.report(projectName, settle.problems(), modelsReady(projectName),
+                r.validationCompleted, r.settled, r.quietPolls);
         r.sawValidation = r.validationRequested && r.validationCompleted;
         if (!r.settled && r.warning == null) {
             r.warning = (r.warning == null ? "" : r.warning + "; ")
@@ -824,7 +833,9 @@ public final class ProjectGateway {
         long started = System.currentTimeMillis();
         while (System.currentTimeMillis() - started < limitMs) {
             boolean idle = Job.getJobManager().isIdle() && modelsReady(projectName);
-            if (settle.poll(countProblems(projectName), idle, validationCompleted)) {
+            int count = countProblems(projectName);
+            ProjectProgress.observeCount(projectName, count);
+            if (settle.poll(count, idle, validationCompleted)) {
                 return true;
             }
             try {
@@ -939,6 +950,7 @@ public final class ProjectGateway {
         public boolean modelReady;
         public boolean derivedDataPending;
         public String modelHint;
+        public java.util.Map<String, Object> diagnostics;
     }
 
     /**
@@ -975,28 +987,40 @@ public final class ProjectGateway {
                 }
             }
             if (pi.open && pi.dtProject) {
+                Boolean locked = null;
+                Boolean computed = null;
+                IDerivedDataManager derived = null;
+                String unavailable = null;
                 try {
                     var model = mm == null ? null : mm.getModel(p);
                     pi.modelPresent = model != null && !model.isDisposed();
                     if (pi.modelPresent) {
                         IDerivedDataManagerProvider provider =
                                 FormWriteGateway.coreService(IDerivedDataManagerProvider.class);
-                        var derived = provider == null ? null : provider.get(p);
-                        pi.derivedDataPending = derived == null || !derived.isAllComputed();
-                        pi.modelReady = !mm.isLocked(p) && !pi.derivedDataPending;
+                        derived = provider == null ? null : provider.get(p);
+                        computed = derived == null ? null : derived.isAllComputed();
+                        pi.derivedDataPending = !Boolean.TRUE.equals(computed);
+                        locked = mm.isLocked(p);
+                        pi.modelReady = !locked && !pi.derivedDataPending;
                     }
                     if (!pi.modelReady) {
-                        pi.modelHint = pi.modelPresent ? "Derived data is pending or the model is locked"
-                                : "The BM model is not loaded";
+                        pi.modelHint = !pi.modelPresent ? "The BM model is not loaded"
+                                : Boolean.TRUE.equals(locked) ? "The BM model is locked"
+                                : computed == null ? "Derived data state is unavailable" : "Derived data is pending";
                     }
-                } catch (RuntimeException e) {
-                    pi.modelHint = "Model readiness unavailable: " + GatewaySupport.describeCause(e);
+                } catch (RuntimeException | LinkageError e) {
+                    unavailable = e.getClass().getSimpleName();
+                    pi.modelHint = "Model readiness unavailable: " + unavailable;
                 }
+                pi.diagnostics = ProjectProgress.model(p, pi.modelPresent, locked, computed, derived, unavailable);
             }
             out.add(pi);
         }
         return out;
     }
+
+    /** Current workspace jobs, including unavailable-state reasons; never starts work. */
+    public java.util.Map<String, Object> backgroundJobs() { return ProjectProgress.backgroundJobs(); }
 
     private boolean modelsReady(String projectName) {
         List<ProjInfo> selected = new ArrayList<>();

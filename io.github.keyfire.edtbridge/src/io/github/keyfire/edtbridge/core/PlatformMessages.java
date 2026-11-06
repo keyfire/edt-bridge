@@ -104,6 +104,12 @@ public final class PlatformMessages {
                         || message.contains("Error locking infobase for configuration"));
     }
 
+    /** Missing platform license, as reported by backbas_root.res and backbas_ru.res. */
+    public static boolean isLicenseRefusal(String message) {
+        return message != null && (message.contains("License not found.")
+                || message.contains("Не найдена лицензия."));
+    }
+
     /** The agent's "not connected to the infobase" reply, in either language. */
     public static boolean isNotConnectedReply(String message) {
         return message != null

@@ -74,6 +74,9 @@ public final class ValidationSettle {
         return quiet >= REQUIRED_QUIET_POLLS;
     }
 
+    /** Consecutive quiet observations; exposed without changing the settling decision. */
+    public int quietPolls() { return quiet; }
+
     /** The count of the last poll ({@code Integer.MIN_VALUE} before the first one). */
     public int problems() {
         return previous;

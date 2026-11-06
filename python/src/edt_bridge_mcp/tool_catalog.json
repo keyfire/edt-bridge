@@ -57,8 +57,8 @@
     },
     {
       "name": "edt_projects",
-      "description": "READ: list the workspace projects – name, disk location, natures, open state, and whether each is a 1C:EDT project. Use it to discover what is addressable (e.g. which project name maps to which folder) before calling the other tools.",
-      "descriptionRu": "ЧТЕНИЕ: список проектов рабочей области – имя, путь на диске, natures, открыт ли, и является ли проектом 1C:EDT. Помогает понять, что вообще можно адресовать (какое имя проекта какой папке соответствует), до вызова остальных инструментов.",
+      "description": "READ: list the workspace projects – name, disk location, natures, open state, and whether each is a 1C:EDT project. Use it to discover what is addressable (e.g. which project name maps to which folder) before calling the other tools. Readiness diagnostics separate model locks, derived-data stages and workspace jobs, with observation times and explicit unavailable values. This read does not start validation.",
+      "descriptionRu": "ЧТЕНИЕ: список проектов рабочей области – имя, путь на диске, natures, открыт ли, и является ли проектом 1C:EDT. Помогает понять, что вообще можно адресовать (какое имя проекта какой папке соответствует), до вызова остальных инструментов. Диагностика различает блокировку модели, стадии вычисляемых данных и фоновые работы. Указаны время наблюдения и причины недоступности показателей. Чтение не запускает проверку.",
       "inputSchema": {
         "type": "object",
         "properties": {}
@@ -1521,8 +1521,8 @@
     },
     {
       "name": "edt_add_form_item",
-      "description": "WRITE (Phase 2): add a visual item to a managed form - field, table, button, group or decoration - through EDT's own IFormItemManagementService, the service the form editor itself calls. Naming, ids, a field's actual type and a table's auto-filled columns are decided by EDT, not assembled here. A table bound to a value-table attribute gets its columns filled in. index/beforeItem/afterItem select an exclusive insertion position. Typed group/field options and scalar choiceList are validated before writing. Dry-run by default. Additive - no force - but requires a token.",
-      "descriptionRu": "ЗАПИСЬ (Phase 2): добавить элемент управляемой формы - поле, таблицу, кнопку, группу или декорацию - через штатный IFormItemManagementService, тот самый, который вызывает редактор форм. Имена, идентификаторы, фактический вид поля и автозаполнение колонок таблицы определяет EDT, а не сборка здесь. Таблица, связанная с реквизитом типа ТаблицаЗначений, получает колонки автоматически. index/beforeItem/afterItem задают одно место вставки. Свойства групп/полей и scalar choiceList проверяются до записи. По умолчанию dry-run. Аддитивно - force не нужен - но требует токен.",
+      "description": "WRITE (Phase 2): add a visual item to a managed form - field, table, button, group or decoration - through EDT's own IFormItemManagementService, the service the form editor itself calls. Naming, ids, a field's actual type and a table's auto-filled columns are decided by EDT, not assembled here. A table bound to a value-table attribute gets its columns filled in. Use decorationType to create a Label or Picture. index/beforeItem/afterItem select an exclusive insertion position. Typed group/field options and scalar choiceList are validated before writing. Dry-run by default. Additive - no force - but requires a token.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): добавить элемент управляемой формы - поле, таблицу, кнопку, группу или декорацию - через штатный IFormItemManagementService, тот самый, который вызывает редактор форм. Имена, идентификаторы, фактический вид поля и автозаполнение колонок таблицы определяет EDT, а не сборка здесь. Таблица, связанная с реквизитом типа ТаблицаЗначений, получает колонки автоматически. decorationType задает вид декорации Label или Picture. index/beforeItem/afterItem задают одно место вставки. Свойства групп/полей и scalar choiceList проверяются до записи. По умолчанию dry-run. Аддитивно - force не нужен - но требует токен.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1557,6 +1557,14 @@
           "groupType": {
             "type": "string",
             "description": "Group kind: usual group, page, pages, command bar, button group, column group, popup (Russian names accepted). Optional, defaults to a usual group."
+          },
+          "decorationType": {
+            "type": "string",
+            "description": "Decoration type. Optional for kind=decoration. Defaults to Picture where allowed by the container.",
+            "enum": [
+              "Label",
+              "Picture"
+            ]
           },
           "titleRu": {
             "type": "string",
@@ -2684,6 +2692,28 @@
             "description": "What to register: omit or \"auto\" = every full (thick-client) install found on disk (best-first); \"prefer-full\" = also DROP thin builds that shadow a full one in the same version line (so EDT resolves the full install for dump/update) then refresh; a version like 8.5.1.1302; or an absolute path to a version directory."
           }
         }
+      }
+    },
+    {
+      "name": "edt_platform_build_readiness",
+      "description": "WRITE: check whether an installed 1C:Enterprise Designer can obtain a license and run in batch mode. Creates a temporary file infobase, dumps its empty configuration, then removes the temporary files. Reports installation, infobase creation, Designer and cleanup separately. Requires a token.",
+      "descriptionRu": "ЗАПИСЬ. Проверяет, может ли установленный Конфигуратор 1С:Предприятия получить лицензию и выполнить операцию в пакетном режиме. Создает временную файловую базу, выгружает ее пустую конфигурацию и удаляет временные файлы. Отдельно сообщает результат поиска установки, создания базы, запуска Конфигуратора и удаления файлов. Требует токен.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "platformVersion": {
+            "type": "string",
+            "description": "Platform build or version line. The newest matching full installation is checked. Omit to check the newest full installation."
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "description": "Time limit in seconds for each process.",
+            "minimum": 1,
+            "maximum": 120,
+            "default": 30
+          }
+        },
+        "additionalProperties": false
       }
     },
     {

@@ -388,6 +388,9 @@ public final class FormItemEdits {
             } catch (IllegalArgumentException ignored) { }
         }
         if (item instanceof FormField) { result.put("fieldType", ((FormField) item).getType().getLiteral()); }
+        if (item instanceof Decoration decoration && decoration.getType() != null) {
+            result.put("decorationType", decoration.getType().getLiteral());
+        }
         if (info instanceof InputFieldExtInfo || info instanceof RadioButtonsFieldExtInfo) {
             List<Map<String, Object>> entries = new ArrayList<>();
             for (Object raw : (List<?>) info.eGet(info.eClass().getEStructuralFeature("choiceList"))) {

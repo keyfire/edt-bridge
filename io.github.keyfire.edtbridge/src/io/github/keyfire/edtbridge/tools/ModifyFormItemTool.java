@@ -69,6 +69,9 @@ public final class ModifyFormItemTool {
         if (project == null || formFqn == null || name == null) {
             return McpServer.toolError("projectName, formFqn and name are required");
         }
+        if (args.has("decorationType")) {
+            return McpServer.toolError("decorationType is supported only when adding a decoration");
+        }
         try {
             return McpServer.textResult(ToolJson.renderItem(gateway.modifyFormItem(project, formFqn, name,
                     ToolJson.getStr(args, "newName"), ToolJson.getStr(args, "titleRu"),

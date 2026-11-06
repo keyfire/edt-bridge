@@ -25,7 +25,8 @@ import urllib.error
 
 from . import __version__, i18n
 
-COMMANDS = ("call", "tools", "status", "shutdown", "gui", "plugins")
+BRIDGE_COMMANDS = ("call", "tools", "status", "shutdown", "gui", "plugins")
+COMMANDS = (*BRIDGE_COMMANDS, "test-form")
 
 _TOKEN_HINT = (
     "the bridge refused the request (401). Write tools - and, on a token-protected server, every "
@@ -34,7 +35,7 @@ _TOKEN_HINT = (
 
 
 def add_connection_flags(parser: argparse.ArgumentParser) -> None:
-    """Bridge connection flags - the same set for the server mode and for every command."""
+    """Connection flags shared by the server mode and the commands that use it."""
     parser.add_argument("--workspace", help=i18n.t("conn.workspace"))
     parser.add_argument("--edt-dir", help=i18n.t("conn.edt-dir"))
     parser.add_argument("--port", type=int, help=i18n.t("conn.port"))
@@ -66,7 +67,11 @@ def build_parser(command: str) -> argparse.ArgumentParser:
     if command == "gui":
         parser.add_argument("--force", action="store_true", help=i18n.t("gui.force"))
         parser.add_argument("--timeout", type=int, default=90, help=i18n.t("gui.timeout"))
-    add_connection_flags(parser)
+    if command == "test-form":
+        from . import native_form
+        native_form.add_arguments(parser)
+    else:
+        add_connection_flags(parser)
     parser.add_argument("--version", action="version", help=i18n.t("version"),
                         version=f"%(prog)s {__version__}")
     return parser
@@ -334,6 +339,12 @@ def _run(command: str, argv: list[str]) -> int:
 
     if command == "plugins":
         return _plugins_report()
+
+    if command == "test-form":
+        from . import native_form
+        result = native_form.run(args)
+        _emit(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0 if result["ok"] else (1 if result["stage"] == "validation" else 2)
 
     from .server import Backend, apply_connection_options, load_plugin_tools
     apply_connection_options(args)
