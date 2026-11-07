@@ -68,15 +68,26 @@ def test_early_client_exit_preserves_process_diagnostics(monkeypatch, tmp_path):
     assert result["cleanupComplete"] is True
 
 
-@pytest.mark.parametrize(("first_result", "listener_still_owned", "expected_status", "attempts"), [
-    ({"status": "driver_failed", "stage": "connect",
-      "error": "Cannot find a test client with matching version and ID."}, True, "command_completed", 2),
-    ({"status": "driver_failed", "stage": "connect",
-      "error": "Cannot find a test client with matching version and ID."}, False, "driver_failed", 1),
-    ({"status": "command_error", "stage": "click", "error": "Command failed."}, True, "command_error", 1),
-])
+@pytest.mark.parametrize(
+    ("first_result", "listener_still_owned", "response_time", "timeout", "expected_status", "attempts"),
+    [
+        ({"status": "driver_failed", "stage": "connect",
+          "error": "Cannot find a test client with matching version and ID."}, True, 0, 5, "command_completed", 2),
+        ({"status": "driver_failed", "stage": "connect",
+          "error": "Cannot find a test client with matching version and ID."}, True, 35, 60, "command_completed", 2),
+        ({"status": "driver_failed", "stage": "connect",
+          "error": "Cannot find a test client with matching version and ID."}, True, 35, 36, "timeout", 1),
+        ({"status": "driver_failed", "stage": "connect",
+          "error": "Cannot find a test client with matching version and ID."}, False, 0, 5, "driver_failed", 1),
+        ({"status": "driver_failed", "stage": "connect", "error": "Access denied."},
+         True, 0, 60, "access_denied", 1),
+        ({"status": "driver_failed", "stage": "connect", "error": "License not found."},
+         True, 0, 60, "license_unavailable", 1),
+        ({"status": "command_error", "stage": "click", "error": "Command failed."}, True, 60, 60, "command_error", 1),
+    ],
+)
 def test_retries_connection_without_repeating_form_actions(
-        monkeypatch, tmp_path, first_result, listener_still_owned, expected_status, attempts):
+        monkeypatch, tmp_path, first_result, listener_still_owned, response_time, timeout, expected_status, attempts):
     args = _fixture_args(tmp_path)
     args.output_dir.mkdir()
     args.expect_message = "Done"
@@ -84,28 +95,39 @@ def test_retries_connection_without_repeating_form_actions(
     listener_states = iter((True, listener_still_owned))
     monkeypatch.setattr(native_form, "_owns_listener", lambda *args: next(listener_states))
     monkeypatch.setattr(native_form, "_capture", lambda *args: {"screenshot": "screenshot.png"})
-    monkeypatch.setattr(native_form.time, "sleep", lambda _: None)
-    responses = iter((first_result, {
+    now = 100.0
+
+    def advance(seconds):
+        nonlocal now
+        now += seconds
+
+    monkeypatch.setattr(native_form, "time", SimpleNamespace(monotonic=lambda: now, sleep=advance))
+    responses = iter(((first_result, response_time), ({
         "status": "command_completed", "stage": "after_observation",
         "clickAttempted": True, "clickReturned": True, "messages": ["Done"],
-    }))
+    }, 0)))
 
     def spawn(_stack, argv, _env, _log):
         if "/TestManager" in argv:
             request = Path(next(arg[2:] for arg in argv if arg.startswith("/C")))
             result = Path(json.loads(request.read_text(encoding="utf-8"))["result"])
             assert not result.exists()
-            result.write_text(json.dumps(next(responses)), encoding="utf-8")
+            response, elapsed = next(responses)
+            advance(elapsed)
+            result.write_text(json.dumps(response), encoding="utf-8")
         return SimpleNamespace(poll=lambda: None)
 
     monkeypatch.setattr(native_form, "_spawn", spawn)
     report = native_form._run_session(args, args.test_infobase, args.epf, args.output_dir,
                                       tmp_path / "session", tmp_path / "manager", {},
-                                      ["1cv8", "ENTERPRISE"], "Xvfb", time.monotonic() + 5, None)
+                                      ["1cv8", "ENTERPRISE"], "Xvfb", now + timeout, None)
 
     assert report["status"] == expected_status
     assert report["ok"] is (expected_status == "command_completed")
     assert report["connectAttempts"] == attempts
+    if expected_status == "timeout":
+        assert report["interaction"] == first_result
+        assert now == 100 + timeout
     assert report["cleanupComplete"] is True
 
 

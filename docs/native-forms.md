@@ -251,8 +251,9 @@ combined with a scenario.
 
 ## Results
 
-If the test manager cannot connect during startup, the command retries for up to
-30 seconds within the run timeout while the same client owns the port.
+If the test manager cannot connect during startup, `test-form` retries within the
+remaining `--timeout` while the same client owns the port. Retries stop when the
+manager connects or the platform reports an access or license error.
 `connectAttempts` records the number of attempts for the phase.
 
 The command prints JSON and writes `result.json` when it has created the output

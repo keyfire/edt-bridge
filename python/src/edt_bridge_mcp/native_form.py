@@ -25,7 +25,6 @@ from . import i18n, native_report, native_scenario
 
 _SCOPES = ("empty", "fixture", "application")
 _START_FLAGS = ("/DisableStartupDialogs", "/DisableStartupMessages", "/DisableSplash")
-_CONNECT_RETRY_SECONDS = 30
 _ACCESS_DENIED = (
     "access denied", "insufficient rights", "insufficient access rights",
     "доступ запрещен", "доступ запрещён", "недостаточно прав", "нарушение прав доступа",
@@ -37,6 +36,17 @@ class _CheckError(Exception):
     def __init__(self, status: str, message: str):
         super().__init__(message)
         self.status = status
+
+
+def _platform_failure_status(interaction_error, logs, *, connecting=False):
+    logs = logs.casefold()
+    detail = f"{str(interaction_error).casefold()} {logs}"
+    if any(message in detail for message in _ACCESS_DENIED):
+        return "access_denied"
+    license_detail = detail if connecting else logs
+    if any(message in license_detail for message in _LICENSE_MISSING):
+        return "license_unavailable"
+    return None
 
 
 def _record_error(report, error, fallback):
@@ -271,6 +281,8 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
     progress = root / "manager-progress.json"
     client_log = root / "client-platform.log"
     manager_log = root / "manager-platform.log"
+    client_process_log = root / "client-process.log"
+    manager_process_log = root / "manager-process.log"
     client = None
     manager = None
     with contextlib.ExitStack() as stack:
@@ -282,7 +294,7 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
                       else ["/URL", args.navigation_link])
             client = _spawn(stack, [*enterprise, "/F" + str(base), *auth, "/TestClient", f"-TPort{port}",
                                    *target, "/Out", str(client_log)],
-                            client_env, root / "client-process.log")
+                            client_env, client_process_log)
             _wait_for_client(client, port, deadline)
 
             report["stage"] = "form_interaction"
@@ -299,10 +311,10 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
             manager_args = [*enterprise, "/F" + str(manager_base), "/TestManager",
                             "/C" + str(request), "/Out", str(manager_log)]
             manager_stack = stack.enter_context(contextlib.ExitStack())
-            retry_until = min(deadline, time.monotonic() + _CONNECT_RETRY_SECONDS)
             report["connectAttempts"] = 0
             while True:
-                manager = _spawn(manager_stack, manager_args, manager_env, root / "manager-process.log")
+                _seconds_left(deadline)
+                manager = _spawn(manager_stack, manager_args, manager_env, manager_process_log)
                 report["connectAttempts"] += 1
                 while not result.is_file():
                     if client.poll() is not None or manager.poll() is not None:
@@ -317,15 +329,20 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
                 # The owned listener can open before the platform accepts a test connection.
                 if data["status"] != "driver_failed" or data.get("stage") != "connect":
                     break
-                if retry_until - time.monotonic() <= 1:
+                logs = " ".join(_log(path) for path in
+                                (client_log, manager_log, client_process_log, manager_process_log))
+                failure = _platform_failure_status(data.get("error", ""), logs, connecting=True)
+                if failure:
+                    report["status"] = failure
                     break
                 manager_stack.close()
                 manager = None
-                time.sleep(1)
-                if (time.monotonic() >= retry_until or client.poll() is not None
-                        or not _owns_listener(client, port)):
+                time.sleep(min(1, _seconds_left(deadline)))
+                _seconds_left(deadline)
+                if client.poll() is not None or not _owns_listener(client, port):
                     break
                 result.unlink()
+                progress.unlink(missing_ok=True)
             if steps is not None:
                 if data["status"] == "scenario_observed":
                     report.update(native_scenario.evaluate(steps, data.get("observations")))
@@ -350,8 +367,8 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
                 if process is not None and process.poll() is not None:
                     report[key] = process.poll()
             for key, log in (("clientLog", client_log), ("managerLog", manager_log),
-                             ("clientProcessLog", root / "client-process.log"),
-                             ("managerProcessLog", root / "manager-process.log"),
+                             ("clientProcessLog", client_process_log),
+                             ("managerProcessLog", manager_process_log),
                              ("displayLog", root / "client-display/xvfb.log")):
                 detail = _log(log)
                 if detail:
@@ -478,13 +495,10 @@ def _native_check(args, base, external, output, report):
             if not report["ok"]:
                 platform_logs = " ".join(report.get(key, "") for key in
                                          ("clientLog", "managerLog", "clientProcessLog", "managerProcessLog",
-                                          "designerLog", "setupLog")).casefold()
-                detail = " ".join([str(report.get("interaction", {}).get("error", "")),
-                                   platform_logs]).casefold()
-                if any(message in detail for message in _ACCESS_DENIED):
-                    report["status"] = "access_denied"
-                elif any(message in platform_logs for message in _LICENSE_MISSING):
-                    report["status"] = "license_unavailable"
+                                          "designerLog", "setupLog"))
+                failure = _platform_failure_status(report.get("interaction", {}).get("error", ""), platform_logs)
+                if failure:
+                    report["status"] = failure
     report["cleanupComplete"] = True
 
 

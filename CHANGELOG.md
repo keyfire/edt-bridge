@@ -13,7 +13,7 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
-## 2026-11-07 – 0.37.3, 0.38.0, 0.38.1
+## 2026-11-07 – 0.37.3, 0.38.0, 0.38.1, 0.38.2
 
 ### Added
 
@@ -23,6 +23,10 @@ to the code and the reasoning behind it.
   ([#71](https://github.com/keyfire/edt-bridge/pull/71))
 
 ### Fixed
+
+- `test-form` retries the connection to a slow-starting test client within the
+  remaining `--timeout`. Previously, retries stopped after 30 seconds.
+  ([#73](https://github.com/keyfire/edt-bridge/pull/73))
 
 - `test-form` reads the message panel only when a scenario checks messages. A table
   check can now click "Generate" in an external report with an empty message panel.
