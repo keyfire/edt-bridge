@@ -31,6 +31,7 @@ to the code and the reasoning behind it.
 ### Changed
 
 - Rebuilt 0.38.0 for publication with PyPI attestations.
+  ([#72](https://github.com/keyfire/edt-bridge/pull/72))
 
 ## 2026-11-07 – 0.36.0, 0.37.0, 0.37.1, 0.37.2
 
