@@ -13,7 +13,7 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
-## 2026-11-07 – 0.36.0, 0.37.0, 0.37.1
+## 2026-11-07 – 0.36.0, 0.37.0, 0.37.1, 0.37.2
 
 ### Added
 
@@ -37,6 +37,9 @@ to the code and the reasoning behind it.
 
 ### Fixed
 
+- `/status` and `/shutdown` use separate workers from `/mcp`, so they can respond while
+  both MCP workers are busy.
+  ([#69](https://github.com/keyfire/edt-bridge/pull/69))
 - `test-form` retries the connection when the client opens its port before it can accept
   a test session. The form scenario starts after the connection succeeds.
   ([#68](https://github.com/keyfire/edt-bridge/pull/68))
