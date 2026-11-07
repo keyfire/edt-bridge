@@ -20,6 +20,7 @@ to the code and the reasoning behind it.
 - `test-form` opens the standard form of an external report that declares a main data
   composition schema and has no custom main form. A `click` step can use the button's
   internal name when several buttons share a caption.
+  ([#71](https://github.com/keyfire/edt-bridge/pull/71))
 
 ## 2026-11-07 – 0.37.3
 
