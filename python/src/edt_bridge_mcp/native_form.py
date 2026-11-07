@@ -25,6 +25,7 @@ from . import i18n, native_report, native_scenario
 
 _SCOPES = ("empty", "fixture", "application")
 _START_FLAGS = ("/DisableStartupDialogs", "/DisableStartupMessages", "/DisableSplash")
+_CONNECT_RETRY_SECONDS = 30
 _ACCESS_DENIED = (
     "access denied", "insufficient rights", "insufficient access rights",
     "доступ запрещен", "доступ запрещён", "недостаточно прав", "нарушение прав доступа",
@@ -292,19 +293,36 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
                 payload.update(steps=steps, maxRows=native_scenario.MAX_ROWS,
                                maxColumns=native_scenario.MAX_COLUMNS)
             request.write_text(json.dumps(payload), encoding="utf-8", newline="")
-            manager = _spawn(stack, [*enterprise, "/F" + str(manager_base), "/TestManager",
-                                    "/C" + str(request), "/Out", str(manager_log)],
-                             manager_env, root / "manager-process.log")
-            while not result.is_file():
-                if client.poll() is not None or manager.poll() is not None:
-                    raise _CheckError("session_exited", "A native session exited before reporting a result.")
-                time.sleep(min(0.15, _seconds_left(deadline)))
-            if result.stat().st_size > 16_777_216:
-                raise _CheckError("driver_failed", "The test manager result exceeds 16 MiB.")
-            data = json.loads(result.read_text(encoding="utf-8-sig"))
-            if not isinstance(data, dict) or not isinstance(data.get("status"), str):
-                raise _CheckError("driver_failed", "The test manager returned an invalid result.")
-            report.update(interaction=data, status=data["status"])
+            manager_args = [*enterprise, "/F" + str(manager_base), "/TestManager",
+                            "/C" + str(request), "/Out", str(manager_log)]
+            manager_stack = stack.enter_context(contextlib.ExitStack())
+            retry_until = min(deadline, time.monotonic() + _CONNECT_RETRY_SECONDS)
+            report["connectAttempts"] = 0
+            while True:
+                manager = _spawn(manager_stack, manager_args, manager_env, root / "manager-process.log")
+                report["connectAttempts"] += 1
+                while not result.is_file():
+                    if client.poll() is not None or manager.poll() is not None:
+                        raise _CheckError("session_exited", "A native session exited before reporting a result.")
+                    time.sleep(min(0.15, _seconds_left(deadline)))
+                if result.stat().st_size > 16_777_216:
+                    raise _CheckError("driver_failed", "The test manager result exceeds 16 MiB.")
+                data = json.loads(result.read_text(encoding="utf-8-sig"))
+                if not isinstance(data, dict) or not isinstance(data.get("status"), str):
+                    raise _CheckError("driver_failed", "The test manager returned an invalid result.")
+                report.update(interaction=data, status=data["status"])
+                # The owned listener can open before the platform accepts a test connection.
+                if data["status"] != "driver_failed" or data.get("stage") != "connect":
+                    break
+                if retry_until - time.monotonic() <= 1:
+                    break
+                manager_stack.close()
+                manager = None
+                time.sleep(1)
+                if (time.monotonic() >= retry_until or client.poll() is not None
+                        or not _owns_listener(client, port)):
+                    break
+                result.unlink()
             if steps is not None:
                 if data["status"] == "scenario_observed":
                     report.update(native_scenario.evaluate(steps, data.get("observations")))
