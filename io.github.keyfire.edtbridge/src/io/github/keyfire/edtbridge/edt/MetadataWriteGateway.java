@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Function;
@@ -2121,7 +2122,10 @@ public final class MetadataWriteGateway {
         public boolean ok;
         public boolean applied;
         public String name;
-        public String baseProject;    // optional configuration project the processor is "for"
+        public String kind;           // processor | report
+        public String objectType;     // ExternalDataProcessor | ExternalReport
+        public String fqn;
+        public String baseProject;    // optional base configuration project
         public boolean nameValid;
         public Boolean nameAvailable;
         public String version;
@@ -2133,21 +2137,35 @@ public final class MetadataWriteGateway {
     }
 
     /**
-     * Phase-2 write tool: create a NEW external-data-processor PROJECT via EDT's own
-     * {@link IExternalObjectProjectManager} (the engine behind the New External Data Processor
-     * wizard). {@code baseProjectName} is optional: with it, the processor project is linked to that
-     * configuration project (its runtime version and types context); without it, a standalone
-     * processor project with the default runtime version. Dry-run by default.
+     * Create an external data processor project, preserving the original default.
+     */
+    public CreateExternalObjectResult createExternalObject(String name, String baseProjectName,
+            String scriptVariantName, boolean apply) {
+        return createExternalObject(name, baseProjectName, scriptVariantName, null, apply);
+    }
+
+    /**
+     * Phase-2 write tool: create an external data processor or report project through EDT's
+     * {@link IExternalObjectProjectManager}. {@code kind} is {@code processor} by default or
+     * {@code report}. An optional base configuration supplies the runtime version and types context;
+     * otherwise the project is standalone with the default runtime version. Dry-run by default.
      *
      * <p>{@code scriptVariantName} picks the built-in language ("Russian" / "English"). EDT defaults a
      * standalone project to English, which names generated members {@code Object} instead of
      * {@code Объект} – pass the variant explicitly for a Russian project.
      */
     public CreateExternalObjectResult createExternalObject(String name, String baseProjectName,
-            String scriptVariantName, boolean apply) {
+            String scriptVariantName, String kind, boolean apply) {
         CreateExternalObjectResult r = new CreateExternalObjectResult();
         r.name = name;
         r.baseProject = (baseProjectName == null || baseProjectName.isBlank()) ? null : baseProjectName;
+        r.kind = (kind == null || kind.isBlank()) ? "processor" : kind.trim().toLowerCase(Locale.ROOT);
+        if (!r.kind.equals("processor") && !r.kind.equals("report")) {
+            r.message = "unknown kind: \"" + kind + "\" (use processor or report)";
+            return r;
+        }
+        r.objectType = r.kind.equals("report") ? "ExternalReport" : "ExternalDataProcessor";
+        String objectLabel = r.kind.equals("report") ? "external report" : "external data processor";
         ScriptVariant variant = parseScriptVariant(scriptVariantName);
         if (scriptVariantName != null && !scriptVariantName.isBlank() && variant == null) {
             r.message = "unknown scriptVariant: \"" + scriptVariantName + "\" (use Russian or English)";
@@ -2161,6 +2179,7 @@ public final class MetadataWriteGateway {
             return r;
         }
         r.nameValid = true;
+        r.fqn = r.objectType + "." + name;
         IProject base = null;
         if (r.baseProject != null) {
             base = ResourcesPlugin.getWorkspace().getRoot().getProject(r.baseProject);
@@ -2173,7 +2192,7 @@ public final class MetadataWriteGateway {
         Version version = (base != null) ? GatewaySupport.projectVersion(base) : Version.LATEST;
         r.version = String.valueOf(version);
         r.ok = Boolean.TRUE.equals(r.nameAvailable);
-        r.plan = "Create external data processor project \"" + name + "\""
+        r.plan = "Create " + objectLabel + " project \"" + name + "\""
                 + (r.baseProject != null ? " for configuration project " + r.baseProject : " (standalone)")
                 + " [" + r.version + "]"
                 + (r.scriptVariant != null ? " script variant " + r.scriptVariant : "");
@@ -2201,17 +2220,8 @@ public final class MetadataWriteGateway {
             return r;
         }
         try {
-            // Like create_extension: create() attaches the given root MdObject directly, so it must be
-            // a FRESH, detached object (not null). Build an ExternalDataProcessor via the md factory.
-            EObject freshRoot = factory.create(
-                    (EClass) MdClassPackage.eINSTANCE.getEClassifier("ExternalDataProcessor"), version);
-            if (!(freshRoot instanceof MdObject)) {
-                r.message = "md factory did not produce an ExternalDataProcessor (got "
-                        + (freshRoot == null ? "null" : freshRoot.eClass().getName()) + ")";
-                return r;
-            }
-            ((MdObject) freshRoot).setName(name);
-            IProject created = eom.create(name, version, (MdObject) freshRoot, base,
+            MdObject freshRoot = newExternalObjectRoot(factory, r.objectType, version, name);
+            IProject created = eom.create(name, version, freshRoot, base,
                     new NullProgressMonitor());
             r.applied = true;
             r.location = (created != null && created.getLocation() != null)
@@ -2222,7 +2232,7 @@ public final class MetadataWriteGateway {
                 r.warning = "project created, but the script variant stayed at EDT's default: "
                         + variantProblem;
             }
-            r.message = "created external data processor project " + name
+            r.message = "created " + objectLabel + " project " + name
                     + (variant != null && variantProblem == null ? " [" + variant.getName() + "]" : "")
                     + " (the project model loads in background – poll edt_projects)";
         } catch (CoreException | RuntimeException ex) {
@@ -2230,6 +2240,18 @@ public final class MetadataWriteGateway {
             r.message = "create failed: " + GatewaySupport.describeCause(ex);
         }
         return r;
+    }
+
+    private static MdObject newExternalObjectRoot(IModelObjectFactory factory, String objectType,
+            Version version, String name) {
+        // The project manager attaches this root directly, so always create a fresh detached object.
+        EObject root = factory.create((EClass) MdClassPackage.eINSTANCE.getEClassifier(objectType), version);
+        if (!(root instanceof MdObject) || !objectType.equals(root.eClass().getName())) {
+            throw new IllegalStateException("md factory did not produce an " + objectType + " (got "
+                    + (root == null ? "null" : root.eClass().getName()) + ")");
+        }
+        ((MdObject) root).setName(name);
+        return (MdObject) root;
     }
 
     /** {@code Russian} / {@code English} (case-insensitive), or {@code null} when unset or unknown. */

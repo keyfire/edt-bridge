@@ -1,10 +1,11 @@
-"""Run a managed EPF form in the platform's native TestClient mode."""
+"""Check managed forms through the platform's native TestClient mode."""
 
 from __future__ import annotations
 
 import contextlib
 import json
 import os
+import re
 import secrets
 import select
 import shutil
@@ -19,7 +20,7 @@ import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from . import i18n
+from . import i18n, native_report, native_scenario
 
 
 _SCOPES = ("empty", "fixture", "application")
@@ -55,10 +56,15 @@ def add_arguments(parser):
     parser.add_argument("--test-infobase", required=True, type=Path,
                         help=i18n.t("test-form.test-infobase"))
     parser.add_argument("--scope", required=True, choices=_SCOPES, help=i18n.t("test-form.scope"))
-    parser.add_argument("--epf", required=True, type=Path, help=i18n.t("test-form.epf"))
+    target = parser.add_mutually_exclusive_group(required=True)
+    target.add_argument("--epf", type=Path, help=i18n.t("test-form.epf"))
+    target.add_argument("--erf", type=Path, help=i18n.t("test-form.erf"))
+    target.add_argument("--navigation-link", help=i18n.t("test-form.navigation-link"))
     parser.add_argument("--form", required=True, help=i18n.t("test-form.form"))
     parser.add_argument("--form-title", required=True, help=i18n.t("test-form.form-title"))
-    parser.add_argument("--button", required=True, help=i18n.t("test-form.button"))
+    operation = parser.add_mutually_exclusive_group(required=True)
+    operation.add_argument("--button", help=i18n.t("test-form.button"))
+    operation.add_argument("--scenario", type=Path, help=i18n.t("test-form.scenario"))
     parser.add_argument("--expect-message", help=i18n.t("test-form.expect-message"))
     parser.add_argument("--user", help=i18n.t("test-form.user"))
     parser.add_argument("--output-dir", required=True, type=Path, help=i18n.t("test-form.output-dir"))
@@ -67,10 +73,23 @@ def add_arguments(parser):
 
 def _form_key(name):
     parts = name.split(".")
-    if (len(parts) == 4 and parts[0] in ("ExternalDataProcessor", "ВнешняяОбработка")
+    kinds = {"ExternalDataProcessor": "ExternalDataProcessor", "ВнешняяОбработка": "ExternalDataProcessor",
+             "ExternalReport": "ExternalReport", "ВнешнийОтчет": "ExternalReport",
+             "Document": "Document", "Документ": "Document", "Catalog": "Catalog", "Справочник": "Catalog"}
+    if (len(parts) == 4 and parts[0] in kinds
             and parts[2] in ("Form", "Форма") and all(part.isidentifier() for part in parts)):
-        return parts[1].casefold(), parts[3].casefold()
+        return kinds[parts[0]], parts[1].casefold(), parts[3].casefold()
     return None
+
+
+def _validate_navigation_link(link, form):
+    match = re.fullmatch(r"e1cib/data/(Document|Документ|Catalog|Справочник)\.([^.?/#]+)\?ref=([a-fA-F0-9]{32})", link)
+    key = _form_key(form)
+    target_key = _form_key(match[1] + "." + match[2] + ".Form.Main") if match else None
+    if (target_key is None or key is None or key[0] not in ("Document", "Catalog")
+            or target_key[:2] != key[:2]):
+        raise _CheckError("invalid_input", "Use an internal e1cib/data object link matching the selected form.")
+    return link
 
 
 def _validated_paths(args):
@@ -78,20 +97,31 @@ def _validated_paths(args):
         raise _CheckError("unsupported", "The native form check requires isolated Linux with Xvfb.")
     if not 1 <= args.timeout <= 900:
         raise _CheckError("invalid_input", "Timeout must be between 1 and 900 seconds.")
-    if _form_key(args.form) is None:
-        raise _CheckError("invalid_input", "Use the fully qualified main form name of the selected EPF.")
-    if any(not text.strip() or any(c in text for c in "*?") for text in (args.form_title, args.button)):
+    key = _form_key(args.form)
+    if key is None:
+        raise _CheckError("invalid_input", "Use the fully qualified managed form name of the selected target.")
+    selectors = [args.form_title] + ([args.button] if args.button is not None else [])
+    if any(not text.strip() or any(c in text for c in "*?\x00") for text in selectors):
         raise _CheckError("invalid_input", "Use exact, nonempty form and button selectors.")
+    if args.scenario and args.expect_message:
+        raise _CheckError("invalid_input", "Use assert_messages inside a scenario instead of --expect-message.")
     base = args.test_infobase.resolve()
-    epf = args.epf.resolve()
     if not _is_regular_file(base / "1Cv8.1CD"):
         raise _CheckError("invalid_input", "The test infobase must contain 1Cv8.1CD.")
-    if not _is_regular_file(epf) or epf.suffix.lower() != ".epf":
-        raise _CheckError("invalid_input", "Select an existing EPF file.")
+    external = args.epf or args.erf
+    if external:
+        external = external.resolve()
+        extension, kind = (".epf", "ExternalDataProcessor") if args.epf else (".erf", "ExternalReport")
+        if not _is_regular_file(external) or external.suffix.lower() != extension or key[0] != kind:
+            raise _CheckError("invalid_input", "Select an existing EPF/ERF file and its matching main form.")
+    else:
+        _validate_navigation_link(args.navigation_link, args.form)
+        if not args.scenario:
+            raise _CheckError("invalid_input", "A configuration form requires a scenario with result assertions.")
     output = args.output_dir.resolve()
     if output.is_relative_to(base) or output.exists():
         raise _CheckError("invalid_input", "Select a new output directory outside the test infobase.")
-    return base, epf, output
+    return base, external, output
 
 
 def _seconds_left(deadline):
@@ -230,7 +260,88 @@ def _capture(stack, env, root, output):
     return {"screenshot": str(destination)}
 
 
-def _native_check(args, base, epf, output, report):
+def _run_session(args, base, external, output, root, manager_base, manager_env, enterprise,
+                 xvfb, deadline, steps, launch_external=None):
+    report = {"ok": False, "stage": "client_startup"}
+    root.mkdir()
+    progress = root / "manager-progress.json"
+    client_log = root / "client-platform.log"
+    manager_log = root / "manager-platform.log"
+    client = None
+    manager = None
+    with contextlib.ExitStack() as stack:
+        try:
+            client_env = _display(stack, xvfb, root / "client-display", deadline)
+            port = _free_port()
+            auth = ["/N" + args.user] if args.user else []
+            target = (["/Execute", str(launch_external or external)] if external
+                      else ["/URL", args.navigation_link])
+            client = _spawn(stack, [*enterprise, "/F" + str(base), *auth, "/TestClient", f"-TPort{port}",
+                                   *target, "/Out", str(client_log)],
+                            client_env, root / "client-process.log")
+            _wait_for_client(client, port, deadline)
+
+            report["stage"] = "form_interaction"
+            request = root / "request.json"
+            result = root / "manager-result.json"
+            payload = {"port": port, "form": args.form, "formTitle": args.form_title,
+                       "button": args.button or "", "expectedMessage": args.expect_message or "",
+                       "waitSeconds": min(10, max(1, int(_seconds_left(deadline) / 2))),
+                       "result": str(result), "progress": str(progress)}
+            if steps is not None:
+                payload.update(steps=steps, maxRows=native_scenario.MAX_ROWS,
+                               maxColumns=native_scenario.MAX_COLUMNS)
+            request.write_text(json.dumps(payload), encoding="utf-8", newline="")
+            manager = _spawn(stack, [*enterprise, "/F" + str(manager_base), "/TestManager",
+                                    "/C" + str(request), "/Out", str(manager_log)],
+                             manager_env, root / "manager-process.log")
+            while not result.is_file():
+                if client.poll() is not None or manager.poll() is not None:
+                    raise _CheckError("session_exited", "A native session exited before reporting a result.")
+                time.sleep(min(0.15, _seconds_left(deadline)))
+            if result.stat().st_size > 16_777_216:
+                raise _CheckError("driver_failed", "The test manager result exceeds 16 MiB.")
+            data = json.loads(result.read_text(encoding="utf-8-sig"))
+            if not isinstance(data, dict) or not isinstance(data.get("status"), str):
+                raise _CheckError("driver_failed", "The test manager returned an invalid result.")
+            report.update(interaction=data, status=data["status"])
+            if steps is not None:
+                if data["status"] == "scenario_observed":
+                    report.update(native_scenario.evaluate(steps, data.get("observations")))
+            elif data["status"] == "command_completed":
+                messages = data.get("messages")
+                if (data.get("clickReturned") is not True or not args.expect_message
+                        or not isinstance(messages, list) or args.expect_message not in messages):
+                    raise _CheckError("driver_failed", "The test manager did not report the expected result.")
+                report["ok"] = True
+        except (_CheckError, OSError, ValueError) as error:
+            _record_error(report, error, "driver_failed")
+            if progress.is_file():
+                with contextlib.suppress(OSError, ValueError):
+                    report["lastInteraction"] = json.loads(progress.read_text(encoding="utf-8-sig"))
+        finally:
+            if client is not None:
+                try:
+                    report.update(_capture(stack, client_env, root, output))
+                except OSError as error:
+                    report["screenshotError"] = str(error)
+            for key, process in (("clientExitCode", client), ("managerExitCode", manager)):
+                if process is not None and process.poll() is not None:
+                    report[key] = process.poll()
+            for key, log in (("clientLog", client_log), ("managerLog", manager_log),
+                             ("clientProcessLog", root / "client-process.log"),
+                             ("managerProcessLog", root / "manager-process.log"),
+                             ("displayLog", root / "client-display/xvfb.log")):
+                detail = _log(log)
+                if detail:
+                    report[key] = detail
+            if report["ok"] and "screenshot" not in report:
+                report.update(ok=False, status="screenshot_failed")
+    report["cleanupComplete"] = True
+    return report
+
+
+def _native_check(args, base, external, output, report):
     platform = args.platform_bin.resolve()
     client_exe, ibcmd = (platform / name for name in ("1cv8", "ibcmd"))
     xvfb = shutil.which("Xvfb")
@@ -241,11 +352,7 @@ def _native_check(args, base, epf, output, report):
     with tempfile.TemporaryDirectory(prefix="edt-bridge-form-") as temporary, contextlib.ExitStack() as stack:
         root = Path(temporary)
         manager_base = root / "manager-infobase"
-        manager_log = root / "manager-platform.log"
         designer_log = root / "designer.log"
-        client_log = root / "client-platform.log"
-        progress = root / "manager-progress.json"
-        client = None
         try:
             report["stage"] = "manager_setup"
             manager_env = _display(stack, xvfb, root / "manager-display", deadline)
@@ -257,21 +364,23 @@ def _native_check(args, base, epf, output, report):
                 raise _CheckError("setup_failed", "The platform did not create the manager infobase.")
 
             designer = [str(client_exe), "DESIGNER", "/F" + str(manager_base), *_START_FLAGS]
-            report["stage"] = "target_metadata"
-            metadata = root / "target.xml"
-            export = _spawn(stack, [*designer, "/DumpExternalDataProcessorOrReportToFiles",
-                                    str(metadata), str(epf), "/Out", str(designer_log)],
-                            manager_env, root / "designer-process.log")
-            _require_exit(export, deadline, "Could not read the selected EPF metadata")
-            try:
-                default = ET.parse(metadata).findtext("./{*}ExternalDataProcessor/{*}Properties/{*}DefaultForm", "")
-            except PermissionError:
-                raise
-            except (OSError, ET.ParseError) as error:
-                raise _CheckError("metadata_unavailable", "Designer did not export readable EPF metadata.") from error
-            if _form_key(default) != _form_key(args.form):
-                report["defaultForm"] = default
-                raise _CheckError("form_not_default", "Select the main managed form declared by this EPF.")
+            if external:
+                report["stage"] = "target_metadata"
+                metadata = root / "target.xml"
+                export = _spawn(stack, [*designer, "/DumpExternalDataProcessorOrReportToFiles",
+                                        str(metadata), str(external), "/Out", str(designer_log)],
+                                manager_env, root / "designer-process.log")
+                _require_exit(export, deadline, "Could not read the selected external object metadata")
+                kind = _form_key(args.form)[0]
+                try:
+                    default = ET.parse(metadata).findtext("./{*}" + kind + "/{*}Properties/{*}DefaultForm", "")
+                except PermissionError:
+                    raise
+                except (OSError, ET.ParseError) as error:
+                    raise _CheckError("metadata_unavailable", "Designer did not export readable external object metadata.") from error
+                if _form_key(default) != _form_key(args.form):
+                    report["defaultForm"] = default
+                    raise _CheckError("form_not_default", "Select the main managed form declared by this external object.")
 
             report["stage"] = "manager_setup"
             driver = root / "driver"
@@ -289,69 +398,63 @@ def _native_check(args, base, epf, output, report):
                               manager_env, root / "designer-process.log")
                 _require_exit(load, deadline, "Could not prepare the temporary manager configuration")
 
-            report["stage"] = "client_startup"
-            client_env = _display(stack, xvfb, root / "client-display", deadline)
-            port = _free_port()
-            auth = ["/N" + args.user] if args.user else []
-            enterprise = [str(client_exe), "ENTERPRISE", "/RunModeManagedApplication", *_START_FLAGS]
-            client = _spawn(stack, [*enterprise, "/F" + str(base), *auth, "/TestClient", f"-TPort{port}",
-                                   "/Execute", str(epf), "/Out", str(client_log)],
-                            client_env, root / "client-process.log")
-            _wait_for_client(client, port, deadline)
+            launch_external = external
+            if args.erf:
+                report["stage"] = "report_launcher_setup"
+                launcher = root / "report-loader"
+                launcher.mkdir()
+                format_version = ET.parse(driver / "Configuration.xml").getroot().attrib["version"]
+                launcher_xml = native_report.write_launcher(
+                    launcher, external, args.form.rsplit(".", 1)[1], format_version)
+                launch_external = root / "report-loader.epf"
+                build = _spawn(stack, [*designer, "/LoadExternalDataProcessorOrReportFromFiles",
+                                      str(launcher_xml), str(launch_external), "/Out", str(designer_log)],
+                               manager_env, root / "designer-process.log")
+                _require_exit(build, deadline, "Could not build the report launcher")
+                if not _is_regular_file(launch_external):
+                    raise _CheckError("setup_failed", "Designer did not build the report launcher.")
 
-            report["stage"] = "form_interaction"
-            request = root / "request.json"
-            result = root / "manager-result.json"
-            request.write_text(json.dumps({"port": port, "form": args.form, "formTitle": args.form_title,
-                                          "button": args.button, "expectedMessage": args.expect_message or "",
-                                          "waitSeconds": min(10, max(1, int(_seconds_left(deadline) / 2))),
-                                          "result": str(result), "progress": str(progress)}),
-                               encoding="utf-8", newline="")
-            manager = _spawn(stack, [*enterprise, "/F" + str(manager_base), "/TestManager",
-                                    "/C" + str(request), "/Out", str(manager_log)],
-                             manager_env, root / "manager-process.log")
-            while not result.is_file():
-                if client.poll() is not None or manager.poll() is not None:
-                    raise _CheckError("session_exited", "A native session exited before reporting a result.")
-                time.sleep(min(0.15, _seconds_left(deadline)))
-            data = json.loads(result.read_text(encoding="utf-8-sig"))
-            if not isinstance(data, dict) or not isinstance(data.get("status"), str):
-                raise _CheckError("driver_failed", "The test manager returned an invalid result.")
-            report["interaction"] = data
-            report["status"] = data["status"]
-            messages = data.get("messages")
-            if data["status"] == "command_completed":
-                if (data.get("clickReturned") is not True or not args.expect_message
-                        or not isinstance(messages, list) or args.expect_message not in messages):
-                    raise _CheckError("driver_failed", "The test manager did not report the expected result.")
-                report["ok"] = True
+            enterprise = [str(client_exe), "ENTERPRISE", "/RunModeManagedApplication", *_START_FLAGS]
+            scenario = getattr(args, "_scenario", None)
+            phases = [("steps", scenario["steps"])] if scenario else [("legacy", None)]
+            if scenario and "reopen" in scenario:
+                phases.append(("reopen", scenario["reopen"]))
+            if scenario:
+                report["phases"] = []
+            previous_keys = set()
+            for name, steps in phases:
+                for key in previous_keys:
+                    report.pop(key, None)
+                report.update(ok=False, phase=name)
+                phase_output = output / name if scenario else output
+                if scenario:
+                    phase_output.mkdir()
+                result = _run_session(args, base, external, phase_output, root / name, manager_base,
+                                      manager_env, enterprise, xvfb, deadline, steps, launch_external)
+                latest = {key: value for key, value in result.items() if key != "cleanupComplete"}
+                report.update(latest)
+                previous_keys = set(latest)
+                if scenario:
+                    report["phases"].append(dict(name=name, **result))
+                if not result["ok"]:
+                    break
         except (_CheckError, OSError, ValueError) as error:
             _record_error(report, error, "driver_failed")
-            if progress.is_file():
-                with contextlib.suppress(OSError, ValueError):
-                    report["lastInteraction"] = json.loads(progress.read_text(encoding="utf-8-sig"))
         finally:
-            if client is not None:
-                try:
-                    report.update(_capture(stack, client_env, root, output))
-                except OSError as error:
-                    report["screenshotError"] = str(error)
-            for key, path in (("clientLog", client_log), ("managerLog", manager_log),
-                              ("designerLog", designer_log), ("setupLog", root / "ibcmd.log")):
+            for key, path in (("designerLog", designer_log), ("setupLog", root / "ibcmd.log")):
                 detail = _log(path)
                 if detail:
                     report[key] = detail
             if not report["ok"]:
                 platform_logs = " ".join(report.get(key, "") for key in
-                                         ("clientLog", "managerLog", "designerLog", "setupLog")).casefold()
+                                         ("clientLog", "managerLog", "clientProcessLog", "managerProcessLog",
+                                          "designerLog", "setupLog")).casefold()
                 detail = " ".join([str(report.get("interaction", {}).get("error", "")),
                                    platform_logs]).casefold()
                 if any(message in detail for message in _ACCESS_DENIED):
                     report["status"] = "access_denied"
                 elif any(message in platform_logs for message in _LICENSE_MISSING):
                     report["status"] = "license_unavailable"
-            elif "screenshot" not in report:
-                report.update(ok=False, status="screenshot_failed")
     report["cleanupComplete"] = True
 
 
@@ -363,17 +466,25 @@ def run(args):
     report = {"ok": False, "scope": args.scope, "scopeSource": "caller", "stage": "validation"}
     output = None
     try:
-        base, epf, destination = _validated_paths(args)
+        base, external, destination = _validated_paths(args)
+        args._scenario = native_scenario.load(args.scenario) if args.scenario else None
         destination.mkdir(mode=0o700)
         output = destination
-        report.update(testInfobase=str(base), epf=str(epf), form=args.form,
-                      formTitle=args.form_title, button=args.button)
+        report.update(testInfobase=str(base), form=args.form, formTitle=args.form_title)
+        if external:
+            report["epf" if args.epf else "erf"] = str(external)
+        else:
+            report["navigationLink"] = args.navigation_link
+        if args._scenario:
+            report["scenario"] = args._scenario
+        else:
+            report["button"] = args.button
         previous = signal.signal(signal.SIGTERM, _cancel_check)
         try:
-            _native_check(args, base, epf, output, report)
+            _native_check(args, base, external, output, report)
         finally:
             signal.signal(signal.SIGTERM, previous)
-    except (_CheckError, OSError) as error:
+    except (_CheckError, OSError, native_scenario.ScenarioError) as error:
         _record_error(report, error, "io_error")
     except KeyboardInterrupt:
         report.update(ok=False, status="cancelled", error="The native form check was cancelled.")

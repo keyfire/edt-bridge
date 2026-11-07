@@ -57,17 +57,18 @@ TEXT = {
         ),
         "note_native": (
             "Запускайте проверку в изолированном Linux-окружении с `1cv8`, `ibcmd`, "
-            "`Xvfb` и `libX11`. Выберите файловую тестовую базу и основную управляемую форму, "
-            "указанную в EPF. Укажите полный заголовок из клиента, включая имя обработки, "
-            "если оно отображается.\n\n"
-            "Перед первым запуском подтвердите открытие именно этого EPF в выбранной тестовой "
-            "базе под тем же пользователем. Платформа сохраняет разрешение для конкретного "
-            "файла. Если предупреждение появилось во время проверки, оно останется на снимке.\n\n"
-            "Команда сохраняет `result.json` и, если доступен экран клиента, `screenshot.png`. "
-            "Для успешной проверки укажите `--expect-message`. Заданный текст должен появиться "
-            "после нажатия кнопки. Без этого параметра команда сохраняет наблюдение "
-            "`command_observed` и возвращает код **2**. Предел времени включает подготовку и "
-            "взаимодействие с клиентом. Для завершения процессов предусмотрен отдельный короткий срок."
+            "`Xvfb` и `libX11`. Укажите одноразовую файловую базу и одну цель: `--epf`, "
+            "`--erf` или `--navigation-link`. Для внешнего файла нужна его основная управляемая "
+            "форма; для объекта конфигурации обязателен `--scenario`.\n\n"
+            "JSON-сценарий проверяет фактические поля, ячейки табличного документа и число "
+            "новых сообщений. Фаза `reopen` открывает ту же цель в новой сессии для чтения "
+            "сохраненного состояния. Команда записывает `result.json` и снимок каждой фазы, "
+            "когда доступен экран клиента. Настройка защиты от опасных действий остается "
+            "за владельцем тестового окружения; CLI ее не меняет.\n\n"
+            "В профиле `--button` успех требует `--expect-message`; без него результат "
+            "`command_observed` возвращает код **2**. Предел времени включает подготовку и "
+            "все фазы; завершение процессов имеет отдельный короткий срок. Подготовка, "
+            "формат сценария и примеры приведены в [руководстве по проверке форм](native-forms.ru.md)."
         ),
     },
     "en": {
@@ -97,17 +98,18 @@ TEXT = {
         ),
         "note_native": (
             "Run the check in an isolated Linux environment with `1cv8`, `ibcmd`, "
-            "`Xvfb`, and `libX11`. Select a file test infobase and the main managed form "
-            "declared in the EPF. Use the full title shown in the client, including the processing "
-            "name if it appears.\n\n"
-            "Before the first run, authorize opening the exact EPF in the selected test infobase "
-            "under the same test user. The platform retains authorization for that file. "
-            "If the security prompt appears during the check, the screenshot captures it.\n\n"
-            "The command writes `result.json` and, when the client display is available, "
-            "`screenshot.png`. To pass the check, set `--expect-message`. The specified text must "
-            "appear after the click. A run without that option records `command_observed` and "
-            "returns exit code **2**. The time limit covers setup and client interaction. Process "
-            "cleanup has a separate short deadline."
+            "`Xvfb`, and `libX11`. Select a disposable file infobase and one target: `--epf`, "
+            "`--erf`, or `--navigation-link`. An external file requires its main managed form; "
+            "a configuration object requires `--scenario`.\n\n"
+            "A JSON scenario checks actual fields, spreadsheet cells, and fresh message counts. "
+            "The `reopen` phase opens the same target in a new session to read its saved state. "
+            "The command writes `result.json` and a screenshot of each phase when the client "
+            "display is available. Unsafe action protection is configured by the test environment "
+            "owner; the CLI does not change it.\n\n"
+            "In the `--button` profile, success requires `--expect-message`; without it, "
+            "`command_observed` returns exit code **2**. The time limit covers setup and all "
+            "phases; process cleanup has a separate short deadline. See the "
+            "[native form guide](native-forms.md) for preparation, the scenario format, and examples."
         ),
     },
 }

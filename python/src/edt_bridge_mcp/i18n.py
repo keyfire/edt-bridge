@@ -40,8 +40,8 @@ MESSAGES = {
     },
     # -- the no-command server (server.py) --
     "test-form.description": {
-        "ru": "В изолированном Linux открыть EPF в явно выбранной файловой тестовой базе и выполнить команду его основной формы.",
-        "en": "Open an EPF in an explicitly selected file test infobase and run a command on its main form in isolated Linux.",
+        "ru": "В изолированном Linux проверить форму EPF, ERF или объекта конфигурации в явно выбранной файловой тестовой базе.",
+        "en": "Check an EPF, ERF or configuration object form in an explicitly selected file test infobase on isolated Linux.",
     },
     "test-form.platform-bin": {
         "ru": "каталог платформы с исполняемыми файлами 1cv8 и ibcmd",
@@ -59,9 +59,21 @@ MESSAGES = {
         "ru": "файл проверяемой внешней обработки",
         "en": "external data processor file to check",
     },
+    "test-form.erf": {
+        "ru": "файл проверяемого внешнего отчета",
+        "en": "external report file to check",
+    },
+    "test-form.navigation-link": {
+        "ru": "внутренняя ссылка e1cib/data на документ или элемент справочника в тестовой базе",
+        "en": "internal e1cib/data link to a document or catalog item in the test infobase",
+    },
+    "test-form.scenario": {
+        "ru": "файл JSON со сценарием ввода, команд и проверок наблюдаемого результата",
+        "en": "JSON scenario containing inputs, commands and assertions of observed results",
+    },
     "test-form.form": {
-        "ru": "полное имя основной управляемой формы внешней обработки",
-        "en": "fully qualified name of the external data processor's main managed form",
+        "ru": "полное имя управляемой формы; для EPF/ERF требуется основная форма",
+        "en": "fully qualified managed form name; EPF/ERF targets require their main form",
     },
     "test-form.form-title": {
         "ru": "точный заголовок формы в клиенте",
@@ -111,7 +123,7 @@ MESSAGES = {
               "  shutdown            штатно завершить EDT, обслуживающую мост\n"
               "  gui                 остановить headless и открыть клиентскую EDT\n"
               "  plugins             перечислить плагины обвязки и их инструменты\n"
-              "  test-form           проверить команду формы EPF в тестовой базе\n"
+              "  test-form           проверить форму и результат сценария в тестовой базе\n"
               "  self-update         обновить jar плагина и саму обвязку\n"
               "\n"
               "Опции команды: edt-bridge-mcp <команда> --help.\n"
@@ -123,7 +135,7 @@ MESSAGES = {
               "  shutdown      shut down the EDT behind the bridge\n"
               "  gui           stop the headless EDT and open the GUI one\n"
               "  plugins       list the wrapper's plugins and their tools\n"
-              "  test-form     check an EPF form command in a test infobase\n"
+              "  test-form     check a form and scenario results in a test infobase\n"
               "  self-update   refresh the plugin jar and this wrapper\n"
               "\n"
               "Run 'edt-bridge-mcp <command> --help' for a command's own options.\n"
