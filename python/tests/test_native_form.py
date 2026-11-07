@@ -79,8 +79,11 @@ def test_early_client_exit_preserves_process_diagnostics(monkeypatch, tmp_path):
           "error": "Cannot find a test client with matching version and ID."}, True, 35, 36, "timeout", 1),
         ({"status": "driver_failed", "stage": "connect",
           "error": "Cannot find a test client with matching version and ID."}, False, 0, 5, "driver_failed", 1),
-        ({"status": "driver_failed", "stage": "connect", "error": "Access denied."}, True, 0, 60, "access_denied", 1),
-        ({"status": "command_error", "stage": "click", "error": "Command failed."}, True, 0, 60, "command_error", 1),
+        ({"status": "driver_failed", "stage": "connect", "error": "Access denied."},
+         True, 0, 60, "access_denied", 1),
+        ({"status": "driver_failed", "stage": "connect", "error": "License not found."},
+         True, 0, 60, "license_unavailable", 1),
+        ({"status": "command_error", "stage": "click", "error": "Command failed."}, True, 60, 60, "command_error", 1),
     ],
 )
 def test_retries_connection_without_repeating_form_actions(

@@ -38,12 +38,13 @@ class _CheckError(Exception):
         self.status = status
 
 
-def _platform_failure_status(interaction_error, logs):
+def _platform_failure_status(interaction_error, logs, *, connecting=False):
     logs = logs.casefold()
-    detail = f"{interaction_error} {logs}".casefold()
+    detail = f"{str(interaction_error).casefold()} {logs}"
     if any(message in detail for message in _ACCESS_DENIED):
         return "access_denied"
-    if any(message in logs for message in _LICENSE_MISSING):
+    license_detail = detail if connecting else logs
+    if any(message in license_detail for message in _LICENSE_MISSING):
         return "license_unavailable"
     return None
 
@@ -319,7 +320,6 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
                     if client.poll() is not None or manager.poll() is not None:
                         raise _CheckError("session_exited", "A native session exited before reporting a result.")
                     time.sleep(min(0.15, _seconds_left(deadline)))
-                _seconds_left(deadline)
                 if result.stat().st_size > 16_777_216:
                     raise _CheckError("driver_failed", "The test manager result exceeds 16 MiB.")
                 data = json.loads(result.read_text(encoding="utf-8-sig"))
@@ -331,7 +331,7 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
                     break
                 logs = " ".join(_log(path) for path in
                                 (client_log, manager_log, client_process_log, manager_process_log))
-                failure = _platform_failure_status(data.get("error", ""), logs)
+                failure = _platform_failure_status(data.get("error", ""), logs, connecting=True)
                 if failure:
                     report["status"] = failure
                     break
