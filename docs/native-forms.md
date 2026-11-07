@@ -52,13 +52,18 @@ Every run requires `--platform-bin`, `--test-infobase`, `--scope`, `--form`,
 | Option | Target |
 | --- | --- |
 | `--epf FILE` | An existing external data processor and its main managed form, such as `ExternalDataProcessor.Check.Form.Main`. |
-| `--erf FILE` | An existing external report and its main managed form, such as `ExternalReport.PlannedShipments.Form.Main`. |
+| `--erf FILE` | An existing external report with an assigned main form or a main data composition schema. |
 | `--navigation-link LINK` | An existing document or catalog item in the selected infobase. Requires `--scenario`. |
 
-For an EPF or ERF, the declared main form must match `--form`. For a configuration
-object, use its actual form FQN, such as `Document.CustomerOrder.Form.Main` or
-`Catalog.Items.Form.Main`. Russian type prefixes are also accepted. `--form-title`
-is the full title shown by the client; wildcards are not accepted.
+For an EPF or ERF with an assigned main form, use its full name, such as
+`ExternalReport.PlannedShipments.Form.Main`. If an ERF has a main data composition
+schema and no assigned form, select the platform-generated form with
+`ExternalReport.PlannedShipments.Form`.
+
+For a configuration object, use its actual form FQN, such as
+`Document.CustomerOrder.Form.Main` or `Catalog.Items.Form.Main`. Russian names such
+as `ВнешнийОтчет.PlannedShipments.Форма` are accepted. Pass the exact title shown
+by the client in `--form-title`.
 
 An ERF is opened by a fixed temporary EPF in the same test client using
 `ExternalReports.Connect` and `OpenForm`, with `SafeMode=True`. The test user must be allowed to run
@@ -89,15 +94,16 @@ Pass a UTF-8 JSON file with `--scenario`. Its top-level fields are `version: 1`,
 with an assertion after its last UI action. Unknown fields and duplicate JSON keys
 are rejected. The file limit is 1 MiB.
 
-Each step contains the required fields listed below. A `click` can also include
-`expect_error_dialog`. Fields named `field` identify a
-visible form element by its internal name, not by its caption. `button` is the exact
-visible button title. Selectors must resolve to one element; wildcards are rejected.
+Each step contains the required fields listed below. Use `field` for the internal
+name of a visible form element. A `click` takes either `button` with the exact visible
+title or `button_name` with the internal name of the button element. Use `button_name`
+when several buttons share a title. A selector must match exactly one element.
+Wildcards are rejected. A `click` can also include `expect_error_dialog`.
 
 | `action` | Other required fields | Operation |
 | --- | --- | --- |
 | `input` | `field`, `text` | Replaces the input field text and moves to the next form element. Empty text invokes the field's `Clear()` action. |
-| `click` | `button` | Clicks an available button. Reads the message panel before and after the click when a following `assert_messages` checks it. |
+| `click` | `button` or `button_name` | Clicks an available button. Reads the message panel before and after the click when a following `assert_messages` checks it. |
 | `assert_field` | `field`, `equals` | Reads `GetDataPresentation()` and compares the returned string. |
 | `assert_cell` | `field`, `cell`, `equals` | Reads one spreadsheet cell, for example `"cell": "R3C6"`, and compares its text. |
 | `assert_table` | `field`, `equals` | Reads the spreadsheet rectangle from `R1C1` to its last populated row and column; compares the complete array of row arrays. |

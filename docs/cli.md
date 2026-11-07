@@ -227,7 +227,7 @@ usage: edt-bridge-mcp test-form [-h] --platform-bin PLATFORM_BIN --test-infobase
 | `--epf EPF` | external data processor file to check |
 | `--erf ERF` | external report file to check |
 | `--navigation-link NAVIGATION_LINK` | internal e1cib/data link to a document or catalog item in the test infobase |
-| `--form FORM` | fully qualified managed form name; EPF/ERF targets require their main form |
+| `--form FORM` | fully qualified managed form name, for example ExternalReport.Sales.Form for a standard DCS form |
 | `--form-title FORM_TITLE` | exact form title in the client |
 | `--button BUTTON` | exact title of the button that invokes the command |
 | `--scenario SCENARIO` | JSON scenario containing inputs, commands and assertions of observed results |
@@ -237,7 +237,7 @@ usage: edt-bridge-mcp test-form [-h] --platform-bin PLATFORM_BIN --test-infobase
 | `--timeout TIMEOUT` | check time limit in seconds, default 120 |
 | `--version` | show the version and exit |
 
-Run the check in an isolated Linux environment with `1cv8`, `ibcmd`, `Xvfb`, and `libX11`. Select a disposable file infobase and one target: `--epf`, `--erf`, or `--navigation-link`. An external file requires its main managed form; a configuration object requires `--scenario`.
+Run the check in an isolated Linux environment with `1cv8`, `ibcmd`, `Xvfb`, and `libX11`. Select a disposable file infobase and one target: `--epf`, `--erf`, or `--navigation-link`. For an EPF or ERF with an assigned form, specify its full name. For an ERF with a main data composition schema and no assigned form, use `ExternalReport.<Name>.Form`. A configuration object requires `--scenario`.
 
 A JSON scenario checks actual fields, spreadsheet cells, and fresh message counts. The `reopen` phase opens the same target in a new session to read its saved state. The command writes `result.json` and a screenshot of each phase when the client display is available. Unsafe action protection is configured by the test environment owner; the CLI does not change it.
 

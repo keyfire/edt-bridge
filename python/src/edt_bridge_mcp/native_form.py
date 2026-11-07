@@ -77,6 +77,9 @@ def _form_key(name):
     kinds = {"ExternalDataProcessor": "ExternalDataProcessor", "ВнешняяОбработка": "ExternalDataProcessor",
              "ExternalReport": "ExternalReport", "ВнешнийОтчет": "ExternalReport",
              "Document": "Document", "Документ": "Document", "Catalog": "Catalog", "Справочник": "Catalog"}
+    if (len(parts) == 3 and kinds.get(parts[0]) == "ExternalReport"
+            and parts[1].isidentifier() and parts[2] in ("Form", "Форма")):
+        return "ExternalReport", parts[1].casefold(), None
     if (len(parts) == 4 and parts[0] in kinds
             and parts[2] in ("Form", "Форма") and all(part.isidentifier() for part in parts)):
         return kinds[parts[0]], parts[1].casefold(), parts[3].casefold()
@@ -382,6 +385,7 @@ def _native_check(args, base, external, output, report):
                 raise _CheckError("setup_failed", "The platform did not create the manager infobase.")
 
             designer = [str(client_exe), "DESIGNER", "/F" + str(manager_base), *_START_FLAGS]
+            standard_report_form = False
             if external:
                 report["stage"] = "target_metadata"
                 metadata = root / "target.xml"
@@ -389,14 +393,22 @@ def _native_check(args, base, external, output, report):
                                         str(metadata), str(external), "/Out", str(designer_log)],
                                 manager_env, root / "designer-process.log")
                 _require_exit(export, deadline, "Could not read the selected external object metadata")
-                kind = _form_key(args.form)[0]
+                form_key = _form_key(args.form)
+                kind, object_name, form_name = form_key
                 try:
-                    default = ET.parse(metadata).findtext("./{*}" + kind + "/{*}Properties/{*}DefaultForm", "")
+                    properties = ET.parse(metadata).find("./{*}" + kind + "/{*}Properties")
+                    default = properties.findtext("{*}DefaultForm", "").strip() if properties is not None else ""
                 except PermissionError:
                     raise
                 except (OSError, ET.ParseError) as error:
                     raise _CheckError("metadata_unavailable", "Designer did not export readable external object metadata.") from error
-                if _form_key(default) != _form_key(args.form):
+                if form_name is None and properties is not None and not default:
+                    standard_report_form = (
+                        properties.findtext("{*}Name", "").casefold() == object_name
+                        and bool(properties.findtext("{*}MainDataCompositionSchema", "").strip())
+                    )
+                explicit_main_form = form_name is not None and _form_key(default) == form_key
+                if not (standard_report_form or explicit_main_form):
                     report["defaultForm"] = default
                     raise _CheckError("form_not_default", "Select the main managed form declared by this external object.")
 
@@ -423,7 +435,7 @@ def _native_check(args, base, external, output, report):
                 launcher.mkdir()
                 format_version = ET.parse(driver / "Configuration.xml").getroot().attrib["version"]
                 launcher_xml = native_report.write_launcher(
-                    launcher, external, args.form.rsplit(".", 1)[1], format_version)
+                    launcher, external, "" if standard_report_form else args.form.rsplit(".", 1)[1], format_version)
                 launch_external = root / "report-loader.epf"
                 build = _spawn(stack, [*designer, "/LoadExternalDataProcessorOrReportFromFiles",
                                       str(launcher_xml), str(launch_external), "/Out", str(designer_log)],

@@ -139,7 +139,11 @@ Procedure RunScenario(Application, Target, MessageWindow, Request, Report)
         SaveReport(Report, Request.progress);
         Observation = New Structure("action", Step.action);
         If Step.action = "click" Then
-            Buttons = Target.FindObjects(Type("TestedFormButton"), Step.button, , Request.waitSeconds);
+            If Step.Property("button_name") Then
+                Buttons = Target.FindObjects(Type("TestedFormButton"), , Step.button_name, Request.waitSeconds);
+            Else
+                Buttons = Target.FindObjects(Type("TestedFormButton"), Step.button, , Request.waitSeconds);
+            EndIf;
             If Buttons.Count() <> 1 Then
                 Raise NStr("en = 'The button selector must match exactly one button.'; ru = 'Селектор кнопки должен соответствовать ровно одной кнопке.'");
             EndIf;
@@ -295,7 +299,7 @@ EndFunction
 
 Function NormalizeFormName(Name)
     Parts = StrSplit(Name, ".");
-    If Parts.Count() = 4 Then
+    If Parts.Count() = 3 Or Parts.Count() = 4 Then
         If Parts[0] = "ВнешняяОбработка" Then
             Parts[0] = "ExternalDataProcessor";
         ElsIf Parts[0] = "ВнешнийОтчет" Then

@@ -72,8 +72,8 @@ MESSAGES = {
         "en": "JSON scenario containing inputs, commands and assertions of observed results",
     },
     "test-form.form": {
-        "ru": "полное имя управляемой формы; для EPF/ERF требуется основная форма",
-        "en": "fully qualified managed form name; EPF/ERF targets require their main form",
+        "ru": "полное имя управляемой формы, например ExternalReport.Sales.Form для штатной формы СКД",
+        "en": "fully qualified managed form name, for example ExternalReport.Sales.Form for a standard DCS form",
     },
     "test-form.form-title": {
         "ru": "точный заголовок формы в клиенте",
