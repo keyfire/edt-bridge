@@ -58,8 +58,9 @@ TEXT = {
         "note_native": (
             "Запускайте проверку в изолированном Linux-окружении с `1cv8`, `ibcmd`, "
             "`Xvfb` и `libX11`. Укажите одноразовую файловую базу и одну цель: `--epf`, "
-            "`--erf` или `--navigation-link`. Для внешнего файла нужна его основная управляемая "
-            "форма; для объекта конфигурации обязателен `--scenario`.\n\n"
+            "`--erf` или `--navigation-link`. Для EPF и ERF с назначенной формой укажите ее полное имя. "
+            "Для ERF с основной СКД и без назначенной формы используйте `ExternalReport.<Имя>.Form`. "
+            "Для объекта конфигурации обязателен `--scenario`.\n\n"
             "JSON-сценарий проверяет фактические поля, ячейки табличного документа и число "
             "новых сообщений. Фаза `reopen` открывает ту же цель в новой сессии для чтения "
             "сохраненного состояния. Команда записывает `result.json` и снимок каждой фазы, "
@@ -99,8 +100,9 @@ TEXT = {
         "note_native": (
             "Run the check in an isolated Linux environment with `1cv8`, `ibcmd`, "
             "`Xvfb`, and `libX11`. Select a disposable file infobase and one target: `--epf`, "
-            "`--erf`, or `--navigation-link`. An external file requires its main managed form; "
-            "a configuration object requires `--scenario`.\n\n"
+            "`--erf`, or `--navigation-link`. For an EPF or ERF with an assigned form, specify its full name. "
+            "For an ERF with a main data composition schema and no assigned form, use `ExternalReport.<Name>.Form`. "
+            "A configuration object requires `--scenario`.\n\n"
             "A JSON scenario checks actual fields, spreadsheet cells, and fresh message counts. "
             "The `reopen` phase opens the same target in a new session to read its saved state. "
             "The command writes `result.json` and a screenshot of each phase when the client "

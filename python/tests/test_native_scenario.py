@@ -9,8 +9,9 @@ def _scenario(*steps, **extra):
     return {"version": 1, "steps": list(steps), **extra}
 
 
-def test_table_results_are_compared_with_actual_cells_and_order():
-    steps = [{"action": "click", "button": "Generate"},
+@pytest.mark.parametrize("selector", [{"button": "Generate"}, {"button_name": "GenerateButton"}])
+def test_table_results_are_compared_with_actual_cells_and_order(selector):
+    steps = [{"action": "click", **selector},
              {"action": "assert_table", "field": "Result", "equals": [["Number", "Amount"], ["2", "10.00"]]}]
     native_scenario.validate(_scenario(*steps))
     observations = [{"action": "click", "completed": True},
@@ -43,6 +44,13 @@ def test_message_count_requires_a_clean_baseline(before, after, count, status):
 
 @pytest.mark.parametrize("value", [
     _scenario({"action": "click", "button": "Save"}),
+    _scenario({"action": "click"}, {"action": "assert_field", "field": "Result", "equals": "Saved"}),
+    _scenario({"action": "click", "button": "Save", "button_name": "SaveButton"},
+              {"action": "assert_field", "field": "Result", "equals": "Saved"}),
+    _scenario({"action": "click", "button_name": "Save*"},
+              {"action": "assert_field", "field": "Result", "equals": "Saved"}),
+    _scenario({"action": "click", "button_name": "Save button"},
+              {"action": "assert_field", "field": "Result", "equals": "Saved"}),
     _scenario({"action": "assert_field", "field": "Date", "equals": "yesterday"}, {"action": "click", "button": "Save"}),
     _scenario({"action": "execute", "code": "Quit()"}),
     _scenario({"action": "assert_messages", "text": "Warning", "count": 0}),
@@ -120,8 +128,9 @@ def test_deeply_nested_scenario_is_an_input_error(tmp_path):
         native_scenario.load(path)
 
 
-def test_expected_native_error_dialog_requires_observed_text_and_closed_state():
-    steps = [{"action": "click", "button": "Save", "expect_error_dialog": "Could not save Order."},
+@pytest.mark.parametrize("selector", [{"button": "Save"}, {"button_name": "SaveButton"}])
+def test_expected_native_error_dialog_requires_observed_text_and_closed_state(selector):
+    steps = [{"action": "click", **selector, "expect_error_dialog": "Could not save Order."},
              {"action": "assert_messages", "text": "Native refusal", "count": 1}]
     native_scenario.validate(_scenario(*steps))
     observations = [{"action": "click", "completed": True, "errorDialog": "Could not save Order.",

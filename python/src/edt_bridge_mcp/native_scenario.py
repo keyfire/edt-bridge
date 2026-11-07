@@ -16,7 +16,6 @@ class DriverResultError(ValueError):
 
 _KEYS = {
     "input": {"action", "field", "text"},
-    "click": {"action", "button"},
     "assert_field": {"action", "field", "equals"},
     "assert_cell": {"action", "field", "cell", "equals"},
     "assert_table": {"action", "field", "equals"},
@@ -60,18 +59,21 @@ def validate(value):
             if not isinstance(step, dict) or not isinstance(step.get("action"), str):
                 raise ScenarioError(f"Invalid step {index + 1} in {phase}.")
             action = step["action"]
-            keys = set(step) - ({"expect_error_dialog"} if action == "click" else set())
-            valid = action in _KEYS and keys == _KEYS[action]
+            keys = set(step)
+            if action == "click":
+                valid = keys - {"expect_error_dialog"} in ({"action", "button"}, {"action", "button_name"})
+            else:
+                valid = keys == _KEYS.get(action)
             if "expect_error_dialog" in step:
                 expected_dialog = step["expect_error_dialog"]
                 valid = valid and _text(expected_dialog) and bool(expected_dialog.strip())
             if phase == "reopen" and action not in _READ_ONLY:
                 valid = False
-            for key in ("field", "button"):
-                if key in step and not _text(step[key], selector=True):
-                    valid = False
-            if "field" in step and (not isinstance(step["field"], str) or not step["field"].isidentifier()):
-                valid = False
+            for key in ("field", "button", "button_name"):
+                if key in step:
+                    selector = step[key]
+                    if not _text(selector, selector=True) or (key != "button" and not selector.isidentifier()):
+                        valid = False
             if "text" in step and not _text(step["text"]):
                 valid = False
             if action == "assert_messages":

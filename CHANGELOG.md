@@ -13,7 +13,14 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
-## 2026-11-07 – 0.37.3
+## 2026-11-07 – 0.37.3, 0.38.0
+
+### Added
+
+- `test-form` opens the standard form of an external report that declares a main data
+  composition schema and has no custom main form. A `click` step can use the button's
+  internal name when several buttons share a caption.
+  ([#71](https://github.com/keyfire/edt-bridge/pull/71))
 
 ### Fixed
 

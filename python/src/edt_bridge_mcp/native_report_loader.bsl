@@ -16,7 +16,11 @@ EndProcedure
 
 &AtClient
 Procedure OnOpen(Cancel)
-    OpenForm("ExternalReport." + ReportName + ".Form." + MainFormName, , , True);
+    FormPath = "ExternalReport." + ReportName + ".Form";
+    If Not IsBlankString(MainFormName) Then
+        FormPath = FormPath + "." + MainFormName;
+    EndIf;
+    OpenForm(FormPath, , , True);
 EndProcedure
 
 #EndRegion
