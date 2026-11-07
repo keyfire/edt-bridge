@@ -44,4 +44,5 @@ pythonpath = ["src"]
 edt_bridge_mcp = [
     "tool_catalog.json",
     "native_form_manager.bsl",
+    "native_report_loader.bsl",
 ]

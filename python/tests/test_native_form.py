@@ -13,7 +13,11 @@ def test_native_form_command_requires_explicit_test_base_and_scope():
     assert "test-form" in cli.COMMANDS
     parser = cli.build_parser("test-form")
     required = {action.dest for action in parser._actions if action.required}
-    assert {"test_infobase", "scope", "epf", "form", "button", "output_dir", "platform_bin"} <= required
+    assert {"test_infobase", "scope", "form", "output_dir", "platform_bin"} <= required
+    groups = [{action.dest for action in group._group_actions}
+              for group in parser._mutually_exclusive_groups if group.required]
+    assert {"epf", "erf", "navigation_link"} in groups
+    assert {"button", "scenario"} in groups
     scope = next(action for action in parser._actions if action.dest == "scope")
     assert set(scope.choices) == {"empty", "fixture", "application"}
 
@@ -28,6 +32,39 @@ def test_form_check_refuses_an_output_directory_in_the_selected_base(monkeypatch
     assert not result["ok"]
     assert result["status"] == "invalid_input"
     assert not args.output_dir.exists()
+
+
+def test_empty_button_selector_is_rejected_before_starting_a_client(monkeypatch, tmp_path):
+    monkeypatch.setattr(native_form.sys, "platform", "linux")
+    args = _fixture_args(tmp_path)
+    args.button = ""
+
+    result = native_form.run(args)
+
+    assert result["status"] == "invalid_input"
+    assert not args.output_dir.exists()
+
+
+def test_early_client_exit_preserves_process_diagnostics(monkeypatch, tmp_path):
+    args = _fixture_args(tmp_path)
+    args.output_dir.mkdir()
+    monkeypatch.setattr(native_form, "_display", lambda *args: {})
+    monkeypatch.setattr(native_form, "_owns_listener", lambda *args: False)
+    monkeypatch.setattr(native_form, "_capture", lambda *args: {"screenshotError": "Display unavailable."})
+
+    def spawn(_stack, argv, env, log):
+        log.write_text("Unable to initialize GTK+ or connect to the windowing system.", encoding="utf-8")
+        return SimpleNamespace(poll=lambda: 255)
+
+    monkeypatch.setattr(native_form, "_spawn", spawn)
+    result = native_form._run_session(args, args.test_infobase, args.epf, args.output_dir,
+                                      tmp_path / "session", tmp_path / "manager", {},
+                                      ["1cv8", "ENTERPRISE"], "Xvfb", time.monotonic() + 5, None)
+    assert result["status"] == "startup_failed"
+    assert not result["ok"]
+    assert result["clientExitCode"] == 255
+    assert "Unable to initialize GTK+" in result["clientProcessLog"]
+    assert result["cleanupComplete"] is True
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="POSIX process groups and Linux socket ownership")
@@ -130,3 +167,51 @@ def test_os_permission_error_is_reported_as_access_denied(monkeypatch, tmp_path)
     assert report["status"] == "access_denied"
     assert report["error"] == "Test EPF cannot be read."
     assert not args.output_dir.exists()
+
+
+def test_failed_reopen_does_not_reuse_the_previous_phase_evidence(monkeypatch, tmp_path):
+    monkeypatch.setattr(native_form.shutil, "which", lambda name: name)
+    monkeypatch.setattr(native_form, "_display", lambda *args: {})
+    args = _fixture_args(tmp_path)
+    args.output_dir.mkdir()
+    args._scenario = {
+        "version": 1,
+        "steps": [{"action": "assert_field", "field": "Date", "equals": "07.11.2026"}],
+        "reopen": [{"action": "assert_field", "field": "Date", "equals": "07.11.2026"}],
+    }
+
+    def spawn(_stack, argv, _env, _log):
+        if Path(argv[0]).name == "ibcmd":
+            directory = Path(next(x.split("=", 1)[1] for x in argv if x.startswith("--db-path=")))
+            directory.mkdir()
+            (directory / "1Cv8.1CD").touch()
+        elif "/DumpExternalDataProcessorOrReportToFiles" in argv:
+            xml = Path(argv[argv.index("/DumpExternalDataProcessorOrReportToFiles") + 1])
+            xml.write_text("<MetaDataObject><ExternalDataProcessor><Properties>"
+                           f"<DefaultForm>{args.form}</DefaultForm>"
+                           "</Properties></ExternalDataProcessor></MetaDataObject>", encoding="utf-8")
+        elif "/DumpConfigToFiles" in argv:
+            (Path(argv[argv.index("/DumpConfigToFiles") + 1]) / "Configuration.xml").touch()
+        else:
+            assert "/LoadConfigFromFiles" in argv or "/UpdateDBCfg" in argv
+        return SimpleNamespace(wait=lambda timeout: 0)
+
+    monkeypatch.setattr(native_form, "_spawn", spawn)
+    phases = iter([
+        {"ok": True, "status": "scenario_completed", "stage": "form_interaction",
+         "screenshot": "first-phase.png", "interaction": {"observations": ["first"]},
+         "assertions": [{"ok": True}], "cleanupComplete": True},
+        {"ok": False, "status": "startup_failed", "stage": "client_startup", "cleanupComplete": True},
+    ])
+    monkeypatch.setattr(native_form, "_run_session", lambda *args: next(phases))
+    report = {"ok": False}
+
+    native_form._native_check(args, args.test_infobase, args.epf, args.output_dir, report)
+
+    assert report["status"] == "startup_failed"
+    assert report["phase"] == "reopen"
+    assert "screenshot" not in report
+    assert "interaction" not in report
+    assert "assertions" not in report
+    assert report["phases"][0]["screenshot"] == "first-phase.png"
+    assert report["cleanupComplete"] is True

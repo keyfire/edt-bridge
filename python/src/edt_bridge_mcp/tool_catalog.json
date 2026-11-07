@@ -2489,18 +2489,27 @@
     },
     {
       "name": "edt_create_external_object",
-      "description": "WRITE (Phase 2): create a new EXTERNAL DATA PROCESSOR project via EDT's own IExternalObjectProjectManager (the wizard engine), optionally linked to a base configuration project. Dry-run by default; apply=true creates the project (model loads in background – poll edt_projects). Token-gated. Use edt_dump_external_object to compile it into an .epf afterwards.",
-      "descriptionRu": "ЗАПИСЬ (Phase 2): создать новый проект ВНЕШНЕЙ ОБРАБОТКИ через штатный IExternalObjectProjectManager (движок мастера), при необходимости привязанный к базовому проекту конфигурации. По умолчанию dry-run; apply=true создаёт проект (модель грузится в фоне – опрашивать edt_projects). Требует токен. Скомпилировать в .epf – инструментом edt_dump_external_object.",
+      "description": "WRITE (Phase 2): create an external data processor (kind=processor, default) or report (kind=report) project through EDT's IExternalObjectProjectManager, optionally linked to a base configuration project. Dry-run returns the object type, name, base project and FQN without creating files. apply=true creates the project; its model loads in the background – poll edt_projects. Token-gated. Add a managed form with edt_add_form, then compile an .epf or .erf with edt_dump_external_object.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): создать проект внешней обработки (kind=processor, по умолчанию) или отчета (kind=report) через штатный IExternalObjectProjectManager, при необходимости с привязкой к базовому проекту конфигурации. Dry-run возвращает тип, имя, базовый проект и FQN без создания файлов. apply=true создает проект; модель загружается в фоне – опрашивать edt_projects. Требует токен. Добавить управляемую форму через edt_add_form, затем собрать .epf или .erf через edt_dump_external_object.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "name": {
             "type": "string",
-            "description": "New external data processor project (and object) name – a valid identifier, Cyrillic allowed"
+            "description": "New external object project (and object) name – a valid identifier, Cyrillic allowed"
+          },
+          "kind": {
+            "type": "string",
+            "description": "External object kind: processor (default) or report.",
+            "enum": [
+              "processor",
+              "report"
+            ],
+            "default": "processor"
           },
           "baseProjectName": {
             "type": "string",
-            "description": "Configuration project the processor is developed for (links its runtime version and types context). Optional – omit for standalone."
+            "description": "Configuration project the external object is developed for (links its runtime version and types context). Optional – omit for standalone."
           },
           "scriptVariant": {
             "type": "string",
@@ -3270,5 +3279,5 @@
       }
     }
   ],
-  "version": "0.36.0"
+  "version": "0.37.0"
 }

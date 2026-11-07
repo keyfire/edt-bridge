@@ -23,9 +23,9 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 
 /**
- * MCP tool: edt_create_external_object - WRITE (Phase 2). Creates a new external-data-processor
- * PROJECT via EDT's own IExternalObjectProjectManager (the New External Data Processor wizard
- * engine). Optionally linked to a base configuration project. Dry-run by default; token-gated.
+ * MCP tool: edt_create_external_object - WRITE (Phase 2). Creates an external data processor or
+ * report project through EDT's IExternalObjectProjectManager. Optionally linked to a base
+ * configuration project. Dry-run by default; token-gated.
  */
 public final class CreateExternalObjectTool {
 
@@ -41,9 +41,16 @@ public final class CreateExternalObjectTool {
 
     public JsonObject descriptor() {
         JsonObject props = new JsonObject();
-        props.add("name", strProp("New external data processor project (and object) name – a valid "
+        props.add("name", strProp("New external object project (and object) name – a valid "
                 + "identifier, Cyrillic allowed"));
-        props.add("baseProjectName", strProp("Configuration project the processor is developed for "
+        JsonObject kind = strProp("External object kind: processor (default) or report.");
+        JsonArray kinds = new JsonArray();
+        kinds.add("processor");
+        kinds.add("report");
+        kind.add("enum", kinds);
+        kind.addProperty("default", "processor");
+        props.add("kind", kind);
+        props.add("baseProjectName", strProp("Configuration project the external object is developed for "
                 + "(links its runtime version and types context). Optional – omit for standalone."));
         props.add("scriptVariant", strProp("Built-in language variant: Russian or English. Optional, but "
                 + "EDT defaults a standalone project to English – which names generated members Object "
@@ -62,17 +69,19 @@ public final class CreateExternalObjectTool {
         JsonObject t = new JsonObject();
         t.addProperty("name", name());
         t.addProperty("description",
-                "WRITE (Phase 2): create a new EXTERNAL DATA PROCESSOR project via EDT's own "
-                + "IExternalObjectProjectManager (the wizard engine), optionally linked to a base "
-                + "configuration project. Dry-run by default; apply=true creates the project (model "
-                + "loads in background – poll edt_projects). Token-gated. Use edt_dump_external_object "
-                + "to compile it into an .epf afterwards.");
+                "WRITE (Phase 2): create an external data processor (kind=processor, default) or "
+                + "report (kind=report) project through EDT's IExternalObjectProjectManager, optionally "
+                + "linked to a base configuration project. Dry-run returns the object type, name, "
+                + "base project and FQN without creating files. apply=true creates the project; its "
+                + "model loads in the background – poll edt_projects. Token-gated. Add a managed form "
+                + "with edt_add_form, then compile an .epf or .erf with edt_dump_external_object.");
         t.addProperty("descriptionRu",
-                "ЗАПИСЬ (Phase 2): создать новый проект ВНЕШНЕЙ ОБРАБОТКИ через штатный "
-                + "IExternalObjectProjectManager (движок мастера), при необходимости привязанный к "
-                + "базовому проекту конфигурации. По умолчанию dry-run; apply=true создаёт проект "
-                + "(модель грузится в фоне – опрашивать edt_projects). Требует токен. Скомпилировать в "
-                + ".epf – инструментом edt_dump_external_object.");
+                "ЗАПИСЬ (Phase 2): создать проект внешней обработки (kind=processor, по умолчанию) "
+                + "или отчета (kind=report) через штатный IExternalObjectProjectManager, при необходимости "
+                + "с привязкой к базовому проекту конфигурации. Dry-run возвращает тип, имя, базовый "
+                + "проект и FQN без создания файлов. apply=true создает проект; модель загружается "
+                + "в фоне – опрашивать edt_projects. Требует токен. Добавить управляемую форму через "
+                + "edt_add_form, затем собрать .epf или .erf через edt_dump_external_object.");
         t.add("inputSchema", schema);
         return t;
     }
@@ -84,14 +93,22 @@ public final class CreateExternalObjectTool {
         }
         String baseProjectName = getStr(args, "baseProjectName");
         String scriptVariant = getStr(args, "scriptVariant");
+        String kind = getStr(args, "kind");
         boolean apply = args.has("apply") && !args.get("apply").isJsonNull() && args.get("apply").getAsBoolean();
         try {
             MetadataWriteGateway.CreateExternalObjectResult res =
-                    gateway.createExternalObject(name, baseProjectName, scriptVariant, apply);
+                    gateway.createExternalObject(name, baseProjectName, scriptVariant, kind, apply);
             JsonObject o = new JsonObject();
             o.addProperty("ok", res.ok);
             o.addProperty("applied", res.applied);
             o.addProperty("name", res.name);
+            o.addProperty("kind", res.kind);
+            if (res.objectType != null) {
+                o.addProperty("objectType", res.objectType);
+            }
+            if (res.fqn != null) {
+                o.addProperty("fqn", res.fqn);
+            }
             if (res.baseProject != null) {
                 o.addProperty("baseProject", res.baseProject);
             }

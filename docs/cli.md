@@ -45,7 +45,7 @@ usage: edt-bridge-mcp [options]           (no command: run as an MCP server)
 | `shutdown` | shut down the EDT behind the bridge |
 | `gui` | stop the headless EDT and open the GUI one |
 | `plugins` | list the wrapper's plugins and their tools |
-| `test-form` | check an EPF form command in a test infobase |
+| `test-form` | check a form and scenario results in a test infobase |
 | `self-update` | refresh the plugin jar and this wrapper |
 
 Run 'edt-bridge-mcp &lt;command&gt; `--help`' for a command's own options. Connection options apply to the MCP server mode and the bridge commands.
@@ -204,14 +204,16 @@ usage: edt-bridge-mcp plugins [-h] [--workspace WORKSPACE] [--edt-dir EDT_DIR] [
 
 ## `edt-bridge-mcp test-form`
 
-Open an EPF in an explicitly selected file test infobase and run a command on its main form in isolated Linux.
+Check an EPF, ERF or configuration object form in an explicitly selected file test infobase on isolated Linux.
 
 ```bash
 usage: edt-bridge-mcp test-form [-h] --platform-bin PLATFORM_BIN --test-infobase
-                                TEST_INFOBASE --scope {empty,fixture,application} --epf
-                                EPF --form FORM --form-title FORM_TITLE --button BUTTON
-                                [--expect-message EXPECT_MESSAGE] [--user USER]
-                                --output-dir OUTPUT_DIR [--timeout TIMEOUT] [--version]
+                                TEST_INFOBASE --scope {empty,fixture,application} (--epf
+                                EPF | --erf ERF | --navigation-link NAVIGATION_LINK)
+                                --form FORM --form-title FORM_TITLE (--button BUTTON |
+                                --scenario SCENARIO) [--expect-message EXPECT_MESSAGE]
+                                [--user USER] --output-dir OUTPUT_DIR [--timeout
+                                TIMEOUT] [--version]
 ```
 
 **Options**
@@ -223,20 +225,23 @@ usage: edt-bridge-mcp test-form [-h] --platform-bin PLATFORM_BIN --test-infobase
 | `--test-infobase TEST_INFOBASE` | dedicated file test infobase directory containing 1Cv8.1CD |
 | `--scope {empty,fixture,application}` | declared test scope: empty infobase, fixture configuration, or application environment |
 | `--epf EPF` | external data processor file to check |
-| `--form FORM` | fully qualified name of the external data processor's main managed form |
+| `--erf ERF` | external report file to check |
+| `--navigation-link NAVIGATION_LINK` | internal e1cib/data link to a document or catalog item in the test infobase |
+| `--form FORM` | fully qualified managed form name; EPF/ERF targets require their main form |
 | `--form-title FORM_TITLE` | exact form title in the client |
 | `--button BUTTON` | exact title of the button that invokes the command |
+| `--scenario SCENARIO` | JSON scenario containing inputs, commands and assertions of observed results |
 | `--expect-message EXPECT_MESSAGE` | exact new user message required to confirm the command result |
 | `--user USER` | test infobase user name for a login that does not require a password |
 | `--output-dir OUTPUT_DIR` | new directory for the JSON report and PNG screenshot |
 | `--timeout TIMEOUT` | check time limit in seconds, default 120 |
 | `--version` | show the version and exit |
 
-Run the check in an isolated Linux environment with `1cv8`, `ibcmd`, `Xvfb`, and `libX11`. Select a file test infobase and the main managed form declared in the EPF. Use the full title shown in the client, including the processing name if it appears.
+Run the check in an isolated Linux environment with `1cv8`, `ibcmd`, `Xvfb`, and `libX11`. Select a disposable file infobase and one target: `--epf`, `--erf`, or `--navigation-link`. An external file requires its main managed form; a configuration object requires `--scenario`.
 
-Before the first run, authorize opening the exact EPF in the selected test infobase under the same test user. The platform retains authorization for that file. If the security prompt appears during the check, the screenshot captures it.
+A JSON scenario checks actual fields, spreadsheet cells, and fresh message counts. The `reopen` phase opens the same target in a new session to read its saved state. The command writes `result.json` and a screenshot of each phase when the client display is available. Unsafe action protection is configured by the test environment owner; the CLI does not change it.
 
-The command writes `result.json` and, when the client display is available, `screenshot.png`. To pass the check, set `--expect-message`. The specified text must appear after the click. A run without that option records `command_observed` and returns exit code **2**. The time limit covers setup and client interaction. Process cleanup has a separate short deadline.
+In the `--button` profile, success requires `--expect-message`; without it, `command_observed` returns exit code **2**. The time limit covers setup and all phases; process cleanup has a separate short deadline. See the [native form guide](native-forms.md) for preparation, the scenario format, and examples.
 
 ## `edt-bridge-mcp self-update`
 
