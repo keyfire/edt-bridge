@@ -26,6 +26,7 @@ to the code and the reasoning behind it.
 
 - `test-form` retries the connection to a slow-starting test client within the
   remaining `--timeout`. Previously, retries stopped after 30 seconds.
+  ([#73](https://github.com/keyfire/edt-bridge/pull/73))
 
 - `test-form` reads the message panel only when a scenario checks messages. A table
   check can now click "Generate" in an external report with an empty message panel.
