@@ -25,8 +25,10 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
@@ -383,6 +385,8 @@ applyI18n();loadStatus();loadTools();
     private final DebugEvaluateTool debugEvaluate = new DebugEvaluateTool();
     private final ProjectGateway gateway = new ProjectGateway();
     private HttpServer http;
+    private ExecutorService httpWorkers;
+    private ThreadPoolExecutor mcpWorkers;
     private int port;
 
     private McpServer() {
@@ -423,15 +427,23 @@ applyI18n();loadStatus();loadTools();
             throw (lastError != null) ? lastError
                     : new IOException("no free port in [" + wanted + ", " + (wanted + PORT_SCAN_RANGE) + "]");
         }
-        http.createContext("/mcp", this::handle);
+        // Keep the two MCP workers for tool calls and request bodies. A separate HTTP pool
+        // can still answer status and shutdown while both workers are busy.
+        var requests = new ThreadPoolExecutor(2, 2, 0, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(), namedDaemonThreadFactory("edt-bridge-mcp-"));
+        mcpWorkers = requests;
+        http.createContext("/mcp", exchange -> {
+            try {
+                requests.execute(() -> handleMcpRequest(exchange));
+            } catch (RejectedExecutionException stopping) {
+                exchange.close();
+            }
+        });
         http.createContext("/status", this::handleStatus);
         http.createContext("/shutdown", this::handleShutdown);
         http.createContext("/", this::handleRoot);
-        // A bounded thread pool (not a single thread): a long operation – a rename or a project
-        // create can run for many seconds – no longer blocks every other request. EDT's BM model does
-        // its own read/write locking, so concurrent handlers are serialized only where the model needs.
-        http.setExecutor(new ThreadPoolExecutor(2, MAX_WORKER_THREADS, 60L, TimeUnit.SECONDS,
-                new LinkedBlockingQueue<>(), namedDaemonThreadFactory()));
+        httpWorkers = Executors.newFixedThreadPool(2, namedDaemonThreadFactory("edt-bridge-http-"));
+        http.setExecutor(httpWorkers);
         http.start();
         if (port != wanted) {
             LOG.info("edt-bridge: port " + wanted + " was busy, using " + port);
@@ -441,13 +453,12 @@ applyI18n();loadStatus();loadTools();
     }
 
     private static final int PORT_SCAN_RANGE = 20;
-    private static final int MAX_WORKER_THREADS = 8;
 
     /** Daemon threads with a clear name, so a stuck worker is identifiable and never blocks JVM exit. */
-    private static java.util.concurrent.ThreadFactory namedDaemonThreadFactory() {
+    private static java.util.concurrent.ThreadFactory namedDaemonThreadFactory(String prefix) {
         java.util.concurrent.atomic.AtomicInteger counter = new java.util.concurrent.atomic.AtomicInteger();
         return runnable -> {
-            Thread thread = new Thread(runnable, "edt-bridge-mcp-" + counter.incrementAndGet());
+            Thread thread = new Thread(runnable, prefix + counter.incrementAndGet());
             thread.setDaemon(true);
             return thread;
         };
@@ -455,8 +466,14 @@ applyI18n();loadStatus();loadTools();
 
     public synchronized void stop() {
         if (http != null) {
+            // Let active model operations finish, but discard queued exchanges before closing HTTP.
+            mcpWorkers.shutdown();
+            mcpWorkers.getQueue().clear();
             http.stop(0);
+            httpWorkers.shutdownNow();
             http = null;
+            httpWorkers = null;
+            mcpWorkers = null;
         }
     }
 
@@ -501,6 +518,16 @@ applyI18n();loadStatus();loadTools();
         send(ex, 401, gson.toJson(errorObj(JsonNull.INSTANCE, -32001,
                 "Authentication required: set EDT_BRIDGE_TOKEN to the token from the EDT-Bridge "
                 + "preference page, or send Authorization: Bearer <token>.")));
+    }
+
+    private void handleMcpRequest(HttpExchange ex) {
+        try {
+            handle(ex);
+        } catch (IOException disconnected) {
+            // The client disconnected while the response was being sent.
+        } finally {
+            ex.close();
+        }
     }
 
     private void handle(HttpExchange ex) throws IOException {
