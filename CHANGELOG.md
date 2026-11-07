@@ -13,6 +13,14 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
+## 2026-11-07 – 0.37.3
+
+### Fixed
+
+- `test-form` reads the message panel only when a scenario checks messages. A table
+  check can now click "Generate" in an external report with an empty message panel.
+  ([#70](https://github.com/keyfire/edt-bridge/pull/70))
+
 ## 2026-11-07 – 0.36.0, 0.37.0, 0.37.1, 0.37.2
 
 ### Added

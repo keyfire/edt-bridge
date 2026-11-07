@@ -97,7 +97,7 @@ visible button title. Selectors must resolve to one element; wildcards are rejec
 | `action` | Other required fields | Operation |
 | --- | --- | --- |
 | `input` | `field`, `text` | Replaces the input field text and moves to the next form element. Empty text invokes the field's `Clear()` action. |
-| `click` | `button` | Clicks an available button and records message-panel snapshots before and after the click. |
+| `click` | `button` | Clicks an available button. Reads the message panel before and after the click when a following `assert_messages` checks it. |
 | `assert_field` | `field`, `equals` | Reads `GetDataPresentation()` and compares the returned string. |
 | `assert_cell` | `field`, `cell`, `equals` | Reads one spreadsheet cell, for example `"cell": "R3C6"`, and compares its text. |
 | `assert_table` | `field`, `equals` | Reads the spreadsheet rectangle from `R1C1` to its last populated row and column; compares the complete array of row arrays. |
