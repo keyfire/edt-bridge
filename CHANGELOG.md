@@ -39,6 +39,7 @@ to the code and the reasoning behind it.
 
 - `test-form` retries the connection when the client opens its port before it can accept
   a test session. The form scenario starts after the connection succeeds.
+  ([#68](https://github.com/keyfire/edt-bridge/pull/68))
 - Platform command failures identify the executable, operation and exit code.
   ([#66](https://github.com/keyfire/edt-bridge/pull/66))
 - `edt_form_render` identifies missing display or renderer prerequisites and reports the stage
