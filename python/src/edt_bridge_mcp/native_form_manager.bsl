@@ -147,7 +147,10 @@ Procedure RunScenario(Application, Target, MessageWindow, Request, Report)
             If Not Button.CurrentVisible() Or Not Button.CurrentEnable() Then
                 Raise NStr("en = 'The selected button is unavailable.'; ru = 'Выбранная кнопка недоступна.'");
             EndIf;
-            BeforeMessages = VisibleMessages(MessageWindow, Report, "beforeMessagePanel");
+            ObserveMessages = NeedsMessageObservation(Request.steps, Observations.Count());
+            If ObserveMessages Then
+                BeforeMessages = VisibleMessages(MessageWindow, Report, "beforeMessagePanel");
+            EndIf;
             Button.Click();
             If ReadClientError(Application, Report, "command_error") Then
                 Return;
@@ -158,7 +161,9 @@ Procedure RunScenario(Application, Target, MessageWindow, Request, Report)
                 EndIf;
                 Target.Activate();
             EndIf;
-            AfterMessages = VisibleMessages(MessageWindow, Report, "afterMessagePanel");
+            If ObserveMessages Then
+                AfterMessages = VisibleMessages(MessageWindow, Report, "afterMessagePanel");
+            EndIf;
             Observation.Insert("completed", True);
         ElsIf Step.action = "assert_messages" Then
             Observation.Insert("before", BeforeMessages);
@@ -205,6 +210,18 @@ Procedure RunScenario(Application, Target, MessageWindow, Request, Report)
     EndDo;
     Report.status = "scenario_observed";
 EndProcedure
+
+Function NeedsMessageObservation(Steps, ClickIndex)
+    For Index = ClickIndex + 1 To Steps.Count() - 1 Do
+        Action = Steps[Index].action;
+        If Action = "assert_messages" Then
+            Return True;
+        ElsIf Action = "click" Or Action = "input" Then
+            Return False;
+        EndIf;
+    EndDo;
+    Return False;
+EndFunction
 
 Function CloseExpectedErrorDialog(Application, ExpectedText, Observation, Request, Report)
     Report.stage = "expected_error_dialog";
@@ -313,6 +330,7 @@ Function VisibleMessages(Window, Report, PresenceKey)
     Except
         Detail = ОбработкаОшибок.ПодробноеПредставлениеОшибки(ИнформацияОбОшибке());
         If StrFind(Detail, "Cannot call the method for this object") > 0
+            Or StrFind(Detail, "The method cannot be called for this object type") > 0
             Or StrFind(Detail, "Метод не может быть вызван для данного объекта") > 0 Then
             Report.Insert(PresenceKey, False);
             Return New Array;
