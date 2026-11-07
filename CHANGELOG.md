@@ -13,7 +13,7 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
-## 2026-11-07 – 0.36.0, 0.37.0
+## 2026-11-07 – 0.36.0, 0.37.0, 0.37.1
 
 ### Added
 
@@ -37,6 +37,8 @@ to the code and the reasoning behind it.
 
 ### Fixed
 
+- `test-form` retries the connection when the client opens its port before it can accept
+  a test session. The form scenario starts after the connection succeeds.
 - Platform command failures identify the executable, operation and exit code.
   ([#66](https://github.com/keyfire/edt-bridge/pull/66))
 - `edt_form_render` identifies missing display or renderer prerequisites and reports the stage

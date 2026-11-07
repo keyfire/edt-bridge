@@ -245,6 +245,10 @@ combined with a scenario.
 
 ## Results
 
+If the test manager cannot connect during startup, the command retries for up to
+30 seconds within the run timeout while the same client owns the port.
+`connectAttempts` records the number of attempts for the phase.
+
 The command prints JSON and writes `result.json` when it has created the output
 directory. A scenario result contains `phases`, observations under each phase's
 `interaction`, and `assertions` with `expected`, `actual`, and `ok`. Message assertions
