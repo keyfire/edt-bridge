@@ -19,8 +19,10 @@ to the code and the reasoning behind it.
 
 - `edt_create_external_object` creates an external report with `kind=report`. The default
   remains an external data processor; both support a base project, managed forms and export.
+  ([#67](https://github.com/keyfire/edt-bridge/pull/67))
 - `test-form` opens ERF files and configuration object forms in an explicit file test infobase.
   JSON scenarios check fields, report cells, fresh messages and saved values after reopening.
+  ([#67](https://github.com/keyfire/edt-bridge/pull/67))
 - `edt_projects` and `edt_project_errors` report model and validation progress, workspace jobs,
   and the time of observed changes.
   ([#66](https://github.com/keyfire/edt-bridge/pull/66))
