@@ -29,6 +29,7 @@ import org.eclipse.emf.ecore.EEnumLiteral;
 import org.eclipse.emf.ecore.EObject;
 import org.eclipse.emf.ecore.EStructuralFeature;
 import com._1c.g5.v8.dt.form.model.*;
+import io.github.keyfire.edtbridge.core.AllowedValues;
 import com._1c.g5.v8.dt.form.service.item.IFormItemMovementService;
 import com._1c.g5.v8.dt.mcore.*;
 
@@ -230,7 +231,9 @@ public final class FormItemEdits {
         EObject info = effectiveInfo(item, settings);
         for (Map.Entry<String, Object> entry : settings.entrySet()) {
             String key = entry.getKey(); Object value = entry.getValue();
-            if (!SETTINGS.contains(key)) { throw new IllegalArgumentException("unsupported form item property: " + key); }
+            if (!SETTINGS.contains(key)) {
+                throw new IllegalArgumentException(AllowedValues.unsupportedName("form item property", key, settingNames(item)));
+            }
             if ("fieldType".equals(key)) {
                 if (!(item instanceof FormField)) { throw new IllegalArgumentException("fieldType requires a field"); }
                 fieldType(value); continue;
@@ -245,7 +248,7 @@ public final class FormItemEdits {
             String featureName = featureName(item, key);
             EStructuralFeature feature = target.eClass().getEStructuralFeature(featureName);
             if (feature == null || !feature.isChangeable() || feature.isMany()) {
-                throw new IllegalArgumentException(key + " is not available on " + item.eClass().getName());
+                throw new IllegalArgumentException(AllowedValues.unavailable(key, item.eClass().getName(), settingNames(item)));
             }
             Object converted = convert(feature, value, key);
             result.add(new Assignment(key, converted));
@@ -287,7 +290,7 @@ public final class FormItemEdits {
                     return literal.getInstance();
                 }
             }
-            throw new IllegalArgumentException("unknown " + key + " value: " + value);
+            throw new IllegalArgumentException(AllowedValues.unknownValue(key, value, literals((EEnum) feature.getEType())));
         }
         Class<?> type = feature.getEType().getInstanceClass();
         if (type == boolean.class || type == Boolean.class) {
@@ -301,6 +304,58 @@ public final class FormItemEdits {
             throw new IllegalArgumentException(key + " must be a nonnegative integer");
         }
         throw new IllegalArgumentException("unsupported property type: " + key);
+    }
+    private static List<String> literals(EEnum enumeration) {
+        List<String> result = new ArrayList<>();
+        for (EEnumLiteral literal : enumeration.getELiterals()) { result.add(literal.getLiteral()); }
+        return result;
+    }
+    private static List<String> settingNames(FormItem item) {
+        List<String> result = new ArrayList<>();
+        for (Map<String, Object> setting : describeSettings(item)) { result.add((String) setting.get("name")); }
+        return result;
+    }
+
+    /**
+     * The settings this item takes, as the write path would accept them: name, type, the literals of
+     * an enumeration and the current value. A setting that the item's class or ext-info lacks is left out.
+     */
+    public static List<Map<String, Object>> describeSettings(FormItem item) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        EObject info = effectiveInfo(item, Map.of());
+        Map<String, Object> current = readSettings(item);
+        for (String key : SETTINGS.stream().sorted().toList()) {
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("name", key);
+            if ("fieldType".equals(key)) {
+                if (!(item instanceof FormField)) { continue; }
+                entry.put("type", "enum");
+                entry.put("values", List.of("InputField", "RadioButtonField", "CheckBoxField", "HTMLDocumentField"));
+            } else if ("choiceList".equals(key)) {
+                if (!(info instanceof InputFieldExtInfo) && !(info instanceof RadioButtonsFieldExtInfo)) { continue; }
+                entry.put("type", "array");
+                entry.put("note", "entries {value, titleRu}; value is a string, number or boolean; an empty array clears the list");
+            } else {
+                EStructuralFeature feature;
+                try {
+                    feature = propertyTarget(item, info, key).eClass().getEStructuralFeature(featureName(item, key));
+                } catch (IllegalArgumentException unavailable) { continue; }
+                if (feature == null || !feature.isChangeable() || feature.isMany()) { continue; }
+                Class<?> type = feature.getEType().getInstanceClass();
+                if (feature.getEType() instanceof EEnum) {
+                    entry.put("type", "enum");
+                    entry.put("values", literals((EEnum) feature.getEType()));
+                } else if (type == boolean.class || type == Boolean.class) {
+                    entry.put("type", "boolean");
+                } else if (type == int.class || type == Integer.class) {
+                    entry.put("type", "integer");
+                    entry.put("note", "nonnegative");
+                } else { continue; }
+            }
+            if (current.containsKey(key)) { entry.put("current", current.get(key)); }
+            result.add(entry);
+        }
+        return result;
     }
     private static List<FormChoiceListDesTimeValue> choices(Object value) {
         if (!(value instanceof List<?>)) { throw new IllegalArgumentException("choiceList must be an array"); }

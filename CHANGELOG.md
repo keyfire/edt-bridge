@@ -13,6 +13,28 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
+## Unreleased
+
+### Added
+
+- `edt_property_reference` lists the properties a write tool can set on a common module, a field or
+  a form item: the type of each property, the accepted enum values, the current value and the tool
+  that takes them. The list comes from the code that validates the write, so a property the object
+  lacks is not listed.
+- `edt_apply_fix` applies EDT's own quick fix to one marker of a check. A dry-run lists the fix
+  variants, and a check without a quick fix is reported with `hasFix=false`. EDT applies a quick fix
+  to a module only through the module editor, so on a headless bridge the call returns the variant
+  and refuses to apply it.
+
+### Changed
+
+- A refusal of `edt_modify_object`, `edt_modify_attribute` and the form-item tools names the
+  accepted values: the enum literals for a misspelled value, the properties the target takes for an
+  unknown or unavailable property.
+- `test-form --form-title` and `formTitle` of `edt_test_form` take the platform wildcards `*` and
+  `?`, so a title that carries a date matches in any locale. The form is still selected by its full
+  name. On `form_not_found` the result lists the titles of the open forms in `observedTitles`.
+
 ## 2026-11-11 – 0.39.0, 0.40.0
 
 ### Added

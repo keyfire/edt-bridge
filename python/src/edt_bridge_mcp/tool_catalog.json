@@ -449,6 +449,70 @@
       }
     },
     {
+      "name": "edt_apply_fix",
+      "description": "Apply EDT's own quick fix - the one the Problems view offers - to one marker of a check. A dry-run finds the marker and lists the fix variants with their descriptions; apply=true runs the chosen variant, then returns the changed lines of the file and the number of markers of the check that remain at that place after a fresh validation. For a check without a quick fix the answer says so (hasFix=false): change the code by hand. Dry-run by default.",
+      "descriptionRu": "Применить штатное исправление EDT – то, что предлагает панель \"Ошибки\", – к одному маркеру проверки. Предпросмотр находит маркер и перечисляет варианты исправления с описанием; apply=true выполняет выбранный вариант и возвращает измененные строки файла и число маркеров проверки, оставшихся на этом месте после новой проверки. Для проверки без штатного исправления ответ говорит об этом (hasFix=false): код меняется вручную. По умолчанию предпросмотр.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "checkId": {
+            "type": "string",
+            "description": "Check of the marker to fix, as edt_project_errors reports it: a short code such as SU100 or a check id such as module-consecutive-blank-lines"
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Object or form whose marker to fix, the same filter edt_project_errors takes. Optional, but needed when the check fires in several places."
+          },
+          "line": {
+            "type": "integer",
+            "description": "Line of the marker, when the check fires more than once in the scope. Optional."
+          },
+          "variant": {
+            "type": "integer",
+            "description": "Index of the fix variant from the dry-run. Optional when EDT offers one variant."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default): find the marker and list the fix variants EDT offers, change nothing. true: run the chosen variant, validate again and report the changed lines and whether the marker is gone; requires a configured token."
+          }
+        },
+        "required": [
+          "projectName",
+          "checkId"
+        ]
+      }
+    },
+    {
+      "name": "edt_property_reference",
+      "description": "READ: list the properties a write tool can set on one target - a common module, a field or a form item - with each property's type, the accepted enum values and the current value, and name the tool that takes them. Call it before edt_modify_object, edt_modify_attribute or edt_modify_form_item instead of trying spellings: the list is built by the code that validates the write, for this very object, so a property the object lacks is not listed.",
+      "descriptionRu": "ЧТЕНИЕ: перечислить свойства, которые инструмент записи может установить у одной цели – общего модуля, реквизита или элемента формы: тип каждого свойства, допустимые значения перечисления и текущее значение, а также имя инструмента, который их принимает. Вызывать перед edt_modify_object, edt_modify_attribute или edt_modify_form_item вместо перебора написаний: перечень строит код, который проверяет запись, для этого же объекта, поэтому отсутствующее у объекта свойство в перечень не попадает.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "fqn": {
+            "type": "string",
+            "description": "What to describe: a common module (CommonModule.Api), a field (Catalog.Products.Attribute.Weight, InformationRegister.Rates.Resource.Rate) or a form (Catalog.Products.Form.ItemForm, ExternalDataProcessor.Check.Form.Main)"
+          },
+          "item": {
+            "type": "string",
+            "description": "Form item name, when fqn is a form. Omitted on a form lists its item names."
+          }
+        },
+        "required": [
+          "projectName",
+          "fqn"
+        ]
+      }
+    },
+    {
       "name": "edt_read_html_template",
       "description": "Read exact saved UTF-8 source of one existing HTML_DOCUMENT template locale. Resolves common and nested templates through EDT's live model, returning availableLanguages, path, text and sourceHash. The SHA-256 hash includes any BOM and original line endings. language must exactly match an existing locale. Refuses unsupported encodings, unresolved/missing templates, dirty text or metadata editors and out-of-sync resources. Does not create a locale, switch the editing language or save editors.",
       "descriptionRu": "Прочитать точный сохраненный UTF-8-текст одного языка существующего макета HTML_DOCUMENT. Общий или вложенный макет определяется по живой модели EDT. Результат содержит availableLanguages, path, text и sourceHash. Хеш SHA-256 учитывает BOM и исходные окончания строк. language должен точно совпадать с существующим языком. Неподдерживаемая кодировка, отсутствующий макет, несохраненный текст или метаданные и рассинхронизация файла дают отказ. Язык не создается и не переключается, редакторы не сохраняются.",

@@ -429,7 +429,7 @@ public final class ProjectGateway {
      * object is asked for its object, and the object for its file. Cached by object id, since
      * one object usually carries several problems. Null when nothing traces.
      */
-    private static IResource traceMarkerFile(Marker mk, IResourceLookup lookup,
+    static IResource traceMarkerFile(Marker mk, IResourceLookup lookup,
             java.util.Map<Object, IResource> byObject) {
         Object key = null;
         try {
@@ -1023,7 +1023,7 @@ public final class ProjectGateway {
     /** Current workspace jobs, including unavailable-state reasons; never starts work. */
     public java.util.Map<String, Object> backgroundJobs() { return ProjectProgress.backgroundJobs(); }
 
-    private boolean modelsReady(String projectName) {
+    boolean modelsReady(String projectName) {
         List<ProjInfo> selected = new ArrayList<>();
         for (ProjInfo pi : listProjectsDetailed()) {
             if (pi.open && (projectName == null || projectName.isBlank() || projectName.equals(pi.name))) {

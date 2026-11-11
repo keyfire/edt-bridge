@@ -99,6 +99,8 @@ import io.github.keyfire.edtbridge.tools.FormRenderTool;
 import io.github.keyfire.edtbridge.tools.FormStructureTool;
 import io.github.keyfire.edtbridge.tools.SupportStatusTool;
 import io.github.keyfire.edtbridge.tools.FormIdentifiersTool;
+import io.github.keyfire.edtbridge.tools.ApplyFixTool;
+import io.github.keyfire.edtbridge.tools.PropertyReferenceTool;
 import io.github.keyfire.edtbridge.tools.ReadHtmlTemplateTool;
 import io.github.keyfire.edtbridge.tools.ReadDcsTool;
 import io.github.keyfire.edtbridge.tools.ReplaceDcsTool;
@@ -324,6 +326,8 @@ applyI18n();loadStatus();loadTools();
     private final SymbolInfoTool symbolInfo = new SymbolInfoTool();
     private final SupportStatusTool supportStatus = new SupportStatusTool();
     private final FormIdentifiersTool formIdentifiers = new FormIdentifiersTool();
+    private final ApplyFixTool applyFix = new ApplyFixTool();
+    private final PropertyReferenceTool propertyReference = new PropertyReferenceTool();
     private final ReadHtmlTemplateTool readHtmlTemplate = new ReadHtmlTemplateTool();
     private final ReplaceHtmlTemplateTool replaceHtmlTemplate = new ReplaceHtmlTemplateTool();
     private final ReadDcsTool readDcs = new ReadDcsTool();
@@ -788,6 +792,8 @@ applyI18n();loadStatus();loadTools();
         tools.add(symbolInfo.descriptor());
         tools.add(supportStatus.descriptor());
         tools.add(formIdentifiers.descriptor());
+        tools.add(applyFix.descriptor());
+        tools.add(propertyReference.descriptor());
         tools.add(readHtmlTemplate.descriptor());
         tools.add(replaceHtmlTemplate.descriptor());
         tools.add(addTemplate.descriptor());
@@ -906,9 +912,14 @@ applyI18n();loadStatus();loadTools();
             return symbolInfo.call(args);
         }
         if (supportStatus.name().equals(name)) { return supportStatus.call(args); }
+        if (propertyReference.name().equals(name)) { return propertyReference.call(args); }
         if (formIdentifiers.name().equals(name)) {
             JsonObject denied = writeTokenGate(formIdentifiers.isWrite(args), name);
             return denied != null ? denied : formIdentifiers.call(args);
+        }
+        if (applyFix.name().equals(name)) {
+            JsonObject denied = writeTokenGate(applyFix.isWrite(args), name);
+            return denied != null ? denied : applyFix.call(args);
         }
         if (readHtmlTemplate.name().equals(name)) return readHtmlTemplate.call(args);
         if (readDcs.name().equals(name)) return readDcs.call(args);
