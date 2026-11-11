@@ -261,6 +261,7 @@ class SpreadsheetLayoutTest {
                 assertEquals(layout.columns(), again.columns(), file.toString());
                 assertEquals(layout.areas(), again.areas(), file.toString());
                 assertTrue(again.unsupported().isEmpty(), file + ": " + again.unsupported());
+                assertTrue(SpreadsheetRender.png(layout).length > 0);
             } catch (RuntimeException failure) {
                 throw new AssertionError(file + ": " + failure, failure);
             }
