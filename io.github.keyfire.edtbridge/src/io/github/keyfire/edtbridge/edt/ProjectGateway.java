@@ -683,8 +683,9 @@ public final class ProjectGateway {
                     }
                     Object resolved = validationObject(transaction, fqn);
                     if (!(resolved instanceof IBmObject object) || object.bmGetId() == IBmObject.BM_NULL_ID) {
-                        result.warning = "The exact validation object was not found; "
-                                + "no whole-project check was requested.";
+                        result.warning = "Object not found in the project model: " + fqn
+                                + " - it is not part of this project (in an extension, adopt it with"
+                                + " edt_adopt_object first); no whole-project check was requested.";
                         return null;
                     }
                     // An empty check set means all applicable checks, but this target list is never empty.

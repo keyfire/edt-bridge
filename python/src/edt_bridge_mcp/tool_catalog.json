@@ -3237,7 +3237,7 @@
           },
           "fqn": {
             "type": "string",
-            "description": "Object of the BASE configuration to adopt, with an English type prefix, e.g. Catalog.Контрагенты, CommonModule.ОбщегоНазначения, Document.Заказ"
+            "description": "Object of the BASE configuration to adopt, with an English type prefix, e.g. Catalog.Контрагенты, CommonModule.ОбщегоНазначения, Document.Заказ, or a member of one by kind and name: Document.Заказ.Form.ФормаДокумента (the form comes with its form model, so its module can intercept handlers), Document.Заказ.Attribute.ДатаОтгрузки, Document.Заказ.TabularSection.Товары"
           },
           "extendModule": {
             "type": "boolean",
