@@ -346,17 +346,28 @@ def _run(command: str, argv: list[str]) -> int:
         _emit(json.dumps(result, ensure_ascii=False, indent=2))
         return 0 if result["ok"] else (1 if result["stage"] == "validation" else 2)
 
+    from . import toolsets
     from .server import Backend, apply_connection_options, load_plugin_tools
     apply_connection_options(args)
     backend = Backend()
 
     plugin_tools, plugin_error = ({}, None)
+    selection = toolsets.Selection()
     if command in ("call", "tools"):
         plugin_tools, plugin_error = load_plugin_tools()
         if plugin_error:
             print(f"plugins are unavailable: {plugin_error}", file=sys.stderr)
+        # The shell commands show and run what an MCP client is shown and may run.
+        selection = toolsets.active()
+        if selection.problem:
+            print(selection.problem, file=sys.stderr)
+            return 1
 
     if command == "call" and args.tool in plugin_tools:
+        descriptor = plugin_tools[args.tool].descriptor()
+        if not selection.shows(descriptor):
+            print(selection.refusal(descriptor), file=sys.stderr)
+            return 2
         # A plugin tool runs in the wrapper and needs no EDT - calling one must not
         # spend minutes starting a headless session. The backend still travels along:
         # a handler declaring `bridge` may enrich its answer from a bridge that is
@@ -451,6 +462,7 @@ def _run(command: str, argv: list[str]) -> int:
         names = {tool.get("name") for tool in served}
         served = served + [plugin_tools[name].descriptor()
                            for name in sorted(plugin_tools) if name not in names]
+        served = [tool for tool in served if selection.shows(tool)]
         if args.raw:
             _emit(json.dumps(dict(result, tools=served), ensure_ascii=False, indent=2))
         else:
