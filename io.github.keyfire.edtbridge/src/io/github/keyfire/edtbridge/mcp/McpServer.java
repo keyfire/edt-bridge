@@ -42,6 +42,7 @@ import io.github.keyfire.edtbridge.core.FileUrlPaths;
 import io.github.keyfire.edtbridge.edt.ProjectGateway;
 import io.github.keyfire.edtbridge.tools.MoveMethodTool;
 import io.github.keyfire.edtbridge.tools.ReplaceMethodTool;
+import io.github.keyfire.edtbridge.tools.ReplaceModuleFragmentTool;
 import io.github.keyfire.edtbridge.tools.MoveFormItemTool;
 import io.github.keyfire.edtbridge.tools.ModifyObjectTool;
 import io.github.keyfire.edtbridge.tools.UpdateSubsystemTool;
@@ -285,7 +286,7 @@ function renderStatus(){var g=document.getElementById('status');g.textContent=''
 function loadStatus(){fetch('/status').then(function(r){return r.json();}).then(function(s){STATUS=s;renderStatus();if(s.tokenRequired){var bar=document.getElementById('tokbar');bar.className='panel';bar.textContent='';bar.appendChild(el('span',null,t('needtok')));var inp=el('input','tok');inp.oninput=function(){TOKEN=inp.value.trim();clearTimeout(TOKTIMER);TOKTIMER=setTimeout(loadTools,400);};bar.appendChild(inp);}}).catch(function(e){STATUS=null;document.getElementById('status').textContent='status error: '+e;});}
 function template(td){var req=(td.inputSchema&&td.inputSchema.required)||[];var o={};req.forEach(function(k){o[k]='';});return JSON.stringify(o,null,2);}
 // Keep in sync with the token-gated write tools - anything missing here is shown as a read tool.
-var WRITE_TOOLS=['edt_add_attribute','edt_add_template','edt_replace_dcs','edt_add_form','edt_add_form_attribute','edt_add_form_command','edt_add_form_item','edt_add_method','edt_add_route','edt_build_extension','edt_infobase_dump','edt_clean_project','edt_create_extension','edt_create_external_object','edt_create_infobase','edt_create_object','edt_delete_method','edt_delete_object','edt_delete_project','edt_designer_agent','edt_dump_external_object','edt_modify_attribute','edt_modify_form_attribute','edt_modify_form_command','edt_modify_form_item','edt_register_platform','edt_platform_build_readiness','edt_remove_attribute','edt_remove_form_attribute','edt_remove_form_command','edt_remove_form_item','edt_rename','edt_update_infobase'];
+var WRITE_TOOLS=['edt_add_attribute','edt_replace_module_fragment','edt_add_template','edt_replace_dcs','edt_add_form','edt_add_form_attribute','edt_add_form_command','edt_add_form_item','edt_add_method','edt_add_route','edt_build_extension','edt_infobase_dump','edt_clean_project','edt_create_extension','edt_create_external_object','edt_create_infobase','edt_create_object','edt_delete_method','edt_delete_object','edt_delete_project','edt_designer_agent','edt_dump_external_object','edt_modify_attribute','edt_modify_form_attribute','edt_modify_form_command','edt_modify_form_item','edt_register_platform','edt_platform_build_readiness','edt_remove_attribute','edt_remove_form_attribute','edt_remove_form_command','edt_remove_form_item','edt_rename','edt_update_infobase'];
 function groupOf(n,tl){if(n.indexOf('edt_debug_')===0||n==='edt_evaluate'){return 'debug';}if(WRITE_TOOLS.indexOf(n)>=0){return 'write';}
 // Fallback so a write tool nobody remembered to list still lands in the right group: every write
 // tool is dry-run by default, so it takes an "apply". Only edt_register_platform does not, hence the list.
@@ -348,6 +349,7 @@ applyI18n();loadStatus();loadTools();
     private final AddMethodTool addMethod = new AddMethodTool();
     private final MoveMethodTool moveMethod = new MoveMethodTool();
     private final ReplaceMethodTool replaceMethod = new ReplaceMethodTool();
+    private final ReplaceModuleFragmentTool replaceModuleFragment = new ReplaceModuleFragmentTool();
     private final DeleteMethodTool deleteMethod = new DeleteMethodTool();
     private final RemoveAttributeTool removeAttribute = new RemoveAttributeTool();
     private final ModifyAttributeTool modifyAttribute = new ModifyAttributeTool();
@@ -819,6 +821,7 @@ applyI18n();loadStatus();loadTools();
         tools.add(addMethod.descriptor());
         tools.add(moveMethod.descriptor());
         tools.add(replaceMethod.descriptor());
+        tools.add(replaceModuleFragment.descriptor());
         tools.add(deleteMethod.descriptor());
         tools.add(removeAttribute.descriptor());
         tools.add(modifyAttribute.descriptor());
@@ -1016,6 +1019,10 @@ applyI18n();loadStatus();loadTools();
         if (removeFormItem.name().equals(name)) {
             JsonObject denied = writeTokenGate(removeFormItem.isWrite(), name);
             return denied != null ? denied : removeFormItem.call(args);
+        }
+        if (replaceModuleFragment.name().equals(name)) {
+            JsonObject denied = writeTokenGate(replaceModuleFragment.isWrite(), name);
+            return denied != null ? denied : replaceModuleFragment.call(args);
         }
         if (replaceMethod.name().equals(name)) {
             JsonObject denied = writeTokenGate(replaceMethod.isWrite(), name);

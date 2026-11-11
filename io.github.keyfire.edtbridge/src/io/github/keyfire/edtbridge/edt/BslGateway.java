@@ -32,6 +32,8 @@ import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import io.github.keyfire.edtbridge.core.ModuleFragment;
+import io.github.keyfire.edtbridge.core.ExactTextReplacement;
 import io.github.keyfire.edtbridge.core.ModuleOwnerFiles;
 import io.github.keyfire.edtbridge.core.MetadataPaths;
 import io.github.keyfire.edtbridge.core.BslPlacement;
@@ -715,6 +717,114 @@ public final class BslGateway {
                 if (e.getMessage().contains("server preprocessor")) r.serverBlockFound = Boolean.FALSE;
             }
             r.message = "add method failed: " + e.getClass().getSimpleName()
+                    + (e.getMessage() != null ? ": " + e.getMessage() : "");
+            return r;
+        }
+    }
+
+    /** Result of {@link #replaceFragment}. */
+    public static final class FragmentResult {
+        public boolean ok, applied, applyPending, valid;
+        public String modulePath, sourceHash, resultHash, oldText, newText, preview, plan, message;
+        public int line;
+        public int methodsBefore = -1, methodsAfter = -1;
+    }
+
+    /**
+     * Replace one exact fragment of a module's text - directives, module variables, regions, the
+     * text no method tool reaches. The fragment must occur once; the result must parse cleanly.
+     * Dry-run returns the hashes; apply needs the current sourceHash as {@code expectedHash}.
+     */
+    public FragmentResult replaceFragment(String projectName, String fqn, String moduleType, String modulePath,
+            String oldText, String newText, String expectedHash, boolean apply) {
+        return replaceFragments(projectName, fqn, moduleType, modulePath,
+                java.util.List.of(new ModuleFragment.Change(oldText, newText)), expectedHash, apply);
+    }
+
+    /** As {@link #replaceFragment}, for several fragments applied together and parsed once. */
+    public FragmentResult replaceFragments(String projectName, String fqn, String moduleType, String modulePath,
+            java.util.List<ModuleFragment.Change> changes, String expectedHash, boolean apply) {
+        FragmentResult r = new FragmentResult();
+        IProject p = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+        if (!p.exists() || !p.isOpen()) {
+            r.message = "project not found or closed: " + projectName;
+            return r;
+        }
+        String relPath = modulePath;
+        if (relPath == null || relPath.isBlank()) {
+            ModuleTextResult shim = new ModuleTextResult();
+            relPath = resolveModulePath(p, fqn, moduleType, shim);
+            if (relPath == null) {
+                r.message = shim.message;
+                return r;
+            }
+        }
+        r.modulePath = relPath;
+        String detached = ModuleOwnerFiles.problem(relPath, sibling -> p.getFile(sibling).exists());
+        if (detached != null) {
+            r.message = "refused: " + detached;
+            return r;
+        }
+        IFile file = p.getFile(relPath);
+        if (!file.exists()) {
+            r.message = "module file not found: " + relPath + "; create the first method with edt_add_method";
+            return r;
+        }
+        try {
+            String fullText = readText(file);
+            r.sourceHash = ExactTextReplacement.hash(fullText);
+            if (expectedHash != null && !expectedHash.isBlank() && !r.sourceHash.equalsIgnoreCase(expectedHash)) {
+                r.message = "refused: the module changed since the dry-run (source hash mismatch); repeat the dry-run";
+                return r;
+            }
+            BslContext before = loadBslText(projectName, relPath, fullText);
+            if (before.error != null || before.resource == null || !before.resource.getErrors().isEmpty()) {
+                r.message = "refused: the module does not parse cleanly now ("
+                        + (before.error != null ? before.error : firstError(before.resource)) + ")";
+                return r;
+            }
+            Module module0 = firstModule(before.resource);
+            r.methodsBefore = module0 == null ? 0 : module0.allMethods().size();
+            ModuleFragment.Edit edit = ModuleFragment.replaceAll(fullText, changes);
+            r.line = edit.line();
+            r.oldText = edit.oldText();
+            r.newText = edit.newText();
+            BslContext after = loadBslText(projectName, relPath, edit.result());
+            if (after.error != null || after.resource == null || !after.resource.getErrors().isEmpty()) {
+                r.message = "refused: the module would not parse after the replacement ("
+                        + (after.error != null ? after.error : firstError(after.resource)) + ")";
+                return r;
+            }
+            Module module1 = firstModule(after.resource);
+            r.methodsAfter = module1 == null ? 0 : module1.allMethods().size();
+            r.valid = true;
+            r.resultHash = ExactTextReplacement.hash(edit.result());
+            r.preview = changes.size() == 1
+                    ? previewAround(edit.result(), edit.offset(), edit.offset() + edit.newText().length())
+                    : edit.result();
+            r.plan = (changes.size() == 1 ? "Replace the fragment at line " + r.line
+                    : "Apply " + changes.size() + " replacements, the first at line " + r.line) + " of " + relPath
+                    + (r.methodsBefore != r.methodsAfter
+                            ? " (methods " + r.methodsBefore + " -> " + r.methodsAfter + ")" : "");
+            if (!apply) {
+                r.ok = true;
+                r.applyPending = true;
+                r.message = "dry-run: validated, nothing written. Re-call with apply=true and expectedHash="
+                        + r.sourceHash;
+                return r;
+            }
+            if (expectedHash == null || expectedHash.isBlank()) {
+                r.message = "apply requires expectedHash: the sourceHash of a dry-run";
+                return r;
+            }
+            file.setContents(new ByteArrayInputStream(edit.result().getBytes(StandardCharsets.UTF_8)),
+                    true, true, new NullProgressMonitor());
+            r.applied = true;
+            r.ok = true;
+            r.message = "fragment replaced in " + relPath + "; check it with edt_project_errors";
+            return r;
+        } catch (Exception e) {
+            r.message = "replace fragment failed: " + e.getClass().getSimpleName()
                     + (e.getMessage() != null ? ": " + e.getMessage() : "");
             return r;
         }
