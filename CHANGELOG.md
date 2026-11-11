@@ -17,6 +17,9 @@ to the code and the reasoning behind it.
 
 ### Added
 
+- `edt_add_template`, `edt_read_dcs` and `edt_replace_dcs`: create a data composition schema template
+  (optionally as a report's main schema), read its designer XML and replace it exactly. A report built
+  this way has no custom form and opens with the configuration's common report form.
 - `edt_dump_external_object` builds on the disk route in a copy of the file infobase named by
   `EDT_BRIDGE_DUMP_INFOBASE`. An external object that uses types of its base configuration (a
   catalog or enumeration reference) now builds: in the empty throwaway infobase the import failed

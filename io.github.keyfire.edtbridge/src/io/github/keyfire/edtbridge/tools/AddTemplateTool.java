@@ -1,0 +1,73 @@
+/*
+ * Copyright 2026 edt-bridge contributors.
+ * Licensed under the Apache License, Version 2.0.
+ */
+package io.github.keyfire.edtbridge.tools;
+
+import static io.github.keyfire.edtbridge.tools.ToolJson.boolProp;
+import static io.github.keyfire.edtbridge.tools.ToolJson.getBool;
+import static io.github.keyfire.edtbridge.tools.ToolJson.getStr;
+import static io.github.keyfire.edtbridge.tools.ToolJson.strProp;
+
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import io.github.keyfire.edtbridge.edt.TemplateWriteGateway;
+import io.github.keyfire.edtbridge.mcp.McpServer;
+
+/** MCP tool: edt_add_template - WRITE. Create a data composition schema template on an object. */
+public final class AddTemplateTool {
+    private final TemplateWriteGateway gateway = new TemplateWriteGateway();
+    public String name() { return "edt_add_template"; }
+    public boolean isWrite() { return true; }
+
+    public JsonObject descriptor() {
+        JsonObject props = new JsonObject();
+        props.add("projectName", strProp("Project that owns the object"));
+        props.add("ownerFqn", strProp("Object that receives the template, e.g. ExternalReport.Demo or Report.Sales"));
+        props.add("name", strProp("Template name - a 1C identifier, e.g. MainSchema"));
+        props.add("templateType", strProp("DataCompositionSchema (default; alias СхемаКомпоновкиДанных). "
+                + "Other template types are not created by this tool yet."));
+        props.add("setMainSchema", boolProp("true makes the new schema the report's main data composition "
+                + "schema. A report with a main schema and no main form opens with the configuration's common "
+                + "report form."));
+        props.add("synonymRu", strProp("Optional Russian synonym"));
+        props.add("apply", boolProp("false (default) = dry-run: validate and return the plan. true = create."));
+        JsonArray required = new JsonArray();
+        required.add("projectName");
+        required.add("ownerFqn");
+        required.add("name");
+        JsonObject schema = new JsonObject();
+        schema.addProperty("type", "object");
+        schema.add("properties", props);
+        schema.add("required", required);
+        JsonObject t = new JsonObject();
+        t.addProperty("name", name());
+        t.addProperty("description", "WRITE: create a DATA_COMPOSITION_SCHEMA template on a metadata object "
+                + "(report, external report, data processor) with an empty schema, optionally as the report's main "
+                + "data composition schema. Fill the schema with edt_replace_dcs, then check it with "
+                + "edt_project_errors. Dry-run by default; apply=true creates. Token-gated.");
+        t.addProperty("descriptionRu", "ЗАПИСЬ: создать у объекта метаданных (отчет, внешний отчет, обработка) макет "
+                + "DATA_COMPOSITION_SCHEMA с пустой схемой, при необходимости назначив его основной схемой "
+                + "компоновки отчета. Схему заполняет edt_replace_dcs, проверяет edt_project_errors. По умолчанию "
+                + "dry-run; apply=true создает. Требует токен.");
+        t.add("inputSchema", schema);
+        return t;
+    }
+
+    public JsonObject call(JsonObject args) {
+        String project = getStr(args, "projectName");
+        String owner = getStr(args, "ownerFqn");
+        String name = getStr(args, "name");
+        if (project == null || owner == null || name == null) {
+            return McpServer.toolError("projectName, ownerFqn and name are required");
+        }
+        try {
+            var result = gateway.addTemplate(project, owner, name, getStr(args, "templateType"),
+                    getStr(args, "synonymRu"), getBool(args, "setMainSchema"), getBool(args, "apply"));
+            return McpServer.textResult(new GsonBuilder().disableHtmlEscaping().setPrettyPrinting().create().toJson(result));
+        } catch (Exception exception) {
+            return McpServer.toolError("edt_add_template failed: " + exception.getMessage());
+        }
+    }
+}

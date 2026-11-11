@@ -99,6 +99,9 @@ import io.github.keyfire.edtbridge.tools.FormStructureTool;
 import io.github.keyfire.edtbridge.tools.SupportStatusTool;
 import io.github.keyfire.edtbridge.tools.FormIdentifiersTool;
 import io.github.keyfire.edtbridge.tools.ReadHtmlTemplateTool;
+import io.github.keyfire.edtbridge.tools.ReadDcsTool;
+import io.github.keyfire.edtbridge.tools.ReplaceDcsTool;
+import io.github.keyfire.edtbridge.tools.AddTemplateTool;
 import io.github.keyfire.edtbridge.tools.ReplaceHtmlTemplateTool;
 import io.github.keyfire.edtbridge.tools.ApplicationsTool;
 import io.github.keyfire.edtbridge.tools.MetadataDetailsTool;
@@ -282,7 +285,7 @@ function renderStatus(){var g=document.getElementById('status');g.textContent=''
 function loadStatus(){fetch('/status').then(function(r){return r.json();}).then(function(s){STATUS=s;renderStatus();if(s.tokenRequired){var bar=document.getElementById('tokbar');bar.className='panel';bar.textContent='';bar.appendChild(el('span',null,t('needtok')));var inp=el('input','tok');inp.oninput=function(){TOKEN=inp.value.trim();clearTimeout(TOKTIMER);TOKTIMER=setTimeout(loadTools,400);};bar.appendChild(inp);}}).catch(function(e){STATUS=null;document.getElementById('status').textContent='status error: '+e;});}
 function template(td){var req=(td.inputSchema&&td.inputSchema.required)||[];var o={};req.forEach(function(k){o[k]='';});return JSON.stringify(o,null,2);}
 // Keep in sync with the token-gated write tools - anything missing here is shown as a read tool.
-var WRITE_TOOLS=['edt_add_attribute','edt_add_form','edt_add_form_attribute','edt_add_form_command','edt_add_form_item','edt_add_method','edt_add_route','edt_build_extension','edt_infobase_dump','edt_clean_project','edt_create_extension','edt_create_external_object','edt_create_infobase','edt_create_object','edt_delete_method','edt_delete_object','edt_delete_project','edt_designer_agent','edt_dump_external_object','edt_modify_attribute','edt_modify_form_attribute','edt_modify_form_command','edt_modify_form_item','edt_register_platform','edt_platform_build_readiness','edt_remove_attribute','edt_remove_form_attribute','edt_remove_form_command','edt_remove_form_item','edt_rename','edt_update_infobase'];
+var WRITE_TOOLS=['edt_add_attribute','edt_add_template','edt_replace_dcs','edt_add_form','edt_add_form_attribute','edt_add_form_command','edt_add_form_item','edt_add_method','edt_add_route','edt_build_extension','edt_infobase_dump','edt_clean_project','edt_create_extension','edt_create_external_object','edt_create_infobase','edt_create_object','edt_delete_method','edt_delete_object','edt_delete_project','edt_designer_agent','edt_dump_external_object','edt_modify_attribute','edt_modify_form_attribute','edt_modify_form_command','edt_modify_form_item','edt_register_platform','edt_platform_build_readiness','edt_remove_attribute','edt_remove_form_attribute','edt_remove_form_command','edt_remove_form_item','edt_rename','edt_update_infobase'];
 function groupOf(n,tl){if(n.indexOf('edt_debug_')===0||n==='edt_evaluate'){return 'debug';}if(WRITE_TOOLS.indexOf(n)>=0){return 'write';}
 // Fallback so a write tool nobody remembered to list still lands in the right group: every write
 // tool is dry-run by default, so it takes an "apply". Only edt_register_platform does not, hence the list.
@@ -322,6 +325,9 @@ applyI18n();loadStatus();loadTools();
     private final FormIdentifiersTool formIdentifiers = new FormIdentifiersTool();
     private final ReadHtmlTemplateTool readHtmlTemplate = new ReadHtmlTemplateTool();
     private final ReplaceHtmlTemplateTool replaceHtmlTemplate = new ReplaceHtmlTemplateTool();
+    private final ReadDcsTool readDcs = new ReadDcsTool();
+    private final ReplaceDcsTool replaceDcs = new ReplaceDcsTool();
+    private final AddTemplateTool addTemplate = new AddTemplateTool();
     private final ApplicationsTool applications = new ApplicationsTool();
     private final FormStructureTool formStructure = new FormStructureTool();
     private final FormRenderTool formRender = new FormRenderTool();
@@ -782,6 +788,9 @@ applyI18n();loadStatus();loadTools();
         tools.add(formIdentifiers.descriptor());
         tools.add(readHtmlTemplate.descriptor());
         tools.add(replaceHtmlTemplate.descriptor());
+        tools.add(addTemplate.descriptor());
+        tools.add(readDcs.descriptor());
+        tools.add(replaceDcs.descriptor());
         tools.add(applications.descriptor());
         tools.add(formStructure.descriptor());
         tools.add(formRender.descriptor());
@@ -899,6 +908,15 @@ applyI18n();loadStatus();loadTools();
             return denied != null ? denied : formIdentifiers.call(args);
         }
         if (readHtmlTemplate.name().equals(name)) return readHtmlTemplate.call(args);
+        if (readDcs.name().equals(name)) return readDcs.call(args);
+        if (replaceDcs.name().equals(name)) {
+            JsonObject denied = writeTokenGate(replaceDcs.isWrite(), name);
+            return denied != null ? denied : replaceDcs.call(args);
+        }
+        if (addTemplate.name().equals(name)) {
+            JsonObject denied = writeTokenGate(addTemplate.isWrite(), name);
+            return denied != null ? denied : addTemplate.call(args);
+        }
         if (replaceHtmlTemplate.name().equals(name)) {
             JsonObject denied = writeTokenGate(replaceHtmlTemplate.isWrite(), name);
             return denied != null ? denied : replaceHtmlTemplate.call(args);

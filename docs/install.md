@@ -81,6 +81,7 @@ flag twin, documented in [Commands](/cli).
 | `EDT_BRIDGE_TOKEN` | `-Dedt.bridge.token` | from the preference page | the shared secret every write tool requires |
 | `EDT_BRIDGE_ALLOW_EVALUATE` | – | off | `1` enables `edt_evaluate`, arbitrary BSL executed against a live infobase. The preference page has the same switch |
 | `EDT_BRIDGE_AGENT_IDLE_MINUTES` | `-Dedt.bridge.agent-idle-minutes` | `30` | after how many idle minutes a configurator agent stops itself. `off` keeps agents forever |
+| `EDT_BRIDGE_DUMP_INFOBASE` | – | – | a file infobase (its directory, its `1Cv8.1CD` or `File="...";`) that carries the base configuration of external objects. The disk route of `edt_dump_external_object` builds in a copy of it, so types of the base configuration resolve; without it the build runs in an empty infobase |
 
 Environment variables and `-Dedt.bridge.*` properties supplied at launch take precedence over
 EDT's preference page. The wrapper uses them to configure a headless instance.
