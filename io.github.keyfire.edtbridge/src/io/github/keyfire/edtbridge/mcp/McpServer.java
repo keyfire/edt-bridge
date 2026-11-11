@@ -39,6 +39,7 @@ import org.osgi.framework.Version;
 
 import io.github.keyfire.edtbridge.core.ArgumentNames;
 import io.github.keyfire.edtbridge.core.FileUrlPaths;
+import io.github.keyfire.edtbridge.core.ToolSets;
 import io.github.keyfire.edtbridge.edt.ProjectGateway;
 import io.github.keyfire.edtbridge.tools.MoveMethodTool;
 import io.github.keyfire.edtbridge.tools.ReplaceMethodTool;
@@ -296,7 +297,7 @@ function setGrpCollapsed(id,c){try{localStorage.setItem('edtbridge-grp-'+id,c?'1
 function makeCard(tl){var card=el('div','panel tool');card.appendChild(el('h3',null,tl.name));card.appendChild(el('p',null,(LANG==='ru'&&tl.descriptionRu)?tl.descriptionRu:(tl.description||'')));var tmpl=template(tl);var ta=el('textarea');ta.rows=Math.max(2,tmpl.split(String.fromCharCode(10)).length);ta.value=tmpl;card.appendChild(ta);var out=el('pre','out');var btn=el('button','run',t('run'));btn.onclick=function(){runTool(tl.name,ta,out);};card.appendChild(btn);card.appendChild(out);return card;}
 function setAllGroups(collapsed){var gs=document.querySelectorAll('#tools .group');for(var i=0;i<gs.length;i++){var gid=gs[i].getAttribute('data-grp');if(collapsed){gs[i].classList.add('collapsed');}else{gs[i].classList.remove('collapsed');}setGrpCollapsed(gid,collapsed);}}
 function renderTools(){var box=document.getElementById('tools');box.textContent='';if(!TOOLS){return;}var order=['read','write','debug'];var byGroup={read:[],write:[],debug:[]};TOOLS.forEach(function(tl){(byGroup[groupOf(tl.name,tl)]||byGroup.read).push(tl);});var tb=el('div','toolbar');var be=el('button',null,t('expandAll'));be.onclick=function(){setAllGroups(false);};var bc=el('button',null,t('collapseAll'));bc.onclick=function(){setAllGroups(true);};tb.appendChild(be);tb.appendChild(bc);box.appendChild(tb);order.forEach(function(gid){var list=byGroup[gid];if(!list.length){return;}var grp=el('div','group'+(grpCollapsed(gid)?' collapsed':''));grp.setAttribute('data-grp',gid);var head=el('div','ghead');head.appendChild(el('span','chev','▸'));head.appendChild(el('span','gtitle',t('g_'+gid)));head.appendChild(el('span','gcount',String(list.length)));head.onclick=function(){var c=!grp.classList.contains('collapsed');grp.classList.toggle('collapsed');setGrpCollapsed(gid,c);};var body=el('div','gbody');list.forEach(function(tl){body.appendChild(makeCard(tl));});grp.appendChild(head);grp.appendChild(body);box.appendChild(grp);});}
-function loadTools(){rpc('tools/list',{}).then(function(res){TOOLS=(res.result&&res.result.tools)||[];renderTools();}).catch(function(e){TOOLS=null;document.getElementById('tools').textContent=(e&&e.message)?e.message:String(e);});}
+function loadTools(){rpc('tools/list',{}).then(function(res){if(res.error){throw new Error(res.error.message||'tools/list failed');}TOOLS=(res.result&&res.result.tools)||[];renderTools();}).catch(function(e){TOOLS=null;document.getElementById('tools').textContent=(e&&e.message)?e.message:String(e);});}
 function runTool(name,ta,out){var args;try{args=JSON.parse(ta.value||'{}');}catch(e){out.textContent=t('badjson')+e;return;}out.textContent=t('running');rpc('tools/call',{name:name,arguments:args}).then(function(res){var r=res.result||res.error;if(r&&r.content&&r.content[0]&&r.content[0].text!=null){out.textContent=r.content[0].text;}else{out.textContent=JSON.stringify(r,null,2);}}).catch(function(e){out.textContent='error: '+e;});}
 document.getElementById('themeBtn').onclick=toggleTheme;
 document.getElementById('langBtn').onclick=function(){setLang(LANG==='ru'?'en':'ru');};
@@ -521,6 +522,14 @@ applyI18n();loadStatus();loadTools();
         return (t == null || t.isBlank()) ? null : t.trim();
     }
 
+    /**
+     * The tool sets this server is limited to. Read on every request, like the token: the value is
+     * launch-time configuration, and parsing a short string costs nothing next to a tool call.
+     */
+    private ToolSets.Selection toolset() {
+        return ToolSets.parse(System.getProperty("edt.bridge.toolset", System.getenv("EDT_BRIDGE_TOOLSET")));
+    }
+
     private void sendAuthenticationRequired(HttpExchange ex) throws IOException {
         ex.getResponseHeaders().set("WWW-Authenticate", "Bearer realm=\"edt-bridge\"");
         send(ex, 401, gson.toJson(errorObj(JsonNull.INSTANCE, -32001,
@@ -702,6 +711,7 @@ applyI18n();loadStatus();loadTools();
         o.addProperty("protocolVersion", PROTOCOL_VERSION);
         o.addProperty("port", port);
         o.addProperty("tokenRequired", token() != null);
+        o.add("toolset", toolsetStatus());
         o.addProperty("serverTime", java.time.OffsetDateTime.now().toString());
         try {
             o.add("resources", gson.toJsonTree(RuntimeResources.snapshot()));
@@ -737,8 +747,14 @@ applyI18n();loadStatus();loadTools();
         switch (method) {
             case "initialize":
                 return result(id, initializeResult(req.has("params") ? req.getAsJsonObject("params") : null));
-            case "tools/list":
-                return result(id, toolsList());
+            case "tools/list": {
+                ToolSets.Selection toolset = toolset();
+                // A value that names an unknown set fails the listing outright. An empty list
+                // would read as a server with no tools, and the whole list would undo the limit.
+                return toolset.problem() != null
+                        ? errorObj(id, -32000, toolset.problem())
+                        : result(id, servedToolsList(toolset));
+            }
             case "tools/call":
                 return result(id, toolsCall(req.has("params") ? req.getAsJsonObject("params") : new JsonObject()));
             case "ping":
@@ -855,9 +871,62 @@ applyI18n();loadStatus();loadTools();
         tools.add(debugInspect.descriptor());
         tools.add(debugControl.descriptor());
         tools.add(debugEvaluate.descriptor());
+        // Each descriptor says which tool sets contain the tool. The wrapper narrows by this field
+        // the lists it assembles on its own - the packaged catalog served while EDT is starting.
+        for (JsonElement element : tools) {
+            JsonObject tool = element.getAsJsonObject();
+            JsonArray sets = new JsonArray();
+            ToolSets.containing(tool.get("name").getAsString()).forEach(sets::add);
+            tool.add("toolsets", sets);
+        }
         JsonObject r = new JsonObject();
         r.add("tools", tools);
         return r;
+    }
+
+    /**
+     * The descriptors a client is shown: all of them, or those of the selected tool sets.
+     * {@link #toolsList()} stays the full list - the argument gate and the packaged catalog are
+     * built from it whatever is selected.
+     */
+    private JsonObject servedToolsList(ToolSets.Selection toolset) {
+        JsonObject all = toolsList();
+        if (!toolset.limits()) {
+            return all;
+        }
+        JsonArray served = new JsonArray();
+        for (JsonElement element : all.getAsJsonArray("tools")) {
+            if (toolset.allows(element.getAsJsonObject().get("name").getAsString())) {
+                served.add(element);
+            }
+        }
+        JsonObject r = new JsonObject();
+        r.add("tools", served);
+        return r;
+    }
+
+    /** The selection for /status: the sets, how many tools they leave, and the problem if any. */
+    private JsonObject toolsetStatus() {
+        ToolSets.Selection toolset = toolset();
+        JsonObject o = new JsonObject();
+        JsonArray names = new JsonArray();
+        toolset.names().forEach(names::add);
+        o.add("names", names);
+        try {
+            int served = 0;
+            for (String tool : declaredArguments().keySet()) {
+                if (toolset.allows(tool)) {
+                    served++;
+                }
+            }
+            o.addProperty("tools", served);
+        } catch (RuntimeException | LinkageError unavailable) {
+            // The count is a convenience; the status page must answer even without it.
+        }
+        if (toolset.problem() != null) {
+            o.addProperty("problem", toolset.problem());
+        }
+        return o;
     }
 
     private JsonObject toolsCall(JsonObject params) {
@@ -865,6 +934,15 @@ applyI18n();loadStatus();loadTools();
         JsonObject args = params.has("arguments") && params.get("arguments").isJsonObject()
                 ? params.getAsJsonObject("arguments")
                 : new JsonObject();
+        ToolSets.Selection toolset = toolset();
+        if (toolset.problem() != null) {
+            return toolError(toolset.problem());
+        }
+        // Before the argument gate: a tool outside the set is refused whatever it was passed.
+        // A name this server does not serve at all is left to the dispatch below.
+        if (!toolset.allows(name) && declaredArguments().containsKey(name)) {
+            return toolError(toolset.refusal(name));
+        }
         JsonObject misnamed = unknownArgumentGate(name, args);
         if (misnamed != null) {
             return misnamed;
@@ -1184,8 +1262,12 @@ applyI18n();loadStatus();loadTools();
         return refusal == null ? null : toolError(refusal);
     }
 
-    /** The argument names each tool declares, read once from the descriptors the server serves. */
-    private Map<String, Set<String>> declaredArguments() {
+    /**
+     * The argument names each tool declares, read once from the descriptors the server serves.
+     * Synchronized because /status counts the tools of the selected sets on the HTTP pool while
+     * the MCP workers judge arguments.
+     */
+    private synchronized Map<String, Set<String>> declaredArguments() {
         if (declaredArguments == null) {
             Map<String, Set<String>> byTool = new HashMap<>();
             for (JsonElement element : toolsList().getAsJsonArray("tools")) {
