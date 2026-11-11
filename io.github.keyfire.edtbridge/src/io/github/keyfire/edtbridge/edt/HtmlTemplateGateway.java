@@ -59,6 +59,12 @@ public final class HtmlTemplateGateway {
     /** How long a check waits for the UI thread. A modal dialog's event loop still runs it. */
     static final long UI_WAIT_MS = 30_000;
 
+    /**
+     * The language slot of a data composition schema: it has one content file and no locales, so the
+     * schema calls pass this marker where an HTML call names a locale.
+     */
+    static final String SCHEMA = "schema";
+
     /** EDT is occupied by another operation; nothing was written and the call may be repeated. */
     static final class BusyException extends IllegalStateException {
         BusyException(String message) { super(message); }
@@ -110,9 +116,9 @@ public final class HtmlTemplateGateway {
             result.text = source.text();
             result.valid = true;
             result.ok = true;
-            result.message = "exact saved HTML source; UTF-8 hash includes any BOM and original line endings";
+            result.message = "exact saved " + kind(language) + " source; UTF-8 hash includes any BOM and original line endings";
         } catch (Exception exception) {
-            result.message = "HTML template read refused or failed: " + cause(exception);
+            result.message = kind(language) + " template read refused or failed: " + cause(exception);
         }
         return result;
     }
@@ -143,8 +149,8 @@ public final class HtmlTemplateGateway {
             if (!apply || plan.unchanged()) {
                 result.ok = true;
                 result.applyPending = !apply && !plan.unchanged();
-                result.message = plan.unchanged() ? "HTML source is unchanged; nothing written"
-                        : "dry-run: exact locale replacement validated; apply requires expectedHash and force=true";
+                result.message = plan.unchanged() ? kind(language) + " source is unchanged; nothing written"
+                        : "dry-run: exact " + kind(language) + " replacement validated; apply requires expectedHash and force=true";
                 return result;
             }
             Exception[] callbackFailure = {null};
@@ -161,7 +167,7 @@ public final class HtmlTemplateGateway {
                     result.applied = true;
                     Source saved = access.read(current);
                     if (!plan.newText().equals(saved.text()) || !plan.resultHash().equals(ExactTextReplacement.hash(saved.text()))) {
-                        throw new IllegalStateException("saved HTML source differs from the planned exact text");
+                        throw new IllegalStateException("saved " + kind(language) + " source differs from the planned exact text");
                     }
                     requireSameTarget(target, access.resolve(projectName, fqn, language));
                     result.verified = true;
@@ -171,18 +177,34 @@ public final class HtmlTemplateGateway {
             });
             if (callbackFailure[0] != null) throw callbackFailure[0];
             if (!result.applied || !result.verified) {
-                throw new IllegalStateException("exclusive HTML replacement did not complete and verify");
+                throw new IllegalStateException("exclusive " + kind(language) + " replacement did not complete and verify");
             }
             result.ok = true;
-            result.message = "exact HTML locale source replaced and reread; other locales and metadata were not written";
+            result.message = SCHEMA.equals(language)
+                    ? "exact schema source replaced and reread; EDT reloads the schema from the file, template metadata was not written"
+                    : "exact HTML locale source replaced and reread; other locales and metadata were not written";
         } catch (Exception exception) {
             result.ok = false;
             result.busy = !result.writeAttempted && rootCause(exception) instanceof BusyException;
-            result.message = (result.applied ? "HTML source was written but verification failed: "
-                    : result.writeAttempted ? "HTML write failed; reread the template before retrying: "
-                    : "HTML template replacement refused or failed: ") + cause(exception);
+            result.message = (result.applied ? kind(language) + " source was written but verification failed: "
+                    : result.writeAttempted ? kind(language) + " write failed; reread the template before retrying: "
+                    : kind(language) + " template replacement refused or failed: ") + cause(exception);
         }
         return result;
+    }
+
+    /** The schema calls: the same exact read and replacement, addressed to the one schema file. */
+    public Result readSchema(String projectName, String fqn) {
+        return read(projectName, fqn, SCHEMA);
+    }
+
+    public Result replaceSchema(String projectName, String fqn, String text, String expectedHash,
+            boolean apply, boolean force) {
+        return replace(projectName, fqn, SCHEMA, text, expectedHash, apply, force);
+    }
+
+    private static String kind(String language) {
+        return SCHEMA.equals(language) ? "schema" : "HTML";
     }
 
     private static void requireArguments(String projectName, String fqn, String language) {
@@ -281,6 +303,9 @@ public final class HtmlTemplateGateway {
             return model.executeReadonlyTask(new AbstractBmTask<Target>("edt-bridge.htmlTemplate.resolve") {
                 @Override public Target execute(IBmTransaction transaction, IProgressMonitor monitor) {
                     BasicTemplate template = resolveTemplate(transaction, fqn);
+                    if (SCHEMA.equals(language)) {
+                        return schemaTarget(projectName, fqn, template, project, operations, lookup);
+                    }
                     HtmlDocumentPage selected = selectPage(template, language);
                     if (template.getUuid() == null) throw new IllegalArgumentException("template UUID is unavailable");
                     requireContextSaved(operations.getExistingContext(template));
@@ -308,6 +333,31 @@ public final class HtmlTemplateGateway {
                             language, languages, paths, file, metadata, documentFile);
                 }
             });
+        }
+
+        /**
+         * A data composition schema keeps its whole content in one file next to the template
+         * metadata ({@code Template.dcs}), in the designer XML of the schema; that file is the text.
+         */
+        private static Target schemaTarget(String projectName, String fqn, BasicTemplate template, IProject project,
+                IProjectOperationApi operations, IResourceLookup lookup) {
+            if (template.getTemplateType() != TemplateType.DATA_COMPOSITION_SCHEMA
+                    || template.getTemplate() == null || template.getTemplate().eIsProxy()) {
+                throw new IllegalArgumentException("template must be an existing resolved DATA_COMPOSITION_SCHEMA");
+            }
+            if (template.getUuid() == null) throw new IllegalArgumentException("template UUID is unavailable");
+            requireContextSaved(operations.getExistingContext(template));
+            requireContextSaved(operations.getExistingContext(template.getTemplate()));
+            IFile file = lookup.getPlatformResource(template.getTemplate());
+            requireFile(projectName, file);
+            IFile metadata = lookup.getPlatformResource(template);
+            if (metadata == null || !project.equals(metadata.getProject())) {
+                throw new IllegalStateException("template metadata resource does not belong to the requested project");
+            }
+            requireFile(projectName, metadata);
+            String path = file.getProjectRelativePath().toPortableString();
+            return new Target(projectName, fqn, template.getUuid().toString(), template.getTemplateType().getLiteral(),
+                    SCHEMA, List.of(SCHEMA), Map.of(SCHEMA, path), file, metadata, null);
         }
 
         public Source read(Target target) throws Exception {
@@ -361,7 +411,7 @@ public final class HtmlTemplateGateway {
             // an infobase update asking a question. Taking the locks in the opposite order deadlocks, so the
             // operation is awaited here, off the UI thread and with a deadline, and checks inside it are bounded.
             if (PlatformUI.isWorkbenchRunning() && Display.getCurrent() != null) {
-                throw new BusyException("an HTML write cannot wait for an EDT project operation on the UI thread");
+                throw new BusyException("a template write cannot wait for an EDT project operation on the UI thread");
             }
             IProject project = project(target.projectName());
             performBounded((run, monitor) -> operations().performExclusiveOperation(run, ProjectPipelineJob.BUILD,
@@ -441,7 +491,7 @@ public final class HtmlTemplateGateway {
         private static void requireFile(String projectName, IFile file) {
             if (file == null || !file.exists() || !file.isAccessible()
                     || !projectName.equals(file.getProject().getName())) {
-                throw new IllegalArgumentException("existing HTML page file is unavailable in the requested project");
+                throw new IllegalArgumentException("existing template file is unavailable in the requested project");
             }
             if (!file.isSynchronized(IResource.DEPTH_ZERO)) throw new IllegalArgumentException("template file is out of sync; refresh it in EDT");
         }

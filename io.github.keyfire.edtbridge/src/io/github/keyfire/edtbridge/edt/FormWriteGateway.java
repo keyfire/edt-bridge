@@ -635,7 +635,7 @@ public final class FormWriteGateway {
         return coreService(IProjectFileSystemSupportProvider.class);
     }
 
-    private static ITopObjectFqnGenerator topObjectFqnGenerator() {
+    static ITopObjectFqnGenerator topObjectFqnGenerator() {
         return coreService(ITopObjectFqnGenerator.class);
     }
 
@@ -682,7 +682,7 @@ public final class FormWriteGateway {
         return pluginInjector("com._1c.g5.v8.dt.form", "com._1c.g5.v8.dt.internal.form.FormPlugin");
     }
 
-    private static IModelObjectFactory modelObjectFactory() {
+    static IModelObjectFactory modelObjectFactory() {
         Injector injector = pluginInjector("com._1c.g5.v8.dt.md", "com._1c.g5.v8.dt.md.MdPlugin");
         try {
             return (injector == null) ? null : injector.getInstance(IModelObjectFactory.class);

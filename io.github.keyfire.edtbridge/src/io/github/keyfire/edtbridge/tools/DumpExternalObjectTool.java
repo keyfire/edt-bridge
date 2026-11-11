@@ -53,7 +53,10 @@ public final class DumpExternalObjectTool {
                 + "back to the platform found on disk when EDT refuses; edt = EDT's dumper only; "
                 + "disk = the on-disk platform only. The fallback matters for an object bound to a "
                 + "base configuration: EDT's route then wants a developed application of an infobase, "
-                + "which the project does not have, while the disk route builds the file anyway."));
+                + "which the project does not have, while the disk route builds the file anyway. The "
+                + "disk route builds in a copy of the file infobase named by EDT_BRIDGE_DUMP_INFOBASE, "
+                + "otherwise in an empty one, where types of the base configuration (catalog or "
+                + "enumeration references) fail the import with an XDTO exception."));
         props.add("apply", boolProp("false (default) = dry-run: resolve the object and validate that "
                 + "dump generation is available (local 1C platform). true = write the file."));
 

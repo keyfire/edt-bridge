@@ -44,7 +44,9 @@ public final class AdoptObjectTool {
         props.add("projectName", ToolJson.strProp("The EXTENSION project to adopt into"));
         props.add("fqn", ToolJson.strProp("Object of the BASE configuration to adopt, with an English "
                 + "type prefix, e.g. Catalog.Контрагенты, CommonModule.ОбщегоНазначения, "
-                + "Document.Заказ"));
+                + "Document.Заказ, or a member of one by kind and name: Document.Заказ.Form.ФормаДокумента "
+                + "(the form comes with its form model, so its module can intercept handlers), "
+                + "Document.Заказ.Attribute.ДатаОтгрузки, Document.Заказ.TabularSection.Товары"));
         props.add("extendModule", ToolJson.boolProp("true sets the adopted CommonModule extension.module control to Extended; optional, default false."));
         props.add("apply", ToolJson.boolProp("false (default) = dry-run: resolve the extension, its "
                 + "base configuration and the object, report whether it is adoptable or already "

@@ -32,6 +32,7 @@ import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import io.github.keyfire.edtbridge.core.ModuleOwnerFiles;
 import io.github.keyfire.edtbridge.core.MetadataPaths;
 import io.github.keyfire.edtbridge.core.BslPlacement;
 import org.eclipse.core.resources.IFile;
@@ -593,6 +594,11 @@ public final class BslGateway {
             r.message = "methodText is required";
             return r;
         }
+        String detached = ModuleOwnerFiles.problem(relPath, sibling -> p.getFile(sibling).exists());
+        if (detached != null) {
+            r.message = "refused: " + detached;
+            return r;
+        }
         try {
             if (missingModule) requireEmptyModuleOwner(p, fqn, moduleType, r.modulePath);
             String fullText = missingModule ? "" : readText(file);
@@ -872,7 +878,9 @@ public final class BslGateway {
         }
         IFile file = project.getFile(canonical);
         if (!file.getParent().exists()) {
-            throw new IllegalArgumentException("the module owner's source folder is absent; export the existing metadata object first");
+            throw new IllegalArgumentException("the module owner's source folder is absent: the owner is not"
+                    + " part of this project yet. In an extension, adopt it first with edt_adopt_object"
+                    + " (a form: Document.Order.Form.DocumentForm); in a configuration, export the existing object");
         }
         if (moduleType != null && !moduleType.isBlank()
                 && !file.getName().equals(moduleType + ".bsl")) {

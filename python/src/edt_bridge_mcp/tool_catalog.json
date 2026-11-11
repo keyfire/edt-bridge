@@ -520,6 +520,110 @@
       }
     },
     {
+      "name": "edt_add_template",
+      "description": "WRITE: create a DATA_COMPOSITION_SCHEMA template on a metadata object (report, external report, data processor) with an empty schema, optionally as the report's main data composition schema. Fill the schema with edt_replace_dcs, then check it with edt_project_errors. Dry-run by default; apply=true creates. Token-gated.",
+      "descriptionRu": "ЗАПИСЬ: создать у объекта метаданных (отчет, внешний отчет, обработка) макет DATA_COMPOSITION_SCHEMA с пустой схемой, при необходимости назначив его основной схемой компоновки отчета. Схему заполняет edt_replace_dcs, проверяет edt_project_errors. По умолчанию dry-run; apply=true создает. Требует токен.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "Project that owns the object"
+          },
+          "ownerFqn": {
+            "type": "string",
+            "description": "Object that receives the template, e.g. ExternalReport.Demo or Report.Sales"
+          },
+          "name": {
+            "type": "string",
+            "description": "Template name - a 1C identifier, e.g. MainSchema"
+          },
+          "templateType": {
+            "type": "string",
+            "description": "DataCompositionSchema (default; alias СхемаКомпоновкиДанных). Other template types are not created by this tool yet."
+          },
+          "setMainSchema": {
+            "type": "boolean",
+            "description": "true makes the new schema the report's main data composition schema. A report with a main schema and no main form opens with the configuration's common report form."
+          },
+          "synonymRu": {
+            "type": "string",
+            "description": "Optional Russian synonym"
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = dry-run: validate and return the plan. true = create."
+          }
+        },
+        "required": [
+          "projectName",
+          "ownerFqn",
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "edt_read_dcs",
+      "description": "Read the exact saved UTF-8 source of one existing DATA_COMPOSITION_SCHEMA template: the designer XML of the schema (root DataCompositionSchema - data sources, data sets with their query, fields, parameters, resources and settings variants). Resolves common and nested templates through EDT's live model and returns path, text and sourceHash for edt_replace_dcs. Refuses an unresolved template, another template type, dirty editors and out-of-sync files.",
+      "descriptionRu": "Прочитать точный сохраненный UTF-8-текст существующего макета DATA_COMPOSITION_SCHEMA: XML схемы в формате конфигуратора (корень DataCompositionSchema - источники, наборы данных с запросом, поля, параметры, ресурсы, варианты настроек). Общий или вложенный макет определяется по живой модели EDT. Результат содержит path, text и sourceHash для edt_replace_dcs. Ненайденный макет, другой тип макета, несохраненный редактор и рассинхронизация файла дают отказ.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "Loaded EDT project name."
+          },
+          "templateFqn": {
+            "type": "string",
+            "description": "Existing schema template, e.g. ExternalReport.Demo.Template.MainSchema or Report.Sales.Template.MainSchema."
+          }
+        },
+        "required": [
+          "projectName",
+          "templateFqn"
+        ]
+      }
+    },
+    {
+      "name": "edt_replace_dcs",
+      "description": "WRITE: replace the complete source of one existing DATA_COMPOSITION_SCHEMA template with designer XML of the schema; EDT reloads the schema from the file. Dry-run returns oldText/newText, sourceHash and resultHash. Apply requires the current expectedHash and force=true, writes only the schema file and rereads it. Run edt_project_errors afterwards: a malformed schema shows up there. Create the template with edt_add_template. Requires a configured write token.",
+      "descriptionRu": "ЗАПИСЬ: заменить полный текст существующего макета DATA_COMPOSITION_SCHEMA на XML схемы в формате конфигуратора; EDT перечитывает схему из файла. Dry-run возвращает oldText/newText, sourceHash и resultHash. Для apply нужны актуальный expectedHash и force=true; записывается только файл схемы, результат перечитывается. После записи запустить edt_project_errors: ошибки схемы видны там. Макет создает edt_add_template. Нужен токен записи.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "Loaded EDT project name."
+          },
+          "templateFqn": {
+            "type": "string",
+            "description": "Existing schema template, e.g. ExternalReport.Demo.Template.MainSchema or Report.Sales.Template.MainSchema."
+          },
+          "text": {
+            "type": "string",
+            "description": "Complete designer XML of the schema (root DataCompositionSchema, as in a designer dump), taken literally. Start from edt_read_dcs and edit it."
+          },
+          "expectedHash": {
+            "type": "string",
+            "description": "sourceHash from a current edt_read_dcs or dry-run. Required for apply."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default): return oldText/newText and hashes without writing. true: write with the current expectedHash and force=true."
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Required with apply=true. Does not bypass dirty editors, a changed template or stale-source checks."
+          }
+        },
+        "required": [
+          "projectName",
+          "templateFqn",
+          "text"
+        ]
+      }
+    },
+    {
       "name": "edt_applications",
       "description": "READ/WRITE: list native EDT applications, associate an existing registered infobase, or start/stop a thin client for a selected infobase application. Association is idempotent and does not update the database. Stop addresses only a session started by this bridge process; a client without a returned process handle must be closed in EDT. Credentials are taken from EDT settings and omitted from replies.",
       "descriptionRu": "ЧТЕНИЕ/ЗАПИСЬ: список штатных приложений EDT, связь проекта с уже зарегистрированной базой, запуск и остановка тонкого клиента выбранного приложения информационной базы. Повторная связь не создает дубликат и не обновляет базу. Остановка доступна только для сеанса этого процесса моста; клиент без возвращенного дескриптора нужно закрыть в EDT. Данные входа берутся из настроек EDT и в ответ не включаются.",
@@ -2592,7 +2696,7 @@
           },
           "route": {
             "type": "string",
-            "description": "Which builder to use: auto (default) = EDT's own dumper, falling back to the platform found on disk when EDT refuses; edt = EDT's dumper only; disk = the on-disk platform only. The fallback matters for an object bound to a base configuration: EDT's route then wants a developed application of an infobase, which the project does not have, while the disk route builds the file anyway."
+            "description": "Which builder to use: auto (default) = EDT's own dumper, falling back to the platform found on disk when EDT refuses; edt = EDT's dumper only; disk = the on-disk platform only. The fallback matters for an object bound to a base configuration: EDT's route then wants a developed application of an infobase, which the project does not have, while the disk route builds the file anyway. The disk route builds in a copy of the file infobase named by EDT_BRIDGE_DUMP_INFOBASE, otherwise in an empty one, where types of the base configuration (catalog or enumeration references) fail the import with an XDTO exception."
           },
           "apply": {
             "type": "boolean",
@@ -3133,7 +3237,7 @@
           },
           "fqn": {
             "type": "string",
-            "description": "Object of the BASE configuration to adopt, with an English type prefix, e.g. Catalog.Контрагенты, CommonModule.ОбщегоНазначения, Document.Заказ"
+            "description": "Object of the BASE configuration to adopt, with an English type prefix, e.g. Catalog.Контрагенты, CommonModule.ОбщегоНазначения, Document.Заказ, or a member of one by kind and name: Document.Заказ.Form.ФормаДокумента (the form comes with its form model, so its module can intercept handlers), Document.Заказ.Attribute.ДатаОтгрузки, Document.Заказ.TabularSection.Товары"
           },
           "extendModule": {
             "type": "boolean",

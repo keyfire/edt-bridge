@@ -45,7 +45,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
 from . import __version__
-from . import cli, i18n, plugins
+from . import cli, form_run, i18n, plugins
 
 PROTOCOL_FALLBACK = "2024-11-05"
 
@@ -1030,6 +1030,7 @@ LOCAL_TOOLS = [
             },
         },
     },
+    form_run.DESCRIPTOR,
 ]
 LOCAL_TOOL_NAMES = {tool["name"] for tool in LOCAL_TOOLS}
 
@@ -1218,12 +1219,22 @@ class StdioServer:
 
     def _call_local(self, req_id, name: str, arguments: dict) -> None:
         """Run a wrapper-served tool and report as a normal tool result."""
-        if name != "edt_open_gui":
+        if name not in LOCAL_TOOL_NAMES:
             self._tool_error(req_id, f"unknown local tool: {name}")
             return
         misnamed = unknown_arguments(name, arguments)
         if misnamed:
             self._tool_error(req_id, misnamed)
+            return
+        if name == form_run.DESCRIPTOR["name"]:
+            # The form run needs the platform, not EDT: it never touches the backend.
+            try:
+                report = form_run.run_tool(arguments)
+            except Exception as exc:  # a failed run must not take the server loop down
+                self._tool_error(req_id, f"{name} failed: {exc}")
+                return
+            self._result(req_id, {"content": [{"type": "text",
+                                               "text": json.dumps(report, ensure_ascii=False, indent=2)}]})
             return
         try:
             seconds = max(1, int(arguments.get("timeoutSeconds")))

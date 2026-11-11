@@ -2332,9 +2332,28 @@ public final class MetadataWriteGateway {
         public boolean objectFound;
         public Boolean adoptable;
         public Boolean alreadyAdopted;
+        public boolean nested;        // a member of a top object: a form, an attribute, a tabular section
+        public String ownerFqn;       // the top object that holds a nested member
         public String plan;
         public String warning;
         public String message;
+    }
+
+    /**
+     * The base object an adoption names: a top object ({@code Document.Order}) or a member of one in
+     * the {@code Kind.Name} pairs the other tools use - {@code Document.Order.Form.DocumentForm},
+     * {@code Document.Order.Attribute.ShipDate}, {@code Document.Order.TabularSection.Goods}.
+     */
+    static EObject resolveAdoptTarget(IBmTransaction tx, String fqn) {
+        EObject top = tx.getTopObjectByFqn(fqn);
+        if (top != null) {
+            return top;
+        }
+        try {
+            return resolveDeleteTarget(tx, fqn);
+        } catch (IllegalArgumentException ambiguous) {
+            return null;
+        }
     }
 
     /**
@@ -2400,12 +2419,17 @@ public final class MetadataWriteGateway {
         baseModel.executeReadonlyTask(new AbstractBmTask<Object>("edt-bridge.adopt.inspect") {
             @Override
             public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
-                IBmObject o = tx.getTopObjectByFqn(fqn);
+                EObject o = resolveAdoptTarget(tx, fqn);
                 if (o == null) {
                     return null;
                 }
                 r.objectFound = true;
                 r.type = o.eClass().getName();
+                if (!(o instanceof IBmObject top && top.bmIsTop())) {
+                    String[] segments = fqn.split("\\.");
+                    r.nested = true;
+                    r.ownerFqn = segments[0] + "." + segments[1];
+                }
                 try {
                     r.adoptable = Boolean.valueOf(adopter.isAdoptable(o));
                     r.alreadyAdopted = Boolean.valueOf(adopter.isAdopted(o, extension));
@@ -2421,7 +2445,10 @@ public final class MetadataWriteGateway {
             return r;
         }
         if (!r.objectFound) {
-            r.message = "object not found in the base configuration " + r.baseProject + ": " + fqn;
+            r.message = "object not found in the base configuration " + r.baseProject + ": " + fqn
+                    + ". Name a top object (Document.Order) or a member of one by kind and name:"
+                    + " Document.Order.Form.DocumentForm, Document.Order.Attribute.ShipDate,"
+                    + " Document.Order.TabularSection.Goods";
             return r;
         }
         r.ok = !Boolean.FALSE.equals(r.adoptable) && !Boolean.TRUE.equals(r.alreadyAdopted);
@@ -2470,7 +2497,7 @@ public final class MetadataWriteGateway {
             baseModel.executeReadonlyTask(new AbstractBmTask<Object>("edt-bridge.adopt.read") {
                 @Override
                 public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
-                    adopted[0] = tx.getTopObjectByFqn(fqn);
+                    adopted[0] = resolveAdoptTarget(tx, fqn);
                     return null;
                 }
             });
@@ -2481,7 +2508,7 @@ public final class MetadataWriteGateway {
             adoptionStarted = true;
             EObject result = adopter.adoptAndAttach(adopted[0], extension, new NullProgressMonitor());
             r.applied = result != null;
-            if (r.applied && (alphabetic[0] || extendModule)) {
+            if (r.applied && !r.nested && (alphabetic[0] || extendModule)) {
                 extensionModel.execute(new AbstractBmTask<Object>("edt-bridge.adopt.settings.apply") {
                     @Override public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
                         EObject object = tx.getTopObjectByFqn(fqn);
@@ -2508,9 +2535,22 @@ public final class MetadataWriteGateway {
                             + ", configuration=" + exportedConfiguration + "); inspect the working tree";
                 }
             }
+            if (r.applied && r.nested) {
+                // A member lives in its owner's .mdo; a form also has its own Form.form with the model.
+                IDtProject targetProject = mm.getDtProject(extensionModel);
+                boolean exportedOwner = targetProject != null && mm.forceExport(targetProject, r.ownerFqn);
+                boolean exportedForm = !"BasicForm".equals(r.type)
+                        || (targetProject != null && mm.forceExport(targetProject, fqn + ".Form"));
+                if (!exportedOwner || !exportedForm) {
+                    r.warning = (r.warning == null ? "" : r.warning + " ")
+                            + "The model changed, but serialization was not confirmed (owner=" + exportedOwner
+                            + ", form=" + exportedForm + "); inspect the working tree";
+                }
+            }
             r.message = r.applied
                     ? "adopted " + fqn + " into " + projectName
-                            + " (attached to the extension's configuration)"
+                            + (r.nested ? " (with its owner " + r.ownerFqn + ")"
+                                    : " (attached to the extension's configuration)")
                     : "the adopter returned nothing for " + fqn;
         } catch (CoreException | RuntimeException ex) {
             r.ok = false;

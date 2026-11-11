@@ -48,6 +48,7 @@ import com._1c.g5.v8.dt.platform.services.core.infobases.sync.IInfobaseUpdateCal
 import com._1c.g5.v8.dt.platform.services.core.infobases.sync.IInfobaseUpdateConflictResolver;
 import com._1c.g5.v8.dt.platform.services.core.infobases.sync.InfobaseConflictResolution;
 import io.github.keyfire.edtbridge.core.ArtifactBuild;
+import io.github.keyfire.edtbridge.core.DumpInfobase;
 import io.github.keyfire.edtbridge.core.IbcmdArgs;
 import io.github.keyfire.edtbridge.core.PlatformBuildProbe;
 import io.github.keyfire.edtbridge.core.PlatformInstallations;
@@ -973,33 +974,55 @@ public final class PlatformGateway {
             if (target.getParent() != null) {
                 java.nio.file.Files.createDirectories(target.getParent());
             }
+            // The import resolves the object's types against the infobase it runs in. A configured
+            // infobase carrying the base configuration resolves its catalogs and enumerations; an
+            // empty throwaway one knows only platform types.
+            java.nio.file.Path configured = DumpInfobase.directory(System.getenv(DumpInfobase.ENV));
+            if (configured != null) {
+                String unusable = DumpInfobase.unusable(configured);
+                if (unusable != null) {
+                    return unusable;
+                }
+            }
             StringBuilder tried = new StringBuilder();
             for (DiskPlatform dp : candidates) {
                 java.nio.file.Path exe = firstExisting(dp.binDir, "1cv8.exe", "1cv8");
                 if (exe == null) {
                     continue;
                 }
-                // DESIGNER only runs against an infobase, so stand a throwaway one up in the temp root.
+                // DESIGNER only runs against an infobase: a copy of the configured one, or a
+                // throwaway one stood up in the temp root.
                 java.nio.file.Path ib = tempRoot.resolve("ib-" + dp.version);
-                java.nio.file.Files.createDirectories(ib);
                 // The log goes where the caller asked, next to the artefact - a build that failed is
                 // exactly when you want to read it, and a temp file would already be gone.
                 java.nio.file.Path log = (logPath != null) ? logPath
                         : tempRoot.resolve("designer-" + dp.version + ".log");
-                java.nio.file.Files.deleteIfExists(ib);
-                String err = runCreateInfobase(exe, ib);
-                if (err != null && !java.nio.file.Files.exists(ib.resolve("1Cv8.1CD"))) {
-                    tried.append(dp.version).append(" (").append(err).append("); ");
-                    continue;
+                if (configured != null) {
+                    java.nio.file.Files.createDirectories(ib);
+                    // A copy keeps the source infobase closed and unchanged, whatever DESIGNER writes.
+                    java.nio.file.Files.copy(configured.resolve(DumpInfobase.DATA_FILE),
+                            ib.resolve(DumpInfobase.DATA_FILE),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                } else {
+                    java.nio.file.Files.createDirectories(ib);
+                    java.nio.file.Files.deleteIfExists(ib);
+                    String err = runCreateInfobase(exe, ib);
+                    if (err != null && !java.nio.file.Files.exists(ib.resolve("1Cv8.1CD"))) {
+                        tried.append(dp.version).append(" (").append(err).append("); ");
+                        continue;
+                    }
                 }
                 java.nio.file.Files.deleteIfExists(log);
                 java.nio.file.Path sourceXml = source;
-                err = ArtifactBuild.build(target, output -> runPlatformCommand(exe, "DESIGNER", "/F", ib.toString(),
+                String err = ArtifactBuild.build(target, output -> runPlatformCommand(exe, "DESIGNER", "/F", ib.toString(),
                         "/DisableStartupDialogs", "/DisableStartupMessages",
                         "/LoadExternalDataProcessorOrReportFromFiles", sourceXml.toString(),
                         output.toString(), "/Out", log.toString()));
                 if (err == null) {
                     methodOut.append("disk:").append(dp.version);
+                    if (configured != null) {
+                        methodOut.append(" in a copy of ").append(configured);
+                    }
                     return null;
                 }
                 // 1cv8 says nothing on stdout - everything useful is in the /Out log, so always read it.
@@ -1014,6 +1037,10 @@ public final class PlatformGateway {
                     }
                 }
                 String detail = (logged != null && !logged.isEmpty()) ? err + ": " + logged : err;
+                String hint = DumpInfobase.hint(logged, configured == null);
+                if (hint != null) {
+                    detail = detail + " - " + hint;
+                }
                 keepTemp = true;
                 tried.append(dp.version).append(" (").append(detail).append("); ");
             }
