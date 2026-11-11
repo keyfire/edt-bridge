@@ -103,8 +103,9 @@ class ToolSetsTest {
     }
 
     @Test
-    @DisplayName("the base belongs to every set")
+    @DisplayName("the base belongs to every set, the description of one tool included")
     void theBaseBelongsToEverySet() {
+        assertTrue(ToolSets.base().contains("edt_tool_help"));
         for (String set : ToolSets.names()) {
             assertTrue(ToolSets.tools(set).containsAll(ToolSets.base()), set);
             for (String tool : ToolSets.base()) {

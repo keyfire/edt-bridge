@@ -48,6 +48,7 @@ public final class ToolSets {
 
     /** Reading and checking: what every job needs whatever it builds. */
     private static final List<String> BASE = List.of(
+            "edt_tool_help",
             "edt_projects",
             "edt_project_errors",
             "edt_check_info",

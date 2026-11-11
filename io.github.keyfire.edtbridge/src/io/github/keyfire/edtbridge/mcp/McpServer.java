@@ -123,6 +123,7 @@ import io.github.keyfire.edtbridge.tools.DebugDetachTool;
 import io.github.keyfire.edtbridge.tools.DebugInspectTool;
 import io.github.keyfire.edtbridge.tools.DebugControlTool;
 import io.github.keyfire.edtbridge.tools.DebugEvaluateTool;
+import io.github.keyfire.edtbridge.tools.ToolHelpTool;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -392,6 +393,7 @@ applyI18n();loadStatus();loadTools();
     private final DebugInspectTool debugInspect = new DebugInspectTool();
     private final DebugControlTool debugControl = new DebugControlTool();
     private final DebugEvaluateTool debugEvaluate = new DebugEvaluateTool();
+    private final ToolHelpTool toolHelp = new ToolHelpTool();
     private final ProjectGateway gateway = new ProjectGateway();
     private HttpServer http;
     private ExecutorService httpWorkers;
@@ -871,6 +873,7 @@ applyI18n();loadStatus();loadTools();
         tools.add(debugInspect.descriptor());
         tools.add(debugControl.descriptor());
         tools.add(debugEvaluate.descriptor());
+        tools.add(toolHelp.descriptor());
         // Each descriptor says which tool sets contain the tool. The wrapper narrows by this field
         // the lists it assembles on its own - the packaged catalog served while EDT is starting.
         for (JsonElement element : tools) {
@@ -886,8 +889,8 @@ applyI18n();loadStatus();loadTools();
 
     /**
      * The descriptors a client is shown: all of them, or those of the selected tool sets.
-     * {@link #toolsList()} stays the full list - the argument gate and the packaged catalog are
-     * built from it whatever is selected.
+     * {@link #toolsList()} stays the full list - the argument gate, the description of one tool
+     * and the packaged catalog are built from it whatever is selected.
      */
     private JsonObject servedToolsList(ToolSets.Selection toolset) {
         JsonObject all = toolsList();
@@ -946,6 +949,9 @@ applyI18n();loadStatus();loadTools();
         JsonObject misnamed = unknownArgumentGate(name, args);
         if (misnamed != null) {
             return misnamed;
+        }
+        if (toolHelp.name().equals(name)) {
+            return toolHelp.call(args, toolsList().getAsJsonArray("tools"), toolset);
         }
         if (projectErrors.name().equals(name)) {
             return projectErrors.call(args);
