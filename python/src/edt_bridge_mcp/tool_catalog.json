@@ -601,7 +601,7 @@
           },
           "text": {
             "type": "string",
-            "description": "Complete designer XML of the schema (root DataCompositionSchema in the http://v8.1c.ru/8.1/data-composition-system/schema namespace), taken literally. Start from edt_read_dcs and edit it."
+            "description": "Complete designer XML of the schema (root DataCompositionSchema, as in a designer dump), taken literally. Start from edt_read_dcs and edit it."
           },
           "expectedHash": {
             "type": "string",

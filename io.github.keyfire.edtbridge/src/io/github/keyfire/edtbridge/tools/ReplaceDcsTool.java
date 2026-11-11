@@ -18,8 +18,8 @@ public final class ReplaceDcsTool {
     public JsonObject descriptor() {
         JsonObject properties = ReadDcsTool.identity();
         properties.add("text", ReadHtmlTemplateTool.property("string", "Complete designer XML of the schema "
-                + "(root DataCompositionSchema in the http://v8.1c.ru/8.1/data-composition-system/schema namespace), "
-                + "taken literally. Start from edt_read_dcs and edit it."));
+                + "(root DataCompositionSchema, as in a designer dump), taken literally. Start from edt_read_dcs "
+                + "and edit it."));
         properties.add("expectedHash", ReadHtmlTemplateTool.property("string", "sourceHash from a current "
                 + "edt_read_dcs or dry-run. Required for apply."));
         properties.add("apply", ReadHtmlTemplateTool.property("boolean", "false (default): return oldText/newText "
