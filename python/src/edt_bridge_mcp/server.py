@@ -1112,8 +1112,8 @@ class StdioServer:
     def _local_descriptors(self) -> list[dict]:
         """What the wrapper serves by itself: its own tools plus the plugin tools.
 
-        All of them, whatever tool set is selected: the names here are never forwarded, so a
-        call of one outside the set is refused here. A listing goes through _shown.
+        All of them, whatever tool set is selected: the names here are never forwarded, and
+        edt_tool_help describes a tool outside the set too. A listing goes through _shown.
         """
         return list(LOCAL_TOOLS) + [t.descriptor() for t in self._plugin_tools.values()]
 
@@ -1245,6 +1245,14 @@ class StdioServer:
                 self._tool_error(req_id, self._toolset.problem)
                 return
             arguments = params.get("arguments") or {}
+            described = (self._local_descriptor(arguments.get("tool"))
+                         if params.get("name") == toolsets.HELP_TOOL and isinstance(arguments, dict)
+                         else None)
+            if described is not None:
+                # The bridge describes its own tools; a tool served here is unknown to it.
+                # Before ensure(): the answer is in the wrapper and needs no EDT.
+                self._describe_local(req_id, described, arguments)
+                return
             local = self._local_descriptor(params.get("name"))
             if local is not None and not self._toolset.shows(local):
                 self._tool_error(req_id, self._toolset.refusal(local))
@@ -1318,6 +1326,16 @@ class StdioServer:
         self._notify_tools_changed()
         threading.Thread(target=self._announce_when_ready, daemon=True).start()
 
+    def _describe_local(self, req_id, descriptor: dict, arguments: dict) -> None:
+        """Answer edt_tool_help for a tool the wrapper or a plugin serves."""
+        misnamed = unknown_arguments(toolsets.HELP_TOOL, arguments, tools=[
+            {"name": toolsets.HELP_TOOL, "inputSchema": {"properties": {"tool": {}}}}])
+        if misnamed:
+            self._tool_error(req_id, misnamed)
+            return
+        self._result(req_id, {"content": [{"type": "text",
+                                           "text": toolsets.describe(descriptor, self._toolset)}]})
+
     def _call_plugin(self, req_id, tool: plugins.Tool, arguments: dict) -> None:
         """Run a plugin tool and report as a normal tool result."""
         misnamed = unknown_arguments(tool.name, arguments, tools=[tool.descriptor()])
@@ -1372,6 +1390,15 @@ class StdioServer:
             else:
                 self._error(req_id, -32000, f"edt-bridge request failed: {request_failure(exc)}")
             return
+        params = message.get("params") or {}
+        if message.get("method") == "tools/call" and params.get("name") == toolsets.HELP_TOOL:
+            # The bridge judged the name against its own tools, and the tool against its own
+            # variable; the answer is completed with what this wrapper serves and selects.
+            arguments = params.get("arguments")
+            toolsets.add_wrapper_names(
+                reply.get("result"), arguments.get("tool") if isinstance(arguments, dict) else None,
+                [tool["name"] for tool in self._local_descriptors()])
+            toolsets.agree_with_selection(reply.get("result"), self._toolset)
         if req_id is not None:
             reply.setdefault("jsonrpc", "2.0")
             reply["id"] = req_id

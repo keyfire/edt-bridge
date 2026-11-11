@@ -347,7 +347,7 @@ def _run(command: str, argv: list[str]) -> int:
         return 0 if result["ok"] else (1 if result["stage"] == "validation" else 2)
 
     from . import toolsets
-    from .server import Backend, apply_connection_options, load_plugin_tools
+    from .server import LOCAL_TOOLS, Backend, apply_connection_options, load_plugin_tools
     apply_connection_options(args)
     backend = Backend()
 
@@ -362,6 +362,25 @@ def _run(command: str, argv: list[str]) -> int:
         if selection.problem:
             print(selection.problem, file=sys.stderr)
             return 1
+
+    arguments = None
+    if command == "call" and args.tool == toolsets.HELP_TOOL:
+        # The bridge describes its own tools. A tool served by the wrapper or a plugin is
+        # described here, without a bridge - the MCP server answers the same call the same way.
+        try:
+            arguments = _tool_arguments(args)
+        except ValueError as bad:
+            print(str(bad), file=sys.stderr)
+            return 1
+        except OSError as bad:
+            print(f"could not read the arguments: {bad}", file=sys.stderr)
+            return 1
+        served = list(LOCAL_TOOLS) + [plugin_tools[name].descriptor() for name in sorted(plugin_tools)]
+        described = next((tool for tool in served if tool["name"] == arguments.get("tool")), None)
+        if described is not None:
+            _print_result({"content": [{"type": "text",
+                                        "text": toolsets.describe(described, selection)}]}, args.raw)
+            return 0
 
     if command == "call" and args.tool in plugin_tools:
         descriptor = plugin_tools[args.tool].descriptor()
@@ -441,9 +460,10 @@ def _run(command: str, argv: list[str]) -> int:
             answer = _forward(backend, {"jsonrpc": "2.0", "id": 1, "method": "tools/list",
                                         "params": {}})
         else:
+            if arguments is None:  # already read for edt_tool_help; stdin is read once
+                arguments = _tool_arguments(args)
             answer = _forward(backend, {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
-                                        "params": {"name": args.tool,
-                                                   "arguments": _tool_arguments(args)}})
+                                        "params": {"name": args.tool, "arguments": arguments}})
     except ValueError as bad:
         print(str(bad), file=sys.stderr)
         return 1
@@ -470,6 +490,12 @@ def _run(command: str, argv: list[str]) -> int:
                 _emit(tool.get("name", ""))
         return 0
 
+    if args.tool == toolsets.HELP_TOOL:
+        # The bridge judged the name against its own tools only.
+        toolsets.add_wrapper_names(
+            result, arguments.get("tool"),
+            [tool["name"] for tool in LOCAL_TOOLS] + sorted(plugin_tools))
+        toolsets.agree_with_selection(result, selection)
     _print_result(result, args.raw)
     # A tool that reports isError has run and failed - worth a distinct code so scripts can tell it
     # apart from "the call never happened".

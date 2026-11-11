@@ -1,8 +1,9 @@
 """Tool sets on the wrapper side: EDT_BRIDGE_TOOLSET applied to what the wrapper lists and runs.
 
 The bridge narrows its own list; these tests are about the part it cannot see. The wrapper's own
-tools and the plugin tools have to follow the same variable, and the list the wrapper assembles
-while EDT is starting has to be narrowed too.
+tools and the plugin tools have to follow the same variable, the list the wrapper assembles while
+EDT is starting has to be narrowed too, and edt_tool_help has to answer for a tool the bridge
+has never heard of.
 
 The quiet failures are the ones guarded here: a misspelled set name that would list everything
 or nothing, a tool outside the set that would still run, and a plugin whose tools would vanish
@@ -379,6 +380,128 @@ def test_a_plugin_naming_an_unknown_set_refuses_at_validation(declared, message)
         probe(toolsets=declared).validate(where="stub")
 
 
+# -- edt_tool_help ------------------------------------------------------------
+
+
+def test_help_for_a_wrapper_tool_is_answered_without_a_bridge(serve, monkeypatch):
+    srv, sent = serve(None)
+    monkeypatch.setattr(srv.backend, "ensure", untouched)
+    monkeypatch.setattr(srv.backend, "forward", untouched)
+    answer = call(srv, sent, "edt_tool_help", {"tool": "edt_test_form"})
+    assert not answer.get("isError")
+    payload = json.loads(answer["content"][0]["text"])
+    assert payload["name"] == "edt_test_form"
+    assert payload["description"] == form_run.DESCRIPTOR["description"]
+    assert payload["inputSchema"] == form_run.DESCRIPTOR["inputSchema"]
+    assert payload["toolsets"] == ["processor", "report"]
+    assert payload["available"] is True and "note" not in payload
+
+
+def test_help_for_a_wrapper_tool_outside_the_set_says_so(serve, monkeypatch):
+    srv, sent = serve("extension")
+    monkeypatch.setattr(srv.backend, "ensure", untouched)
+    payload = json.loads(call(srv, sent, "edt_tool_help", {"tool": "edt_test_form"})["content"][0]["text"])
+    assert payload["available"] is False
+    assert "outside the active tool set 'extension'" in payload["note"]
+    assert "a call of it is refused" in payload["note"]
+    assert "Tool sets that contain it: processor, report." in payload["note"]
+    assert payload["inputSchema"]["required"] == ["path", "form", "formTitle"]
+
+
+def test_help_for_a_plugin_tool_is_answered_by_the_wrapper(serve, monkeypatch):
+    srv, sent = serve("report", [probe()])
+    monkeypatch.setattr(srv.backend, "ensure", untouched)
+    payload = json.loads(call(srv, sent, "edt_tool_help", {"tool": "edt_probe_echo"})["content"][0]["text"])
+    assert payload["name"] == "edt_probe_echo" and payload["description"].startswith("PROBE")
+    assert "text" in payload["inputSchema"]["properties"]
+    # It declares no sets, so it is served whatever is selected.
+    assert payload["available"] is True and "toolsets" not in payload
+
+
+def test_help_for_a_wrapper_tool_refuses_an_unknown_argument(serve, monkeypatch):
+    srv, sent = serve(None)
+    answer = call(srv, sent, "edt_tool_help", {"tool": "edt_open_gui", "verbose": True})
+    assert answer["isError"]
+    assert "edt_tool_help: unknown argument 'verbose'" in answer["content"][0]["text"]
+
+
+def test_help_for_any_other_tool_is_forwarded_to_the_bridge(serve, monkeypatch):
+    srv, sent = serve("processor", [probe()])
+    forwarded = []
+    described = {"content": [{"type": "text", "text": '{"name": "edt_add_form"}'}]}
+    monkeypatch.setattr(srv.backend, "ensure", lambda wait: (True, "up"))
+    monkeypatch.setattr(srv.backend, "forward", lambda payload: forwarded.append(payload) or {
+        "jsonrpc": "2.0", "id": 2, "result": dict(described)})
+    answer = call(srv, sent, "edt_tool_help", {"tool": "edt_add_form"})
+    assert forwarded == [{"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+                          "params": {"name": "edt_tool_help", "arguments": {"tool": "edt_add_form"}}}]
+    assert answer == described
+
+
+def test_a_misspelled_wrapper_tool_is_named_next_to_the_refusal_of_the_bridge(serve, monkeypatch):
+    """The bridge judges a name against its own tools and would send the caller away."""
+    srv, sent = serve(None, [probe()])
+    monkeypatch.setattr(srv.backend, "ensure", lambda wait: (True, "up"))
+    monkeypatch.setattr(srv.backend, "forward", lambda _payload: {
+        "jsonrpc": "2.0", "id": 2, "result": {"isError": True, "content": [
+            {"type": "text", "text": "edt_tool_help: no tool is named 'edt_test_from'."}]}})
+    answer = call(srv, sent, "edt_tool_help", {"tool": "edt_test_from"})
+    texts = [part["text"] for part in answer["content"]]
+    assert answer["isError"]
+    assert texts[0] == "edt_tool_help: no tool is named 'edt_test_from'."
+    assert texts[1] == "The wrapper serves tools with a close name: edt_test_form."
+
+
+def test_a_refusal_of_the_bridge_is_left_alone_when_no_wrapper_tool_is_close(serve, monkeypatch):
+    srv, sent = serve(None, [probe()])
+    refusal = {"isError": True, "content": [
+        {"type": "text", "text": "edt_tool_help: no tool is named 'edt_add_from'."}]}
+    monkeypatch.setattr(srv.backend, "ensure", lambda wait: (True, "up"))
+    monkeypatch.setattr(srv.backend, "forward", lambda _payload: {
+        "jsonrpc": "2.0", "id": 2, "result": json.loads(json.dumps(refusal))})
+    assert call(srv, sent, "edt_tool_help", {"tool": "edt_add_from"}) == refusal
+
+
+def bridge_help(name, sets, available=True):
+    payload = {"name": name, "description": "bridge", "inputSchema": {"type": "object"},
+               "toolsets": sets, "available": available}
+    return {"content": [{"type": "text", "text": json.dumps(payload)}]}
+
+
+def test_help_of_a_bridge_started_without_the_variable_is_corrected(serve, monkeypatch):
+    """That bridge calls every tool available, while this wrapper refuses to call the tool."""
+    srv, sent = serve("processor")
+    monkeypatch.setattr(srv.backend, "ensure", lambda wait: (True, "up"))
+    monkeypatch.setattr(srv.backend, "forward", lambda _payload: {
+        "jsonrpc": "2.0", "id": 2, "result": bridge_help("edt_adopt_object", ["extension"])})
+    payload = json.loads(call(srv, sent, "edt_tool_help", {"tool": "edt_adopt_object"})["content"][0]["text"])
+    assert payload["available"] is False
+    assert "edt_adopt_object is outside the active tool set 'processor'" in payload["note"]
+    assert "Tool sets that contain it: extension." in payload["note"]
+    assert payload["description"] == "bridge"
+
+
+@pytest.mark.parametrize("toolset, sets", [
+    ("processor", ["processor", "report"]),  # the tool is in the selected set
+    (None, []),                              # nothing is selected
+])
+def test_help_of_the_bridge_is_left_alone_when_the_tool_is_served(serve, monkeypatch, toolset, sets):
+    srv, sent = serve(toolset)
+    answer = bridge_help("edt_add_form", sets)
+    monkeypatch.setattr(srv.backend, "ensure", lambda wait: (True, "up"))
+    monkeypatch.setattr(srv.backend, "forward", lambda _payload: {
+        "jsonrpc": "2.0", "id": 2, "result": json.loads(json.dumps(answer))})
+    assert call(srv, sent, "edt_tool_help", {"tool": "edt_add_form"}) == answer
+
+
+def test_near_names_find_a_typo_and_a_fragment():
+    names = ["edt_open_gui", "edt_test_form", "edt_platform_doc_search", "edt_platform_doc_page"]
+    assert toolsets.near_names("edt_test_from", names) == ["edt_test_form"]
+    assert toolsets.near_names("platform_doc", names) == ["edt_platform_doc_page",
+                                                          "edt_platform_doc_search"]
+    assert toolsets.near_names("edt_rename", names) == []
+
+
 # -- the shell commands -------------------------------------------------------
 
 
@@ -429,3 +552,41 @@ def test_cli_refuses_an_unknown_set_before_reaching_a_bridge(monkeypatch, capsys
     assert "unknown tool set 'procesor'" in capsys.readouterr().err
     assert cli.run("call", ["edt_projects"]) == 1
     assert "unknown tool set 'procesor'" in capsys.readouterr().err
+
+
+def test_cli_describes_a_wrapper_tool_without_a_bridge(monkeypatch, capsys):
+    monkeypatch.setenv("EDT_BRIDGE_TOOLSET", "extension")
+    plug(monkeypatch, probe())
+    monkeypatch.setattr(server.Backend, "ensure", untouched)
+    monkeypatch.setattr(server.Backend, "forward", untouched)
+    assert cli.run("call", ["edt_tool_help", "--json", '{"tool": "edt_test_form"}']) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["name"] == "edt_test_form" and payload["available"] is False
+    assert cli.run("call", ["edt_tool_help", "--json", '{"tool": "edt_probe_echo"}']) == 0
+    assert json.loads(capsys.readouterr().out)["available"] is True
+
+
+def test_cli_corrects_the_help_of_a_bridge_started_without_the_variable(monkeypatch, capsys):
+    monkeypatch.setenv("EDT_BRIDGE_TOOLSET", "processor")
+    plug(monkeypatch)
+    monkeypatch.setattr(server.Backend, "ensure", lambda self, wait: (True, "up"))
+    monkeypatch.setattr(server.Backend, "forward", lambda self, payload: {
+        "jsonrpc": "2.0", "id": 1, "result": bridge_help("edt_adopt_object", ["extension"])})
+    assert cli.run("call", ["edt_tool_help", "--json", '{"tool": "edt_adopt_object"}']) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["available"] is False and "Tool sets that contain it: extension." in payload["note"]
+
+
+def test_cli_forwards_help_for_a_bridge_tool_with_its_arguments(monkeypatch, capsys):
+    monkeypatch.delenv("EDT_BRIDGE_TOOLSET", raising=False)
+    plug(monkeypatch)
+    forwarded = []
+    monkeypatch.setattr(server.Backend, "ensure", lambda self, wait: (True, "up"))
+    monkeypatch.setattr(server.Backend, "forward", lambda self, payload: forwarded.append(payload) or {
+        "jsonrpc": "2.0", "id": 1, "result": {"isError": True, "content": [
+            {"type": "text", "text": "edt_tool_help: no tool is named 'edt_open_gu'."}]}})
+    assert cli.run("call", ["edt_tool_help", "--json", '{"tool": "edt_open_gu"}']) == 2
+    assert forwarded[0]["params"] == {"name": "edt_tool_help", "arguments": {"tool": "edt_open_gu"}}
+    out = capsys.readouterr().out
+    assert "no tool is named 'edt_open_gu'" in out
+    assert "The wrapper serves tools with a close name: edt_open_gui." in out

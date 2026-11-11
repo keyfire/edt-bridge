@@ -18,11 +18,19 @@ repeated here, to tell a misspelled name from a known one; a test compares the t
 from __future__ import annotations
 
 import difflib
+import json
 import os
 from dataclasses import dataclass
 
 #: The names of the sets, as core/ToolSets.java declares them and in the same order.
 KNOWN = ("processor", "report", "extension")
+
+#: The tool that describes one tool. The bridge serves it; the wrapper answers in its place
+#: when the name asked about belongs to a tool the wrapper or a plugin serves.
+HELP_TOOL = "edt_tool_help"
+
+#: How many near names a refusal offers.
+_SUGGESTIONS = 5
 
 
 def _quoted(names) -> str:
@@ -80,6 +88,11 @@ class Selection:
         return (f"{descriptor['name']} is outside the active {self.label()} (EDT_BRIDGE_TOOLSET), "
                 "so the call was refused and nothing was done. " + _membership(descriptor))
 
+    def note(self, descriptor: dict) -> str:
+        """The note a description of a tool outside the selection carries."""
+        return (f"{descriptor['name']} is outside the active {self.label()} (EDT_BRIDGE_TOOLSET): "
+                "a call of it is refused. " + _membership(descriptor))
+
 
 def _membership(descriptor: dict) -> str:
     declared = [name for name in KNOWN if name in (descriptor.get("toolsets") or ())]
@@ -112,3 +125,73 @@ def active() -> Selection:
     literal name, and a variable read through a constant could go undocumented.
     """
     return parse(os.environ.get("EDT_BRIDGE_TOOLSET"))
+
+
+def describe(descriptor: dict, selection: Selection) -> str:
+    """The answer of edt_tool_help for a tool the wrapper serves, shaped like the bridge's."""
+    answer = {
+        "name": descriptor["name"],
+        "description": descriptor.get("description", ""),
+        "inputSchema": descriptor.get("inputSchema", {"type": "object", "properties": {}}),
+    }
+    declared = descriptor.get("toolsets")
+    if isinstance(declared, (list, tuple)):
+        answer["toolsets"] = list(declared)
+    answer["available"] = selection.shows(descriptor)
+    if not answer["available"]:
+        answer["note"] = selection.note(descriptor)
+    return json.dumps(answer, ensure_ascii=False, indent=2)
+
+
+def agree_with_selection(result: dict, selection: Selection) -> dict:
+    """Make the bridge's description of a tool agree with the selection of this wrapper.
+
+    The bridge marks a tool as outside the set by ITS variable. A bridge started without the
+    variable describes every tool as available, while this wrapper refuses to call the ones
+    outside its selection - so the description is corrected to say what a call will get.
+    """
+    if not (selection.names and isinstance(result, dict)) or result.get("isError"):
+        return result
+    content = result.get("content") or []
+    if len(content) != 1 or not isinstance(content[0], dict) or content[0].get("type") != "text":
+        return result
+    try:
+        payload = json.loads(content[0].get("text") or "")
+    except ValueError:
+        return result
+    if (not isinstance(payload, dict) or not isinstance(payload.get("name"), str)
+            or payload.get("available") is not True or selection.shows(payload)):
+        return result
+    payload["available"] = False
+    payload["note"] = selection.note(payload)
+    content[0]["text"] = json.dumps(payload, ensure_ascii=False, indent=2)
+    return result
+
+
+def near_names(name: str, candidates) -> list[str]:
+    """The candidates a misspelled tool name was most likely meant to be, nearest first."""
+    pool = sorted(set(candidates))
+    found = difflib.get_close_matches(name, pool, n=_SUGGESTIONS, cutoff=0.7)
+    fragment = name.strip().lower()
+    if len(fragment) >= 4:
+        found += [candidate for candidate in pool
+                  if candidate not in found and (fragment in candidate or candidate in fragment)]
+    return found[:_SUGGESTIONS]
+
+
+def add_wrapper_names(result: dict, name, candidates) -> dict:
+    """Complete the bridge's refusal for an unknown tool name with the wrapper's near names.
+
+    The bridge judges a name against its own tools. A misspelled name of a tool the wrapper or
+    a plugin serves is unknown to it, and its refusal would send the caller away from a tool
+    that exists.
+    """
+    if not (isinstance(result, dict) and result.get("isError") and isinstance(name, str)):
+        return result
+    near = near_names(name, candidates)
+    if near:
+        result.setdefault("content", []).append({
+            "type": "text",
+            "text": "The wrapper serves tools with a close name: " + ", ".join(near) + ".",
+        })
+    return result
