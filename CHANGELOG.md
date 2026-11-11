@@ -13,6 +13,15 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
+## Unreleased
+
+### Added
+
+- `edt_dump_external_object` builds on the disk route in a copy of the file infobase named by
+  `EDT_BRIDGE_DUMP_INFOBASE`. An external object that uses types of its base configuration (a
+  catalog or enumeration reference) now builds: in the empty throwaway infobase the import failed
+  with an XDTO exception on the file that declares such a type, and that failure now says so.
+
 ## 2026-11-07 – 0.37.3, 0.38.0, 0.38.1, 0.38.2
 
 ### Added
