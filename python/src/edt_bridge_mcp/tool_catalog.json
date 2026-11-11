@@ -53,7 +53,12 @@
           }
         },
         "required": []
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_projects",
@@ -62,7 +67,12 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_module_text",
@@ -99,7 +109,12 @@
         "required": [
           "projectName"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_outgoing_calls",
@@ -136,7 +151,8 @@
         "required": [
           "projectName"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_picture_export",
@@ -162,7 +178,8 @@
           "projectName",
           "fqn"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_outgoing_structures",
@@ -199,7 +216,8 @@
         "required": [
           "projectName"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_metadata_details",
@@ -221,7 +239,12 @@
           "projectName",
           "fqn"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_find_references",
@@ -255,7 +278,8 @@
           "projectName",
           "fqn"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_metadata_objects",
@@ -282,7 +306,12 @@
           }
         },
         "required": []
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_validate_query",
@@ -319,7 +348,12 @@
         "required": [
           "projectName"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_go_to_definition",
@@ -353,7 +387,8 @@
           "projectName",
           "modulePath"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_symbol_info",
@@ -387,7 +422,12 @@
           "projectName",
           "modulePath"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_support_status",
@@ -409,7 +449,12 @@
           "projectName",
           "objectFqn"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_form_identifiers",
@@ -446,7 +491,12 @@
           "projectName",
           "formFqn"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_apply_fix",
@@ -484,7 +534,12 @@
           "projectName",
           "checkId"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_property_reference",
@@ -510,7 +565,12 @@
           "projectName",
           "fqn"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_read_html_template",
@@ -537,7 +597,8 @@
           "templateFqn",
           "language"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_replace_html_template",
@@ -581,7 +642,8 @@
           "language",
           "text"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_add_template",
@@ -624,7 +686,10 @@
           "ownerFqn",
           "name"
         ]
-      }
+      },
+      "toolsets": [
+        "report"
+      ]
     },
     {
       "name": "edt_read_dcs",
@@ -646,7 +711,10 @@
           "projectName",
           "templateFqn"
         ]
-      }
+      },
+      "toolsets": [
+        "report"
+      ]
     },
     {
       "name": "edt_replace_dcs",
@@ -685,7 +753,10 @@
           "templateFqn",
           "text"
         ]
-      }
+      },
+      "toolsets": [
+        "report"
+      ]
     },
     {
       "name": "edt_modify_dcs",
@@ -760,7 +831,10 @@
           "templateFqn",
           "edits"
         ]
-      }
+      },
+      "toolsets": [
+        "report"
+      ]
     },
     {
       "name": "edt_applications",
@@ -799,7 +873,8 @@
         "required": [
           "projectName"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_form_structure",
@@ -833,7 +908,12 @@
           "projectName",
           "formFqn"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_form_render",
@@ -891,7 +971,12 @@
           "projectName",
           "formFqn"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_add_attribute",
@@ -958,7 +1043,8 @@
           "name",
           "type"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_add_route",
@@ -1010,7 +1096,8 @@
           "name",
           "template"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_infobase_config_state",
@@ -1043,7 +1130,8 @@
         "required": [
           "infobase"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_infobase_dump",
@@ -1100,7 +1188,8 @@
         "required": [
           "outputPath"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_designer_agent",
@@ -1142,7 +1231,8 @@
           }
         },
         "required": []
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_check_info",
@@ -1165,7 +1255,12 @@
           }
         },
         "required": []
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_delete_extension",
@@ -1211,7 +1306,8 @@
           "infobase",
           "name"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_infobase_sessions",
@@ -1283,7 +1379,8 @@
         "required": [
           "server"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_infobase_maintenance",
@@ -1361,7 +1458,8 @@
           "server",
           "infobase"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_update_database_config",
@@ -1415,7 +1513,8 @@
         "required": [
           "infobase"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_add_form",
@@ -1462,7 +1561,11 @@
           "ownerFqn",
           "name"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report"
+      ]
     },
     {
       "name": "edt_add_form_attribute",
@@ -1506,7 +1609,11 @@
           "name",
           "type"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report"
+      ]
     },
     {
       "name": "edt_modify_form_attribute",
@@ -1553,7 +1660,11 @@
           "formFqn",
           "name"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report"
+      ]
     },
     {
       "name": "edt_remove_form_attribute",
@@ -1592,7 +1703,11 @@
           "formFqn",
           "name"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report"
+      ]
     },
     {
       "name": "edt_add_form_command",
@@ -1639,7 +1754,11 @@
           "formFqn",
           "name"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report"
+      ]
     },
     {
       "name": "edt_add_form_handler",
@@ -1682,7 +1801,11 @@
           "formFqn",
           "event"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report"
+      ]
     },
     {
       "name": "edt_modify_form_command",
@@ -1725,7 +1848,11 @@
           "formFqn",
           "name"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report"
+      ]
     },
     {
       "name": "edt_remove_form_command",
@@ -1760,7 +1887,11 @@
           "formFqn",
           "name"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report"
+      ]
     },
     {
       "name": "edt_add_form_item",
@@ -1959,7 +2090,11 @@
           "formFqn",
           "kind"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report"
+      ]
     },
     {
       "name": "edt_modify_form_item",
@@ -2129,7 +2264,11 @@
           "formFqn",
           "name"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report"
+      ]
     },
     {
       "name": "edt_move_form_item",
@@ -2177,7 +2316,11 @@
           "formFqn",
           "name"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report"
+      ]
     },
     {
       "name": "edt_remove_form_item",
@@ -2212,7 +2355,11 @@
           "formFqn",
           "name"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report"
+      ]
     },
     {
       "name": "edt_add_method",
@@ -2266,7 +2413,12 @@
           "projectName",
           "methodText"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_move_method",
@@ -2324,7 +2476,12 @@
           "projectName",
           "methodName"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_replace_method",
@@ -2375,7 +2532,12 @@
           "methodName",
           "methodText"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_replace_module_fragment",
@@ -2427,7 +2589,12 @@
         "required": [
           "projectName"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_delete_method",
@@ -2469,7 +2636,12 @@
           "projectName",
           "methodName"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_remove_attribute",
@@ -2504,7 +2676,8 @@
           "ownerFqn",
           "name"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_modify_attribute",
@@ -2570,7 +2743,8 @@
           "ownerFqn",
           "name"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_rename",
@@ -2620,7 +2794,8 @@
           "projectName",
           "newName"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_create_object",
@@ -2663,7 +2838,8 @@
           "objectType",
           "name"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_modify_object",
@@ -2697,7 +2873,8 @@
           "projectName",
           "fqn"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_update_subsystem",
@@ -2741,7 +2918,8 @@
           "projectName",
           "fqn"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_create_extension",
@@ -2780,7 +2958,10 @@
           "baseProjectName",
           "namePrefix"
         ]
-      }
+      },
+      "toolsets": [
+        "extension"
+      ]
     },
     {
       "name": "edt_create_external_object",
@@ -2818,7 +2999,11 @@
         "required": [
           "name"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report"
+      ]
     },
     {
       "name": "edt_import_external_object",
@@ -2856,7 +3041,8 @@
           "file",
           "projectName"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_dump_external_object",
@@ -2899,7 +3085,11 @@
           "objectName",
           "targetPath"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report"
+      ]
     },
     {
       "name": "edt_infobases",
@@ -2908,7 +3098,8 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_update_infobase",
@@ -2973,7 +3164,8 @@
         "required": [
           "projectName"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_platform_installations",
@@ -2982,7 +3174,12 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_register_platform",
@@ -2996,7 +3193,8 @@
             "description": "What to register: omit or \"auto\" = every full (thick-client) install found on disk (best-first); \"prefer-full\" = also DROP thin builds that shadow a full one in the same version line (so EDT resolves the full install for dump/update) then refresh; a version like 8.5.1.1302; or an absolute path to a version directory."
           }
         }
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_platform_build_readiness",
@@ -3018,7 +3216,8 @@
           }
         },
         "additionalProperties": false
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_create_infobase",
@@ -3052,7 +3251,8 @@
           "name",
           "path"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_register_infobase",
@@ -3087,7 +3287,8 @@
           "connect",
           "version"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_build_extension",
@@ -3121,7 +3322,10 @@
           "projectName",
           "outputPath"
         ]
-      }
+      },
+      "toolsets": [
+        "extension"
+      ]
     },
     {
       "name": "edt_extension_properties",
@@ -3196,7 +3400,8 @@
           }
         },
         "required": []
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_platform_help",
@@ -3222,7 +3427,12 @@
             "description": "Max search hits (default 15)."
           }
         }
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_delete_object",
@@ -3252,7 +3462,12 @@
           "projectName",
           "targetFqn"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_delete_project",
@@ -3281,7 +3496,8 @@
         "required": [
           "projectName"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_import_project",
@@ -3306,7 +3522,8 @@
         "required": [
           "path"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_clean_project",
@@ -3335,7 +3552,8 @@
         "required": [
           "projectName"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_search_modules",
@@ -3372,7 +3590,12 @@
         "required": [
           "pattern"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_search_queries",
@@ -3413,7 +3636,12 @@
         "required": [
           "pattern"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_adopt_object",
@@ -3443,7 +3671,10 @@
           "projectName",
           "fqn"
         ]
-      }
+      },
+      "toolsets": [
+        "extension"
+      ]
     },
     {
       "name": "edt_debug_attach",
@@ -3476,7 +3707,8 @@
         "required": [
           "serverUrl"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_debug_detach",
@@ -3493,7 +3725,8 @@
         "required": [
           "sessionId"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_debug_inspect",
@@ -3510,7 +3743,8 @@
         "required": [
           "sessionId"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_debug_control",
@@ -3536,7 +3770,8 @@
           "sessionId",
           "action"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_evaluate",
@@ -3571,7 +3806,30 @@
           "expression",
           "allowCodeExecution"
         ]
-      }
+      },
+      "toolsets": []
+    },
+    {
+      "name": "edt_tool_help",
+      "description": "READ: the full description and the argument schema of one tool, by its name. The server also describes a tool outside the active tool set (EDT_BRIDGE_TOOLSET): the answer then states that a call of it is refused and lists the tool sets that contain it. The answer contains name, description, inputSchema, toolsets and available. For an unknown name the server returns a refusal with the nearest tool names.",
+      "descriptionRu": "ЧТЕНИЕ: полное описание и схема аргументов одного инструмента по его имени. Сервер описывает и инструмент вне действующего набора (EDT_BRIDGE_TOOLSET): в этом случае в ответе указано, что вызов инструмента отклоняется, и перечислены наборы, в которые он входит. Ответ содержит name, description, inputSchema, toolsets и available. Для неизвестного имени сервер возвращает отказ с ближайшими именами инструментов.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "tool": {
+            "type": "string",
+            "description": "Name of the tool to describe, e.g. edt_project_errors"
+          }
+        },
+        "required": [
+          "tool"
+        ]
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     }
   ],
   "version": "0.40.0"

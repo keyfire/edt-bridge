@@ -52,6 +52,10 @@ public final class ToolSets {
             "edt_projects",
             "edt_project_errors",
             "edt_check_info",
+            // What a write tool takes, and EDT's own fix for a check: both serve the
+            // "no EDT check findings" requirement of every kind of job.
+            "edt_property_reference",
+            "edt_apply_fix",
             "edt_metadata_objects",
             "edt_metadata_details",
             "edt_module_text",
@@ -103,7 +107,7 @@ public final class ToolSets {
         // A report is built like a data processor, plus its data composition schema.
         sets.put("report", joined(
                 sets.get("processor"),
-                List.of("edt_add_template", "edt_read_dcs", "edt_replace_dcs")));
+                List.of("edt_add_template", "edt_read_dcs", "edt_replace_dcs", "edt_modify_dcs")));
         sets.put("extension", joined(
                 List.of("edt_create_extension", "edt_adopt_object", "edt_build_extension",
                         "edt_delete_object"),

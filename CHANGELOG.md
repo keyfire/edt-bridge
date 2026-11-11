@@ -17,6 +17,11 @@ to the code and the reasoning behind it.
 
 ### Added
 
+- `EDT_BRIDGE_TOOLSET` limits the tool list to one kind of job: `processor`, `report` or
+  `extension`, or several of them. The bridge and the wrapper list and run only the tools of those
+  sets, and a call of another tool is refused with the sets that hold it. An unknown set name
+  refuses the list and every call instead of falling back to all tools.
+- `edt_tool_help` returns the description and parameter schema of one tool, with its tool sets.
 - `edt_property_reference` lists the properties a write tool can set on a common module, a field or
   a form item: the type of each property, the accepted enum values, the current value and the tool
   that takes them. The list comes from the code that validates the write, so a property the object
