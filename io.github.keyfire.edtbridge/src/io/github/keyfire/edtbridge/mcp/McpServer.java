@@ -99,6 +99,7 @@ import io.github.keyfire.edtbridge.tools.FormRenderTool;
 import io.github.keyfire.edtbridge.tools.FormStructureTool;
 import io.github.keyfire.edtbridge.tools.SupportStatusTool;
 import io.github.keyfire.edtbridge.tools.FormIdentifiersTool;
+import io.github.keyfire.edtbridge.tools.ModifyDcsTool;
 import io.github.keyfire.edtbridge.tools.ApplyFixTool;
 import io.github.keyfire.edtbridge.tools.PropertyReferenceTool;
 import io.github.keyfire.edtbridge.tools.ReadHtmlTemplateTool;
@@ -332,6 +333,7 @@ applyI18n();loadStatus();loadTools();
     private final ReplaceHtmlTemplateTool replaceHtmlTemplate = new ReplaceHtmlTemplateTool();
     private final ReadDcsTool readDcs = new ReadDcsTool();
     private final ReplaceDcsTool replaceDcs = new ReplaceDcsTool();
+    private final ModifyDcsTool modifyDcs = new ModifyDcsTool();
     private final AddTemplateTool addTemplate = new AddTemplateTool();
     private final ApplicationsTool applications = new ApplicationsTool();
     private final FormStructureTool formStructure = new FormStructureTool();
@@ -799,6 +801,7 @@ applyI18n();loadStatus();loadTools();
         tools.add(addTemplate.descriptor());
         tools.add(readDcs.descriptor());
         tools.add(replaceDcs.descriptor());
+        tools.add(modifyDcs.descriptor());
         tools.add(applications.descriptor());
         tools.add(formStructure.descriptor());
         tools.add(formRender.descriptor());
@@ -926,6 +929,10 @@ applyI18n();loadStatus();loadTools();
         if (replaceDcs.name().equals(name)) {
             JsonObject denied = writeTokenGate(replaceDcs.isWrite(), name);
             return denied != null ? denied : replaceDcs.call(args);
+        }
+        if (modifyDcs.name().equals(name)) {
+            JsonObject denied = writeTokenGate(modifyDcs.isWrite(args), name);
+            return denied != null ? denied : modifyDcs.call(args);
         }
         if (addTemplate.name().equals(name)) {
             JsonObject denied = writeTokenGate(addTemplate.isWrite(), name);

@@ -25,6 +25,9 @@ to the code and the reasoning behind it.
   variants, and a check without a quick fix is reported with `hasFix=false`. EDT applies a quick fix
   to a module only through the module editor, so on a headless bridge the call returns the variant
   and refuses to apply it.
+- `edt_modify_dcs` adds a field to a data set and a parameter to a data composition schema without
+  sending the whole XML. The rest of the file keeps its bytes, a duplicate field or parameter is
+  refused, and apply needs the `sourceHash` of the dry-run.
 
 ### Changed
 
@@ -34,6 +37,12 @@ to the code and the reasoning behind it.
 - `test-form --form-title` and `formTitle` of `edt_test_form` take the platform wildcards `*` and
   `?`, so a title that carries a date matches in any locale. The form is still selected by its full
   name. On `form_not_found` the result lists the titles of the open forms in `observedTitles`.
+
+### Fixed
+
+- `edt_replace_dcs` and `edt_add_template` no longer say that `edt_project_errors` shows a malformed
+  schema: EDT validation does not check the schema XML, the build does. When a build fails on a
+  template file, the hint now names the template instead of the base configuration types.
 
 ## 2026-11-11 – 0.39.0, 0.40.0
 

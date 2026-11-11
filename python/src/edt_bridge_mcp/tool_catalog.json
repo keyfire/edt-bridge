@@ -585,8 +585,8 @@
     },
     {
       "name": "edt_add_template",
-      "description": "WRITE: create a DATA_COMPOSITION_SCHEMA template on a metadata object (report, external report, data processor) with an empty schema, optionally as the report's main data composition schema. Fill the schema with edt_replace_dcs, then check it with edt_project_errors. Dry-run by default; apply=true creates. Token-gated.",
-      "descriptionRu": "ЗАПИСЬ: создать у объекта метаданных (отчет, внешний отчет, обработка) макет DATA_COMPOSITION_SCHEMA с пустой схемой, при необходимости назначив его основной схемой компоновки отчета. Схему заполняет edt_replace_dcs, проверяет edt_project_errors. По умолчанию dry-run; apply=true создает. Требует токен.",
+      "description": "WRITE: create a DATA_COMPOSITION_SCHEMA template on a metadata object (report, external report, data processor) with an empty schema, optionally as the report's main data composition schema. Fill the schema with edt_replace_dcs or edt_modify_dcs; EDT validation does not check the schema XML, the build (edt_dump_external_object) does. Dry-run by default; apply=true creates. Token-gated.",
+      "descriptionRu": "ЗАПИСЬ: создать у объекта метаданных (отчет, внешний отчет, обработка) макет DATA_COMPOSITION_SCHEMA с пустой схемой, при необходимости назначив его основной схемой компоновки отчета. Схему заполняют edt_replace_dcs или edt_modify_dcs; XML схемы проверяет не проверка EDT, а сборка (edt_dump_external_object). По умолчанию dry-run; apply=true создает. Требует токен.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -650,8 +650,8 @@
     },
     {
       "name": "edt_replace_dcs",
-      "description": "WRITE: replace the complete source of one existing DATA_COMPOSITION_SCHEMA template with designer XML of the schema; EDT reloads the schema from the file. Dry-run returns oldText/newText, sourceHash and resultHash. Apply requires the current expectedHash and force=true, writes only the schema file and rereads it. Run edt_project_errors afterwards: a malformed schema shows up there. Create the template with edt_add_template. Requires a configured write token.",
-      "descriptionRu": "ЗАПИСЬ: заменить полный текст существующего макета DATA_COMPOSITION_SCHEMA на XML схемы в формате конфигуратора; EDT перечитывает схему из файла. Dry-run возвращает oldText/newText, sourceHash и resultHash. Для apply нужны актуальный expectedHash и force=true; записывается только файл схемы, результат перечитывается. После записи запустить edt_project_errors: ошибки схемы видны там. Макет создает edt_add_template. Нужен токен записи.",
+      "description": "WRITE: replace the complete source of one existing DATA_COMPOSITION_SCHEMA template with designer XML of the schema; EDT reloads the schema from the file. Dry-run returns oldText/newText, sourceHash and resultHash. Apply requires the current expectedHash and force=true, writes only the schema file and rereads it. EDT validation does not check the schema XML against the platform format: build the report or data processor with edt_dump_external_object to check it. To add a field or a parameter, edt_modify_dcs takes just the addition. Create the template with edt_add_template. Requires a configured write token.",
+      "descriptionRu": "ЗАПИСЬ: заменить полный текст существующего макета DATA_COMPOSITION_SCHEMA на XML схемы в формате конфигуратора; EDT перечитывает схему из файла. Dry-run возвращает oldText/newText, sourceHash и resultHash. Для apply нужны актуальный expectedHash и force=true; записывается только файл схемы, результат перечитывается. Проверка EDT не сверяет XML схемы с форматом платформы: результат проверяет сборка отчета или обработки (edt_dump_external_object). Поле или параметр добавляет edt_modify_dcs без передачи всей схемы. Макет создает edt_add_template. Нужен токен записи.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -684,6 +684,81 @@
           "projectName",
           "templateFqn",
           "text"
+        ]
+      }
+    },
+    {
+      "name": "edt_modify_dcs",
+      "description": "WRITE: add fields to a data set and parameters to an existing DATA_COMPOSITION_SCHEMA template without sending the whole schema XML. The additions are inserted into the saved designer XML, the rest of the file keeps its bytes, and the dry-run shows the changed region. EDT validation does not check the schema XML: build the report or data processor with edt_dump_external_object to check the result. Dry-run by default.",
+      "descriptionRu": "ЗАПИСЬ: добавить поля набора данных и параметры в существующий макет DATA_COMPOSITION_SCHEMA, не передавая XML схемы целиком. Добавления вставляются в сохраненный XML конфигуратора, остальная часть файла не меняется, предпросмотр показывает измененный участок. Проверка EDT не сверяет XML схемы с форматом платформы: результат проверяет сборка отчета или обработки (edt_dump_external_object). По умолчанию предпросмотр.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "Loaded EDT project name."
+          },
+          "templateFqn": {
+            "type": "string",
+            "description": "Existing schema template, e.g. ExternalReport.Demo.Template.MainSchema or Report.Sales.Template.MainSchema."
+          },
+          "edits": {
+            "type": "array",
+            "description": "Additions, applied in order. addField: dataSet, dataPath, optional field (defaults to dataPath) and titleRu - adds a field to a data set. addParameter: name, optional titleRu and type - String(N), Number(D,F), Date, DateTime, Boolean or StandardPeriod (Russian names accepted; default String). A duplicate field or parameter is refused.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "description": "addField or addParameter",
+                  "enum": [
+                    "addField",
+                    "addParameter"
+                  ]
+                },
+                "dataSet": {
+                  "type": "string",
+                  "description": "dataSet"
+                },
+                "dataPath": {
+                  "type": "string",
+                  "description": "dataPath"
+                },
+                "field": {
+                  "type": "string",
+                  "description": "field"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "name"
+                },
+                "titleRu": {
+                  "type": "string",
+                  "description": "titleRu"
+                },
+                "type": {
+                  "type": "string",
+                  "description": "type"
+                }
+              },
+              "required": [
+                "action"
+              ]
+            }
+          },
+          "expectedHash": {
+            "type": "string",
+            "description": "sourceHash from the dry-run. Required for apply."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default): return the plan, the added lines and sourceHash without writing. true: write; requires expectedHash and a configured token."
+          }
+        },
+        "required": [
+          "projectName",
+          "templateFqn",
+          "edits"
         ]
       }
     },

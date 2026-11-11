@@ -203,6 +203,50 @@ public final class HtmlTemplateGateway {
         return replace(projectName, fqn, SCHEMA, text, expectedHash, apply, force);
     }
 
+    /** {@link #replaceSchema} with the additions applied to the saved schema, plus what they were. */
+    public static final class EditResult {
+        public Result replacement;
+        public List<String> plan = new ArrayList<>();
+        public io.github.keyfire.edtbridge.core.TextChange change;
+        public boolean ok;
+        public String message;
+    }
+
+    public EditResult editSchema(String projectName, String fqn, List<io.github.keyfire.edtbridge.core.DcsEdit.Operation> edits,
+            String expectedHash, boolean apply) {
+        EditResult edit = new EditResult();
+        Result current = readSchema(projectName, fqn);
+        if (!current.ok) {
+            edit.replacement = current;
+            edit.message = current.message;
+            return edit;
+        }
+        if (apply && (expectedHash == null || expectedHash.isBlank())) {
+            edit.message = "apply requires expectedHash: the sourceHash of the dry-run";
+            return edit;
+        }
+        try {
+            var planned = io.github.keyfire.edtbridge.core.DcsEdit.apply(current.text, edits);
+            edit.plan = new ArrayList<>(planned.plan());
+            edit.change = io.github.keyfire.edtbridge.core.TextChange.of(current.text, planned.text());
+            Result replaced = replaceSchema(projectName, fqn, planned.text(),
+                    apply ? expectedHash : current.sourceHash, apply, apply);
+            // The full texts are already on disk and in the change; the answer stays short.
+            replaced.oldText = null;
+            replaced.newText = null;
+            edit.replacement = replaced;
+            edit.ok = replaced.ok;
+            edit.message = !replaced.ok ? replaced.message
+                    : apply ? "schema written: " + String.join("; ", edit.plan)
+                            + ". EDT validation does not check the schema XML; build the report or data processor "
+                            + "(edt_dump_external_object) to check it"
+                    : "dry-run: " + String.join("; ", edit.plan) + "; apply with expectedHash=" + replaced.sourceHash;
+        } catch (IllegalArgumentException refusal) {
+            edit.message = "nothing written: " + refusal.getMessage();
+        }
+        return edit;
+    }
+
     private static String kind(String language) {
         return SCHEMA.equals(language) ? "schema" : "HTML";
     }
