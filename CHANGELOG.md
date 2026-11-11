@@ -13,6 +13,14 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
+## Unreleased
+
+### Added
+
+- `edt_replace_module_fragment` edits a module outside its methods: directives, module variables,
+  regions, a `#If` block. A batch of fragments opens and closes a region in one call, and the module
+  has to parse afterwards. ([#75](https://github.com/keyfire/edt-bridge/pull/75))
+
 ## 2026-11-11 – 0.39.0
 
 ### Added
