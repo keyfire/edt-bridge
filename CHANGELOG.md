@@ -22,6 +22,10 @@ to the code and the reasoning behind it.
   sets, and a call of another tool is refused with the sets that hold it. An unknown set name
   refuses the list and every call instead of falling back to all tools.
 - `edt_tool_help` returns the description and parameter schema of one tool, with its tool sets.
+- Print form layouts: `edt_add_template` creates a spreadsheet template with
+  `templateType=SpreadsheetDocument`, `edt_read_spreadsheet` and `edt_write_spreadsheet` read and
+  write it as column widths and named row areas of cells, and `edt_spreadsheet_render` draws it to
+  a PNG.
 - `test-form` and `edt_test_form` read the event log of the test infobase after the run.
   `eventLog.errors` gives the message, module, line and stack of every error the platform logged,
   such as a failed server call that the client shows only as an error window.

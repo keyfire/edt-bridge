@@ -44,11 +44,9 @@ import javax.imageio.ImageIO;
  * wrapped or larger text.
  */
 public final class SpreadsheetRender {
-    static {
-        // java.awt.Color asks whether the runtime is headless in its own static initializer and keeps the
-        // answer, so the property has to be in place before the first colour below is created.
-        if (System.getProperty("java.awt.headless") == null) System.setProperty("java.awt.headless", "true");
-    }
+    // The class sets no java.awt.headless of its own: inside client EDT that would switch AWT windows
+    // off for every other plug-in of the process. Drawing into a BufferedImage needs no display, and on
+    // Linux without DISPLAY the runtime turns headless by itself.
 
     /** The largest picture drawn; a larger layout is refused rather than eating the heap of the IDE. */
     public static final long MAX_PIXELS = 24_000_000L;

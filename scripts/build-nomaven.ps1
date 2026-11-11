@@ -99,6 +99,7 @@ $need = @(
   'org.eclipse.equinox.preferences',
   'org.osgi.service.prefs',
   'com._1c.g5.v8.dt.htmldocument.model',
+  'com._1c.g5.v8.dt.moxel',
   'com._1c.g5.v8.dt.ui',
   'org.eclipse.ui.workbench.texteditor',
   'org.eclipse.ui.forms',

@@ -100,6 +100,9 @@ import io.github.keyfire.edtbridge.tools.FormRenderTool;
 import io.github.keyfire.edtbridge.tools.FormStructureTool;
 import io.github.keyfire.edtbridge.tools.SupportStatusTool;
 import io.github.keyfire.edtbridge.tools.FormIdentifiersTool;
+import io.github.keyfire.edtbridge.tools.ReadSpreadsheetTool;
+import io.github.keyfire.edtbridge.tools.WriteSpreadsheetTool;
+import io.github.keyfire.edtbridge.tools.SpreadsheetRenderTool;
 import io.github.keyfire.edtbridge.tools.ModifyDcsTool;
 import io.github.keyfire.edtbridge.tools.ApplyFixTool;
 import io.github.keyfire.edtbridge.tools.PropertyReferenceTool;
@@ -336,6 +339,9 @@ applyI18n();loadStatus();loadTools();
     private final ReadDcsTool readDcs = new ReadDcsTool();
     private final ReplaceDcsTool replaceDcs = new ReplaceDcsTool();
     private final ModifyDcsTool modifyDcs = new ModifyDcsTool();
+    private final ReadSpreadsheetTool readSpreadsheet = new ReadSpreadsheetTool();
+    private final WriteSpreadsheetTool writeSpreadsheet = new WriteSpreadsheetTool();
+    private final SpreadsheetRenderTool spreadsheetRender = new SpreadsheetRenderTool();
     private final AddTemplateTool addTemplate = new AddTemplateTool();
     private final ApplicationsTool applications = new ApplicationsTool();
     private final FormStructureTool formStructure = new FormStructureTool();
@@ -820,6 +826,9 @@ applyI18n();loadStatus();loadTools();
         tools.add(readDcs.descriptor());
         tools.add(replaceDcs.descriptor());
         tools.add(modifyDcs.descriptor());
+        tools.add(readSpreadsheet.descriptor());
+        tools.add(writeSpreadsheet.descriptor());
+        tools.add(spreadsheetRender.descriptor());
         tools.add(applications.descriptor());
         tools.add(formStructure.descriptor());
         tools.add(formRender.descriptor());
@@ -1017,6 +1026,12 @@ applyI18n();loadStatus();loadTools();
         if (modifyDcs.name().equals(name)) {
             JsonObject denied = writeTokenGate(modifyDcs.isWrite(args), name);
             return denied != null ? denied : modifyDcs.call(args);
+        }
+        if (readSpreadsheet.name().equals(name)) return readSpreadsheet.call(args);
+        if (spreadsheetRender.name().equals(name)) return spreadsheetRender.call(args);
+        if (writeSpreadsheet.name().equals(name)) {
+            JsonObject denied = writeTokenGate(writeSpreadsheet.isWrite(args), name);
+            return denied != null ? denied : writeSpreadsheet.call(args);
         }
         if (addTemplate.name().equals(name)) {
             JsonObject denied = writeTokenGate(addTemplate.isWrite(), name);

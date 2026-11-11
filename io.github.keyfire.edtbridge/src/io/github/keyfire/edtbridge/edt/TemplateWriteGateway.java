@@ -38,6 +38,8 @@ import com._1c.g5.v8.dt.core.naming.ITopObjectFqnGenerator;
 import com._1c.g5.v8.dt.core.platform.IBmModelManager;
 import com._1c.g5.v8.dt.core.platform.IDtProject;
 import com._1c.g5.v8.dt.dcs.model.schema.DataCompositionSchema;
+import com._1c.g5.v8.dt.moxel.MoxelFactory;
+import com._1c.g5.v8.dt.moxel.SpreadsheetDocument;
 import com._1c.g5.v8.dt.dcs.model.schema.DcsFactory;
 import com._1c.g5.v8.dt.metadata.mdclass.BasicTemplate;
 import com._1c.g5.v8.dt.metadata.mdclass.MdClassPackage;
@@ -88,7 +90,7 @@ public final class TemplateWriteGateway {
         TemplateType type = templateType(typeArg);
         if (type == null) {
             r.message = "unsupported templateType: \"" + typeArg + "\" (supported: DataCompositionSchema, "
-                    + "alias СхемаКомпоновкиДанных)";
+                    + "alias СхемаКомпоновкиДанных; SpreadsheetDocument, alias ТабличныйДокумент)";
             return r;
         }
         r.templateType = type.getLiteral();
@@ -130,6 +132,10 @@ public final class TemplateWriteGateway {
         }
         if (r.nameAvailable == null) {
             r.message = "owner " + r.ownerType + " cannot carry templates";
+            return r;
+        }
+        if (setMainSchema && type != TemplateType.DATA_COMPOSITION_SCHEMA) {
+            r.message = "setMainSchema applies to a data composition schema, not to " + r.templateType;
             return r;
         }
         if (setMainSchema && !mainSupported[0]) {
@@ -178,11 +184,20 @@ public final class TemplateWriteGateway {
                     @SuppressWarnings("unchecked")
                     List<EObject> templates = (List<EObject>) owner.eGet(feature);
                     templates.add(template);
-                    DataCompositionSchema schema = DcsFactory.eINSTANCE.createDataCompositionSchema();
+                    // The content is a top object of its own, like the template editor creates it: a
+                    // data composition schema (Template.dcs) or a spreadsheet in template mode (Template.mxlx).
+                    EObject content;
+                    if (type == TemplateType.SPREADSHEET_DOCUMENT) {
+                        SpreadsheetDocument sheet = MoxelFactory.eINSTANCE.createSpreadsheetDocument();
+                        sheet.setTemplateMode(true);
+                        content = sheet;
+                    } else {
+                        content = DcsFactory.eINSTANCE.createDataCompositionSchema();
+                    }
                     String contentFqn = fqnGenerator.generateExternalPropertyFqn(template,
                             MdClassPackage.Literals.BASIC_TEMPLATE__TEMPLATE);
-                    tx.attachTopObject((IBmObject) schema, contentFqn);
-                    template.setTemplate(schema);
+                    tx.attachTopObject((IBmObject) content, contentFqn);
+                    template.setTemplate(content);
                     if (setMainSchema) {
                         EStructuralFeature main = owner.eClass().getEStructuralFeature(MAIN_SCHEMA);
                         owner.eSet(main, template);
@@ -203,10 +218,14 @@ public final class TemplateWriteGateway {
         r.applied = true;
         r.message = "created template " + r.templateFqn + " [" + r.templateType + "]"
                 + (setMainSchema ? " as the main data composition schema" : "")
-                + ((exportedOwner && exportedContent) ? " (serialized: owner .mdo + Template.dcs);"
+                + ((exportedOwner && exportedContent)
+                        ? " (serialized: owner .mdo + " + (type == TemplateType.SPREADSHEET_DOCUMENT
+                                ? "Template.mxlx" : "Template.dcs") + ");"
                         : " - WARNING: forceExport incomplete (owner=" + exportedOwner + ", content="
                                 + exportedContent + ");")
-                + " write its text with edt_replace_dcs";
+                + (type == TemplateType.SPREADSHEET_DOCUMENT
+                        ? " describe its areas and cells with edt_write_spreadsheet"
+                        : " write its text with edt_replace_dcs or edt_modify_dcs");
         return r;
     }
 
@@ -217,6 +236,10 @@ public final class TemplateWriteGateway {
         String key = arg.strip().replace("_", "").toLowerCase(Locale.ROOT);
         if (key.equals("datacompositionschema") || key.equals("dcs") || key.equals("схемакомпоновкиданных")) {
             return TemplateType.DATA_COMPOSITION_SCHEMA;
+        }
+        if (key.equals("spreadsheetdocument") || key.equals("spreadsheet") || key.equals("mxl")
+                || key.equals("табличныйдокумент")) {
+            return TemplateType.SPREADSHEET_DOCUMENT;
         }
         return null;
     }

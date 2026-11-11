@@ -647,8 +647,8 @@
     },
     {
       "name": "edt_add_template",
-      "description": "WRITE: create a DATA_COMPOSITION_SCHEMA template on a metadata object (report, external report, data processor) with an empty schema, optionally as the report's main data composition schema. Fill the schema with edt_replace_dcs or edt_modify_dcs; EDT validation does not check the schema XML, the build (edt_dump_external_object) does. Dry-run by default; apply=true creates. Token-gated.",
-      "descriptionRu": "ЗАПИСЬ: создать у объекта метаданных (отчет, внешний отчет, обработка) макет DATA_COMPOSITION_SCHEMA с пустой схемой, при необходимости назначив его основной схемой компоновки отчета. Схему заполняют edt_replace_dcs или edt_modify_dcs; XML схемы проверяет не проверка EDT, а сборка (edt_dump_external_object). По умолчанию dry-run; apply=true создает. Требует токен.",
+      "description": "WRITE: create a template on a metadata object (report, external report, data processor, document, catalog): a DATA_COMPOSITION_SCHEMA with an empty schema, optionally the report's main one, or a SPREADSHEET_DOCUMENT - an empty print form layout. Fill a schema with edt_replace_dcs or edt_modify_dcs, a spreadsheet with edt_write_spreadsheet. EDT validation does not check the XML of either; the build (edt_dump_external_object) does. Dry-run by default; apply=true creates. Token-gated.",
+      "descriptionRu": "ЗАПИСЬ: создать макет у объекта метаданных (отчет, внешний отчет, обработка, документ, справочник): DATA_COMPOSITION_SCHEMA с пустой схемой, при необходимости основной схемой отчета, или SPREADSHEET_DOCUMENT – пустой макет печатной формы. Схему заполняют edt_replace_dcs или edt_modify_dcs, табличный макет – edt_write_spreadsheet. XML обоих проверяет не проверка EDT, а сборка (edt_dump_external_object). По умолчанию dry-run; apply=true создает. Требует токен.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -666,7 +666,7 @@
           },
           "templateType": {
             "type": "string",
-            "description": "DataCompositionSchema (default; alias СхемаКомпоновкиДанных). Other template types are not created by this tool yet."
+            "description": "DataCompositionSchema (default; alias СхемаКомпоновкиДанных) or SpreadsheetDocument (alias ТабличныйДокумент) - the layout of a print form. Other template types are not created by this tool yet."
           },
           "setMainSchema": {
             "type": "boolean",
@@ -688,6 +688,7 @@
         ]
       },
       "toolsets": [
+        "processor",
         "report"
       ]
     },
@@ -833,6 +834,116 @@
         ]
       },
       "toolsets": [
+        "report"
+      ]
+    },
+    {
+      "name": "edt_read_spreadsheet",
+      "description": "READ: a SPREADSHEET_DOCUMENT template (a print form layout) as column widths and named row areas of cells - text, parameter or template, with bold, font size, alignment, border, colspan and wrap. The answer is the input of edt_write_spreadsheet, plus sourceHash for its apply; unsupported names what the file also has and the description does not carry (pictures, colors, drawings). See it with edt_spreadsheet_render.",
+      "descriptionRu": "ЧТЕНИЕ: макет SPREADSHEET_DOCUMENT (печатная форма) как ширины колонок и именованные области строк из ячеек – текст, параметр или шаблон, с жирностью, размером шрифта, выравниванием, рамкой, объединением и переносом. Ответ – это вход edt_write_spreadsheet и sourceHash для записи; unsupported называет то, что в файле есть, но в описание не входит (картинки, цвета, рисунки). Увидеть макет – edt_spreadsheet_render.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "Loaded EDT project name."
+          },
+          "templateFqn": {
+            "type": "string",
+            "description": "Existing spreadsheet template, e.g. ExternalDataProcessor.Invoice.Template.PrintForm or Document.Order.Template.Invoice."
+          }
+        },
+        "required": [
+          "projectName",
+          "templateFqn"
+        ]
+      },
+      "toolsets": [
+        "processor",
+        "report"
+      ]
+    },
+    {
+      "name": "edt_write_spreadsheet",
+      "description": "WRITE: replace the whole content of a SPREADSHEET_DOCUMENT template (a print form layout) with column widths and named row areas of cells. Start from edt_read_spreadsheet, change the areas and pass them back; create the template with edt_add_template templateType=SpreadsheetDocument. Fill it in code: Макет.ПолучитьОбласть(\"Name\"), Область.Параметры.Name = ..., ТабличныйДокумент.Вывести(Область). Dry-run by default; check the result with edt_spreadsheet_render and by building the object.",
+      "descriptionRu": "ЗАПИСЬ: заменить все содержимое макета SPREADSHEET_DOCUMENT (печатная форма) ширинами колонок и именованными областями строк из ячеек. Начинать с edt_read_spreadsheet, менять области и передавать их обратно; макет создает edt_add_template с templateType=SpreadsheetDocument. Заполнение в коде: Макет.ПолучитьОбласть(\"Имя\"), Область.Параметры.Имя = ..., ТабличныйДокумент.Вывести(Область). По умолчанию предпросмотр; результат проверяют edt_spreadsheet_render и сборка объекта.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "Loaded EDT project name."
+          },
+          "templateFqn": {
+            "type": "string",
+            "description": "Existing spreadsheet template, e.g. ExternalDataProcessor.Invoice.Template.PrintForm or Document.Order.Template.Invoice."
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "description": "Column widths, index = column. Missing columns take the default width 72."
+          },
+          "areas": {
+            "type": "array",
+            "description": "Named row areas in order - what ПолучитьОбласть(\"Name\") returns. Each is {name, rows}, rows is a list of rows, a row is a list of cells from column 0. A cell is an object with exactly one of text, parameter (filled by Область.Параметры.Name) or template (text with [Name] substitutions), and optional bold, fontSize, align (Left, Center, Right), border (thin line on all sides), colspan and wrap.",
+            "items": {
+              "type": "object"
+            }
+          },
+          "dropUnsupported": {
+            "type": "boolean",
+            "description": "true lets the write drop what the current file has and the description does not carry (edt_read_spreadsheet lists it in unsupported). Default false: refused."
+          },
+          "expectedHash": {
+            "type": "string",
+            "description": "sourceHash of the dry-run. Required for apply."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default): build the file and show the change and sourceHash. true: write; requires expectedHash and a configured token."
+          }
+        },
+        "required": [
+          "projectName",
+          "templateFqn",
+          "areas"
+        ]
+      },
+      "toolsets": [
+        "processor",
+        "report"
+      ]
+    },
+    {
+      "name": "edt_spreadsheet_render",
+      "description": "READ: draw a SPREADSHEET_DOCUMENT template to a PNG the way the template editor shows it: column widths, cell text, <Parameter> for a parameter, bold, alignment, borders, merged cells and the names of the row areas on the left. Returns the PNG path and size; unsupported names what the picture leaves out (pictures, colors, drawings). Needs no platform and no display.",
+      "descriptionRu": "ЧТЕНИЕ: нарисовать макет SPREADSHEET_DOCUMENT в PNG так, как его показывает редактор макетов: ширины колонок, текст ячеек, <Параметр> для параметра, жирность, выравнивание, рамки, объединения и имена областей строк слева. Возвращает путь к PNG и размер; unsupported называет то, чего на картинке нет (картинки, цвета, рисунки). Платформа и экран не нужны.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "Loaded EDT project name."
+          },
+          "templateFqn": {
+            "type": "string",
+            "description": "Existing spreadsheet template, e.g. ExternalDataProcessor.Invoice.Template.PrintForm or Document.Order.Template.Invoice."
+          },
+          "outPath": {
+            "type": "string",
+            "description": "Absolute PNG output path. Optional - a temporary file by default."
+          }
+        },
+        "required": [
+          "projectName",
+          "templateFqn"
+        ]
+      },
+      "toolsets": [
+        "processor",
         "report"
       ]
     },

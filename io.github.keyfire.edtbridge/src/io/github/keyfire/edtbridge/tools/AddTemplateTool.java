@@ -26,8 +26,9 @@ public final class AddTemplateTool {
         props.add("projectName", strProp("Project that owns the object"));
         props.add("ownerFqn", strProp("Object that receives the template, e.g. ExternalReport.Demo or Report.Sales"));
         props.add("name", strProp("Template name - a 1C identifier, e.g. MainSchema"));
-        props.add("templateType", strProp("DataCompositionSchema (default; alias СхемаКомпоновкиДанных). "
-                + "Other template types are not created by this tool yet."));
+        props.add("templateType", strProp("DataCompositionSchema (default; alias СхемаКомпоновкиДанных) or "
+                + "SpreadsheetDocument (alias ТабличныйДокумент) - the layout of a print form. Other template "
+                + "types are not created by this tool yet."));
         props.add("setMainSchema", boolProp("true makes the new schema the report's main data composition "
                 + "schema. A report with a main schema and no main form opens with the configuration's common "
                 + "report form."));
@@ -43,16 +44,17 @@ public final class AddTemplateTool {
         schema.add("required", required);
         JsonObject t = new JsonObject();
         t.addProperty("name", name());
-        t.addProperty("description", "WRITE: create a DATA_COMPOSITION_SCHEMA template on a metadata object "
-                + "(report, external report, data processor) with an empty schema, optionally as the report's main "
-                + "data composition schema. Fill the schema with edt_replace_dcs or edt_modify_dcs; EDT validation does "
-                + "not check the schema XML, the build (edt_dump_external_object) does. Dry-run by default; "
+        t.addProperty("description", "WRITE: create a template on a metadata object (report, external report, "
+                + "data processor, document, catalog): a DATA_COMPOSITION_SCHEMA with an empty schema, optionally "
+                + "the report's main one, or a SPREADSHEET_DOCUMENT - an empty print form layout. Fill a schema with "
+                + "edt_replace_dcs or edt_modify_dcs, a spreadsheet with edt_write_spreadsheet. EDT validation does "
+                + "not check the XML of either; the build (edt_dump_external_object) does. Dry-run by default; "
                 + "apply=true creates. Token-gated.");
-        t.addProperty("descriptionRu", "ЗАПИСЬ: создать у объекта метаданных (отчет, внешний отчет, обработка) макет "
-                + "DATA_COMPOSITION_SCHEMA с пустой схемой, при необходимости назначив его основной схемой "
-                + "компоновки отчета. Схему заполняют edt_replace_dcs или edt_modify_dcs; XML схемы проверяет не "
-                + "проверка EDT, а сборка (edt_dump_external_object). По умолчанию dry-run; apply=true создает. "
-                + "Требует токен.");
+        t.addProperty("descriptionRu", "ЗАПИСЬ: создать макет у объекта метаданных (отчет, внешний отчет, обработка, "
+                + "документ, справочник): DATA_COMPOSITION_SCHEMA с пустой схемой, при необходимости основной схемой "
+                + "отчета, или SPREADSHEET_DOCUMENT – пустой макет печатной формы. Схему заполняют edt_replace_dcs или "
+                + "edt_modify_dcs, табличный макет – edt_write_spreadsheet. XML обоих проверяет не проверка EDT, а "
+                + "сборка (edt_dump_external_object). По умолчанию dry-run; apply=true создает. Требует токен.");
         t.add("inputSchema", schema);
         return t;
     }

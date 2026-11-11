@@ -40,7 +40,6 @@ class SpreadsheetRenderTest {
         BufferedImage image = picture(SpreadsheetLayoutTest.invoice());
         assertTrue(image.getWidth() > 30 + 72 + 200 + 90, "the columns and the left margin fit: " + image.getWidth());
         assertTrue(image.getHeight() > 20 * 7, "the header and six rows fit: " + image.getHeight());
-        assertEquals("true", System.getProperty("java.awt.headless"));
         String out = System.getenv("MXL_RENDER_OUT");
         if (out != null && Files.isDirectory(Path.of(out))) {
             Files.write(Path.of(out, "invoice.png"), SpreadsheetRender.png(SpreadsheetLayoutTest.invoice()));
