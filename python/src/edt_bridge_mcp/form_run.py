@@ -35,7 +35,9 @@ DESCRIPTOR = {
         "assert_cell, assert_table, assert_table_size; the last action must be followed by an "
         "assertion). The answer carries status, the observed messages, the error dialog and the "
         "exception text - what a static check cannot see, e.g. a method of the object module called "
-        "on form data. The infobase itself is never changed. Served by the wrapper; no EDT needed."
+        "on form data. eventLog.errors adds the errors the platform logged during the run with "
+        "message, module and line, which the client only shows as an error window. The infobase "
+        "itself is never changed. Served by the wrapper; no EDT needed."
     ),
     "descriptionRu": (
         "Запустить основную форму собранного .epf или .erf в свежей копии тестовой базы "
@@ -44,8 +46,10 @@ DESCRIPTOR = {
         "либо проиграть сценарий (steps: input, click, assert_messages, assert_field, assert_cell, "
         "assert_table, assert_table_size; после последнего действия нужна проверка). Ответ содержит "
         "статус, сообщения, окно ошибки и текст исключения - то, чего не видит статическая проверка, "
-        "например вызов метода модуля объекта у данных формы. Сама база не меняется. Обслуживает "
-        "обвязка, EDT не нужна."
+        "например вызов метода модуля объекта у данных формы. eventLog.errors добавляет ошибки, "
+        "записанные платформой в журнал регистрации за время запуска, с текстом, модулем и строкой: "
+        "клиент показывает их только окном ошибки. Сама база не меняется. Обслуживает обвязка, EDT "
+        "не нужна."
     ),
     "inputSchema": {
         "type": "object",

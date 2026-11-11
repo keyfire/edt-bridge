@@ -22,6 +22,9 @@ to the code and the reasoning behind it.
   sets, and a call of another tool is refused with the sets that hold it. An unknown set name
   refuses the list and every call instead of falling back to all tools.
 - `edt_tool_help` returns the description and parameter schema of one tool, with its tool sets.
+- `test-form` and `edt_test_form` read the event log of the test infobase after the run.
+  `eventLog.errors` gives the message, module, line and stack of every error the platform logged,
+  such as a failed server call that the client shows only as an error window.
 - `edt_property_reference` lists the properties a write tool can set on a common module, a field or
   a form item: the type of each property, the accepted enum values, the current value and the tool
   that takes them. The list comes from the code that validates the write, so a property the object

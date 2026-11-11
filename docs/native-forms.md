@@ -285,6 +285,15 @@ when that phase runs, `reopen/screenshot.png`. A single-button run uses
 | `timeout` | The overall time limit expired. The recorded progress and available screenshot show where execution stopped. |
 | `screenshot_failed` | Observations passed but the required screenshot was not obtained. |
 
+`eventLog.errors` lists the errors the platform wrote to the event log of the test
+infobase while the check ran. A server call that fails shows the client only an error
+window, while the log keeps the description: each entry has `message`, `module` and
+`line` of the place the error was raised, `stack` with the calling lines, `event`
+(`_$PerformError$_` for a runtime error) and `time`. An error the code catches in
+`Try` is not logged and is not listed. The log is read in the platform's text format
+(`1Cv8Log/*.lgf`, `*.lgp`); for an infobase that keeps it in SQLite (`1Cv8.lgd`),
+`eventLog.read` is `false` with an explanation.
+
 Other diagnostic statuses, including form-selection and driver errors, are retained
 in the JSON. Exit code 0 means success, 1 means failure during input validation, and 2
 means a later failure or an unconfirmed result. Read `status`, `stage`, and the phase

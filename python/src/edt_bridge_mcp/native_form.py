@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import datetime
 import json
 import os
 import re
@@ -20,7 +21,7 @@ import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from . import i18n, native_report, native_scenario
+from . import event_log, i18n, native_report, native_scenario
 
 
 _SCOPES = ("empty", "fixture", "application")
@@ -505,6 +506,21 @@ def _native_check(args, base, external, output, report):
     report["cleanupComplete"] = True
 
 
+def _read_event_log(base, started):
+    """Errors the platform logged in the test infobase while the check ran, with module and line."""
+    folder = base / "1Cv8Log"
+    if not folder.is_dir():
+        return {"read": True, "errors": []}
+    if not (folder / "1Cv8.lgf").is_file() and (folder / "1Cv8.lgd").is_file():
+        return {"read": False, "errors": [], "error": "the event log is in the SQLite format (1Cv8.lgd), which the check does not read"}
+    try:
+        # The log stamps whole seconds, so the second the check started in belongs to it.
+        errors = event_log.read(folder, since=started - datetime.timedelta(seconds=1))
+    except (event_log.EventLogError, OSError, ValueError) as error:
+        return {"read": False, "errors": [], "error": str(error)}
+    return {"read": True, "errors": errors}
+
+
 def _cancel_check(_signal, _frame):
     raise _CheckError("cancelled", "The native form check was cancelled.")
 
@@ -527,10 +543,14 @@ def run(args):
         else:
             report["button"] = args.button
         previous = signal.signal(signal.SIGTERM, _cancel_check)
+        started = datetime.datetime.now()
         try:
             _native_check(args, base, external, output, report)
         finally:
             signal.signal(signal.SIGTERM, previous)
+            # Read after every session is stopped: the platform writes the log as the session runs and
+            # finishes it on exit, and the error of a server call is only complete there.
+            report["eventLog"] = _read_event_log(base, started)
     except (_CheckError, OSError, native_scenario.ScenarioError) as error:
         _record_error(report, error, "io_error")
     except KeyboardInterrupt:
