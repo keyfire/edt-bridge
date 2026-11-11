@@ -28,6 +28,7 @@ import com._1c.g5.v8.dt.metadata.mdclass.CommonModule;
 import com._1c.g5.v8.dt.metadata.mdclass.ReturnValuesReuse;
 import com._1c.g5.v8.dt.metadata.mdclass.extension.CommonModuleExtension;
 import com._1c.g5.v8.dt.metadata.mdclass.extension.type.MdPropertyState;
+import io.github.keyfire.edtbridge.core.AllowedValues;
 
 /** Typed common-module settings, validated as one patch before any property is changed. */
 final class CommonModuleSettings {
@@ -73,10 +74,13 @@ final class CommonModuleSettings {
                     if (candidate.getName().equalsIgnoreCase((String) value)
                             || candidate.getLiteral().equalsIgnoreCase((String) value)) parsed = candidate;
                 }
-                if (parsed == null) throw new IllegalArgumentException("Unknown returnValuesReuse: " + value);
+                if (parsed == null) {
+                    throw new IllegalArgumentException(AllowedValues.unknownValue(name, value, reuseValues()));
+                }
                 value = parsed;
             } else {
-                throw new IllegalArgumentException("Unsupported CommonModule property: " + name);
+                throw new IllegalArgumentException(AllowedValues.unsupportedName("CommonModule property", name,
+                        propertyNames()));
             }
             EStructuralFeature feature = module.eClass().getEStructuralFeature(name);
             if (feature == null || !feature.isChangeable() || feature.isMany()) {
@@ -92,6 +96,36 @@ final class CommonModuleSettings {
             patch.add(new Assignment(extension, feature, MdPropertyState.EXTENDED, "extension.module"));
         }
         return patch;
+    }
+    private static List<String> reuseValues() {
+        List<String> values = new ArrayList<>();
+        for (ReturnValuesReuse candidate : ReturnValuesReuse.VALUES) values.add(candidate.getLiteral());
+        return values;
+    }
+    private static List<String> propertyNames() {
+        List<String> names = new ArrayList<>(FLAGS.stream().sorted().toList());
+        names.add("returnValuesReuse");
+        return names;
+    }
+
+    /** The properties {@link #apply} takes, with their types, accepted values and current values. */
+    static List<Map<String, Object>> reference(CommonModule module) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (String name : propertyNames()) {
+            EStructuralFeature feature = module.eClass().getEStructuralFeature(name);
+            if (feature == null || !feature.isChangeable() || feature.isMany()) continue;
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("name", name);
+            if ("returnValuesReuse".equals(name)) {
+                entry.put("type", "enum");
+                entry.put("values", reuseValues());
+            } else {
+                entry.put("type", "boolean");
+            }
+            entry.put("current", printable(module.eGet(feature)));
+            result.add(entry);
+        }
+        return result;
     }
     private static Object printable(Object value) {
         return value instanceof Enum<?> ? value.toString() : value;

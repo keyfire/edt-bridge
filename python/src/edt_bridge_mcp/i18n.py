@@ -76,8 +76,8 @@ MESSAGES = {
         "en": "fully qualified managed form name, for example ExternalReport.Sales.Form for a standard DCS form",
     },
     "test-form.form-title": {
-        "ru": "точный заголовок формы в клиенте",
-        "en": "exact form title in the client",
+        "ru": "заголовок формы в клиенте; * и ? – знаки подстановки",
+        "en": "form title in the client; * and ? are wildcards",
     },
     "test-form.button": {
         "ru": "точный заголовок кнопки, выполняющей команду",

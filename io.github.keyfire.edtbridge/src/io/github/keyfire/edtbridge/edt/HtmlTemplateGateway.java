@@ -65,6 +65,9 @@ public final class HtmlTemplateGateway {
      */
     static final String SCHEMA = "schema";
 
+    /** The language slot of a spreadsheet template: one Template.mxlx file, like the schema. */
+    static final String SPREADSHEET = "spreadsheet";
+
     /** EDT is occupied by another operation; nothing was written and the call may be repeated. */
     static final class BusyException extends IllegalStateException {
         BusyException(String message) { super(message); }
@@ -182,6 +185,8 @@ public final class HtmlTemplateGateway {
             result.ok = true;
             result.message = SCHEMA.equals(language)
                     ? "exact schema source replaced and reread; EDT reloads the schema from the file, template metadata was not written"
+                    : SPREADSHEET.equals(language)
+                    ? "exact spreadsheet source replaced and reread; EDT reloads the template from the file, template metadata was not written"
                     : "exact HTML locale source replaced and reread; other locales and metadata were not written";
         } catch (Exception exception) {
             result.ok = false;
@@ -203,8 +208,62 @@ public final class HtmlTemplateGateway {
         return replace(projectName, fqn, SCHEMA, text, expectedHash, apply, force);
     }
 
+    /** {@link #replaceSchema} with the additions applied to the saved schema, plus what they were. */
+    public static final class EditResult {
+        public Result replacement;
+        public List<String> plan = new ArrayList<>();
+        public io.github.keyfire.edtbridge.core.TextChange change;
+        public boolean ok;
+        public String message;
+    }
+
+    public EditResult editSchema(String projectName, String fqn, List<io.github.keyfire.edtbridge.core.DcsEdit.Operation> edits,
+            String expectedHash, boolean apply) {
+        EditResult edit = new EditResult();
+        Result current = readSchema(projectName, fqn);
+        if (!current.ok) {
+            edit.replacement = current;
+            edit.message = current.message;
+            return edit;
+        }
+        if (apply && (expectedHash == null || expectedHash.isBlank())) {
+            edit.message = "apply requires expectedHash: the sourceHash of the dry-run";
+            return edit;
+        }
+        try {
+            var planned = io.github.keyfire.edtbridge.core.DcsEdit.apply(current.text, edits);
+            edit.plan = new ArrayList<>(planned.plan());
+            edit.change = io.github.keyfire.edtbridge.core.TextChange.of(current.text, planned.text());
+            Result replaced = replaceSchema(projectName, fqn, planned.text(),
+                    apply ? expectedHash : current.sourceHash, apply, apply);
+            // The full texts are already on disk and in the change; the answer stays short.
+            replaced.oldText = null;
+            replaced.newText = null;
+            edit.replacement = replaced;
+            edit.ok = replaced.ok;
+            edit.message = !replaced.ok ? replaced.message
+                    : apply ? "schema written: " + String.join("; ", edit.plan)
+                            + ". EDT validation does not check the schema XML; build the report or data processor "
+                            + "(edt_dump_external_object) to check it"
+                    : "dry-run: " + String.join("; ", edit.plan) + "; apply with expectedHash=" + replaced.sourceHash;
+        } catch (IllegalArgumentException refusal) {
+            edit.message = "nothing written: " + refusal.getMessage();
+        }
+        return edit;
+    }
+
+    /** The spreadsheet calls: the exact read and replacement of the one Template.mxlx file. */
+    public Result readSpreadsheet(String projectName, String fqn) {
+        return read(projectName, fqn, SPREADSHEET);
+    }
+
+    public Result replaceSpreadsheet(String projectName, String fqn, String text, String expectedHash,
+            boolean apply, boolean force) {
+        return replace(projectName, fqn, SPREADSHEET, text, expectedHash, apply, force);
+    }
+
     private static String kind(String language) {
-        return SCHEMA.equals(language) ? "schema" : "HTML";
+        return SCHEMA.equals(language) ? "schema" : SPREADSHEET.equals(language) ? "spreadsheet" : "HTML";
     }
 
     private static void requireArguments(String projectName, String fqn, String language) {
@@ -303,8 +362,8 @@ public final class HtmlTemplateGateway {
             return model.executeReadonlyTask(new AbstractBmTask<Target>("edt-bridge.htmlTemplate.resolve") {
                 @Override public Target execute(IBmTransaction transaction, IProgressMonitor monitor) {
                     BasicTemplate template = resolveTemplate(transaction, fqn);
-                    if (SCHEMA.equals(language)) {
-                        return schemaTarget(projectName, fqn, template, project, operations, lookup);
+                    if (SCHEMA.equals(language) || SPREADSHEET.equals(language)) {
+                        return contentTarget(projectName, fqn, template, project, operations, lookup, language);
                     }
                     HtmlDocumentPage selected = selectPage(template, language);
                     if (template.getUuid() == null) throw new IllegalArgumentException("template UUID is unavailable");
@@ -336,14 +395,18 @@ public final class HtmlTemplateGateway {
         }
 
         /**
-         * A data composition schema keeps its whole content in one file next to the template
-         * metadata ({@code Template.dcs}), in the designer XML of the schema; that file is the text.
+         * A data composition schema and a spreadsheet keep their whole content in one file next to
+         * the template metadata ({@code Template.dcs}, {@code Template.mxlx}), in the designer XML;
+         * that file is the text.
          */
-        private static Target schemaTarget(String projectName, String fqn, BasicTemplate template, IProject project,
-                IProjectOperationApi operations, IResourceLookup lookup) {
-            if (template.getTemplateType() != TemplateType.DATA_COMPOSITION_SCHEMA
+        private static Target contentTarget(String projectName, String fqn, BasicTemplate template, IProject project,
+                IProjectOperationApi operations, IResourceLookup lookup, String language) {
+            TemplateType expected = SCHEMA.equals(language) ? TemplateType.DATA_COMPOSITION_SCHEMA
+                    : TemplateType.SPREADSHEET_DOCUMENT;
+            if (template.getTemplateType() != expected
                     || template.getTemplate() == null || template.getTemplate().eIsProxy()) {
-                throw new IllegalArgumentException("template must be an existing resolved DATA_COMPOSITION_SCHEMA");
+                throw new IllegalArgumentException("template must be an existing resolved " + expected.getName()
+                        + "; this one is " + template.getTemplateType().getName());
             }
             if (template.getUuid() == null) throw new IllegalArgumentException("template UUID is unavailable");
             requireContextSaved(operations.getExistingContext(template));
@@ -357,7 +420,7 @@ public final class HtmlTemplateGateway {
             requireFile(projectName, metadata);
             String path = file.getProjectRelativePath().toPortableString();
             return new Target(projectName, fqn, template.getUuid().toString(), template.getTemplateType().getLiteral(),
-                    SCHEMA, List.of(SCHEMA), Map.of(SCHEMA, path), file, metadata, null);
+                    language, List.of(language), Map.of(language, path), file, metadata, null);
         }
 
         public Source read(Target target) throws Exception {

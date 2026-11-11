@@ -71,6 +71,7 @@ flag twin, documented in [Commands](/cli).
 | `EDT_BRIDGE_WINDOW_WAIT` | – | `90` | how many seconds the `gui` command waits for the EDT window. A large workspace loads for minutes, so a miss here is not an error but a reason to run the command again |
 | `EDT_BRIDGE_LANG` | – | the system locale | the language of the wrapper's help and messages (`ru` or `en`) |
 | `EDT_BRIDGE_NO_PLUGINS` | – | off | `1` skips the discovery of [wrapper plugins](#wrapper-plugins), leaving the wrapper's own capabilities only |
+| `EDT_BRIDGE_TOOLSET` | – | every tool | one tool set or several, separated by commas: `processor`, `report`, `extension`. The wrapper then lists and runs only their tools, its own and plugin tools included. An unknown name refuses the list and every call |
 | `EDT_BRIDGE_PLUGIN_INDEX` | – | – | the package index URL `self-update` names to pip for plugins installed by project name. A plugin installed from git records its source |
 
 **Read by the plugin inside EDT**
@@ -85,6 +86,7 @@ flag twin, documented in [Commands](/cli).
 | `EDT_BRIDGE_TEST_INFOBASE` | – | – | a file infobase with test data for `edt_test_form`; every run works on a fresh copy of its `1Cv8.1CD` |
 | `EDT_BRIDGE_TEST_PLATFORM` | – | – | the platform `bin` directory with `1cv8` and `ibcmd` that `edt_test_form` runs |
 | `EDT_BRIDGE_TEST_USER` | – | – | the infobase user `edt_test_form` signs in as, when the test infobase has users |
+| `EDT_BRIDGE_TOOLSET` | `-Dedt.bridge.toolset` | every tool | the same tool sets on the bridge side: `tools/list` returns only their tools, and a call of another tool is refused with the sets that hold it. `edt_tool_help` names the sets of any tool, and `/status` reports the active ones |
 
 Environment variables and `-Dedt.bridge.*` properties supplied at launch take precedence over
 EDT's preference page. The wrapper uses them to configure a headless instance.

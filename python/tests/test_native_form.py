@@ -46,6 +46,66 @@ def test_empty_button_selector_is_rejected_before_starting_a_client(monkeypatch,
     assert not args.output_dir.exists()
 
 
+@pytest.mark.parametrize("title", ["Order 7 dated *", "Order ? dated 25.09.2026", "Delete the item?"])
+def test_form_title_may_carry_wildcards(monkeypatch, tmp_path, title):
+    monkeypatch.setattr(native_form.sys, "platform", "linux")
+    args = _fixture_args(tmp_path)
+    args.form_title = title
+
+    native_form._validated_paths(args)
+
+
+@pytest.mark.parametrize(("option", "value"), [
+    ("form_title", "*"), ("form_title", " ?* "), ("form_title", ""), ("button", "Che*"), ("button", "Check?"),
+])
+def test_wildcard_only_title_and_wildcard_button_are_rejected(monkeypatch, tmp_path, option, value):
+    monkeypatch.setattr(native_form.sys, "platform", "linux")
+    args = _fixture_args(tmp_path)
+    setattr(args, option, value)
+
+    result = native_form.run(args)
+
+    assert result["status"] == "invalid_input"
+    assert not args.output_dir.exists()
+
+
+@pytest.mark.parametrize(("answer", "status"), [
+    ({"status": "command_completed", "stage": "after_observation", "clickAttempted": True,
+      "clickReturned": True, "messages": ["Done"], "observedTitle": "Order 7 dated 9/25/2026"},
+     "command_completed"),
+    ({"status": "form_not_found", "stage": "form_lookup", "observedForms": ["Document.Order.Form.Main"],
+      "observedTitles": ["Order 8 dated 25.09.2026"]}, "form_not_found"),
+    ({"status": "ambiguous_form", "stage": "form_lookup"}, "ambiguous_form"),
+])
+def test_title_pattern_reaches_the_test_manager_unchanged(monkeypatch, tmp_path, answer, status):
+    args = _fixture_args(tmp_path)
+    args.output_dir.mkdir()
+    args.form_title = "Order 7 dated *"
+    args.expect_message = "Done"
+    monkeypatch.setattr(native_form, "_display", lambda *args: {})
+    monkeypatch.setattr(native_form, "_owns_listener", lambda *args: True)
+    monkeypatch.setattr(native_form, "_capture", lambda *args: {"screenshot": "screenshot.png"})
+    requests = []
+
+    def spawn(_stack, argv, _env, _log):
+        if "/TestManager" in argv:
+            request = json.loads(Path(next(arg[2:] for arg in argv if arg.startswith("/C")))
+                                 .read_text(encoding="utf-8"))
+            requests.append(request)
+            Path(request["result"]).write_text(json.dumps(answer), encoding="utf-8")
+        return SimpleNamespace(poll=lambda: None)
+
+    monkeypatch.setattr(native_form, "_spawn", spawn)
+    report = native_form._run_session(args, args.test_infobase, args.epf, args.output_dir,
+                                      tmp_path / "session", tmp_path / "manager", {},
+                                      ["1cv8", "ENTERPRISE"], "Xvfb", time.monotonic() + 5, None)
+
+    assert [request["formTitle"] for request in requests] == ["Order 7 dated *"]
+    assert report["status"] == status
+    assert report["ok"] is (status == "command_completed")
+    assert report["interaction"] == answer
+
+
 def test_early_client_exit_preserves_process_diagnostics(monkeypatch, tmp_path):
     args = _fixture_args(tmp_path)
     args.output_dir.mkdir()

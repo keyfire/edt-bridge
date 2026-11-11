@@ -16,6 +16,7 @@ import org.eclipse.emf.ecore.EReference;
 import com._1c.g5.v8.dt.metadata.mdclass.BasicFeature;
 import com._1c.g5.v8.dt.metadata.mdclass.MdObject;
 import com._1c.g5.v8.dt.mcore.TypeDescription;
+import io.github.keyfire.edtbridge.core.AllowedValues;
 
 /** Typed field lists and the shared attribute/resource/dimension namespace. */
 final class MetadataFields {
@@ -126,11 +127,11 @@ final class MetadataFields {
         for (var entry : options.entrySet()) {
             String key = entry.getKey(); Object value = entry.getValue();
             if (!Set.of("use", "multiLine").contains(key)) {
-                throw new IllegalArgumentException("unsupported field option: " + key);
+                throw new IllegalArgumentException(AllowedValues.unsupportedName("field option", key, optionNames(type)));
             }
             EStructuralFeature feature = type.getEStructuralFeature(key);
             if (feature == null || feature.isMany() || !feature.isChangeable()) {
-                throw new IllegalArgumentException(key + " is not available on " + type.getName());
+                throw new IllegalArgumentException(AllowedValues.unavailable(key, type.getName(), optionNames(type)));
             }
             if ("multiLine".equals(key)) {
                 if (!(value instanceof Boolean)) throw new IllegalArgumentException("multiLine must be boolean");
@@ -146,6 +147,35 @@ final class MetadataFields {
             }
         }
         return changes;
+    }
+
+    private static List<String> optionNames(EClass type) {
+        List<String> names = new ArrayList<>();
+        for (String key : List.of("use", "multiLine")) {
+            EStructuralFeature feature = type.getEStructuralFeature(key);
+            if (feature != null && !feature.isMany() && feature.isChangeable()) names.add(key);
+        }
+        return names;
+    }
+
+    /** The optional settings this field takes, with their types, accepted values and current values. */
+    static List<Map<String, Object>> optionReference(EObject field) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        Map<String, Object> current = readOptions(field);
+        for (String key : optionNames(field.eClass())) {
+            EStructuralFeature feature = field.eClass().getEStructuralFeature(key);
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("name", key);
+            if (feature.getEType() instanceof EEnum enumeration) {
+                entry.put("type", "enum");
+                entry.put("values", enumeration.getELiterals().stream().map(each -> each.getLiteral()).toList());
+            } else {
+                entry.put("type", "boolean");
+            }
+            entry.put("current", current.get(key));
+            result.add(entry);
+        }
+        return result;
     }
 
     static void applyOptions(EObject field, Map<String, Object> options) {

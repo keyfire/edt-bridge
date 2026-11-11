@@ -228,7 +228,7 @@ usage: edt-bridge-mcp test-form [-h] --platform-bin PLATFORM_BIN --test-infobase
 | `--erf ERF` | external report file to check |
 | `--navigation-link NAVIGATION_LINK` | internal e1cib/data link to a document or catalog item in the test infobase |
 | `--form FORM` | fully qualified managed form name, for example ExternalReport.Sales.Form for a standard DCS form |
-| `--form-title FORM_TITLE` | exact form title in the client |
+| `--form-title FORM_TITLE` | form title in the client; * and ? are wildcards |
 | `--button BUTTON` | exact title of the button that invokes the command |
 | `--scenario SCENARIO` | JSON scenario containing inputs, commands and assertions of observed results |
 | `--expect-message EXPECT_MESSAGE` | exact new user message required to confirm the command result |

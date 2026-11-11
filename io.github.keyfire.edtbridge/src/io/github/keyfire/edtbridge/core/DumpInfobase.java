@@ -95,16 +95,31 @@ public final class DumpInfobase {
 
     /**
      * The explanation to append to a failed build, or {@code null} when there is nothing to add.
-     * It applies only to a build in an empty infobase: with a configured infobase the types were
-     * resolvable, so an XDTO failure there has another cause.
+     * A failure on a template file points at the template itself: its XML does not match the
+     * platform format, which a data composition schema written by hand easily does, and EDT does not
+     * check that. Any other file failing in an empty infobase points at the types of the base
+     * configuration that such an infobase does not know. With a configured infobase the types were
+     * resolvable, so only the template case has something to add.
      */
     public static String hint(String log, boolean emptyInfobase) {
-        if (!emptyInfobase || !isXdtoReadFailure(log)) {
+        if (!isXdtoReadFailure(log)) {
             return null;
         }
-        return "the build ran in an empty infobase, which knows no types of the base configuration;"
+        boolean template = TEMPLATE_FILE.matcher(log).find();
+        String types = "the build ran in an empty infobase, which knows no types of the base configuration;"
                 + " an attribute of a catalog, enumeration or defined type of that configuration fails"
                 + " the import with this XDTO exception. Set " + ENV + " to a file infobase that"
                 + " carries the base configuration: the build then runs in a copy of it";
+        String schema = "the failing file is a template, and its XML does not match the platform format:"
+                + " an unknown element, type or element order in a data composition schema is the usual"
+                + " cause, and EDT validation does not report it. Compare the schema with edt_read_dcs"
+                + " of one that edt_add_template created";
+        if (template) {
+            return emptyInfobase ? schema + "; if the schema uses types of the base configuration, " + types : schema;
+        }
+        return emptyInfobase ? types : null;
     }
+
+    private static final java.util.regex.Pattern TEMPLATE_FILE =
+            java.util.regex.Pattern.compile("[\\\\/]Templates[\\\\/][^\\\\/]+[\\\\/]Ext[\\\\/]Template\\.xml");
 }

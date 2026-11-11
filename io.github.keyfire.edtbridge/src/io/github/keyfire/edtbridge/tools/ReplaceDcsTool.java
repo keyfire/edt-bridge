@@ -31,13 +31,17 @@ public final class ReplaceDcsTool {
         descriptor.addProperty("description", "WRITE: replace the complete source of one existing DATA_COMPOSITION_SCHEMA "
                 + "template with designer XML of the schema; EDT reloads the schema from the file. Dry-run returns "
                 + "oldText/newText, sourceHash and resultHash. Apply requires the current expectedHash and force=true, "
-                + "writes only the schema file and rereads it. Run edt_project_errors afterwards: a malformed schema "
-                + "shows up there. Create the template with edt_add_template. Requires a configured write token.");
+                + "writes only the schema file and rereads it. EDT validation does not check the schema XML against the "
+                + "platform format: build the report or data processor with edt_dump_external_object to check it. "
+                + "To add a field or a parameter, edt_modify_dcs takes just the addition. Create the template with "
+                + "edt_add_template. Requires a configured write token.");
         descriptor.addProperty("descriptionRu", "ЗАПИСЬ: заменить полный текст существующего макета "
                 + "DATA_COMPOSITION_SCHEMA на XML схемы в формате конфигуратора; EDT перечитывает схему из файла. "
                 + "Dry-run возвращает oldText/newText, sourceHash и resultHash. Для apply нужны актуальный expectedHash и "
-                + "force=true; записывается только файл схемы, результат перечитывается. После записи запустить "
-                + "edt_project_errors: ошибки схемы видны там. Макет создает edt_add_template. Нужен токен записи.");
+                + "force=true; записывается только файл схемы, результат перечитывается. Проверка EDT не сверяет XML "
+                + "схемы с форматом платформы: результат проверяет сборка отчета или обработки "
+                + "(edt_dump_external_object). Поле или параметр добавляет edt_modify_dcs без передачи всей схемы. "
+                + "Макет создает edt_add_template. Нужен токен записи.");
         descriptor.add("inputSchema", ReadDcsTool.schema(properties, true));
         return descriptor;
     }

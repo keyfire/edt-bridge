@@ -62,8 +62,20 @@ schema and no assigned form, select the platform-generated form with
 
 For a configuration object, use its actual form FQN, such as
 `Document.CustomerOrder.Form.Main` or `Catalog.Items.Form.Main`. Russian names such
-as `ВнешнийОтчет.PlannedShipments.Форма` are accepted. Pass the exact title shown
-by the client in `--form-title`.
+as `ВнешнийОтчет.PlannedShipments.Форма` are accepted.
+
+`--form-title` is the window title shown by the client. The platform reads `*` as
+any run of characters and `?` as one character, so a title that carries a date or
+a number can be given as a pattern, for example `'Customer order 7 dated *'`. The
+date in a document title follows the regional settings of the session, and an exact
+title taken in another locale does not match. The form is still selected by its
+full name: windows that match the pattern but have another form name are ignored,
+and two matching windows with the same form name give `ambiguous_form`. A title
+that consists of wildcards only is refused. `--button` stays an exact caption.
+
+On `form_not_found` the JSON lists the open forms in `observedForms` and their
+titles in `observedTitles`. A found form is reported in `observedForm` and
+`observedTitle`.
 
 An ERF is opened by a fixed temporary EPF in the same test client using
 `ExternalReports.Connect` and `OpenForm`, with `SafeMode=True`. The test user must be allowed to run
@@ -272,6 +284,15 @@ when that phase runs, `reopen/screenshot.png`. A single-button run uses
 | `dependency_missing`, `license_unavailable`, `access_denied`, `setup_failed` | The environment or permissions do not allow the check to run. |
 | `timeout` | The overall time limit expired. The recorded progress and available screenshot show where execution stopped. |
 | `screenshot_failed` | Observations passed but the required screenshot was not obtained. |
+
+`eventLog.errors` lists the errors the platform wrote to the event log of the test
+infobase while the check ran. A server call that fails shows the client only an error
+window, while the log keeps the description: each entry has `message`, `module` and
+`line` of the place the error was raised, `stack` with the calling lines, `event`
+(`_$PerformError$_` for a runtime error) and `time`. An error the code catches in
+`Try` is not logged and is not listed. The log is read in the platform's text format
+(`1Cv8Log/*.lgf`, `*.lgp`); for an infobase that keeps it in SQLite (`1Cv8.lgd`),
+`eventLog.read` is `false` with an explanation.
 
 Other diagnostic statuses, including form-selection and driver errors, are retained
 in the JSON. Exit code 0 means success, 1 means failure during input validation, and 2

@@ -228,7 +228,7 @@ usage: edt-bridge-mcp test-form [-h] --platform-bin PLATFORM_BIN --test-infobase
 | `--erf ERF` | файл проверяемого внешнего отчета |
 | `--navigation-link NAVIGATION_LINK` | внутренняя ссылка e1cib/data на документ или элемент справочника в тестовой базе |
 | `--form FORM` | полное имя управляемой формы, например ExternalReport.Sales.Form для штатной формы СКД |
-| `--form-title FORM_TITLE` | точный заголовок формы в клиенте |
+| `--form-title FORM_TITLE` | заголовок формы в клиенте; * и ? – знаки подстановки |
 | `--button BUTTON` | точный заголовок кнопки, выполняющей команду |
 | `--scenario SCENARIO` | файл JSON со сценарием ввода, команд и проверок наблюдаемого результата |
 | `--expect-message EXPECT_MESSAGE` | точное новое сообщение после команды для подтверждения результата |

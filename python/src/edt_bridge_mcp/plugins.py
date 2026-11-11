@@ -22,6 +22,11 @@ wrapper's own edt_open_gui.
 EDT_BRIDGE_NO_PLUGINS=1 disables the discovery - a run with the wrapper's own
 capabilities only.
 
+EDT_BRIDGE_TOOLSET narrows the tool list to the tools of the named sets. A plugin
+tool is listed and run whatever is selected, unless its Tool declares `toolsets`:
+the plugin was installed into this wrapper on purpose, and its author may never
+have heard of the variable. A Tool that does declare the field follows it.
+
 A failing entry point is an error (PluginError), not a silent skip: a wrapper
 that quietly lost a plugin would leave an agent without its tools and without
 an explanation. The MCP server itself must keep serving the bridge though, so
@@ -36,6 +41,8 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from importlib.metadata import EntryPoint, entry_points
 from typing import Callable
+
+from .toolsets import KNOWN as KNOWN_TOOLSETS
 
 TOOLS_GROUP = "edt_bridge.tools"
 ENV_DISABLE = "EDT_BRIDGE_NO_PLUGINS"
@@ -98,6 +105,11 @@ class Tool:
     read as a hang. With no bridge up (or the bridge tool failing) the callable
     raises RuntimeError with a readable message - degrade to a note instead of
     letting it become the whole answer when the bridge is only an enrichment.
+
+    toolsets is optional and names the tool sets (EDT_BRIDGE_TOOLSET) that carry
+    the tool: a list of set names, e.g. ["report"]. Left as None, the tool is
+    listed and run whatever set is selected. An empty list keeps the tool out of
+    every set: it is served only while no set is selected.
     """
 
     name: str
@@ -106,6 +118,7 @@ class Tool:
     input_schema: dict = field(default_factory=dict)
     description_ru: str = ""
     source: str = ""  # the entry point the tool arrived through; filled by discovery
+    toolsets: list[str] | tuple[str, ...] | None = None
 
     def descriptor(self) -> dict:
         """The MCP tool descriptor, shaped like the wrapper's own LOCAL_TOOLS."""
@@ -115,6 +128,8 @@ class Tool:
         out = {"name": self.name, "description": self.description, "inputSchema": schema}
         if self.description_ru:
             out["descriptionRu"] = self.description_ru
+        if self.toolsets is not None:
+            out["toolsets"] = list(self.toolsets)
         return out
 
     def validate(self, where: str = "") -> "Tool":
@@ -147,6 +162,20 @@ class Tool:
                 f"plugin '{label}': tool '{self.name}' – input_schema['properties'] "
                 f"must be an object, got {type(properties).__name__}"
             )
+        if self.toolsets is not None:
+            if not isinstance(self.toolsets, (list, tuple)):
+                raise PluginError(
+                    f"plugin '{label}': tool '{self.name}' – toolsets must be a list of "
+                    f"tool set names, got {type(self.toolsets).__name__}"
+                )
+            unknown = [name for name in self.toolsets if name not in KNOWN_TOOLSETS]
+            if unknown:
+                # A misspelled set would hide the tool under every selection, without a word.
+                raise PluginError(
+                    f"plugin '{label}': tool '{self.name}' – unknown tool set "
+                    + ", ".join(repr(name) for name in unknown)
+                    + "; known tool sets: " + ", ".join(KNOWN_TOOLSETS)
+                )
         return self
 
 

@@ -53,7 +53,12 @@
           }
         },
         "required": []
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_projects",
@@ -62,7 +67,12 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_module_text",
@@ -99,7 +109,12 @@
         "required": [
           "projectName"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_outgoing_calls",
@@ -136,7 +151,8 @@
         "required": [
           "projectName"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_picture_export",
@@ -162,7 +178,8 @@
           "projectName",
           "fqn"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_outgoing_structures",
@@ -199,7 +216,8 @@
         "required": [
           "projectName"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_metadata_details",
@@ -221,7 +239,12 @@
           "projectName",
           "fqn"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_find_references",
@@ -255,7 +278,8 @@
           "projectName",
           "fqn"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_metadata_objects",
@@ -282,7 +306,12 @@
           }
         },
         "required": []
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_validate_query",
@@ -319,7 +348,12 @@
         "required": [
           "projectName"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_go_to_definition",
@@ -353,7 +387,8 @@
           "projectName",
           "modulePath"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_symbol_info",
@@ -387,7 +422,12 @@
           "projectName",
           "modulePath"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_support_status",
@@ -409,7 +449,12 @@
           "projectName",
           "objectFqn"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_form_identifiers",
@@ -446,7 +491,86 @@
           "projectName",
           "formFqn"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
+    },
+    {
+      "name": "edt_apply_fix",
+      "description": "Apply EDT's own quick fix - the one the Problems view offers - to one marker of a check. A dry-run finds the marker and lists the fix variants with their descriptions; apply=true runs the chosen variant, then returns the changed lines of the file and the number of markers of the check that remain at that place after a fresh validation. For a check without a quick fix the answer says so (hasFix=false): change the code by hand. Dry-run by default.",
+      "descriptionRu": "Применить штатное исправление EDT – то, что предлагает панель \"Ошибки\", – к одному маркеру проверки. Предпросмотр находит маркер и перечисляет варианты исправления с описанием; apply=true выполняет выбранный вариант и возвращает измененные строки файла и число маркеров проверки, оставшихся на этом месте после новой проверки. Для проверки без штатного исправления ответ говорит об этом (hasFix=false): код меняется вручную. По умолчанию предпросмотр.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "checkId": {
+            "type": "string",
+            "description": "Check of the marker to fix, as edt_project_errors reports it: a short code such as SU100 or a check id such as module-consecutive-blank-lines"
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Object or form whose marker to fix, the same filter edt_project_errors takes. Optional, but needed when the check fires in several places."
+          },
+          "line": {
+            "type": "integer",
+            "description": "Line of the marker, when the check fires more than once in the scope. Optional."
+          },
+          "variant": {
+            "type": "integer",
+            "description": "Index of the fix variant from the dry-run. Optional when EDT offers one variant."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default): find the marker and list the fix variants EDT offers, change nothing. true: run the chosen variant, validate again and report the changed lines and whether the marker is gone; requires a configured token."
+          }
+        },
+        "required": [
+          "projectName",
+          "checkId"
+        ]
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
+    },
+    {
+      "name": "edt_property_reference",
+      "description": "READ: list the properties a write tool can set on one target - a common module, a field or a form item - with each property's type, the accepted enum values and the current value, and name the tool that takes them. Call it before edt_modify_object, edt_modify_attribute or edt_modify_form_item instead of trying spellings: the list is built by the code that validates the write, for this very object, so a property the object lacks is not listed.",
+      "descriptionRu": "ЧТЕНИЕ: перечислить свойства, которые инструмент записи может установить у одной цели – общего модуля, реквизита или элемента формы: тип каждого свойства, допустимые значения перечисления и текущее значение, а также имя инструмента, который их принимает. Вызывать перед edt_modify_object, edt_modify_attribute или edt_modify_form_item вместо перебора написаний: перечень строит код, который проверяет запись, для этого же объекта, поэтому отсутствующее у объекта свойство в перечень не попадает.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name"
+          },
+          "fqn": {
+            "type": "string",
+            "description": "What to describe: a common module (CommonModule.Api), a field (Catalog.Products.Attribute.Weight, InformationRegister.Rates.Resource.Rate) or a form (Catalog.Products.Form.ItemForm, ExternalDataProcessor.Check.Form.Main)"
+          },
+          "item": {
+            "type": "string",
+            "description": "Form item name, when fqn is a form. Omitted on a form lists its item names."
+          }
+        },
+        "required": [
+          "projectName",
+          "fqn"
+        ]
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_read_html_template",
@@ -473,7 +597,8 @@
           "templateFqn",
           "language"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_replace_html_template",
@@ -517,12 +642,13 @@
           "language",
           "text"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_add_template",
-      "description": "WRITE: create a DATA_COMPOSITION_SCHEMA template on a metadata object (report, external report, data processor) with an empty schema, optionally as the report's main data composition schema. Fill the schema with edt_replace_dcs, then check it with edt_project_errors. Dry-run by default; apply=true creates. Token-gated.",
-      "descriptionRu": "ЗАПИСЬ: создать у объекта метаданных (отчет, внешний отчет, обработка) макет DATA_COMPOSITION_SCHEMA с пустой схемой, при необходимости назначив его основной схемой компоновки отчета. Схему заполняет edt_replace_dcs, проверяет edt_project_errors. По умолчанию dry-run; apply=true создает. Требует токен.",
+      "description": "WRITE: create a template on a metadata object (report, external report, data processor, document, catalog): a DATA_COMPOSITION_SCHEMA with an empty schema, optionally the report's main one, or a SPREADSHEET_DOCUMENT - an empty print form layout. Fill a schema with edt_replace_dcs or edt_modify_dcs, a spreadsheet with edt_write_spreadsheet. EDT validation does not check the XML of either; the build (edt_dump_external_object) does. Dry-run by default; apply=true creates. Token-gated.",
+      "descriptionRu": "ЗАПИСЬ: создать макет у объекта метаданных (отчет, внешний отчет, обработка, документ, справочник): DATA_COMPOSITION_SCHEMA с пустой схемой, при необходимости основной схемой отчета, или SPREADSHEET_DOCUMENT – пустой макет печатной формы. Схему заполняют edt_replace_dcs или edt_modify_dcs, табличный макет – edt_write_spreadsheet. XML обоих проверяет не проверка EDT, а сборка (edt_dump_external_object). По умолчанию dry-run; apply=true создает. Требует токен.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -540,7 +666,7 @@
           },
           "templateType": {
             "type": "string",
-            "description": "DataCompositionSchema (default; alias СхемаКомпоновкиДанных). Other template types are not created by this tool yet."
+            "description": "DataCompositionSchema (default; alias СхемаКомпоновкиДанных) or SpreadsheetDocument (alias ТабличныйДокумент) - the layout of a print form. Other template types are not created by this tool yet."
           },
           "setMainSchema": {
             "type": "boolean",
@@ -560,7 +686,11 @@
           "ownerFqn",
           "name"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report"
+      ]
     },
     {
       "name": "edt_read_dcs",
@@ -582,12 +712,15 @@
           "projectName",
           "templateFqn"
         ]
-      }
+      },
+      "toolsets": [
+        "report"
+      ]
     },
     {
       "name": "edt_replace_dcs",
-      "description": "WRITE: replace the complete source of one existing DATA_COMPOSITION_SCHEMA template with designer XML of the schema; EDT reloads the schema from the file. Dry-run returns oldText/newText, sourceHash and resultHash. Apply requires the current expectedHash and force=true, writes only the schema file and rereads it. Run edt_project_errors afterwards: a malformed schema shows up there. Create the template with edt_add_template. Requires a configured write token.",
-      "descriptionRu": "ЗАПИСЬ: заменить полный текст существующего макета DATA_COMPOSITION_SCHEMA на XML схемы в формате конфигуратора; EDT перечитывает схему из файла. Dry-run возвращает oldText/newText, sourceHash и resultHash. Для apply нужны актуальный expectedHash и force=true; записывается только файл схемы, результат перечитывается. После записи запустить edt_project_errors: ошибки схемы видны там. Макет создает edt_add_template. Нужен токен записи.",
+      "description": "WRITE: replace the complete source of one existing DATA_COMPOSITION_SCHEMA template with designer XML of the schema; EDT reloads the schema from the file. Dry-run returns oldText/newText, sourceHash and resultHash. Apply requires the current expectedHash and force=true, writes only the schema file and rereads it. EDT validation does not check the schema XML against the platform format: build the report or data processor with edt_dump_external_object to check it. To add a field or a parameter, edt_modify_dcs takes just the addition. Create the template with edt_add_template. Requires a configured write token.",
+      "descriptionRu": "ЗАПИСЬ: заменить полный текст существующего макета DATA_COMPOSITION_SCHEMA на XML схемы в формате конфигуратора; EDT перечитывает схему из файла. Dry-run возвращает oldText/newText, sourceHash и resultHash. Для apply нужны актуальный expectedHash и force=true; записывается только файл схемы, результат перечитывается. Проверка EDT не сверяет XML схемы с форматом платформы: результат проверяет сборка отчета или обработки (edt_dump_external_object). Поле или параметр добавляет edt_modify_dcs без передачи всей схемы. Макет создает edt_add_template. Нужен токен записи.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -621,7 +754,198 @@
           "templateFqn",
           "text"
         ]
-      }
+      },
+      "toolsets": [
+        "report"
+      ]
+    },
+    {
+      "name": "edt_modify_dcs",
+      "description": "WRITE: add fields to a data set and parameters to an existing DATA_COMPOSITION_SCHEMA template without sending the whole schema XML. The additions are inserted into the saved designer XML, the rest of the file keeps its bytes, and the dry-run shows the changed region. EDT validation does not check the schema XML: build the report or data processor with edt_dump_external_object to check the result. Dry-run by default.",
+      "descriptionRu": "ЗАПИСЬ: добавить поля набора данных и параметры в существующий макет DATA_COMPOSITION_SCHEMA, не передавая XML схемы целиком. Добавления вставляются в сохраненный XML конфигуратора, остальная часть файла не меняется, предпросмотр показывает измененный участок. Проверка EDT не сверяет XML схемы с форматом платформы: результат проверяет сборка отчета или обработки (edt_dump_external_object). По умолчанию предпросмотр.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "Loaded EDT project name."
+          },
+          "templateFqn": {
+            "type": "string",
+            "description": "Existing schema template, e.g. ExternalReport.Demo.Template.MainSchema or Report.Sales.Template.MainSchema."
+          },
+          "edits": {
+            "type": "array",
+            "description": "Additions, applied in order. addField: dataSet, dataPath, optional field (defaults to dataPath) and titleRu - adds a field to a data set. addParameter: name, optional titleRu and type - String(N), Number(D,F), Date, DateTime, Boolean or StandardPeriod (Russian names accepted; default String). A duplicate field or parameter is refused.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "description": "addField or addParameter",
+                  "enum": [
+                    "addField",
+                    "addParameter"
+                  ]
+                },
+                "dataSet": {
+                  "type": "string",
+                  "description": "dataSet"
+                },
+                "dataPath": {
+                  "type": "string",
+                  "description": "dataPath"
+                },
+                "field": {
+                  "type": "string",
+                  "description": "field"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "name"
+                },
+                "titleRu": {
+                  "type": "string",
+                  "description": "titleRu"
+                },
+                "type": {
+                  "type": "string",
+                  "description": "type"
+                }
+              },
+              "required": [
+                "action"
+              ]
+            }
+          },
+          "expectedHash": {
+            "type": "string",
+            "description": "sourceHash from the dry-run. Required for apply."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default): return the plan, the added lines and sourceHash without writing. true: write; requires expectedHash and a configured token."
+          }
+        },
+        "required": [
+          "projectName",
+          "templateFqn",
+          "edits"
+        ]
+      },
+      "toolsets": [
+        "report"
+      ]
+    },
+    {
+      "name": "edt_read_spreadsheet",
+      "description": "READ: a SPREADSHEET_DOCUMENT template (a print form layout) as column widths and named row areas of cells - text, parameter or template, with bold, font size, alignment, border, colspan and wrap. The answer is the input of edt_write_spreadsheet, plus sourceHash for its apply; unsupported names what the file also has and the description does not carry (pictures, colors, drawings). See it with edt_spreadsheet_render.",
+      "descriptionRu": "ЧТЕНИЕ: макет SPREADSHEET_DOCUMENT (печатная форма) как ширины колонок и именованные области строк из ячеек – текст, параметр или шаблон, с жирностью, размером шрифта, выравниванием, рамкой, объединением и переносом. Ответ – это вход edt_write_spreadsheet и sourceHash для записи; unsupported называет то, что в файле есть, но в описание не входит (картинки, цвета, рисунки). Увидеть макет – edt_spreadsheet_render.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "Loaded EDT project name."
+          },
+          "templateFqn": {
+            "type": "string",
+            "description": "Existing spreadsheet template, e.g. ExternalDataProcessor.Invoice.Template.PrintForm or Document.Order.Template.Invoice."
+          }
+        },
+        "required": [
+          "projectName",
+          "templateFqn"
+        ]
+      },
+      "toolsets": [
+        "processor",
+        "report"
+      ]
+    },
+    {
+      "name": "edt_write_spreadsheet",
+      "description": "WRITE: replace the whole content of a SPREADSHEET_DOCUMENT template (a print form layout) with column widths and named row areas of cells. Start from edt_read_spreadsheet, change the areas and pass them back; create the template with edt_add_template templateType=SpreadsheetDocument. Fill it in code: Макет.ПолучитьОбласть(\"Name\"), Область.Параметры.Name = ..., ТабличныйДокумент.Вывести(Область). Dry-run by default; check the result with edt_spreadsheet_render and by building the object.",
+      "descriptionRu": "ЗАПИСЬ: заменить все содержимое макета SPREADSHEET_DOCUMENT (печатная форма) ширинами колонок и именованными областями строк из ячеек. Начинать с edt_read_spreadsheet, менять области и передавать их обратно; макет создает edt_add_template с templateType=SpreadsheetDocument. Заполнение в коде: Макет.ПолучитьОбласть(\"Имя\"), Область.Параметры.Имя = ..., ТабличныйДокумент.Вывести(Область). По умолчанию предпросмотр; результат проверяют edt_spreadsheet_render и сборка объекта.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "Loaded EDT project name."
+          },
+          "templateFqn": {
+            "type": "string",
+            "description": "Existing spreadsheet template, e.g. ExternalDataProcessor.Invoice.Template.PrintForm or Document.Order.Template.Invoice."
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "description": "Column widths, index = column. Missing columns take the default width 72."
+          },
+          "areas": {
+            "type": "array",
+            "description": "Named row areas in order - what ПолучитьОбласть(\"Name\") returns. Each is {name, rows}, rows is a list of rows, a row is a list of cells from column 0. A cell is an object with exactly one of text, parameter (filled by Область.Параметры.Name) or template (text with [Name] substitutions), and optional bold, fontSize, align (Left, Center, Right), border (thin line on all sides), colspan and wrap.",
+            "items": {
+              "type": "object"
+            }
+          },
+          "dropUnsupported": {
+            "type": "boolean",
+            "description": "true lets the write drop what the current file has and the description does not carry (edt_read_spreadsheet lists it in unsupported). Default false: refused."
+          },
+          "expectedHash": {
+            "type": "string",
+            "description": "sourceHash of the dry-run. Required for apply."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default): build the file and show the change and sourceHash. true: write; requires expectedHash and a configured token."
+          }
+        },
+        "required": [
+          "projectName",
+          "templateFqn",
+          "areas"
+        ]
+      },
+      "toolsets": [
+        "processor",
+        "report"
+      ]
+    },
+    {
+      "name": "edt_spreadsheet_render",
+      "description": "READ: draw a SPREADSHEET_DOCUMENT template to a PNG the way the template editor shows it: column widths, cell text, <Parameter> for a parameter, bold, alignment, borders, merged cells and the names of the row areas on the left. Returns the PNG path and size; unsupported names what the picture leaves out (pictures, colors, drawings). Needs no platform and no display.",
+      "descriptionRu": "ЧТЕНИЕ: нарисовать макет SPREADSHEET_DOCUMENT в PNG так, как его показывает редактор макетов: ширины колонок, текст ячеек, <Параметр> для параметра, жирность, выравнивание, рамки, объединения и имена областей строк слева. Возвращает путь к PNG и размер; unsupported называет то, чего на картинке нет (картинки, цвета, рисунки). Платформа и экран не нужны.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "Loaded EDT project name."
+          },
+          "templateFqn": {
+            "type": "string",
+            "description": "Existing spreadsheet template, e.g. ExternalDataProcessor.Invoice.Template.PrintForm or Document.Order.Template.Invoice."
+          },
+          "outPath": {
+            "type": "string",
+            "description": "Absolute PNG output path. Optional - a temporary file by default."
+          }
+        },
+        "required": [
+          "projectName",
+          "templateFqn"
+        ]
+      },
+      "toolsets": [
+        "processor",
+        "report"
+      ]
     },
     {
       "name": "edt_applications",
@@ -660,7 +984,8 @@
         "required": [
           "projectName"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_form_structure",
@@ -694,7 +1019,12 @@
           "projectName",
           "formFqn"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_form_render",
@@ -752,7 +1082,12 @@
           "projectName",
           "formFqn"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_add_attribute",
@@ -819,7 +1154,8 @@
           "name",
           "type"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_add_route",
@@ -871,7 +1207,8 @@
           "name",
           "template"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_infobase_config_state",
@@ -904,7 +1241,8 @@
         "required": [
           "infobase"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_infobase_dump",
@@ -961,7 +1299,8 @@
         "required": [
           "outputPath"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_designer_agent",
@@ -1003,7 +1342,8 @@
           }
         },
         "required": []
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_check_info",
@@ -1026,7 +1366,12 @@
           }
         },
         "required": []
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_delete_extension",
@@ -1072,7 +1417,8 @@
           "infobase",
           "name"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_infobase_sessions",
@@ -1144,7 +1490,8 @@
         "required": [
           "server"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_infobase_maintenance",
@@ -1222,7 +1569,8 @@
           "server",
           "infobase"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_update_database_config",
@@ -1276,7 +1624,8 @@
         "required": [
           "infobase"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_add_form",
@@ -1323,7 +1672,11 @@
           "ownerFqn",
           "name"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report"
+      ]
     },
     {
       "name": "edt_add_form_attribute",
@@ -1367,7 +1720,11 @@
           "name",
           "type"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report"
+      ]
     },
     {
       "name": "edt_modify_form_attribute",
@@ -1414,7 +1771,11 @@
           "formFqn",
           "name"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report"
+      ]
     },
     {
       "name": "edt_remove_form_attribute",
@@ -1453,7 +1814,11 @@
           "formFqn",
           "name"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report"
+      ]
     },
     {
       "name": "edt_add_form_command",
@@ -1500,7 +1865,11 @@
           "formFqn",
           "name"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report"
+      ]
     },
     {
       "name": "edt_add_form_handler",
@@ -1543,7 +1912,11 @@
           "formFqn",
           "event"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report"
+      ]
     },
     {
       "name": "edt_modify_form_command",
@@ -1586,7 +1959,11 @@
           "formFqn",
           "name"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report"
+      ]
     },
     {
       "name": "edt_remove_form_command",
@@ -1621,7 +1998,11 @@
           "formFqn",
           "name"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report"
+      ]
     },
     {
       "name": "edt_add_form_item",
@@ -1820,7 +2201,11 @@
           "formFqn",
           "kind"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report"
+      ]
     },
     {
       "name": "edt_modify_form_item",
@@ -1990,7 +2375,11 @@
           "formFqn",
           "name"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report"
+      ]
     },
     {
       "name": "edt_move_form_item",
@@ -2038,7 +2427,11 @@
           "formFqn",
           "name"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report"
+      ]
     },
     {
       "name": "edt_remove_form_item",
@@ -2073,7 +2466,11 @@
           "formFqn",
           "name"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report"
+      ]
     },
     {
       "name": "edt_add_method",
@@ -2127,7 +2524,12 @@
           "projectName",
           "methodText"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_move_method",
@@ -2185,7 +2587,12 @@
           "projectName",
           "methodName"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_replace_method",
@@ -2236,7 +2643,12 @@
           "methodName",
           "methodText"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_replace_module_fragment",
@@ -2288,7 +2700,12 @@
         "required": [
           "projectName"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_delete_method",
@@ -2330,7 +2747,12 @@
           "projectName",
           "methodName"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_remove_attribute",
@@ -2365,7 +2787,8 @@
           "ownerFqn",
           "name"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_modify_attribute",
@@ -2431,7 +2854,8 @@
           "ownerFqn",
           "name"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_rename",
@@ -2481,7 +2905,8 @@
           "projectName",
           "newName"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_create_object",
@@ -2524,7 +2949,8 @@
           "objectType",
           "name"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_modify_object",
@@ -2558,7 +2984,8 @@
           "projectName",
           "fqn"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_update_subsystem",
@@ -2602,7 +3029,8 @@
           "projectName",
           "fqn"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_create_extension",
@@ -2641,7 +3069,10 @@
           "baseProjectName",
           "namePrefix"
         ]
-      }
+      },
+      "toolsets": [
+        "extension"
+      ]
     },
     {
       "name": "edt_create_external_object",
@@ -2679,7 +3110,11 @@
         "required": [
           "name"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report"
+      ]
     },
     {
       "name": "edt_import_external_object",
@@ -2717,7 +3152,8 @@
           "file",
           "projectName"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_dump_external_object",
@@ -2760,7 +3196,11 @@
           "objectName",
           "targetPath"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report"
+      ]
     },
     {
       "name": "edt_infobases",
@@ -2769,7 +3209,8 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_update_infobase",
@@ -2834,7 +3275,8 @@
         "required": [
           "projectName"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_platform_installations",
@@ -2843,7 +3285,12 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_register_platform",
@@ -2857,7 +3304,8 @@
             "description": "What to register: omit or \"auto\" = every full (thick-client) install found on disk (best-first); \"prefer-full\" = also DROP thin builds that shadow a full one in the same version line (so EDT resolves the full install for dump/update) then refresh; a version like 8.5.1.1302; or an absolute path to a version directory."
           }
         }
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_platform_build_readiness",
@@ -2879,7 +3327,8 @@
           }
         },
         "additionalProperties": false
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_create_infobase",
@@ -2913,7 +3362,8 @@
           "name",
           "path"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_register_infobase",
@@ -2948,7 +3398,8 @@
           "connect",
           "version"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_build_extension",
@@ -2982,7 +3433,10 @@
           "projectName",
           "outputPath"
         ]
-      }
+      },
+      "toolsets": [
+        "extension"
+      ]
     },
     {
       "name": "edt_extension_properties",
@@ -3057,7 +3511,8 @@
           }
         },
         "required": []
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_platform_help",
@@ -3083,7 +3538,12 @@
             "description": "Max search hits (default 15)."
           }
         }
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_delete_object",
@@ -3113,7 +3573,12 @@
           "projectName",
           "targetFqn"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_delete_project",
@@ -3142,7 +3607,8 @@
         "required": [
           "projectName"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_import_project",
@@ -3167,7 +3633,8 @@
         "required": [
           "path"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_clean_project",
@@ -3196,7 +3663,8 @@
         "required": [
           "projectName"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_search_modules",
@@ -3233,7 +3701,12 @@
         "required": [
           "pattern"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_search_queries",
@@ -3274,7 +3747,12 @@
         "required": [
           "pattern"
         ]
-      }
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     },
     {
       "name": "edt_adopt_object",
@@ -3304,7 +3782,10 @@
           "projectName",
           "fqn"
         ]
-      }
+      },
+      "toolsets": [
+        "extension"
+      ]
     },
     {
       "name": "edt_debug_attach",
@@ -3337,7 +3818,8 @@
         "required": [
           "serverUrl"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_debug_detach",
@@ -3354,7 +3836,8 @@
         "required": [
           "sessionId"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_debug_inspect",
@@ -3371,7 +3854,8 @@
         "required": [
           "sessionId"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_debug_control",
@@ -3397,7 +3881,8 @@
           "sessionId",
           "action"
         ]
-      }
+      },
+      "toolsets": []
     },
     {
       "name": "edt_evaluate",
@@ -3432,7 +3917,30 @@
           "expression",
           "allowCodeExecution"
         ]
-      }
+      },
+      "toolsets": []
+    },
+    {
+      "name": "edt_tool_help",
+      "description": "READ: the full description and the argument schema of one tool, by its name. The server also describes a tool outside the active tool set (EDT_BRIDGE_TOOLSET): the answer then states that a call of it is refused and lists the tool sets that contain it. The answer contains name, description, inputSchema, toolsets and available. For an unknown name the server returns a refusal with the nearest tool names.",
+      "descriptionRu": "ЧТЕНИЕ: полное описание и схема аргументов одного инструмента по его имени. Сервер описывает и инструмент вне действующего набора (EDT_BRIDGE_TOOLSET): в этом случае в ответе указано, что вызов инструмента отклоняется, и перечислены наборы, в которые он входит. Ответ содержит name, description, inputSchema, toolsets и available. Для неизвестного имени сервер возвращает отказ с ближайшими именами инструментов.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "tool": {
+            "type": "string",
+            "description": "Name of the tool to describe, e.g. edt_project_errors"
+          }
+        },
+        "required": [
+          "tool"
+        ]
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
     }
   ],
   "version": "0.40.0"

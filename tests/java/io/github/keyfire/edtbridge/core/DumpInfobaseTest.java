@@ -70,4 +70,17 @@ class DumpInfobaseTest {
         assertNull(DumpInfobase.hint(log, false));
         assertNull(DumpInfobase.hint("Ошибка: нет лицензии", true));
     }
+
+    @Test
+    void failingTemplateIsBlamedOnTheTemplateEvenWithAConfiguredInfobase() {
+        String log = "Исключение XDTO произошло при чтении файла- C:\\t\\xml\\ExternalReports\\R\\Templates\\Main\\Ext\\Template.xml.";
+        String configured = DumpInfobase.hint(log, false);
+        assertNotNull(configured);
+        assertTrue(configured.contains("template"));
+        assertFalse(configured.contains(DumpInfobase.ENV));
+        String empty = DumpInfobase.hint(log, true);
+        assertTrue(empty.startsWith("the failing file is a template"));
+        assertTrue(empty.contains(DumpInfobase.ENV));
+        assertNotNull(DumpInfobase.hint("XDTO exception while reading file - /t/xml/Reports/R/Templates/Main/Ext/Template.xml", false));
+    }
 }
