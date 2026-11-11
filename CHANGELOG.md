@@ -17,28 +17,25 @@ to the code and the reasoning behind it.
 
 ### Added
 
-- `edt_adopt_object` adopts members of a top object: a form together with its form model, an
-  attribute, a tabular section (`Document.Order.Form.DocumentForm`). Before, only top objects were
-  found, so a form could not be adopted and its interceptions never ran. An unknown FQN names the
-  accepted forms.
-- `edt_test_form`, served by the wrapper: runs the main form of a built .epf or .erf in a fresh copy
-  of the test infobase (`EDT_BRIDGE_TEST_INFOBASE`) and returns the messages, the error dialog and the
-  exception text of a pressed command or a scenario.
-- `edt_add_template`, `edt_read_dcs` and `edt_replace_dcs`: create a data composition schema template
-  (optionally as a report's main schema), read its designer XML and replace it exactly. A report built
-  this way has no custom form and opens with the configuration's common report form.
-- `edt_dump_external_object` builds on the disk route in a copy of the file infobase named by
-  `EDT_BRIDGE_DUMP_INFOBASE`. An external object that uses types of its base configuration (a
-  catalog or enumeration reference) now builds: in the empty throwaway infobase the import failed
-  with an XDTO exception on the file that declares such a type, and that failure now says so.
+- `edt_adopt_object` adopts a form, an attribute or a tabular section of an object, for example
+  `Document.Order.Form.DocumentForm`. A form comes with its form model, so the extension can
+  intercept its handlers. ([#74](https://github.com/keyfire/edt-bridge/pull/74))
+- `edt_test_form` runs the main form of a built .epf or .erf in a fresh copy of a test infobase. It
+  presses a command or plays a scenario and returns the messages and the error text. The wrapper
+  serves it, and `EDT_BRIDGE_TEST_INFOBASE` names the infobase. ([#74](https://github.com/keyfire/edt-bridge/pull/74))
+- `edt_add_template` creates a data composition schema template and can make it the report's main
+  schema. `edt_read_dcs` and `edt_replace_dcs` read and replace the schema XML. A report built this
+  way opens with the configuration's common report form. ([#74](https://github.com/keyfire/edt-bridge/pull/74))
+- `edt_dump_external_object` can build in a copy of the infobase named by `EDT_BRIDGE_DUMP_INFOBASE`.
+  Use it when the object refers to catalogs or enumerations of its base configuration: an empty
+  infobase does not know those types, and the build fails with an XDTO error. ([#74](https://github.com/keyfire/edt-bridge/pull/74))
 
 ### Fixed
 
-- `edt_add_method` refuses a form module that has no form model beside it, and an object module
-  without its object: such a module parses and even counts as an interception, yet never runs.
-  The hint for a missing owner folder now says to adopt the owner in an extension.
-- `edt_project_errors` with an fqn that is not in the project model says so instead of waiting for
-  a validation that never starts.
+- `edt_add_method` refuses a form module with no form model next to it. Such a module parsed and
+  counted as an interception, but never ran. ([#74](https://github.com/keyfire/edt-bridge/pull/74))
+- `edt_project_errors` says when the requested object is not in the project. It used to wait for a
+  check that never started. ([#74](https://github.com/keyfire/edt-bridge/pull/74))
 
 ## 2026-11-07 – 0.37.3, 0.38.0, 0.38.1, 0.38.2
 
