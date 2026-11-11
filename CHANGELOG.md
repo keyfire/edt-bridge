@@ -13,7 +13,7 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
-## Unreleased
+## 2026-11-11 – 0.39.0, 0.40.0, 0.41.0
 
 ### Added
 
@@ -44,6 +44,21 @@ to the code and the reasoning behind it.
   sending the whole XML. The rest of the file keeps its bytes, a duplicate field or parameter is
   refused, and apply needs the `sourceHash` of the dry-run.
   ([#76](https://github.com/keyfire/edt-bridge/pull/76))
+- `edt_replace_module_fragment` edits a module outside its methods: directives, module variables,
+  regions, a `#If` block. A batch of fragments opens and closes a region in one call, and the module
+  has to parse afterwards. ([#75](https://github.com/keyfire/edt-bridge/pull/75))
+- `edt_adopt_object` adopts a form, an attribute or a tabular section of an object, for example
+  `Document.Order.Form.DocumentForm`. A form comes with its form model, so the extension can
+  intercept its handlers. ([#74](https://github.com/keyfire/edt-bridge/pull/74))
+- `edt_test_form` runs the main form of a built .epf or .erf in a fresh copy of a test infobase. It
+  presses a command or plays a scenario and returns the messages and the error text. The wrapper
+  serves it, and `EDT_BRIDGE_TEST_INFOBASE` names the infobase. ([#74](https://github.com/keyfire/edt-bridge/pull/74))
+- `edt_add_template` creates a data composition schema template and can make it the report's main
+  schema. `edt_read_dcs` and `edt_replace_dcs` read and replace the schema XML. A report built this
+  way opens with the configuration's common report form. ([#74](https://github.com/keyfire/edt-bridge/pull/74))
+- `edt_dump_external_object` can build in a copy of the infobase named by `EDT_BRIDGE_DUMP_INFOBASE`.
+  Use it when the object refers to catalogs or enumerations of its base configuration: an empty
+  infobase does not know those types, and the build fails with an XDTO error. ([#74](https://github.com/keyfire/edt-bridge/pull/74))
 
 ### Changed
 
@@ -61,29 +76,6 @@ to the code and the reasoning behind it.
   schema: EDT validation does not check the schema XML, the build does. When a build fails on a
   template file, the hint now names the template instead of the base configuration types.
   ([#76](https://github.com/keyfire/edt-bridge/pull/76))
-
-## 2026-11-11 – 0.39.0, 0.40.0
-
-### Added
-
-- `edt_replace_module_fragment` edits a module outside its methods: directives, module variables,
-  regions, a `#If` block. A batch of fragments opens and closes a region in one call, and the module
-  has to parse afterwards. ([#75](https://github.com/keyfire/edt-bridge/pull/75))
-- `edt_adopt_object` adopts a form, an attribute or a tabular section of an object, for example
-  `Document.Order.Form.DocumentForm`. A form comes with its form model, so the extension can
-  intercept its handlers. ([#74](https://github.com/keyfire/edt-bridge/pull/74))
-- `edt_test_form` runs the main form of a built .epf or .erf in a fresh copy of a test infobase. It
-  presses a command or plays a scenario and returns the messages and the error text. The wrapper
-  serves it, and `EDT_BRIDGE_TEST_INFOBASE` names the infobase. ([#74](https://github.com/keyfire/edt-bridge/pull/74))
-- `edt_add_template` creates a data composition schema template and can make it the report's main
-  schema. `edt_read_dcs` and `edt_replace_dcs` read and replace the schema XML. A report built this
-  way opens with the configuration's common report form. ([#74](https://github.com/keyfire/edt-bridge/pull/74))
-- `edt_dump_external_object` can build in a copy of the infobase named by `EDT_BRIDGE_DUMP_INFOBASE`.
-  Use it when the object refers to catalogs or enumerations of its base configuration: an empty
-  infobase does not know those types, and the build fails with an XDTO error. ([#74](https://github.com/keyfire/edt-bridge/pull/74))
-
-### Fixed
-
 - `edt_add_method` refuses a form module with no form model next to it. Such a module parsed and
   counted as an interception, but never ran. ([#74](https://github.com/keyfire/edt-bridge/pull/74))
 - `edt_project_errors` says when the requested object is not in the project. It used to wait for a
