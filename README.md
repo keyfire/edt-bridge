@@ -421,6 +421,7 @@ alongside the bridge tools and answers without forwarding anything.
 | Wrapper tool | What it does |
 |--------------|--------------|
 | `edt_open_gui` | Transfers the workspace to the GUI EDT. It stops the headless EDT, waits for its processes to exit, and opens EDT on the same workspace. The port closes before the runtime exits, so the processes must be allowed to finish. `force` terminates processes that do not stop in time, including the parent keepalive shell. The bridge becomes available once GUI EDT loads the plugin. |
+| `edt_test_form` | Runs the main form of a built .epf or .erf in a fresh copy of the test infobase named by `EDT_BRIDGE_TEST_INFOBASE` through the platform's native test client (Linux with Xvfb): presses one command or plays a scenario and returns the messages, the error dialog and the exception text. The infobase itself is never changed. Served by the wrapper; no EDT needed. |
 
 ### Placement, properties and validation snapshots
 

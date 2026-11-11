@@ -17,6 +17,13 @@ to the code and the reasoning behind it.
 
 ### Added
 
+- `edt_adopt_object` adopts members of a top object: a form together with its form model, an
+  attribute, a tabular section (`Document.Order.Form.DocumentForm`). Before, only top objects were
+  found, so a form could not be adopted and its interceptions never ran. An unknown FQN names the
+  accepted forms.
+- `edt_test_form`, served by the wrapper: runs the main form of a built .epf or .erf in a fresh copy
+  of the test infobase (`EDT_BRIDGE_TEST_INFOBASE`) and returns the messages, the error dialog and the
+  exception text of a pressed command or a scenario.
 - `edt_add_template`, `edt_read_dcs` and `edt_replace_dcs`: create a data composition schema template
   (optionally as a report's main schema), read its designer XML and replace it exactly. A report built
   this way has no custom form and opens with the configuration's common report form.
@@ -24,6 +31,14 @@ to the code and the reasoning behind it.
   `EDT_BRIDGE_DUMP_INFOBASE`. An external object that uses types of its base configuration (a
   catalog or enumeration reference) now builds: in the empty throwaway infobase the import failed
   with an XDTO exception on the file that declares such a type, and that failure now says so.
+
+### Fixed
+
+- `edt_add_method` refuses a form module that has no form model beside it, and an object module
+  without its object: such a module parses and even counts as an interception, yet never runs.
+  The hint for a missing owner folder now says to adopt the owner in an extension.
+- `edt_project_errors` with an fqn that is not in the project model says so instead of waiting for
+  a validation that never starts.
 
 ## 2026-11-07 – 0.37.3, 0.38.0, 0.38.1, 0.38.2
 
