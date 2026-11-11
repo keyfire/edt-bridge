@@ -18,6 +18,7 @@ Configuration (CLI flags override the environment):
     EDT_BRIDGE_EDT_DIR        EDT install dir (the folder with 1cedtcli and dropins); auto-detected when omitted
     EDT_BRIDGE_START_TIMEOUT  seconds to wait for a starting backend (default 360)
     EDT_BRIDGE_AUTOSTART      set to 0/false to never launch anything (proxy-only)
+    EDT_BRIDGE_TOOLSET        tool sets to list and run (processor, report, extension); empty - all tools
 
 Registration in Claude Code:
     claude mcp add edt-bridge -- edt-bridge-mcp --workspace <path-to-edt-workspace>
@@ -45,7 +46,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
 from . import __version__
-from . import cli, form_run, i18n, plugins
+from . import cli, form_run, i18n, plugins, toolsets
 
 PROTOCOL_FALLBACK = "2024-11-05"
 
@@ -1029,6 +1030,8 @@ LOCAL_TOOLS = [
                 },
             },
         },
+        # Outside every tool set: it ends the headless session a job runs in, for a person.
+        "toolsets": [],
     },
     form_run.DESCRIPTOR,
 ]
@@ -1097,17 +1100,60 @@ class StdioServer:
         elif self._plugin_tools:
             log(f"plugins add {len(self._plugin_tools)} tool(s): "
                 + ", ".join(sorted(self._plugin_tools)))
+        self._toolset = toolsets.active()
+        #: The sets each bridge tool belongs to, as the descriptors listed so far declare.
+        self._bridge_sets: dict[str, list] = {}
+        self._unlabelled_noted = False
+        if self._toolset.problem:
+            log(self._toolset.problem)
+        elif self._toolset.limits:
+            log("tool sets: " + ", ".join(self._toolset.names))
 
     def _local_descriptors(self) -> list[dict]:
-        """What the wrapper serves by itself: its own tools plus the plugin tools."""
+        """What the wrapper serves by itself: its own tools plus the plugin tools.
+
+        All of them, whatever tool set is selected: the names here are never forwarded, and
+        edt_tool_help describes a tool outside the set too. A listing goes through _shown.
+        """
         return list(LOCAL_TOOLS) + [t.descriptor() for t in self._plugin_tools.values()]
+
+    def _local_descriptor(self, name) -> dict | None:
+        """The descriptor of one tool the wrapper serves by itself, or None for any other name."""
+        for tool in self._local_descriptors():
+            if tool["name"] == name:
+                return tool
+        return None
+
+    def _shown(self, tools: list[dict]) -> list[dict]:
+        """The part of a tool list the selected tool sets leave (toolsets.Selection.shows)."""
+        return [tool for tool in tools if self._toolset.shows(tool)]
+
+    def _bridge_shown(self, tools: list[dict]) -> list[dict]:
+        """Narrow a list of bridge descriptors, and remember where each tool belongs.
+
+        The bridge narrows its own list when it was started with the same tool sets. A bridge
+        started without them - a GUI EDT a person opened - answers with every tool, so the
+        selection of this wrapper is applied to its descriptors here, and a later call of a
+        tool that was left out is refused the same way (see handle).
+        """
+        if not self._toolset.limits:
+            return tools
+        labelled = {tool.get("name"): tool["toolsets"] for tool in tools
+                    if isinstance(tool.get("toolsets"), list)}
+        self._bridge_sets = {**self._bridge_sets, **labelled}
+        if len(labelled) < len(tools) and not self._unlabelled_noted:
+            self._unlabelled_noted = True
+            log("some bridge tools do not say which tool sets carry them (a bridge or a catalog "
+                "older than this wrapper?) - they are listed whatever is selected")
+        return self._shown(tools)
 
     def _offline_descriptors(self) -> list[dict]:
         from .catalog import bridge_tools
 
         local = self._local_descriptors()
         names = {tool["name"] for tool in local}
-        return [tool for tool in bridge_tools() if tool["name"] not in names] + local
+        return (self._bridge_shown([tool for tool in bridge_tools() if tool["name"] not in names])
+                + self._shown(local))
 
     # -- frames ----------------------------------------------------------
 
@@ -1179,6 +1225,11 @@ class StdioServer:
             self._result(req_id, {})
             return
         if method == "tools/list":
+            if self._toolset.problem:
+                # Not an empty list and not the whole one: a misspelled set name fails the
+                # listing, the way the bridge itself answers it.
+                self._error(req_id, -32000, self._toolset.problem)
+                return
             if self.backend.is_up():
                 self._forward_tools_list(message, req_id)
                 self._announced_ready = True
@@ -1190,16 +1241,39 @@ class StdioServer:
             self._result(req_id, {"tools": self._offline_descriptors()})
             return
         if method == "tools/call":
+            if self._toolset.problem:
+                self._tool_error(req_id, self._toolset.problem)
+                return
+            arguments = params.get("arguments") or {}
+            described = (self._local_descriptor(arguments.get("tool"))
+                         if params.get("name") == toolsets.HELP_TOOL and isinstance(arguments, dict)
+                         else None)
+            if described is not None:
+                # The bridge describes its own tools; a tool served here is unknown to it.
+                # Before ensure(): the answer is in the wrapper and needs no EDT.
+                self._describe_local(req_id, described, arguments)
+                return
+            local = self._local_descriptor(params.get("name"))
+            if local is not None and not self._toolset.shows(local):
+                self._tool_error(req_id, self._toolset.refusal(local))
+                return
             if params.get("name") in LOCAL_TOOL_NAMES:
                 # Before ensure(): this tool ENDS a headless session, and autostarting one
                 # first would only give it something new to stop.
-                self._call_local(req_id, params.get("name"), params.get("arguments") or {})
+                self._call_local(req_id, params.get("name"), arguments)
                 return
             if params.get("name") in self._plugin_tools:
                 # Also before ensure(): a plugin tool runs in the wrapper and needs no EDT,
                 # so a call must not spend minutes starting one.
-                self._call_plugin(req_id, self._plugin_tools[params.get("name")],
-                                  params.get("arguments") or {})
+                self._call_plugin(req_id, self._plugin_tools[params.get("name")], arguments)
+                return
+            name = params.get("name")
+            declared = self._bridge_sets.get(name) if isinstance(name, str) else None
+            if declared is not None and not self._toolset.shows({"toolsets": declared}):
+                # A bridge tool this wrapper left out of the list it served. The bridge refuses
+                # it too when it was started with the same sets; one started without them
+                # would run it. Refused before ensure(): no EDT is started for a refusal.
+                self._tool_error(req_id, self._toolset.refusal({"name": name, "toolsets": declared}))
                 return
             ready, msg = self.backend.ensure(wait=True)
             if not ready:
@@ -1252,6 +1326,16 @@ class StdioServer:
         self._notify_tools_changed()
         threading.Thread(target=self._announce_when_ready, daemon=True).start()
 
+    def _describe_local(self, req_id, descriptor: dict, arguments: dict) -> None:
+        """Answer edt_tool_help for a tool the wrapper or a plugin serves."""
+        misnamed = unknown_arguments(toolsets.HELP_TOOL, arguments, tools=[
+            {"name": toolsets.HELP_TOOL, "inputSchema": {"properties": {"tool": {}}}}])
+        if misnamed:
+            self._tool_error(req_id, misnamed)
+            return
+        self._result(req_id, {"content": [{"type": "text",
+                                           "text": toolsets.describe(descriptor, self._toolset)}]})
+
     def _call_plugin(self, req_id, tool: plugins.Tool, arguments: dict) -> None:
         """Run a plugin tool and report as a normal tool result."""
         misnamed = unknown_arguments(tool.name, arguments, tools=[tool.descriptor()])
@@ -1290,8 +1374,9 @@ class StdioServer:
                               if tool.get("name") in local_names)
             if shadowed:
                 log("bridge tools shadowed by the wrapper or a plugin: " + ", ".join(shadowed))
-            result["tools"] = [tool for tool in result["tools"]
-                               if tool.get("name") not in local_names] + local
+            result["tools"] = (self._bridge_shown([tool for tool in result["tools"]
+                                                   if tool.get("name") not in local_names])
+                               + self._shown(local))
         reply.setdefault("jsonrpc", "2.0")
         reply["id"] = req_id
         self._send(reply)
@@ -1305,6 +1390,15 @@ class StdioServer:
             else:
                 self._error(req_id, -32000, f"edt-bridge request failed: {request_failure(exc)}")
             return
+        params = message.get("params") or {}
+        if message.get("method") == "tools/call" and params.get("name") == toolsets.HELP_TOOL:
+            # The bridge judged the name against its own tools, and the tool against its own
+            # variable; the answer is completed with what this wrapper serves and selects.
+            arguments = params.get("arguments")
+            toolsets.add_wrapper_names(
+                reply.get("result"), arguments.get("tool") if isinstance(arguments, dict) else None,
+                [tool["name"] for tool in self._local_descriptors()])
+            toolsets.agree_with_selection(reply.get("result"), self._toolset)
         if req_id is not None:
             reply.setdefault("jsonrpc", "2.0")
             reply["id"] = req_id

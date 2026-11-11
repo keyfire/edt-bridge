@@ -141,7 +141,7 @@ public final class ArgumentNames {
     }
 
     /** Case and the punctuation between words carry no meaning here, so they are dropped. */
-    private static String normalized(String name) {
+    static String normalized(String name) {
         StringBuilder plain = new StringBuilder(name.length());
         for (int i = 0; i < name.length(); i++) {
             char c = name.charAt(i);
@@ -153,7 +153,7 @@ public final class ArgumentNames {
     }
 
     /** Levenshtein distance - the number of single-character edits between the two strings. */
-    private static int distance(String left, String right) {
+    static int distance(String left, String right) {
         int[] previous = new int[right.length() + 1];
         int[] current = new int[right.length() + 1];
         for (int j = 0; j <= right.length(); j++) {

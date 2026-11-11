@@ -73,6 +73,8 @@ DESCRIPTOR = {
         },
         "required": ["path", "form", "formTitle"],
     },
+    # The tool sets that carry it (EDT_BRIDGE_TOOLSET): the jobs that build an .epf or an .erf.
+    "toolsets": ["processor", "report"],
 }
 
 
