@@ -57,7 +57,9 @@ DESCRIPTOR = {
                                     "ExternalReport.Name.Form for a report opened with the standard "
                                     "report form"},
             "formTitle": {"type": "string",
-                          "description": "Exact window title of the opened form"},
+                          "description": "Window title of the opened form. * (any run of characters) "
+                                         "and ? (one character) are wildcards, e.g. \"Order 7 dated *\" "
+                                         "for a title that carries a date"},
             "button": {"type": "string",
                        "description": "Caption of the command to press. Mutually exclusive with steps"},
             "expectMessage": {"type": "string",

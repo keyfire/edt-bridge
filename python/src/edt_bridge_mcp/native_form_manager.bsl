@@ -54,13 +54,17 @@ Procedure RunCheck(Request, Report)
     If Target = Undefined Then
         Report.status = "form_not_found";
         Names = New Array;
+        Titles = New Array;
         For Each OpenForm In Application.FindObjects(FormType) Do
             Names.Add(OpenForm.FormName);
+            Titles.Add(OpenForm.TitleText);
         EndDo;
         Report.Insert("observedForms", Names);
+        Report.Insert("observedTitles", Titles);
         Return;
     EndIf;
     Report.Insert("observedForm", Target.FormName);
+    Report.Insert("observedTitle", Target.TitleText);
     Target.Activate();
     MessageWindow = TargetWindow(Application, Target, Request);
     If Request.Property("steps") Then

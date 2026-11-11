@@ -114,9 +114,12 @@ def _validated_paths(args):
     key = _form_key(args.form)
     if key is None:
         raise _CheckError("invalid_input", "Use the fully qualified managed form name of the selected target.")
-    selectors = [args.form_title] + ([args.button] if args.button is not None else [])
-    if any(not text.strip() or any(c in text for c in "*?\x00") for text in selectors):
-        raise _CheckError("invalid_input", "Use exact, nonempty form and button selectors.")
+    # The platform reads * and ? in a title as wildcards. A form title may carry them: the form
+    # is still selected by its exact name. A button has no second selector, so it stays exact.
+    if not args.form_title.strip("*? \t") or "\x00" in args.form_title:
+        raise _CheckError("invalid_input", "Use a form title with text in it; * and ? are wildcards.")
+    if args.button is not None and (not args.button.strip() or any(c in args.button for c in "*?\x00")):
+        raise _CheckError("invalid_input", "Use an exact, nonempty button selector.")
     if args.scenario and args.expect_message:
         raise _CheckError("invalid_input", "Use assert_messages inside a scenario instead of --expect-message.")
     base = args.test_infobase.resolve()

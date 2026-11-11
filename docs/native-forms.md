@@ -62,8 +62,20 @@ schema and no assigned form, select the platform-generated form with
 
 For a configuration object, use its actual form FQN, such as
 `Document.CustomerOrder.Form.Main` or `Catalog.Items.Form.Main`. Russian names such
-as `ВнешнийОтчет.PlannedShipments.Форма` are accepted. Pass the exact title shown
-by the client in `--form-title`.
+as `ВнешнийОтчет.PlannedShipments.Форма` are accepted.
+
+`--form-title` is the window title shown by the client. The platform reads `*` as
+any run of characters and `?` as one character, so a title that carries a date or
+a number can be given as a pattern, for example `'Customer order 7 dated *'`. The
+date in a document title follows the regional settings of the session, and an exact
+title taken in another locale does not match. The form is still selected by its
+full name: windows that match the pattern but have another form name are ignored,
+and two matching windows with the same form name give `ambiguous_form`. A title
+that consists of wildcards only is refused. `--button` stays an exact caption.
+
+On `form_not_found` the JSON lists the open forms in `observedForms` and their
+titles in `observedTitles`. A found form is reported in `observedForm` and
+`observedTitle`.
 
 An ERF is opened by a fixed temporary EPF in the same test client using
 `ExternalReports.Connect` and `OpenForm`, with `SafeMode=True`. The test user must be allowed to run
