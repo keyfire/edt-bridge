@@ -13,6 +13,26 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
+## Unreleased
+
+### Changed
+
+- `edt_add_form_handler` returns the allowed events in `allowedEvents` only when it refuses an
+  event the target does not have, and the refusal message points to that list instead of repeating
+  it. An accepted call, a dry-run and a refusal of an event that already has a handler return only
+  the number of allowed events in `allowedEventCount`. A form allows about 35 events, and every
+  accepted call used to carry all of their names.
+- `edt_project_errors` with `countOnly` leaves out the readiness diagnostics (`diagnostics`,
+  `modelStatus`, `refreshed.diagnostics`) when the model is ready, every EDT marker is traced to a
+  file, no changed file is waiting to be read and the refresh has settled. On a ready project the
+  report shrinks from about 3.4 KB to 0.7 KB. `details=true` keeps the diagnostics; reports without
+  `countOnly` are unchanged.
+
+### Fixed
+
+- When the form item information service is unavailable, `edt_add_form_handler` reports that
+  instead of saying that the form has no such event.
+
 ## 2026-11-11 – 0.39.0, 0.40.0, 0.41.0
 
 ### Added
