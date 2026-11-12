@@ -37,7 +37,11 @@
           },
           "countOnly": {
             "type": "boolean",
-            "description": "true = return only the counts (total, by severity, by source), no problem list – what a before/after baseline needs on a large configuration. The listed problems are what gets judged for staleness, so there is no staleCount here; the unsynchronized files are still named. Ordinary count-only reports have complete=false because marker freshness was not inspected. Baseline operations inspect the full snapshot before applying display options. Default false."
+            "description": "true = return only the counts (total, by severity, by source), no problem list – what a before/after baseline needs on a large configuration. The listed problems are what gets judged for staleness, so there is no staleCount here; the unsynchronized files are still named. Ordinary count-only reports have complete=false because marker freshness was not inspected. Baseline operations inspect the full snapshot before applying display options. The readiness diagnostics (diagnostics, modelStatus, refreshed.diagnostics) are left out unless something else made the counts partial: the model is not ready, EDT markers are untraced, files are unsynchronized or the refresh did not settle. Default false."
+          },
+          "details": {
+            "type": "boolean",
+            "description": "countOnly only: true = keep the readiness diagnostics (diagnostics, modelStatus, refreshed.diagnostics) in the report even when nothing made the counts partial. Default false."
           },
           "limit": {
             "type": "integer",
@@ -1888,7 +1892,7 @@
           },
           "event": {
             "type": "string",
-            "description": "Event to handle, by either name: OnCreateAtServer or ПриСозданииНаСервере. An event the target does not allow is refused with the list of the ones it does."
+            "description": "Event to handle, by either name: OnCreateAtServer or ПриСозданииНаСервере. An event the target does not allow is refused with the list of the ones it does (allowedEvents); an accepted event reports only their number (allowedEventCount)."
           },
           "itemName": {
             "type": "string",

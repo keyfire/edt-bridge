@@ -62,7 +62,13 @@ public final class ProjectErrorsTool {
                 + "problems are what gets judged for staleness, so there is no staleCount here; the "
                 + "unsynchronized files are still named. Ordinary count-only reports have complete=false "
                 + "because marker freshness was not inspected. Baseline operations inspect the full snapshot "
-                + "before applying display options. Default false."));
+                + "before applying display options. The readiness diagnostics (diagnostics, modelStatus, "
+                + "refreshed.diagnostics) are left out unless something else made the counts partial: "
+                + "the model is not ready, EDT markers are untraced, files are unsynchronized or the "
+                + "refresh did not settle. Default false."));
+        props.add("details", boolProp("countOnly only: true = keep the readiness diagnostics "
+                + "(diagnostics, modelStatus, refreshed.diagnostics) in the report even when nothing "
+                + "made the counts partial. Default false."));
         props.add("limit", intProp("Max problems in the returned list (default 1000); ignored when countOnly. "
                 + "Excess sets truncated=true."));
         props.add("brief", boolProp("true = plain text, one line per problem - severity, resource:line, "
@@ -136,6 +142,7 @@ public final class ProjectErrorsTool {
         String modulePath = getStr(args, "modulePath");
         String severity = getStr(args, "severity");
         boolean countOnly = getBool(args, "countOnly");
+        boolean details = getBool(args, "details");
         boolean brief = getBool(args, "brief");
         boolean refresh = getBool(args, "refresh");
         int waitSeconds = args.has("waitSeconds") && !args.get("waitSeconds").isJsonNull()
@@ -239,8 +246,14 @@ public final class ProjectErrorsTool {
             rep.locations.forEach(locations::addProperty);
             payload.add("locations", locations);
             payload.addProperty("modelReady", rep.modelReady);
-            payload.add("diagnostics", new GsonBuilder().create().toJsonTree(rep.diagnostics));
-            payload.add("modelStatus", new GsonBuilder().create().toJsonTree(rep.modelStatus));
+            // A count is asked for to keep the answer short. The readiness diagnostics explain
+            // a partial snapshot, so a count-only report carries them only when something
+            // besides the skipped freshness check made it partial, or when asked to.
+            boolean diagnostics = !countOnly || details || degraded(rep);
+            if (diagnostics) {
+                payload.add("diagnostics", new GsonBuilder().create().toJsonTree(rep.diagnostics));
+                payload.add("modelStatus", new GsonBuilder().create().toJsonTree(rep.modelStatus));
+            }
             payload.addProperty("unresolvedEdtMarkers", rep.unresolvedEdtMarkers);
             payload.addProperty("complete", complete(rep));
             payload.addProperty("markerFreshnessComplete", rep.markerFreshnessComplete);
@@ -269,7 +282,7 @@ public final class ProjectErrorsTool {
                 payload.addProperty("hint", rep.hint);
             }
             if (rep.refreshed != null) {
-                payload.add("refreshed", refreshedJson(rep.refreshed));
+                payload.add("refreshed", refreshedJson(rep.refreshed, diagnostics));
             }
             JsonObject filter = new JsonObject();
             if (fqn != null) {
@@ -350,10 +363,19 @@ public final class ProjectErrorsTool {
     }
 
     private static boolean complete(ProjectGateway.ProblemReport report) {
-        return report.modelReady && report.unresolvedEdtMarkers == 0 && report.unsynchronizedCount == 0
-                && report.markerFreshnessComplete && report.staleCount == 0 && (report.refreshed == null
-                        || report.refreshed.settled && report.refreshed.validationCompleted
-                                && report.refreshed.warning == null);
+        return !degraded(report) && report.markerFreshnessComplete && report.staleCount == 0;
+    }
+
+    /**
+     * Whether the model or the workspace left the snapshot partial: the model is not ready, EDT
+     * markers could not be traced to files, files changed on disk unread, or the refresh did not
+     * settle. A freshness check skipped by countOnly or a limit is not counted here - the caller
+     * chose that presentation.
+     */
+    private static boolean degraded(ProjectGateway.ProblemReport report) {
+        return !report.modelReady || report.unresolvedEdtMarkers > 0 || report.unsynchronizedCount > 0
+                || report.refreshed != null && !(report.refreshed.settled
+                        && report.refreshed.validationCompleted && report.refreshed.warning == null);
     }
 
     private static ProblemBaselines.Entry entry(ProjectGateway.Problem problem) {
@@ -373,7 +395,7 @@ public final class ProjectErrorsTool {
     }
 
     /** The refresh that preceded the report, as the caller sees it. */
-    private static JsonObject refreshedJson(ProjectGateway.RefreshResult res) {
+    private static JsonObject refreshedJson(ProjectGateway.RefreshResult res, boolean diagnostics) {
         JsonObject o = new JsonObject();
         JsonArray resources = new JsonArray();
         res.resources.forEach(resources::add);
@@ -383,7 +405,9 @@ public final class ProjectErrorsTool {
         o.addProperty("waitMs", res.waitMs);
         o.addProperty("settled", res.settled);
         o.addProperty("quietPolls", res.quietPolls);
-        o.add("diagnostics", new GsonBuilder().create().toJsonTree(res.diagnostics));
+        if (diagnostics) {
+            o.add("diagnostics", new GsonBuilder().create().toJsonTree(res.diagnostics));
+        }
         o.addProperty("validationRequested", res.validationRequested);
         o.addProperty("validationCompleted", res.validationCompleted);
         if (res.validationMode != null) o.addProperty("validationMode", res.validationMode);
