@@ -322,12 +322,11 @@ public final class DocsGateway {
         }
         r.ok = true;
         r.message = found.isEmpty()
-                ? (looksLikeShortCode(id)
-                    ? "\"" + id + "\" is a short code, and those come from EDT's OWN validation "
-                      + "(edt_project_errors shows it as sourceType MdValidationChecker or similar). "
-                      + "That family ships no description resource at all - only the checks of the "
-                      + "standards framework do, and they are named by slug. Paste the problem's "
-                      + "message instead: it is the check title, and titles are searched too."
+                ? (io.github.keyfire.edtbridge.core.CheckCodes.isShortCode(id)
+                    ? "\"" + id + "\" is a short code: the check settings of a project assign it, and "
+                      + "the descriptions are filed by check id. Pass projectName - the project that "
+                      + "reported the problem - and the code is resolved to its check. The titles are "
+                      + "searched too, so a part of the check title finds it without the code."
                     : "no check documentation matches \"" + (query == null ? "" : query) + "\"")
                 : r.checks.size() + " of " + r.total + " check(s)"
                   + (r.checks.size() == 1 ? "" : " - ask by exact id for the full description");
@@ -358,15 +357,6 @@ public final class DocsGateway {
             out.append(line).append('\n');
         }
         return out.toString().strip();
-    }
-
-    /**
-     * A check id like {@code SU200}. Those belong to EDT's own validation, which is a different family
-     * from the standards checks: it names its rules by code, and ships no description with them - the
-     * code appears in no bundle at all, so there is nothing to look up and nothing to map it through.
-     */
-    private static boolean looksLikeShortCode(String id) {
-        return id != null && id.matches("[A-Za-z]{2,4}\\d{1,4}");
     }
 
     /** Links out of a description: these are the development-standard pages the check enforces. */

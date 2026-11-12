@@ -319,6 +319,52 @@ public final class QuickFixGateway {
         return frames;
     }
 
+    /** What a short code names in the check settings of a project. */
+    public static final class ShortCode {
+        /** The check as a problem of the standards framework reports it: contributor and id. */
+        public String id;
+        /** Why the code was not resolved, in words for the caller. */
+        public String reason;
+    }
+
+    /**
+     * Resolves a short code (SU68) to the check it names. The code is a number the check settings of
+     * a project assign to a check, so the same check can carry another code in another workspace
+     * and the project has to be named.
+     */
+    public ShortCode shortCode(String projectName, String code) {
+        ShortCode r = new ShortCode();
+        try {
+            IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+            if (!project.exists() || !project.isOpen()) {
+                r.reason = "project not found or closed: " + projectName;
+                return r;
+            }
+            ICheckRepository checks = service(ICheckRepository.class);
+            if (checks == null) {
+                // The check framework registers its services when validation first runs.
+                r.reason = "the check services of EDT are not up yet: run edt_project_errors with "
+                        + "refresh=true for " + projectName + " and repeat";
+                return r;
+            }
+            String text = code.trim();
+            CheckUid uid = checks.getUidForShortUid(text, project);
+            if (uid == null) {
+                uid = checks.getUidForShortUid(text.toUpperCase(java.util.Locale.ROOT), project);
+            }
+            if (uid == null) {
+                r.reason = "the check settings of " + projectName + " hold no check with the short code "
+                        + text;
+                return r;
+            }
+            r.id = io.github.keyfire.edtbridge.core.CheckCodes.qualified(uid.getContributorId(), uid.getCheckId());
+        } catch (RuntimeException e) {
+            r.reason = "the short code was not resolved: " + e.getClass().getSimpleName()
+                    + (e.getMessage() == null ? "" : " - " + e.getMessage());
+        }
+        return r;
+    }
+
     private static Set<CheckUid> resolve(ICheckRepository checks, String id, IProject project) {
         Set<CheckUid> uids = new LinkedHashSet<>();
         CheckUid byShort = checks.getUidForShortUid(id, project);

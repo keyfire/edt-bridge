@@ -16,7 +16,9 @@
  */
 package io.github.keyfire.edtbridge.tools;
 
+import io.github.keyfire.edtbridge.core.CheckCodes;
 import io.github.keyfire.edtbridge.edt.DocsGateway;
+import io.github.keyfire.edtbridge.edt.QuickFixGateway;
 import io.github.keyfire.edtbridge.mcp.McpServer;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -45,9 +47,12 @@ public final class CheckInfoTool {
 
         JsonObject props = new JsonObject();
         props.add("check", strProp("Check id, exactly as edt_project_errors reports it - the "
-                + "\"bundle:id\" form works as is. Text that matches no id is looked up among the "
-                + "TITLES, which is how a problem whose id is a short code (SU200) still finds its "
-                + "documentation: paste the problem message. Empty lists everything documented."));
+                + "\"bundle:id\" form works as is. A short code (SU68) is resolved to its check when "
+                + "projectName is given. Text that matches no id is looked up among the TITLES, so "
+                + "pasting the problem message works too. Empty lists everything documented."));
+        props.add("projectName", strProp("The project that reported the problem. Needed for a short "
+                + "code only: the check settings of the project assign the codes, and the same check "
+                + "can carry another code in another workspace."));
         props.add("language", strProp("ru for the Russian text, en (default) otherwise. The checks "
                 + "ship both."));
         props.add("limit", limit);
@@ -65,36 +70,71 @@ public final class CheckInfoTool {
                 + "with edt_project_errors, which reports the check id of every problem: that answers "
                 + "\"what fired\", this answers \"why the rule exists and what the standard says\". An "
                 + "exact id returns the full text; anything else lists what matches, by id or by "
-                + "title - so pasting a problem message works when its id is a short code (SU200) "
-                + "whose mapping lives in the check engine rather than in these resources. Every "
-                + "entry says which of the two matched. The text comes from the check bundles shipped "
-                + "with EDT, in English or Russian.");
+                + "title, and every entry says which of the two matched. A problem can carry a short "
+                + "code (SU68) instead of the id: pass projectName with it, the code is resolved "
+                + "through the check settings of that project and the answer names the check in "
+                + "resolvedId. The text comes from the check bundles shipped with EDT, in English or "
+                + "Russian.");
         t.addProperty("descriptionRu",
                 "ЧТЕНИЕ: что означает проверка EDT – её описание, примеры неправильного и правильного "
                 + "кода и ССЫЛКИ НА СТАНДАРТЫ РАЗРАБОТКИ 1С, которые она проверяет. Дополняет "
                 + "edt_project_errors, который отдаёт идентификатор проверки у каждой проблемы: тот "
                 + "отвечает \"что сработало\", этот – \"почему такое правило и что говорит стандарт\". "
                 + "Точный идентификатор возвращает полный текст, всё остальное – список того, что "
-                + "совпало по идентификатору или по ЗАГОЛОВКУ: поэтому работает и вставка текста "
-                + "проблемы, у которой идентификатор – короткий код (SU200), а его сопоставление "
-                + "живёт в движке проверок, а не в этих ресурсах. У каждой записи сказано, чем "
-                + "именно она нашлась. Текст берётся из бандлов проверок в поставке EDT, на "
-                + "английском или русском.");
+                + "совпало по идентификатору или по ЗАГОЛОВКУ, и у каждой записи сказано, чем именно "
+                + "она нашлась. У проблемы вместо идентификатора бывает короткий код (SU68): "
+                + "передайте вместе с ним projectName, код разрешится через настройки проверок этого "
+                + "проекта, а ответ назовёт проверку в resolvedId. Текст берётся из бандлов проверок "
+                + "в поставке EDT, на английском или русском.");
         t.add("inputSchema", schema);
         return t;
     }
 
     public JsonObject call(JsonObject args) {
         try {
-            DocsGateway.CheckResult res = gateway.checkInfo(
-                    getStr(args, "check"),
-                    getStr(args, "language"),
-                    getInt(args, "limit"));
+            String check = getStr(args, "check");
+            String projectName = getStr(args, "projectName");
+            String language = getStr(args, "language");
+            int limit = getInt(args, "limit");
+
+            // A short code is a number of the project's check settings, and the descriptions are
+            // filed by check id - resolve the code first when the project is known.
+            String shortCode = null;
+            String resolvedId = null;
+            String unresolved = null;
+            if (CheckCodes.isShortCode(check) && projectName != null && !projectName.isBlank()) {
+                QuickFixGateway.ShortCode code = new QuickFixGateway().shortCode(projectName.trim(), check);
+                shortCode = check.trim();
+                resolvedId = code.id;
+                unresolved = code.reason;
+            }
+
+            DocsGateway.CheckResult res = gateway.checkInfo(resolvedId != null ? resolvedId : check, language, limit);
+            if (resolvedId != null && res.checks.isEmpty()) {
+                // The description may live in another bundle than the one that contributes the check.
+                res = gateway.checkInfo(CheckCodes.bare(resolvedId), language, limit);
+            }
+            if (resolvedId != null) {
+                res.message = res.checks.isEmpty()
+                        ? shortCode + " is " + resolvedId + " in " + projectName.trim() + ", and that check "
+                          + "ships no description."
+                        : shortCode + " is " + resolvedId + " in " + projectName.trim()
+                          + (res.checks.size() == 1 ? "" : " - " + res.checks.size() + " descriptions match its id");
+            } else if (unresolved != null) {
+                res.message = unresolved + ". The titles are searched too: a part of the check title "
+                        + "finds it without the code.";
+            }
 
             JsonObject o = new JsonObject();
             o.addProperty("ok", res.ok);
-            if (res.query != null) {
-                o.addProperty("query", res.query);
+            if (check != null) {
+                o.addProperty("query", check);
+            }
+            if (shortCode != null) {
+                o.addProperty("shortCode", shortCode);
+                if (resolvedId != null) {
+                    o.addProperty("resolvedId", resolvedId);
+                }
             }
             o.addProperty("language", res.language);
             o.addProperty("total", res.total);

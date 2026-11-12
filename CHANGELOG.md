@@ -13,6 +13,15 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
+## Unreleased
+
+### Fixed
+
+- `edt_check_info` resolves a short code such as `SU68`. Pass `projectName` with the code: the
+  answer names the check in `resolvedId` and gives its description. The tool used to answer that a
+  short code has no description, although `edt_project_errors` reports the standards checks by
+  such codes. ([#79](https://github.com/keyfire/edt-bridge/pull/79))
+
 ## 2026-11-12 – 0.42.0
 
 ### Changed
