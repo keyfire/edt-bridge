@@ -17,6 +17,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -542,12 +543,16 @@ def run(args):
             report["scenario"] = args._scenario
         else:
             report["button"] = args.button
-        previous = signal.signal(signal.SIGTERM, _cancel_check)
+        # Python installs a signal handler in the main thread only. The MCP wrapper serves a call in
+        # a worker thread: there the check runs without the handler, and SIGTERM ends the wrapper.
+        in_main_thread = threading.current_thread() is threading.main_thread()
+        previous = signal.signal(signal.SIGTERM, _cancel_check) if in_main_thread else None
         started = datetime.datetime.now()
         try:
             _native_check(args, base, external, output, report)
         finally:
-            signal.signal(signal.SIGTERM, previous)
+            if in_main_thread:
+                signal.signal(signal.SIGTERM, previous)
             # Read after every session is stopped: the platform writes the log as the session runs and
             # finishes it on exit, and the error of a server call is only complete there.
             report["eventLog"] = _read_event_log(base, started)

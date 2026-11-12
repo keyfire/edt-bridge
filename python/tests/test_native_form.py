@@ -1,6 +1,7 @@
 import contextlib
 import json
 import sys
+import threading
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -339,3 +340,20 @@ def test_failed_reopen_does_not_reuse_the_previous_phase_evidence(monkeypatch, t
     assert "assertions" not in report
     assert report["phases"][0]["screenshot"] == "first-phase.png"
     assert report["cleanupComplete"] is True
+
+
+def test_the_check_runs_in_a_worker_thread(monkeypatch, tmp_path):
+    # The MCP wrapper serves a tool call in a worker thread, and Python installs signal handlers
+    # in the main thread only.
+    monkeypatch.setattr(native_form.sys, "platform", "linux")
+    started = []
+    monkeypatch.setattr(native_form, "_native_check",
+                        lambda args, base, external, output, report: started.append(base))
+    reports = []
+    worker = threading.Thread(target=lambda: reports.append(native_form.run(_fixture_args(tmp_path))))
+    worker.start()
+    worker.join(30)
+
+    assert not worker.is_alive()
+    assert started, reports
+    assert reports and reports[0]["eventLog"] == {"read": True, "errors": []}
