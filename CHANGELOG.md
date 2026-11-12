@@ -13,16 +13,7 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
-## Unreleased
-
-### Fixed
-
-- `edt_test_form` runs when an MCP client calls it. The wrapper serves a call in a worker thread,
-  and the form check installed a signal handler there, which Python allows in the main thread only.
-  Every call ended with `signal only works in main thread`. The `test-form` command was not
-  affected. ([#80](https://github.com/keyfire/edt-bridge/pull/80))
-
-## 2026-11-12 – 0.42.0, 0.42.1
+## 2026-11-12 – 0.42.0, 0.42.1, 0.42.2
 
 ### Changed
 
@@ -36,6 +27,10 @@ to the code and the reasoning behind it.
 
 ### Fixed
 
+- `edt_test_form` runs when an MCP client calls it. The wrapper serves a call in a worker thread,
+  and the form check installed a signal handler there, which Python allows in the main thread only.
+  Every call ended with `signal only works in main thread`. The `test-form` command was not
+  affected. ([#80](https://github.com/keyfire/edt-bridge/pull/80))
 - `edt_test_form` plays a `steps` scenario. Every call with `steps` used to be refused with
   `invalid_input`: the wrapper wrote the scenario file without its `version`, and the scenario
   check requires it. ([#79](https://github.com/keyfire/edt-bridge/pull/79))
