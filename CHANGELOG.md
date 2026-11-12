@@ -13,33 +13,27 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
-## Unreleased
+## 2026-11-12 – 0.42.0
 
 ### Changed
 
-- `edt_add_form_handler` returns the allowed events in `allowedEvents` only when it refuses an
-  event the target does not have, and the refusal message points to that list instead of repeating
-  it. An accepted call, a dry-run and a refusal of an event that already has a handler return only
-  the number of allowed events in `allowedEventCount`. A form allows about 35 events, and every
-  accepted call used to carry all of their names.
+- `edt_add_form_handler` lists the allowed events in `allowedEvents` only when it refuses an
+  unknown event. Other answers give just their number in `allowedEventCount`: a form allows about
+  35 events, and every accepted call used to return all of them.
   ([#77](https://github.com/keyfire/edt-bridge/pull/77))
-- `edt_project_errors` with `countOnly` leaves out the readiness diagnostics (`diagnostics`,
-  `modelStatus`, `refreshed.diagnostics`) when the model is ready, every EDT marker is traced to a
-  file, no changed file is waiting to be read and the refresh has settled. On a ready project the
-  report shrinks from about 3.4 KB to 0.7 KB. `details=true` keeps the diagnostics; reports without
-  `countOnly` are unchanged. ([#77](https://github.com/keyfire/edt-bridge/pull/77))
+- `edt_project_errors` with `countOnly` leaves out the readiness diagnostics unless something made
+  the counts partial, so a ready project's report shrinks from about 3.4 KB to 0.7 KB.
+  `details=true` keeps them. ([#77](https://github.com/keyfire/edt-bridge/pull/77))
 
 ### Fixed
 
 - When the form item information service is unavailable, `edt_add_form_handler` reports that
   instead of saying that the form has no such event.
   ([#77](https://github.com/keyfire/edt-bridge/pull/77))
-- `edt_apply_fix` applies a module fix in client EDT. The fix failed with `SWTException: Invalid
-  thread access`, because EDT changes the module through its editor and the bridge called it from
-  its own thread. The bridge now runs the fix on the UI thread and saves the module editor, and
-  `editorSaved` reports the save. An editor that the fix opened is closed after saving. A module
-  editor that already holds unsaved changes refuses the fix before it runs, so those changes are
-  not saved with it. ([#78](https://github.com/keyfire/edt-bridge/pull/78))
+- `edt_apply_fix` applies a module fix in client EDT. It used to fail with `SWTException: Invalid
+  thread access`; now the fix runs on the UI thread and the bridge saves the module editor
+  (`editorSaved`). If that editor already holds unsaved changes, the fix is refused.
+  ([#78](https://github.com/keyfire/edt-bridge/pull/78))
 
 ## 2026-11-11 – 0.39.0, 0.40.0, 0.41.0
 
