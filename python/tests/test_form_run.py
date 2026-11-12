@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from edt_bridge_mcp import form_run, server
+from edt_bridge_mcp import form_run, native_scenario, server
 
 
 @pytest.fixture
@@ -58,7 +58,9 @@ def test_steps_become_a_scenario_file(setup):
     seen = []
     call({"path": str(artifact), "form": "ExternalDataProcessor.Check.Form.Form",
           "formTitle": "Check", "steps": steps}, environ, seen)
-    assert seen[1] == {"steps": steps}
+    assert seen[1] == {"version": 1, "steps": steps}
+    # The native run loads the file through this check: what the tool writes has to pass it.
+    native_scenario.validate(seen[1])
 
 
 @pytest.mark.parametrize("arguments, status", [

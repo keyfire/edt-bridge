@@ -118,7 +118,9 @@ def run_tool(arguments: dict, *, runner=native_form.run, environ=os.environ) -> 
         scenario = None
         if steps is not None:
             scenario = root / "scenario.json"
-            scenario.write_text(json.dumps({"steps": steps}, ensure_ascii=False), encoding="utf-8", newline="")
+            # The scenario check of the native run requires the format version.
+            scenario.write_text(json.dumps({"version": 1, "steps": steps}, ensure_ascii=False),
+                                encoding="utf-8", newline="")
         args = argparse.Namespace(
             platform_bin=Path(platform), test_infobase=copy, scope="fixture",
             epf=path if suffix == ".epf" else None, erf=path if suffix == ".erf" else None,

@@ -17,6 +17,9 @@ to the code and the reasoning behind it.
 
 ### Fixed
 
+- `edt_test_form` plays a `steps` scenario. Every call with `steps` used to be refused with
+  `invalid_input`: the wrapper wrote the scenario file without its `version`, and the scenario
+  check requires it. ([#79](https://github.com/keyfire/edt-bridge/pull/79))
 - `edt_check_info` resolves a short code such as `SU68`. Pass `projectName` with the code: the
   answer names the check in `resolvedId` and gives its description. The tool used to answer that a
   short code has no description, although `edt_project_errors` reports the standards checks by
