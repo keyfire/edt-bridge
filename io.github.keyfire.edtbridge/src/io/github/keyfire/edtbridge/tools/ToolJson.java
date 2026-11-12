@@ -166,7 +166,6 @@ final class ToolJson {
         return new GsonBuilder().setPrettyPrinting().create().toJson(o);
     }
 
-    /** Render a form-member outcome as the tool's JSON result. */
     /** Render the outcome of registering a form event handler. */
     static String render(FormWriteGateway.FormHandlerResult res) {
         JsonObject o = new JsonObject();
@@ -201,10 +200,14 @@ final class ToolJson {
         if (res.existingHandler != null) {
             o.addProperty("existingHandler", res.existingHandler);
         }
-        if (!res.events.isEmpty()) {
+        // The allowed events help only the caller who named an event the target does not have; a
+        // form allows some 35 of them, and repeating the list on every accepted call costs context.
+        if (Boolean.FALSE.equals(res.eventKnown)) {
             JsonArray arr = new JsonArray();
             res.events.forEach(arr::add);
             o.add("allowedEvents", arr);
+        } else if (!res.events.isEmpty()) {
+            o.addProperty("allowedEventCount", res.events.size());
         }
         if (!res.items.isEmpty()) {
             JsonArray arr = new JsonArray();
@@ -223,6 +226,7 @@ final class ToolJson {
         return new GsonBuilder().setPrettyPrinting().create().toJson(o);
     }
 
+    /** Render a form-member outcome as the tool's JSON result. */
     static String render(FormWriteGateway.FormMemberResult res) {
         JsonObject o = new JsonObject();
         o.addProperty("ok", res.ok);

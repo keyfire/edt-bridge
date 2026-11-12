@@ -1229,9 +1229,14 @@ public final class FormWriteGateway {
             r.message = "the form has no item named \"" + r.owner + "\"";
             return r;
         }
-        if (!Boolean.TRUE.equals(r.eventKnown)) {
+        if (r.eventKnown == null) {
+            // The events could not be read at all; the inspection has said why.
+            return r;
+        }
+        if (!r.eventKnown) {
             r.message = "the " + (r.owner == null ? "form" : "item \"" + r.owner + "\"")
-                    + " has no event \"" + event + "\" - it allows: " + String.join(", ", r.events);
+                    + " has no event \"" + event + "\"; allowedEvents lists the " + r.events.size()
+                    + " it allows";
             return r;
         }
         String handler = (handlerName == null || handlerName.isBlank())
