@@ -39,7 +39,7 @@ to the code and the reasoning behind it.
   its own thread. The bridge now runs the fix on the UI thread and saves the module editor, and
   `editorSaved` reports the save. An editor that the fix opened is closed after saving. A module
   editor that already holds unsaved changes refuses the fix before it runs, so those changes are
-  not saved with it.
+  not saved with it. ([#78](https://github.com/keyfire/edt-bridge/pull/78))
 
 ## 2026-11-11 – 0.39.0, 0.40.0, 0.41.0
 
