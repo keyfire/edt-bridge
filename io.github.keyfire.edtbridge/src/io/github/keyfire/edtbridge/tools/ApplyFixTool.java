@@ -45,12 +45,16 @@ public final class ApplyFixTool {
                 + "finds the marker and lists the fix variants with their descriptions; apply=true runs the chosen "
                 + "variant, then returns the changed lines of the file and the number of markers of the check that "
                 + "remain at that place after a fresh validation. For a check without a quick fix the answer says "
-                + "so (hasFix=false): change the code by hand. Dry-run by default.",
+                + "so (hasFix=false): change the code by hand. A fix of a module needs client EDT, because EDT "
+                + "applies it through the module editor; the bridge then saves that editor (editorSaved) and "
+                + "refuses when it already holds unsaved changes. Dry-run by default.",
                 "Применить штатное исправление EDT – то, что предлагает панель \"Ошибки\", – к одному маркеру проверки. "
                 + "Предпросмотр находит маркер и перечисляет варианты исправления с описанием; apply=true выполняет "
                 + "выбранный вариант и возвращает измененные строки файла и число маркеров проверки, оставшихся на "
                 + "этом месте после новой проверки. Для проверки без штатного исправления ответ говорит об этом "
-                + "(hasFix=false): код меняется вручную. По умолчанию предпросмотр.",
+                + "(hasFix=false): код меняется вручную. Исправлению модуля нужна клиентская EDT, потому что EDT "
+                + "применяет его через редактор модуля; мост затем сохраняет этот редактор (editorSaved) и "
+                + "отказывает, если в нем уже есть несохраненные правки. По умолчанию предпросмотр.",
                 props, "projectName", "checkId");
     }
 

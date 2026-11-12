@@ -21,6 +21,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -31,6 +32,7 @@ import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.NullProgressMonitor;
+import org.eclipse.ui.IEditorReference;
 import org.osgi.framework.Bundle;
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.FrameworkUtil;
@@ -98,6 +100,8 @@ public final class QuickFixGateway {
         public Boolean workbenchRunning;
         /** EDT applies a fix to a module only through its editor, which needs the workbench. */
         public Boolean requiresWorkbench;
+        /** Client EDT: the module editor holding the fix was saved to disk. */
+        public Boolean editorSaved;
         public String message;
         public String warning;
         /** The first frames of an unexpected failure, for a report. */
@@ -177,6 +181,9 @@ public final class QuickFixGateway {
             r.file = file == null ? null : file.getProjectRelativePath().toString();
             r.requiresWorkbench = file != null && "bsl".equalsIgnoreCase(file.getFileExtension());
             String before = file == null ? null : read(file);
+            final IFixManager fixManager = manager;
+            final boolean onWorkbench = r.workbenchRunning && file != null;
+            final Set<IEditorReference> openBefore = new HashSet<>();
             FixProcessHandle handle = manager.prepareFix(marker, dtProject);
             try {
                 List<FixVariantDescriptor> descriptors = new ArrayList<>(manager.getApplicableFixVariants(handle));
@@ -217,13 +224,44 @@ public final class QuickFixGateway {
                             + descriptors.get(chosen).getDescription() + ".";
                     return r;
                 }
-                manager.selectFixVariant(descriptors.get(chosen), handle);
-                manager.executeFix(handle, new NullProgressMonitor());
+                if (onWorkbench) {
+                    // Saving the fix saves the whole editor, so text someone left unsaved there would
+                    // go to disk with it.
+                    boolean[] dirty = {false};
+                    ModuleEditors.onUiThread(() -> {
+                        dirty[0] = ModuleEditors.dirty(file);
+                        openBefore.addAll(ModuleEditors.of(file));
+                    });
+                    if (dirty[0]) {
+                        r.ok = false;
+                        r.message = "Nothing changed. The module has unsaved changes in an open EDT editor; "
+                                + "save or revert them and repeat.";
+                        return r;
+                    }
+                }
+                fixManager.selectFixVariant(descriptors.get(chosen), handle);
+                if (r.workbenchRunning) {
+                    // The fix edits the module through its editor, and SWT lets only the UI thread
+                    // touch an editor.
+                    ModuleEditors.onUiThread(() -> fixManager.executeFix(handle, new NullProgressMonitor()));
+                } else {
+                    fixManager.executeFix(handle, new NullProgressMonitor());
+                }
                 r.applied = true;
             } finally {
-                manager.finishFix(handle);
+                if (r.workbenchRunning) {
+                    ModuleEditors.onUiThread(() -> fixManager.finishFix(handle));
+                } else {
+                    fixManager.finishFix(handle);
+                }
             }
 
+            if (onWorkbench) {
+                // The fix changed the editor's text; the disk gets it only when the editor is saved.
+                int[] saved = {0};
+                ModuleEditors.onUiThread(() -> saved[0] = ModuleEditors.saveAndClose(file, openBefore));
+                r.editorSaved = saved[0] > 0;
+            }
             if (file != null) {
                 file.refreshLocal(IResource.DEPTH_ZERO, new NullProgressMonitor());
                 r.change = TextChange.of(before, read(file));
@@ -245,7 +283,12 @@ public final class QuickFixGateway {
             r.message = remaining == 0
                     ? "fixed: the marker is gone after validation"
                     : "the fix ran, but " + remaining + " marker(s) of the check remain at the same place";
-            if (r.change != null && !r.change.changed()) r.warning = "the file text did not change";
+            if (r.change != null && !r.change.changed()) {
+                r.warning = onWorkbench && !Boolean.TRUE.equals(r.editorSaved)
+                        ? "the file text did not change, and no editor of the module was saved; check the "
+                                + "module editor in EDT"
+                        : "the file text did not change";
+            }
         } catch (Exception failure) {
             r.ok = false;
             if (!(failure instanceof IllegalArgumentException)) r.stack = frames(failure);
