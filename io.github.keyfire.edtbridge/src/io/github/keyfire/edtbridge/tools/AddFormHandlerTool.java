@@ -42,7 +42,8 @@ public final class AddFormHandlerTool {
         JsonObject props = ToolJson.formMemberProps();
         props.add("event", ToolJson.strProp("Event to handle, by either name: OnCreateAtServer or "
                 + "ПриСозданииНаСервере. An event the target does not allow is refused with the list "
-                + "of the ones it does."));
+                + "of the ones it does (allowedEvents); an accepted event reports only their number "
+                + "(allowedEventCount)."));
         props.add("itemName", ToolJson.strProp("Form item the event belongs to (a field's ПриИзменении). "
                 + "Optional - omitted, the event is the form's own."));
         props.add("handler", ToolJson.strProp("Handler procedure name. Optional - defaults to the "
