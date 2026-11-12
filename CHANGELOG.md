@@ -13,19 +13,7 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
-## Unreleased
-
-### Fixed
-
-- `edt_test_form` plays a `steps` scenario. Every call with `steps` used to be refused with
-  `invalid_input`: the wrapper wrote the scenario file without its `version`, and the scenario
-  check requires it. ([#79](https://github.com/keyfire/edt-bridge/pull/79))
-- `edt_check_info` resolves a short code such as `SU68`. Pass `projectName` with the code: the
-  answer names the check in `resolvedId` and gives its description. The tool used to answer that a
-  short code has no description, although `edt_project_errors` reports the standards checks by
-  such codes. ([#79](https://github.com/keyfire/edt-bridge/pull/79))
-
-## 2026-11-12 – 0.42.0
+## 2026-11-12 – 0.42.0, 0.42.1
 
 ### Changed
 
@@ -39,6 +27,13 @@ to the code and the reasoning behind it.
 
 ### Fixed
 
+- `edt_test_form` plays a `steps` scenario. Every call with `steps` used to be refused with
+  `invalid_input`: the wrapper wrote the scenario file without its `version`, and the scenario
+  check requires it. ([#79](https://github.com/keyfire/edt-bridge/pull/79))
+- `edt_check_info` resolves a short code such as `SU68`. Pass `projectName` with the code: the
+  answer names the check in `resolvedId` and gives its description. The tool used to answer that a
+  short code has no description, although `edt_project_errors` reports the standards checks by
+  such codes. ([#79](https://github.com/keyfire/edt-bridge/pull/79))
 - When the form item information service is unavailable, `edt_add_form_handler` reports that
   instead of saying that the form has no such event.
   ([#77](https://github.com/keyfire/edt-bridge/pull/77))
