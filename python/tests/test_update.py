@@ -808,6 +808,8 @@ def _jdk(home, version):
     (home / "bin").mkdir(parents=True)
     for name in ("java", "javaw", "java.exe", "javaw.exe"):
         (home / "bin" / name).write_bytes(b"")
+        # shutil.which on POSIX finds only an executable file.
+        (home / "bin" / name).chmod(0o755)
     (home / "release").write_text(f'IMPLEMENTOR="Vendor"\nJAVA_VERSION="{version}"\n', encoding="utf-8")
     return home
 
