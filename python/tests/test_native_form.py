@@ -229,6 +229,15 @@ def test_retries_connection_without_repeating_form_actions(
     assert report["status"] == expected_status
     assert report["ok"] is (expected_status == "command_completed")
     assert report["connectAttempts"] == attempts
+    # A failed Connect is kept apart with its seconds, so it does not read as a slow manager start.
+    retried = first_result["stage"] == "connect" and expected_status not in ("access_denied", "license_unavailable")
+    if retried:
+        assert report["failedConnects"]["count"] == 1
+        assert report["failedConnects"]["seconds"] == response_time
+        assert "matching version" in report["failedConnects"]["lastError"]
+        assert report["timings"].get("connectRetries", 0) == response_time
+    else:
+        assert "failedConnects" not in report and "connectRetries" not in report["timings"]
     if expected_status == "timeout":
         assert report["interaction"] == first_result
         assert now == 100 + timeout

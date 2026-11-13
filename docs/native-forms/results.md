@@ -63,7 +63,11 @@ and `eventLog`. `edt_test_form` adds `infobaseCopy`, the copy of the test infoba
 the start of the test manager to its result, earlier connection attempts included), `screenshot`
 and `cleanup`. `driver` holds what the test manager measured itself: `connect`, `formLookup`, the
 `command` of a button check or `steps` with the `seconds` of each scenario step, and `total`;
-`managerStartup` is the rest of `manager`, the start of the manager's platform. A step that was
+`managerStartup` is the rest of `manager`, the start of the manager's platform. When the
+first connection to the client failed, the manager is started again, and `connectRetries` holds
+the seconds the failed attempts took; `failedConnects` gives their `count`, `seconds` and
+`lastError`. A client that opens an infobase for the first time after a change of its
+configuration or extensions can take a minute to accept a test connection. A step that was
 still running when the check stopped has no time of its own. With a `managerCache` hit,
 `managerInfobase` is only the copy of the cached manager infobase.
 

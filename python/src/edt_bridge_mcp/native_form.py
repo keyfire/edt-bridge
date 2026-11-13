@@ -380,8 +380,10 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
                             "/C" + str(request), "/Out", str(manager_log)]
             manager_stack = stack.enter_context(contextlib.ExitStack())
             report["connectAttempts"] = 0
+            failed_connects = {"count": 0, "seconds": 0.0, "lastError": ""}
             while True:
                 _seconds_left(deadline)
+                attempt_started = time.monotonic()
                 manager = _spawn(manager_stack, manager_args, manager_env, manager_process_log)
                 report["connectAttempts"] += 1
                 while not result.is_file():
@@ -413,6 +415,15 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
                     break
                 manager_stack.close()
                 manager = None
+                # The client listens before it accepts a test connection, and a client opening an
+                # infobase for the first time after a change can take a minute to accept one. Each
+                # attempt until then costs a whole manager start: the sum is kept apart, so it does not
+                # read as a slow start of the manager.
+                failed_connects["count"] += 1
+                failed_connects["seconds"] = round(failed_connects["seconds"]
+                                                   + time.monotonic() - attempt_started, 2)
+                failed_connects["lastError"] = str(data.get("error") or "")[:300]
+                report["failedConnects"] = failed_connects
                 time.sleep(min(1, _seconds_left(deadline)))
                 _seconds_left(deadline)
                 if client.poll() is not None or not _owns_listener(client, port):
@@ -461,9 +472,13 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
     total, stages = timeline.close()
     timings = {"seconds": total, **stages}
     driver = _driver_timings(marks)
+    retries = (report.get("failedConnects") or {}).get("seconds", 0)
+    if retries:
+        # The attempts whose Connect failed: the time the client took to accept a test connection.
+        timings["connectRetries"] = retries
     if driver:
-        # The manager stage outside the driver: the start of its platform and earlier connection attempts.
-        timings["managerStartup"] = round(max(0.0, stages.get("manager", 0.0) - driver["total"]), 2)
+        # The manager stage outside the driver and the failed attempts: the start of its platform.
+        timings["managerStartup"] = round(max(0.0, stages.get("manager", 0.0) - driver["total"] - retries), 2)
         timings["driver"] = driver
     report["timings"] = timings
     report["cleanupComplete"] = True
