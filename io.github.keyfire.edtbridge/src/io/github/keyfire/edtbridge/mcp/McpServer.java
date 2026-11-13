@@ -780,8 +780,12 @@ applyI18n();loadStatus();loadTools();
                         ? errorObj(id, -32000, toolset.problem())
                         : result(id, servedToolsList(toolset));
             }
-            case "tools/call":
-                return result(id, toolsCall(req.has("params") ? req.getAsJsonObject("params") : new JsonObject()));
+            case "tools/call": {
+                JsonObject params = req.has("params") ? req.getAsJsonObject("params") : new JsonObject();
+                String tool = params.has("name") ? params.get("name").getAsString() : "";
+                // The tools that return infobase data leave only through the personal data filter.
+                return result(id, PersonalDataFilter.apply(tool, toolsCall(params)));
+            }
             case "ping":
                 return result(id, new JsonObject());
             case "notifications/initialized":

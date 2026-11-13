@@ -16,6 +16,7 @@ import json
 import os
 import shutil
 import tempfile
+import time
 from pathlib import Path
 
 from . import native_form, native_scenario
@@ -127,7 +128,9 @@ def run_tool(arguments: dict, *, runner=native_form.run, environ=os.environ) -> 
         root = Path(temporary)
         copy = root / "infobase"
         copy.mkdir()
+        copy_started = time.monotonic()
         shutil.copyfile(source / DATA_FILE, copy / DATA_FILE)
+        copy_seconds = time.monotonic() - copy_started
         scenario = None
         if steps is not None:
             scenario = root / "scenario.json"
@@ -144,6 +147,11 @@ def run_tool(arguments: dict, *, runner=native_form.run, environ=os.environ) -> 
             output_dir=root / "output", timeout=timeout)
         report = runner(args)
     # The paths point into the copy that is gone now; the caller has no use for them.
-    for key in ("testInfobase", "outputDir"):
+    for key in ("testInfobase", "outputDir", "reports"):
         report.pop(key, None)
+    timings = report.get("timings")
+    if isinstance(timings, dict) and isinstance(timings.get("stages"), dict):
+        # The copy of a large infobase is part of the run the caller waits for.
+        timings["stages"] = {"infobaseCopy": round(copy_seconds, 2), **timings["stages"]}
+        timings["totalSeconds"] = round(timings.get("totalSeconds", 0) + copy_seconds, 2)
     return report

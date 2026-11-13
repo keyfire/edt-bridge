@@ -61,13 +61,17 @@ flag twin, documented in [Commands](/cli).
 | `EDT_BRIDGE_ALLOW_EVALUATE` | – | off | `1` enables `edt_evaluate`, arbitrary BSL executed against a live infobase. The preference page has the same switch |
 | `EDT_BRIDGE_AGENT_IDLE_MINUTES` | `-Dedt.bridge.agent-idle-minutes` | `30` | after how many idle minutes a configurator agent stops itself. `off` keeps agents forever |
 | `EDT_BRIDGE_DUMP_INFOBASE` | – | – | a file infobase (its directory, its `1Cv8.1CD` or `File="...";`) that carries the base configuration of external objects. The disk route of `edt_dump_external_object` builds in a copy of it, so types of the base configuration resolve; without it the build runs in an empty infobase. `edt_build_extension` also imports the extension into a copy of it: a borrowed form whose excluded commands (Post, Write) belong to its main attribute, and the base configuration's types, are checked against that configuration |
-| `EDT_BRIDGE_TEST_INFOBASE` | – | – | a file infobase with test data for `edt_test_form`; every run works on a fresh copy of its `1Cv8.1CD` |
-| `EDT_BRIDGE_TEST_PLATFORM` | – | – | the platform `bin` directory with `1cv8` and `ibcmd` that `edt_test_form` runs |
-| `EDT_BRIDGE_TEST_USER` | – | – | the infobase user `edt_test_form` signs in as, when the test infobase has users |
+| `EDT_BRIDGE_TEST_INFOBASE` | – | – | a file infobase with test data for `edt_test_form` and `edt_unit_tests`; every run works on a fresh copy of its `1Cv8.1CD`; `edt_unit_tests` needs the YAXUNIT extension in it |
+| `EDT_BRIDGE_TEST_PLATFORM` | – | – | the platform `bin` directory with `1cv8` and `ibcmd` that `edt_test_form` and `edt_unit_tests` run |
+| `EDT_BRIDGE_TEST_USER` | – | – | the infobase user `edt_test_form` and `edt_unit_tests` sign in as, when the test infobase has users |
+| `EDT_BRIDGE_TEST_CACHE` | – | `~/.cache/edt-bridge/test-manager` | where `test-form` and `edt_test_form` keep the prepared manager infobase of each platform build, so only the first check of a build creates it; `off` prepares it for every check. A runner image can carry a filled one; see [Prepare the environment](/native-forms#prepare-the-environment) |
 | `EDT_BRIDGE_TOOLSET` | `-Dedt.bridge.toolset` | every tool | the same tool sets on the bridge side: `tools/list` returns only their tools, and a call of another tool is refused with the sets that hold it. `edt_tool_help` names the sets of any tool, and `/status` reports the active ones |
 | `EDT_BRIDGE_WRITE_PROJECTS` | `-Dedt.bridge.write.projects` | every project | the projects the tools may change, separated by commas; see [Write scope](#write-scope) |
 | `EDT_BRIDGE_READ_PROJECTS` | `-Dedt.bridge.read.projects` | – | the projects the tools may only read |
 | `EDT_BRIDGE_OUTPUT_DIR` | `-Dedt.bridge.output.dir` | anywhere | the absolute directory the files the tools write must lie in |
+| `EDT_BRIDGE_PII` | `-Dedt.bridge.pii` | `off` | `redact` or `pseudonym` filters personal data out of the answers that carry infobase data, in the bridge and in the wrapper; see [Personal data](#personal-data) |
+| `EDT_BRIDGE_PII_SALT` | `-Dedt.bridge.pii.salt` | per process | the secret salt of the pseudonyms: with it the same value has the same pseudonym in every session |
+| `EDT_BRIDGE_PII_RULES` | `-Dedt.bridge.pii.rules` | – | a JSON file with rules of your own: `values` (`kind` and `pattern`) and `names` (`kind` and a field name `pattern`) |
 
 ## Write scope
 
@@ -87,3 +91,28 @@ A `modulePath` may not leave its project. `/status` reports the scope the bridge
 The settings reach EDT through the environment of its process: an EDT the wrapper starts inherits
 them. When the wrapper has them and the running EDT reports another scope, the wrapper refuses its
 calls until EDT is restarted with the same settings.
+
+## Personal data
+
+A test infobase is easily a copy of a working one, and what a tool returns from it goes to the
+model. With `EDT_BRIDGE_PII` set to `redact` or `pseudonym`, the answers that carry infobase data
+are filtered before they leave: in the bridge `edt_debug_inspect`, `edt_evaluate`,
+`edt_infobase_sessions`, `edt_infobase_maintenance` and `edt_designer_agent`, in the wrapper `edt_test_form`, `edt_unit_tests` and their commands, with
+`result.json` and the reports for CI. Module texts, schemas and templates are never filtered: a
+model writes them back, and their `sourceHash` stays the same.
+
+The filter finds personal data by its shape: an e-mail, a phone, a SNILS and an INN with their
+check digits, a card number by the Luhn check and a passport; a number that is part of a fraction
+or reads as a date stamp is left alone. By the name of a field or a variable it replaces every
+value of `ФИО`, `Фамилия`, `Имя`, `Отчество`, `ДатаРождения`, `Паспорт...`, `Телефон...`, `Адрес...`,
+`ЭлектроннаяПочта` and their English names, since a person's name cannot be told by its value. The
+user and the computer of a session or an event are replaced whole.
+
+`redact` writes the kind of the value, `[inn]`; `pseudonym` writes the kind and a pseudonym,
+`[inn#icbbphoh]`, an HMAC of the value under `EDT_BRIDGE_PII_SALT`: the same value gets the same
+pseudonym, and there is no table that leads back. A filtered answer says so in `piiFilter` with the
+number of values replaced. A check still judges by the real values; only what it answers is masked,
+and its screenshots are not kept (`screenshotWithheld`). Settings that cannot be read refuse the
+call instead of answering unfiltered. A filter that fails on an answer withholds it with
+`pii_filter_failed` and leaves nothing of the run in its output directory, and a file the filter
+cannot read, such as an image a test attached, is not kept.

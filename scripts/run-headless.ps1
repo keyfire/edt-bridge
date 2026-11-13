@@ -122,7 +122,14 @@ if ($env:EDT_BRIDGE_ALLOW_EVALUATE -and $env:EDT_BRIDGE_ALLOW_EVALUATE.Trim()) {
 # EDT_BRIDGE_PORT (or the settings page), so a -Port that only changed the poll target used to start
 # a second server on the default port - straight into the running one.
 $portLine = 'set "EDT_BRIDGE_PORT=' + $Port + '"' + "`r`n"
-Set-Content -Path $bat -Value ("@echo off`r`n" + $portLine + $tokenLine + $evalLine + $line) -Encoding ASCII
+# The personal data filter of the answers with infobase data (EDT_BRIDGE_PII, its salt and rules file):
+# the bridge reads it live, like the token. Only what is set is written.
+$piiLines = ""
+foreach ($name in @("EDT_BRIDGE_PII", "EDT_BRIDGE_PII_SALT", "EDT_BRIDGE_PII_RULES")) {
+  $value = [Environment]::GetEnvironmentVariable($name)
+  if ($value -and $value.Trim()) { $piiLines += 'set "' + $name + '=' + $value.Trim() + '"' + "`r`n" }
+}
+Set-Content -Path $bat -Value ("@echo off`r`n" + $portLine + $tokenLine + $evalLine + $piiLines + $line) -Encoding ASCII
 # Without -vm in 1cedt.ini EDT takes java from PATH, and an older one stops it with a modal dialog.
 $javaBin = Resolve-EdtJava -EdtDir $EdtDir
 if ($javaBin) {

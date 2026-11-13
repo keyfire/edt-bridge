@@ -44,12 +44,13 @@ a plan by default.
 
 ## Served by the wrapper
 
-Two tools are served by `edt-bridge-mcp` itself. The wrapper lists them alongside the bridge
+Three tools are served by `edt-bridge-mcp` itself. The wrapper lists them alongside the bridge
 tools and answers without forwarding the call to EDT. `edt_open_gui` acts on the EDT that
 hosts the bridge, and a tool cannot report on the process it has just ended.
-`edt_test_form` runs the platform's test client and needs no EDT.
+`edt_test_form` and `edt_unit_tests` run the platform's client and need no EDT.
 
 | Wrapper tool | What it does |
 |--------------|--------------|
 | `edt_open_gui` | Transfers the workspace to the GUI EDT. It stops the headless EDT, waits for its processes to exit, and opens EDT on the same workspace. The port closes before the runtime exits, so the processes must be allowed to finish. `force` terminates processes that do not stop in time, including the parent keepalive shell. The bridge becomes available once GUI EDT loads the plugin. |
 | `edt_test_form` | Runs the main form of a built .epf or .erf in a fresh copy of the test infobase named by `EDT_BRIDGE_TEST_INFOBASE` through the platform's native test client (Linux with Xvfb): presses one command or plays a scenario and returns the messages, the error dialog and the exception text; the `read_form` step returns every visible field, form table and spreadsheet of the form; `assert_messages` counts the messages the preceding click added, so a repeated click is checked again. The infobase itself is never changed. Served by the wrapper; no EDT needed. |
+| `edt_unit_tests` | Runs the YAXUnit tests of built extensions (.cfe) in a fresh copy of the test infobase named by `EDT_BRIDGE_TEST_INFOBASE` (Linux with Xvfb; YAXUnit loaded in the infobase): loads the extensions into the copy, runs their tests narrowed by module or test and returns every test with its status, time, message, expected and actual values and the lines of the tested code it failed on, plus the errors of the event log. The infobase itself is never changed. Served by the wrapper; no EDT needed. [YAXUnit tests](/native-forms/unit-tests) |

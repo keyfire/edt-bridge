@@ -320,7 +320,7 @@ def test_tools_list_offers_the_wrapper_tool_next_to_the_bridge_tools(monkeypatch
     stdio = _Recorder(backend)
     stdio.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}})
     names = [tool["name"] for tool in stdio.sent[0]["result"]["tools"]]
-    assert names == ["edt_projects", "edt_open_gui", "edt_test_form"]
+    assert names == ["edt_projects", "edt_open_gui", "edt_test_form", "edt_unit_tests"]
 
 
 def test_the_wrapper_tool_is_offered_even_with_no_bridge_up(monkeypatch):

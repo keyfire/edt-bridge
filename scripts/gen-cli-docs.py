@@ -26,7 +26,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "python" / "src"
-COMMANDS = ["call", "tools", "status", "wait-ready", "shutdown", "gui", "plugins", "workspace", "test-form", "self-update"]
+COMMANDS = ["call", "tools", "status", "wait-ready", "shutdown", "gui", "plugins", "workspace", "test-form", "unit-tests", "self-update"]
 
 TEXT = {
     "ru": {
@@ -40,7 +40,7 @@ TEXT = {
             "строки можно проверить состояние моста, получить список инструментов и вызвать "
             "инструмент без запуска агента.\n\n"
             "Без команды обвязка работает как MCP-сервер. Команды работы с мостом используют тот же "
-            "экземпляр EDT. `test-form` запускает отдельные сеансы платформы.\n\n"
+            "экземпляр EDT. `test-form` и `unit-tests` запускают отдельные сеансы платформы.\n\n"
             "Для вызовов инструментов код возврата **1** означает, что мост не запустился или "
             "аргументы неверны. Код **2** означает, что инструмент выполнился и вернул ошибку."
         ),
@@ -63,13 +63,22 @@ TEXT = {
             "Для объекта конфигурации обязателен `--scenario`.\n\n"
             "JSON-сценарий проверяет фактические поля, ячейки табличного документа и число "
             "новых сообщений. Фаза `reopen` открывает ту же цель в новой сессии для чтения "
-            "сохраненного состояния. Команда записывает `result.json` и снимок каждой фазы, "
-            "когда доступен экран клиента. Настройка защиты от опасных действий остается "
+            "сохраненного состояния. Команда записывает `result.json`, снимок каждой фазы, "
+            "когда доступен экран клиента, и отчеты для CI `junit.xml` и `allure-results/`. Настройка защиты от опасных действий остается "
             "за владельцем тестового окружения; CLI ее не меняет.\n\n"
             "В профиле `--button` успех требует `--expect-message`; без него результат "
             "`command_observed` возвращает код **2**. Предел времени включает подготовку и "
             "все фазы; завершение процессов имеет отдельный короткий срок. Подготовка, "
             "формат сценария и примеры приведены в [руководстве по проверке форм](/ru/native-forms)."
+        ),
+        "note_unit": (
+            "Запускайте команду в том же изолированном Linux-окружении, что и `test-form`. В тестовой "
+            "базе заранее должен быть загружен YAXUnit (расширение `YAXUNIT`). Команда копирует `1Cv8.1CD` "
+            "базы, загружает в копию расширения `--extension` и выполняет их тесты, сама база не меняется. "
+            "`NAME` – имя расширения в его проекте.\n\n"
+            "Команда записывает `result.json`, отчеты `junit.xml` и `allure-results/` и лог `yaxunit.log`. Успех – хотя бы один "
+            "выполненный тест и ни одного упавшего; иначе код **2**. Подготовка базы и поля результата "
+            "описаны на странице [тестов YAXUnit](/ru/native-forms/unit-tests)."
         ),
         "note_status": (
             "`edt-bridge-mcp status --all` опрашивает диапазон обнаружения мостов без запуска EDT. "
@@ -88,7 +97,7 @@ TEXT = {
             "command line, you can check bridge status, list tools, and call a tool without "
             "starting an agent.\n\n"
             "With no command, the wrapper runs as an MCP server. Bridge commands use the "
-            "same EDT instance. `test-form` starts separate platform sessions.\n\n"
+            "same EDT instance. `test-form` and `unit-tests` start separate platform sessions.\n\n"
             "For tool calls, exit code **1** means the bridge did not start or "
             "the arguments were invalid. Exit code **2** means the tool ran and returned an error."
         ),
@@ -111,13 +120,22 @@ TEXT = {
             "A configuration object requires `--scenario`.\n\n"
             "A JSON scenario checks actual fields, spreadsheet cells, and fresh message counts. "
             "The `reopen` phase opens the same target in a new session to read its saved state. "
-            "The command writes `result.json` and a screenshot of each phase when the client "
-            "display is available. Unsafe action protection is configured by the test environment "
+            "The command writes `result.json`, a screenshot of each phase when the client "
+            "display is available, and the CI reports `junit.xml` and `allure-results/`. Unsafe action protection is configured by the test environment "
             "owner; the CLI does not change it.\n\n"
             "In the `--button` profile, success requires `--expect-message`; without it, "
             "`command_observed` returns exit code **2**. The time limit covers setup and all "
             "phases; process cleanup has a separate short deadline. See the "
             "[native form guide](/native-forms) for preparation, the scenario format, and examples."
+        ),
+        "note_unit": (
+            "Run the command in the same isolated Linux environment as `test-form`. The test infobase "
+            "needs YAXUnit loaded beforehand (the `YAXUNIT` extension). The command copies the infobase's "
+            "`1Cv8.1CD`, loads the `--extension` files into the copy and runs their tests; the infobase "
+            "itself is not changed. `NAME` is the name the extension has in its project.\n\n"
+            "The command writes `result.json`, the `junit.xml` and `allure-results/` reports and the `yaxunit.log` log. Success "
+            "means at least one test ran and none failed; otherwise the exit code is **2**. See the "
+            "[YAXUnit tests](/native-forms/unit-tests) page for preparing the infobase and the result fields."
         ),
         "note_status": (
             "`edt-bridge-mcp status --all` checks the bridge discovery port range without starting "
@@ -337,6 +355,8 @@ def page(lang: str) -> str:
             out.write(t["note_status"] + "\n\n")
         if cmd == "test-form":
             out.write(t["note_native"] + "\n\n")
+        if cmd == "unit-tests":
+            out.write(t["note_unit"] + "\n\n")
     return out.getvalue().rstrip() + "\n"
 
 

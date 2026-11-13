@@ -279,7 +279,18 @@ def _substitute_metadata_export(monkeypatch, *, default_form=None, refusal=None)
     monkeypatch.setattr(native_form.shutil, "which", lambda name: name)
     monkeypatch.setattr(native_form, "_display", lambda *args: {})
 
-    def spawn(_stack, argv, _env, _log):
+    def spawn(_stack, argv, _env, log):
+        if Path(argv[0]).name == "ibcmd" and "export" in argv:
+            if refusal:
+                log.write_text(refusal, encoding="utf-8", newline="")
+                return SimpleNamespace(wait=lambda timeout: 1)
+            property_xml = f"<DefaultForm>{default_form}</DefaultForm>" if default_form else ""
+            Path(argv[-1] + ".xml").write_text(
+                "<MetaDataObject>"
+                f"<ExternalDataProcessor><Properties>{property_xml}</Properties>"
+                "</ExternalDataProcessor></MetaDataObject>", encoding="utf-8", newline="",
+            )
+            return SimpleNamespace(wait=lambda timeout: 0)
         if Path(argv[0]).name == "ibcmd":
             directory = Path(next(arg.split("=", 1)[1] for arg in argv if arg.startswith("--db-path=")))
             directory.mkdir()
@@ -322,6 +333,8 @@ def test_native_platform_refusal_is_reported_as_access_denied(monkeypatch, tmp_p
 
     assert report["status"] == "access_denied"
     assert report["designerLog"] == refusal
+    assert report["setupLog"] == refusal
+    assert report["targetMetadata"]["source"] == "designer"
     assert report["ok"] is False
 
 
@@ -353,15 +366,15 @@ def test_failed_reopen_does_not_reuse_the_previous_phase_evidence(monkeypatch, t
     }
 
     def spawn(_stack, argv, _env, _log):
-        if Path(argv[0]).name == "ibcmd":
+        if Path(argv[0]).name == "ibcmd" and "export" in argv:
+            Path(argv[-1] + ".xml").write_text("<MetaDataObject><ExternalDataProcessor><Properties>"
+                                               f"<DefaultForm>{args.form}</DefaultForm>"
+                                               "</Properties></ExternalDataProcessor></MetaDataObject>",
+                                               encoding="utf-8")
+        elif Path(argv[0]).name == "ibcmd":
             directory = Path(next(x.split("=", 1)[1] for x in argv if x.startswith("--db-path=")))
             directory.mkdir()
             (directory / "1Cv8.1CD").touch()
-        elif "/DumpExternalDataProcessorOrReportToFiles" in argv:
-            xml = Path(argv[argv.index("/DumpExternalDataProcessorOrReportToFiles") + 1])
-            xml.write_text("<MetaDataObject><ExternalDataProcessor><Properties>"
-                           f"<DefaultForm>{args.form}</DefaultForm>"
-                           "</Properties></ExternalDataProcessor></MetaDataObject>", encoding="utf-8")
         elif "/DumpConfigToFiles" in argv:
             (Path(argv[argv.index("/DumpConfigToFiles") + 1]) / "Configuration.xml").touch()
         else:
@@ -399,7 +412,12 @@ def _manager_setup(monkeypatch, tmp_path, exports):
     managers = []
 
     def spawn(_stack, argv, _env, log):
-        if Path(argv[0]).name == "ibcmd":
+        if Path(argv[0]).name == "ibcmd" and "export" in argv:
+            Path(argv[-1] + ".xml").write_text("<MetaDataObject><ExternalDataProcessor><Properties>"
+                                               f"<DefaultForm>{args.form}</DefaultForm>"
+                                               "</Properties></ExternalDataProcessor></MetaDataObject>",
+                                               encoding="utf-8")
+        elif Path(argv[0]).name == "ibcmd":
             directory = Path(next(x.split("=", 1)[1] for x in argv if x.startswith("--db-path=")))
             directory.mkdir()
             (directory / "1Cv8.1CD").touch()

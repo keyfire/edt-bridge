@@ -13,10 +13,46 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
-## <span id="2026-11-13--0430-0440"></span>2026-11-13 – 0.44.0
+## <span id="2026-11-13--0430-0440"></span><span id="2026-11-13--0440"></span>2026-11-13 – 0.45.0
 
 ### Added
 
+- `edt_unit_tests` and `edt-bridge-mcp unit-tests` run the YAXUnit tests of built extensions in a
+  fresh copy of the test infobase. The extensions are loaded into the copy with `ibcmd`, YAXUnit
+  runs their tests, narrowed by module or test, and the answer lists every test with its status,
+  time, message, expected and actual values and the lines of the tested code it failed on, plus the
+  errors of the event log. A test module that does not compile ends the run with `yaxunit_failed`
+  and the compiler's text; an infobase without YAXUnit, an extension the platform refuses and a
+  name that differs from the one in the file are refused with the cause.
+  ([#84](https://github.com/keyfire/edt-bridge/pull/84))
+- The report of `test-form` and `edt_test_form` says where the time went. `timings` gives the
+  seconds of each stage – the manager infobase, the target metadata, every phase, the cleanup and
+  the event log, plus the copy of the test infobase for the tool – and they add up to the whole
+  run. Each phase is split into the client start, the test manager, the screenshot and the
+  cleanup, and the manager measures its connection, the form lookup and every scenario step itself.
+  ([#84](https://github.com/keyfire/edt-bridge/pull/84))
+- `test-form` and `edt_test_form` prepare the manager infobase once per platform build. The first
+  check of a build keeps it in the cache (`~/.cache/edt-bridge/test-manager`, or
+  `EDT_BRIDGE_TEST_CACHE`), and later checks copy it instead of running `ibcmd` and the designer
+  twice; `managerCache` in the report says whether the run took it from the cache. A damaged entry
+  is built again, and `off` turns the cache off.
+  ([#84](https://github.com/keyfire/edt-bridge/pull/84))
+- `test-form` and `edt_test_form` read the main form of an EPF or ERF with
+  `ibcmd config export --file` – about a second instead of about ten in the designer. The designer
+  still reads a file `ibcmd` cannot, and `targetMetadata.source` says which one did.
+  ([#84](https://github.com/keyfire/edt-bridge/pull/84))
+- `test-form` and `unit-tests` write reports for CI next to `result.json`: `junit.xml` for GitLab
+  (`artifacts:reports:junit`) and `allure-results/` for Allure. A form check gives one test per
+  phase with its time, a failure for what the solution did and an error for what the environment
+  did, and in Allure the steps with their times and the screenshot; the unit tests take both
+  reports from YAXUnit. ([#84](https://github.com/keyfire/edt-bridge/pull/84))
+- `EDT_BRIDGE_PII` filters personal data out of the answers that carry infobase data:
+  `edt_debug_inspect`, `edt_evaluate`, `edt_infobase_sessions`, `edt_infobase_maintenance`,
+  `edt_designer_agent`, `edt_test_form` and `edt_unit_tests`. E-mails, phones, SNILS and INN
+  with their check digits, card numbers and passports are found by their shape, the values of
+  fields such as `ФИО` by the field's name; `redact` writes their kind, `pseudonym` a salted HMAC
+  pseudonym that is the same for the same value. Checks judge by the real values, screenshots are
+  not kept, module texts are never touched. ([#84](https://github.com/keyfire/edt-bridge/pull/84))
 - A write scope bounds what an agent may change. `EDT_BRIDGE_WRITE_PROJECTS` and
   `EDT_BRIDGE_READ_PROJECTS` name the projects the tools may change and read, and
   `EDT_BRIDGE_OUTPUT_DIR` the directory for the files they write. The bridge checks every call
@@ -229,7 +265,7 @@ to the code and the reasoning behind it.
 - `edt_project_errors` says when the requested object is not in the project. It used to wait for a
   check that never started. ([#74](https://github.com/keyfire/edt-bridge/pull/74))
 
-## <span id="2026-11-07--0373-0380-0381-0382"></span>2026-11-07 – 0.38.2
+## <span id="2026-11-07--0373-0380-0381-0382"></span><span id="2026-11-07--0360-0370-0371-0372"></span><span id="2026-11-07--0372"></span>2026-11-07 – 0.38.2
 
 ### Added
 
@@ -237,26 +273,6 @@ to the code and the reasoning behind it.
   composition schema and has no custom main form. A `click` step can use the button's
   internal name when several buttons share a caption.
   ([#71](https://github.com/keyfire/edt-bridge/pull/71))
-
-### Fixed
-
-- `test-form` retries the connection to a slow-starting test client within the
-  remaining `--timeout`. Previously, retries stopped after 30 seconds.
-  ([#73](https://github.com/keyfire/edt-bridge/pull/73))
-
-- `test-form` reads the message panel only when a scenario checks messages. A table
-  check can now click "Generate" in an external report with an empty message panel.
-  ([#70](https://github.com/keyfire/edt-bridge/pull/70))
-
-### Changed
-
-- Rebuilt 0.38.0 for publication with PyPI attestations.
-  ([#72](https://github.com/keyfire/edt-bridge/pull/72))
-
-## <span id="2026-11-07--0360-0370-0371-0372"></span>2026-11-07 – 0.37.2
-
-### Added
-
 - `edt_create_external_object` creates an external report with `kind=report`. The default
   remains an external data processor; both support a base project, managed forms and export.
   ([#67](https://github.com/keyfire/edt-bridge/pull/67))
@@ -275,8 +291,20 @@ to the code and the reasoning behind it.
   infobase and saves a JSON report and PNG screenshot on Linux with Xvfb.
   ([#66](https://github.com/keyfire/edt-bridge/pull/66))
 
+### Changed
+
+- Rebuilt 0.38.0 for publication with PyPI attestations.
+  ([#72](https://github.com/keyfire/edt-bridge/pull/72))
+
 ### Fixed
 
+- `test-form` retries the connection to a slow-starting test client within the
+  remaining `--timeout`. Previously, retries stopped after 30 seconds.
+  ([#73](https://github.com/keyfire/edt-bridge/pull/73))
+
+- `test-form` reads the message panel only when a scenario checks messages. A table
+  check can now click "Generate" in an external report with an empty message panel.
+  ([#70](https://github.com/keyfire/edt-bridge/pull/70))
 - `/status` and `/shutdown` use separate workers from `/mcp`, so they can respond while
   both MCP workers are busy.
   ([#69](https://github.com/keyfire/edt-bridge/pull/69))
