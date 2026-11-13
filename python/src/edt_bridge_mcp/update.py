@@ -90,9 +90,31 @@ def _sha256(path: Path) -> str:
 _WINDOWS_VERSION = re.compile(r"(?<![0-9.])([0-9]+(?:\.[0-9]+){1,3})(?:\+([0-9]+))?(?=$|[-_\s)])")
 
 
-def _newest_first(dirs) -> list[Path]:
-    """Order by the dotted version and optional build number in an installation name."""
+_BUILD_ID = re.compile(r"^\s*eclipse\.buildId\s*=\s*([0-9]+(?:\.[0-9]+){2})(?:\.([0-9]+))?\s*$", re.M)
+
+
+def _installed_build(edt_dir: Path) -> tuple[tuple[int, ...], int] | None:
+    """The version and build EDT records in configuration/config.ini, such as 2026.2.2.21.
+
+    The launcher keeps a release line in one directory and updates it in place, so the name
+    "1C_EDT 2026.2" can hold 2026.2.2 while "1C_EDT (Lite) 2026.2.0" holds what it says.
+    """
+    try:
+        text = (edt_dir / "configuration" / "config.ini").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    match = _BUILD_ID.search(text)
+    if not match:
+        return None
+    return tuple(map(int, match[1].split("."))), int(match[2] or 0)
+
+
+def _newest_first(dirs, edt_dir=lambda directory: directory) -> list[Path]:
+    """Order by the build EDT records, or by the dotted version and build in the name without one."""
     def rank(directory: Path) -> tuple[tuple[int, ...], int, str]:
+        recorded = _installed_build(edt_dir(directory))
+        if recorded:
+            return recorded[0], recorded[1], directory.name
         match = _WINDOWS_VERSION.search(directory.name)
         if not match:
             return (), 0, directory.name
@@ -113,7 +135,7 @@ def windows_installs() -> list[Path]:
     local = os.environ.get("LOCALAPPDATA")
     if local:
         base = Path(local) / "1C" / "1cedtstart" / "installations"
-        installs += [inst / "1cedt" for inst in _newest_first(base.glob("*"))]
+        installs += [inst / "1cedt" for inst in _newest_first(base.glob("*"), lambda inst: inst / "1cedt")]
     programs = os.environ.get("ProgramFiles")
     if programs:
         components = Path(programs) / "1C" / "1CE" / "components"

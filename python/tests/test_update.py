@@ -770,6 +770,68 @@ def test_windows_installs_order_versions_in_launcher_directory_names(monkeypatch
     assert update.windows_installs() == [newer, older]
 
 
+def _build_id(edt_dir, build_id):
+    (edt_dir / "configuration").mkdir(parents=True, exist_ok=True)
+    (edt_dir / "configuration" / "config.ini").write_text(
+        f"#written by the launcher\neclipse.buildId={build_id}\nproduct.version=ignored\n",
+        encoding="utf-8")
+    return edt_dir
+
+
+def test_windows_installs_trust_the_build_over_a_short_directory_name(monkeypatch, tmp_path):
+    """The launcher keeps a release line in one directory and updates it in place: "1C_EDT 2026.2"
+    holds 2026.2.2 and must not lose to "1C_EDT (Lite) 2026.2.0" because its name is shorter."""
+    installations, _ = _windows_roots(monkeypatch, tmp_path)
+    lite = _build_id(_edt(installations / "1C_EDT (Lite) 2026.2.0" / "1cedt"), "2026.2.0.289")
+    full = _build_id(_edt(installations / "1C_EDT 2026.2" / "1cedt"), "2026.2.2.21")
+
+    assert update.windows_installs() == [full, lite]
+
+
+def test_windows_installs_read_the_build_of_a_component(monkeypatch, tmp_path):
+    _, components = _windows_roots(monkeypatch, tmp_path)
+    named_newer = _build_id(_edt(components / "1c-edt-2026.1.9+1-x86_64"), "2026.1.2.5")
+    named_older = _build_id(_edt(components / "1c-edt-2026.1.2+2-x86_64"), "2026.1.10.3")
+
+    assert update.windows_installs() == [named_older, named_newer]
+
+
+def test_windows_installs_fall_back_to_the_name_on_an_unreadable_build(monkeypatch, tmp_path):
+    installations, _ = _windows_roots(monkeypatch, tmp_path)
+    older = _build_id(_edt(installations / "1C_EDT (Lite) 2026.1.9" / "1cedt"), "${build}")
+    newer = _edt(installations / "1C_EDT (Lite) 2026.1.10" / "1cedt")
+
+    assert update.windows_installs() == [newer, older]
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows launcher script")
+def test_powershell_trusts_the_build_over_a_short_directory_name(monkeypatch, tmp_path):
+    from pathlib import Path
+    import subprocess
+
+    installations, _ = _windows_roots(monkeypatch, tmp_path)
+    _build_id(_edt(installations / "1C_EDT (Lite) 2026.2.0" / "1cedt"), "2026.2.0.289")
+    full = _build_id(_edt(installations / "1C_EDT 2026.2" / "1cedt"), "2026.2.2.21")
+    script = tmp_path / "resolve.ps1"
+    script.write_text(
+        "param($Common, $Programs, $Local)\n"
+        "[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)\n"
+        "$env:ProgramFiles = $Programs\n$env:LOCALAPPDATA = $Local\n"
+        ". $Common\nResolve-EdtDir -RequireExe '1cedtcli.exe'\n",
+        encoding="ascii",
+    )
+    common = Path(__file__).resolve().parents[2] / "scripts" / "edt-common.ps1"
+
+    result = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script),
+         str(common), str(tmp_path / "programs"), str(tmp_path / "local")],
+        capture_output=True, text=True, encoding="utf-8", stdin=subprocess.DEVNULL, timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert Path(result.stdout.strip()) == full
+
+
 @pytest.mark.skipif(os.name != "nt", reason="Windows launcher script")
 def test_powershell_finds_the_newest_component_build(monkeypatch, tmp_path):
     from pathlib import Path

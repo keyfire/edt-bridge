@@ -16,31 +16,44 @@
 .PARAMETER RequireExe
   Executable that must exist in the directory - '1cedt.exe' for the GUI, '1cedtcli.exe' for the CLI.
 #>
+function Get-EdtRank {
+  param([System.IO.DirectoryInfo]$Directory, [string]$EdtDir)
+  # The build EDT records wins over the name: the launcher keeps a release line in one directory
+  # and updates it in place, so "1C_EDT 2026.2" can hold 2026.2.2 next to "1C_EDT (Lite) 2026.2.0".
+  $config = Join-Path $EdtDir "configuration\config.ini"
+  $recorded = if (Test-Path -LiteralPath $config -PathType Leaf) {
+    [regex]::Match((Get-Content -LiteralPath $config -Raw -Encoding UTF8),
+      '(?m)^\s*eclipse\.buildId\s*=\s*([0-9]+(?:\.[0-9]+){2})(?:\.([0-9]+))?\s*$')
+  }
+  # Otherwise rank the version and build in the name separately. The architecture suffix is not part of either.
+  $parts = if ($recorded -and $recorded.Success) { $recorded } else {
+    [regex]::Match($Directory.Name, '(?<![0-9.])([0-9]+(?:\.[0-9]+){1,3})(?:\+([0-9]+))?(?=$|[-_\s)])')
+  }
+  [pscustomobject]@{
+    Directory = $EdtDir
+    Name = $Directory.Name
+    Version = $parts.Groups[1].Value -as [version]
+    Build = [long]($parts.Groups[2].Value -as [long])
+  }
+}
+
 function Resolve-EdtDir {
   param([string]$EdtDir, [Parameter(Mandatory = $true)][string]$RequireExe)
   if ($EdtDir) { return $EdtDir }
-  # Rank the version and build separately. The architecture suffix is not part of either.
-  $rank = {
-    $parts = [regex]::Match($_.Name, '(?<![0-9.])([0-9]+(?:\.[0-9]+){1,3})(?:\+([0-9]+))?(?=$|[-_\s)])')
-    [pscustomobject]@{
-      Directory = $_.FullName
-      Name = $_.Name
-      Version = $parts.Groups[1].Value -as [version]
-      Build = [long]($parts.Groups[2].Value -as [long])
-    }
-  }
   $candidates = @(
     if ($env:LOCALAPPDATA) {
       $base = Join-Path $env:LOCALAPPDATA "1C\1cedtstart\installations"
       Get-ChildItem -LiteralPath $base -Directory -ErrorAction SilentlyContinue |
-        ForEach-Object $rank | Sort-Object Version, Build, Name -Descending |
-        ForEach-Object { Join-Path $_.Directory "1cedt" }
+        ForEach-Object { Get-EdtRank $_ (Join-Path $_.FullName "1cedt") } |
+        Sort-Object Version, Build, Name -Descending |
+        ForEach-Object { $_.Directory }
     }
     if ($env:ProgramFiles) {
       $components = Join-Path $env:ProgramFiles "1C\1CE\components"
       Get-ChildItem -LiteralPath $components -Directory -Filter "1c-edt-*" -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -match '^1c-edt-[0-9]' } |
-        ForEach-Object $rank | Sort-Object Version, Build, Name -Descending |
+        ForEach-Object { Get-EdtRank $_ $_.FullName } |
+        Sort-Object Version, Build, Name -Descending |
         ForEach-Object { $_.Directory }
     }
   )
