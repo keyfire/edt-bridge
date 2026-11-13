@@ -81,6 +81,8 @@ come from YAXUnit itself: `junit.xml` goes to GitLab as `artifacts:reports:junit
 | `yaxunitErrors` | the error records of the YAXUnit log |
 | `eventLog.errors` | the errors the platform logged in the copy during the run, with module and line |
 | `yaxunitVersion` | the YAXUnit version that ran the tests |
+| `piiFilter` | with `EDT_BRIDGE_PII` set, the mode and the number of values replaced in the answer and the files; see [Personal data](/personal-data) |
+| `filesWithheld` | with the filter on, how many files of the run were deleted because the filter cannot read them, an image a test attached for example |
 
 `trace` keeps the lines of the code under test and leaves out the frames of YAXUnit itself.
 `failed` is an assertion that did not hold, `error` an exception in the test or in the tested code.
@@ -97,5 +99,6 @@ With more than 500 tests the list keeps the failed ones first, and `testsListed`
 | `extension_name_mismatch` | the file holds an extension with another name |
 | `timeout` | the run reached its time limit; `screenshot` shows what the client was waiting for |
 | `license_unavailable`, `access_denied` | the platform refused to start the client |
+| `pii_filter_failed` | the personal data filter failed with an error; the answer is withheld and the output directory is emptied |
 
 The exit code of the command is **0** for `passed`, **1** for a refused call and **2** otherwise.

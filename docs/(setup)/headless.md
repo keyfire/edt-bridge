@@ -3,7 +3,7 @@ title: "Headless EDT"
 description: "Auto-start of a headless EDT, waiting for the project models in a CI job, and moving a ready workspace to another machine."
 sidebar:
   label: "Headless EDT"
-  order: 3
+  order: 4
 ---
 
 The wrapper starts a headless EDT when EDT is not running. This page describes that start,

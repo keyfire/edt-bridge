@@ -19,6 +19,11 @@ and `panel`. Screenshots are saved as `steps/screenshot.png` and,
 when that phase runs, `reopen/screenshot.png`. A single-button run uses
 `screenshot.png` in the output directory. The JSON records screenshot paths.
 
+With `EDT_BRIDGE_PII` set, the answer, `result.json` and the reports for CI are filtered of
+personal data, and `piiFilter` gives the mode and the number of values replaced. Screenshots are
+not kept, since a picture of a form shows its data unmasked: `screenshotWithheld` stands in place
+of the path. The verdict is still taken on the real values; see [Personal data](/personal-data).
+
 | Result | Meaning |
 | --- | --- |
 | `scenario_completed`, `ok=true` | All assertions in all requested phases passed and the required screenshots were captured. |
@@ -30,6 +35,7 @@ when that phase runs, `reopen/screenshot.png`. A single-button run uses
 | `client_environment` | No `conf.cfg` the client reads sets `DisableUnsafeActionProtection`, so the client would stop at the security warning; see `clientEnvironment` and [Prepare the environment](/native-forms#prepare-the-environment). |
 | `timeout` | The overall time limit expired. The recorded progress and available screenshot show where execution stopped. |
 | `screenshot_failed` | Observations passed but the required screenshot was not obtained. |
+| `pii_filter_failed` | The [personal data](/personal-data) filter failed with an error. The answer is withheld and the output directory is emptied; `notRemoved` lists a file that could not be deleted. |
 
 `eventLog.errors` lists the errors the platform wrote to the event log of the test
 infobase while the check ran. A server call that fails shows the client only an error

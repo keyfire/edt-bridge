@@ -9,6 +9,9 @@ sidebar:
 These tools attach to the debug server (dbgs) of a running infobase and drive execution. Use a test
 stand. All tools require a token; `edt_evaluate` also requires additional permissions.
 
+With `EDT_BRIDGE_PII` set, the values that `edt_debug_inspect` and `edt_evaluate` return are
+filtered of personal data; see [Personal data](/personal-data).
+
 | Debug tool | What it does |
 |------------|--------------|
 | `edt_debug_attach` · `edt_debug_detach` | Attaches a debug session to the debug server of a running infobase and returns a `sessionId` for the other debug tools. Detaching terminates the session and frees the infobase. |

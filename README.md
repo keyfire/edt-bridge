@@ -11,7 +11,8 @@ create and rename objects, and build and deliver them. They also support infobas
 debugging. These operations use EDT's own engine.
 
 > The server is available only on localhost. Model-changing tools require a token and return a
-> plan by default. Debug tools also require a token.
+> plan by default. Debug tools also require a token. With `EDT_BRIDGE_PII` set, the answers that
+> carry infobase data leave with [personal data](https://docs.keyfire.ru/edt-bridge/personal-data/) masked.
 
 **English** · [Русский](docs/ru/README.ru.md)
 

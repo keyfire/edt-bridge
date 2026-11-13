@@ -3,7 +3,7 @@ title: "Wrapper plugins"
 description: "Installing, updating and writing plugins that add tools to the edt-bridge-mcp wrapper."
 sidebar:
   label: "Wrapper plugins"
-  order: 4
+  order: 5
 ---
 
 Wrapper plugins are distributed as separate packages and installed in the wrapper's environment.
