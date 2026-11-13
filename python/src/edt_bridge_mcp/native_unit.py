@@ -422,12 +422,22 @@ def run(args):
         report.update(ok=False, status="cancelled", error="The unit test run was cancelled.")
     if flt.active:
         # The verdict is YAXUnit's on the real values; the answer and the files it leaves are masked.
-        pii.withhold_screenshots(report)
-        report = pii.mask(report, flt)
-        if output is not None:
-            pii.mask_files([path for path in output.rglob("*") if path.suffix in (".xml", ".json", ".log", ".txt",
-                                                                                 ".properties")], flt)
-        report["piiFilter"] = flt.marker()
+        try:
+            pii.withhold_screenshots(report)
+            report = pii.mask(report, flt)
+            if output is not None:
+                text = (".xml", ".json", ".log", ".txt", ".properties")
+                files = [path for path in output.rglob("*") if path.is_file()]
+                pii.mask_files([path for path in files if path.suffix in text], flt)
+                # A file the filter cannot read, an image attached by a test, is not kept.
+                withheld = [path for path in files if path.suffix not in text]
+                for path in withheld:
+                    path.unlink()
+                if withheld:
+                    report["filesWithheld"] = len(withheld)
+            report["piiFilter"] = flt.marker()
+        except Exception as error:  # any failure of the filter: nothing unmasked may leave
+            report = pii.withheld(output, error)
     if output is not None:
         try:
             (output / "result.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n",

@@ -113,4 +113,6 @@ user and the computer of a session or an event are replaced whole.
 pseudonym, and there is no table that leads back. A filtered answer says so in `piiFilter` with the
 number of values replaced. A check still judges by the real values; only what it answers is masked,
 and its screenshots are not kept (`screenshotWithheld`). Settings that cannot be read refuse the
-call instead of answering unfiltered.
+call instead of answering unfiltered. A filter that fails on an answer withholds it with
+`pii_filter_failed` and leaves nothing of the run in its output directory, and a file the filter
+cannot read, such as an image a test attached, is not kept.

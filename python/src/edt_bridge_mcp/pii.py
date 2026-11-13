@@ -22,6 +22,7 @@ import json
 import os
 import re
 import secrets
+import shutil
 from pathlib import Path
 
 ENV_MODE = "EDT_BRIDGE_PII"
@@ -244,6 +245,23 @@ def mask(node, flt, name=None, data=False):
         else:
             result[key] = mask(value, flt, key)
     return result
+
+
+def withheld(output, error):
+    """The answer of a run whose filter failed: no data of the run, and nothing of it left in `output`.
+
+    The run made `output` itself, so everything in it is the run's; the files there were written before
+    the filter and may hold data unmasked. The message names the error class only: its text may quote
+    the value the filter stopped on."""
+    if output is not None:
+        for child in Path(output).iterdir():
+            if child.is_dir() and not child.is_symlink():
+                shutil.rmtree(child, ignore_errors=True)
+            else:
+                child.unlink(missing_ok=True)
+    return {"ok": False, "status": "pii_filter_failed", "stage": "pii_filter",
+            "error": f"The personal data filter failed ({type(error).__name__}); the answer and the files of the "
+                     "run are withheld."}
 
 
 def withhold_screenshots(node):

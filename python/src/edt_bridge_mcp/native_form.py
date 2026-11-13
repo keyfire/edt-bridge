@@ -968,9 +968,12 @@ def run(args):
                          "phases": report.get("timings", {}).get("phases", [])}
     if flt.active:
         # The verdict is already taken on the values the check saw; only what leaves is masked.
-        pii.withhold_screenshots(report)
-        report = pii.mask(report, flt)
-        report["piiFilter"] = flt.marker()
+        try:
+            pii.withhold_screenshots(report)
+            report = pii.mask(report, flt)
+            report["piiFilter"] = flt.marker()
+        except Exception as error:  # any failure of the filter: nothing unmasked may leave
+            report = pii.withheld(output, error)
     if output is not None:
         try:
             # For CI: GitLab reads the JUnit file, Allure the results directory.
