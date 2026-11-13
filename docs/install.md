@@ -74,6 +74,7 @@ flag twin, documented in [Commands](/cli).
 | `EDT_BRIDGE_LANG` | – | the system locale | the language of the wrapper's help and messages (`ru` or `en`) |
 | `EDT_BRIDGE_NO_PLUGINS` | – | off | `1` skips the discovery of [wrapper plugins](#wrapper-plugins), leaving the wrapper's own capabilities only |
 | `EDT_BRIDGE_TOOLSET` | – | every tool | one tool set or several, separated by commas: `processor`, `report`, `extension`. The wrapper then lists and runs only their tools, its own and plugin tools included. An unknown name refuses the list and every call |
+| `EDT_BRIDGE_WRITE_PROJECTS`, `EDT_BRIDGE_READ_PROJECTS`, `EDT_BRIDGE_OUTPUT_DIR` | – | – | the [write scope](#write-scope) the wrapper expects. An auto-started EDT inherits it, and a call to an EDT that reports another scope is refused until the two agree |
 | `EDT_BRIDGE_PLUGIN_INDEX` | – | – | the package index URL `self-update` names to pip for plugins installed by project name. A plugin installed from git records its source |
 
 **Read by the plugin inside EDT**
@@ -89,6 +90,9 @@ flag twin, documented in [Commands](/cli).
 | `EDT_BRIDGE_TEST_PLATFORM` | – | – | the platform `bin` directory with `1cv8` and `ibcmd` that `edt_test_form` runs |
 | `EDT_BRIDGE_TEST_USER` | – | – | the infobase user `edt_test_form` signs in as, when the test infobase has users |
 | `EDT_BRIDGE_TOOLSET` | `-Dedt.bridge.toolset` | every tool | the same tool sets on the bridge side: `tools/list` returns only their tools, and a call of another tool is refused with the sets that hold it. `edt_tool_help` names the sets of any tool, and `/status` reports the active ones |
+| `EDT_BRIDGE_WRITE_PROJECTS` | `-Dedt.bridge.write.projects` | every project | the projects the tools may change, separated by commas; see [Write scope](#write-scope) |
+| `EDT_BRIDGE_READ_PROJECTS` | `-Dedt.bridge.read.projects` | – | the projects the tools may only read |
+| `EDT_BRIDGE_OUTPUT_DIR` | `-Dedt.bridge.output.dir` | anywhere | the absolute directory the files the tools write must lie in |
 
 Environment variables and `-Dedt.bridge.*` properties supplied at launch take precedence over
 EDT's preference page. The wrapper uses them to configure a headless instance.
@@ -108,6 +112,25 @@ with "no BM model". In a CI job, wait for the models with `edt-bridge-mcp wait-r
 open EDT project. It exits with code 0 when the projects are ready, 1 when EDT is not running or
 has exited, and 2 when the time runs out while EDT is still loading. A project imported after the
 start is awaited as well.
+
+### Write scope
+
+A tool set limits which tools run, not where they write. Three settings bound an agent: the
+projects it may change (`EDT_BRIDGE_WRITE_PROJECTS`), the projects it may only read
+(`EDT_BRIDGE_READ_PROJECTS`) and the directory for the files the tools write
+(`EDT_BRIDGE_OUTPUT_DIR`). The bridge checks every call before the tool runs, so a client that
+calls the port directly is held to the same scope. A refusal names what is allowed.
+
+With the project lists set, a tool marked WRITE may change only a project from the first list, and
+any tool reads only the projects of both lists; a tool that reads every project when none is named
+needs `projectName`. A new extension or external object takes a name from the first list. The files
+the tools write – `targetPath`, `logPath`, `outputPath`, `outPath` and the folder of a new infobase
+– must lie under the output directory; once any of the settings is set, a file goes nowhere else.
+A `modulePath` may not leave its project. `/status` reports the scope the bridge holds.
+
+The settings reach EDT through the environment of its process: an EDT the wrapper starts inherits
+them. When the wrapper has them and the running EDT reports another scope, the wrapper refuses its
+calls until EDT is restarted with the same settings.
 
 ### A ready workspace
 

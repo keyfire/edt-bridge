@@ -13,6 +13,16 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
+## Unreleased
+
+### Added
+
+- A write scope bounds what an agent may change. `EDT_BRIDGE_WRITE_PROJECTS` and
+  `EDT_BRIDGE_READ_PROJECTS` name the projects the tools may change and read, and
+  `EDT_BRIDGE_OUTPUT_DIR` the directory for the files they write. The bridge checks every call
+  before the tool runs and names what is allowed; the wrapper does not forward calls to an EDT
+  that holds another scope. ([#82](https://github.com/keyfire/edt-bridge/pull/82))
+
 ## 2026-11-13 – 0.43.0
 
 ### Added
