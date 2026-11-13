@@ -13,7 +13,7 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
-## Unreleased
+## <span id="2026-11-13--0430-0440"></span><span id="2026-11-13--0440"></span>2026-11-13 – 0.45.0
 
 ### Added
 
@@ -48,11 +48,6 @@ to the code and the reasoning behind it.
   passports are found by their shape, the values of fields such as `ФИО` by the field's name;
   `redact` writes their kind, `pseudonym` a salted HMAC pseudonym that is the same for the same
   value. Checks judge by the real values, screenshots are not kept, module texts are never touched.
-
-## <span id="2026-11-13--0430-0440"></span>2026-11-13 – 0.44.0
-
-### Added
-
 - A write scope bounds what an agent may change. `EDT_BRIDGE_WRITE_PROJECTS` and
   `EDT_BRIDGE_READ_PROJECTS` name the projects the tools may change and read, and
   `EDT_BRIDGE_OUTPUT_DIR` the directory for the files they write. The bridge checks every call
