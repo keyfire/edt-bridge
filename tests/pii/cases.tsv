@@ -1,0 +1,42 @@
+# Cases of the personal data filter (EDT-PII-01), read by the Java core tests and by pytest, so the
+# two implementations cannot drift apart. Columns, separated by a tab:
+#   mode      redact or pseudonym (salt "test-salt")
+#   name      the field or variable name the value belongs to, or - for none
+#   input     the value
+#   expected  what the filter answers
+# <empty> stands for an empty value: editors drop trailing tabs.
+# A line starting with # is a comment.
+redact	-	Пишите на ivanov.ii@example.com до пятницы	Пишите на [email] до пятницы
+redact	-	Телефон +7 (912) 345-67-89, доб. 12	Телефон [phone], доб. 12
+redact	-	звонить 8 912 345 67 89	звонить [phone]
+redact	-	СНИЛС 112-233-445 95	СНИЛС [snils]
+redact	-	СНИЛС 11223344595	СНИЛС [snils]
+redact	-	ИНН 7707083893, КПП 773601001	ИНН [inn], КПП 773601001
+redact	-	ИНН физлица 500100732259	ИНН физлица [inn]
+redact	-	карта 4111 1111 1111 1111	карта [card]
+redact	-	паспорт 45 06 123456	паспорт [passport]
+redact	-	паспорт 4506 № 123456	паспорт [passport]
+redact	ФИО	Иванов Иван Иванович	[person]
+redact	Объект.Фамилия	Иванов	[person]
+redact	ДатаРождения	01.02.1980	[birthdate]
+redact	ТелефонМобильный	нет	[phone]
+redact	Имя	Иван	[person]
+redact	ИмяФайла	отчет.xlsx	отчет.xlsx
+redact	Наименование	ООО Ромашка, ИНН 7707083893	ООО Ромашка, ИНН [inn]
+pseudonym	-	ivanov.ii@example.com	[email#jdgpplmn]
+pseudonym	-	IVANOV.II@example.com	[email#jdgpplmn]
+pseudonym	-	ИНН 7707083893	ИНН [inn#icbbphoh]
+pseudonym	ФИО	Иванов Иван Иванович	[person#mfhfgpop]
+pseudonym	ФИО	иванов  иван иванович	[person#mfhfgpop]
+# Not personal data: a sum and a date that look like an INN, numbers that fail their check digits,
+# a number that is part of a fraction, an empty value.
+redact	-	Сумма 7707083893,00 руб.	Сумма 7707083893,00 руб.
+redact	-	Сумма 7707083893.50	Сумма 7707083893.50
+redact	-	метка 2026111312	метка 2026111312
+redact	-	метка 202611131245	метка 202611131245
+redact	-	дата 13.11.2026	дата 13.11.2026
+redact	-	номер 7707083894	номер 7707083894
+redact	-	счет 4111 1111 1111 1112	счет 4111 1111 1111 1112
+redact	-	СНИЛС 112-233-445 96	СНИЛС 112-233-445 96
+redact	-	код 123	код 123
+redact	ФИО	<empty>	<empty>

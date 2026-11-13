@@ -22,7 +22,7 @@ import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from . import event_log, i18n, native_cache, native_report, native_reports, native_scenario
+from . import event_log, i18n, native_cache, native_report, native_reports, native_scenario, pii
 
 
 _SCOPES = ("empty", "fixture", "application")
@@ -920,7 +920,12 @@ def run(args):
     timeline.enter("preparation")
     report = {"ok": False, "scope": args.scope, "scopeSource": "caller", "stage": "validation"}
     output = None
+    flt = pii.Filter()
     try:
+        try:
+            flt = pii.Filter.from_env()
+        except pii.RulesError as error:
+            raise _CheckError("invalid_input", str(error)) from error
         base, external, destination = _validated_paths(args)
         args._scenario = native_scenario.load(args.scenario) if args.scenario else None
         try:
@@ -961,6 +966,11 @@ def run(args):
     total, stages = timeline.close()
     report["timings"] = {"totalSeconds": total, "stages": stages,
                          "phases": report.get("timings", {}).get("phases", [])}
+    if flt.active:
+        # The verdict is already taken on the values the check saw; only what leaves is masked.
+        pii.withhold_screenshots(report)
+        report = pii.mask(report, flt)
+        report["piiFilter"] = flt.marker()
     if output is not None:
         try:
             # For CI: GitLab reads the JUnit file, Allure the results directory.

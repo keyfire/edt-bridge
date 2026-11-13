@@ -42,6 +42,12 @@ to the code and the reasoning behind it.
   phase with its time, a failure for what the solution did and an error for what the environment
   did, and in Allure the steps with their times and the screenshot; the unit tests take both
   reports from YAXUnit.
+- `EDT_BRIDGE_PII` filters personal data out of the answers that carry infobase data:
+  `edt_debug_inspect`, `edt_evaluate`, `edt_infobase_sessions`, `edt_test_form` and
+  `edt_unit_tests`. E-mails, phones, SNILS and INN with their check digits, card numbers and
+  passports are found by their shape, the values of fields such as `ФИО` by the field's name;
+  `redact` writes their kind, `pseudonym` a salted HMAC pseudonym that is the same for the same
+  value. Checks judge by the real values, screenshots are not kept, module texts are never touched.
 
 ## <span id="2026-11-13--0430-0440"></span>2026-11-13 – 0.44.0
 

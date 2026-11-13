@@ -71,6 +71,10 @@ ls -t "$DROPINS"/io.github.keyfire.edtbridge_*.jar 2>/dev/null | tail -n +2 | wh
 vmargs=(-Dedt.bridge.headless=1)
 [ -n "${EDT_BRIDGE_TOKEN:-}" ] && vmargs+=("-Dedt.bridge.token=${EDT_BRIDGE_TOKEN}")
 [ "$PORT" != 8770 ] && vmargs+=("-Dedt.bridge.port=${PORT}")
+# The personal data filter of the answers with infobase data, read by the bridge like the token.
+[ -n "${EDT_BRIDGE_PII:-}" ] && vmargs+=("-Dedt.bridge.pii=${EDT_BRIDGE_PII}")
+[ -n "${EDT_BRIDGE_PII_SALT:-}" ] && vmargs+=("-Dedt.bridge.pii.salt=${EDT_BRIDGE_PII_SALT}")
+[ -n "${EDT_BRIDGE_PII_RULES:-}" ] && vmargs+=("-Dedt.bridge.pii.rules=${EDT_BRIDGE_PII_RULES}")
 nohup sh -c '(echo version; exec sleep 2147483647) | "$1" -data "$2" -nl en_US -vmargs '"${vmargs[*]}" \
   _ "$CLI" "$WORKSPACE" >/dev/null 2>&1 &
 echo "Launched headless EDT (1cedtcli). Waiting up to ${WAIT}s for the server + model..."
