@@ -368,6 +368,13 @@ window, while the log keeps the description: each entry has `message`, `module` 
 (`1Cv8Log/*.lgf`, `*.lgp`); for an infobase that keeps it in SQLite (`1Cv8.lgd`),
 `eventLog.read` is `false` with an explanation.
 
+When the manager infobase cannot be prepared, `setup_failed` names the stage and quotes what
+the platform wrote: the designer's log (`designerLog`), the output of the designer process
+(`designerProcessLog`) and the log of `ibcmd` (`setupLog`). The manager infobase is disposable,
+so a failed setup is tried once more in a clean directory before the check gives up;
+`setupRetries` records the stage and the error of the failed attempt. A refused license or
+access is not retried.
+
 When a step's `field` matches no field or several, the result carries `observedFields`:
 the fields and form tables the test client sees on the form, each with `name`, `title`,
 `kind`, `visible` and `enabled`, the visible ones first, up to 200, and `total`. Fields

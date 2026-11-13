@@ -71,6 +71,10 @@ to the code and the reasoning behind it.
 
 ### Fixed
 
+- When `test-form` and `edt_test_form` cannot prepare their manager infobase, the refusal names
+  the stage and quotes the log and the output of the designer, and the setup is tried once more
+  in a clean directory. A failed export of the empty manager configuration used to end the check
+  with an exit code alone. ([#82](https://github.com/keyfire/edt-bridge/pull/82))
 - The wrapper and the launch scripts pick the EDT installation by the build it records in
   `configuration/config.ini`. The 1C launcher updates a release line in one directory, so
   `1C_EDT 2026.2` held 2026.2.2 and still lost to `1C_EDT (Lite) 2026.2.0` because its name is

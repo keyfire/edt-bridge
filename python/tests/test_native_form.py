@@ -389,6 +389,86 @@ def test_failed_reopen_does_not_reuse_the_previous_phase_evidence(monkeypatch, t
     assert report["cleanupComplete"] is True
 
 
+def _manager_setup(monkeypatch, tmp_path, exports):
+    """A check whose designer answers each export of the manager configuration from `exports`:
+    None exports it, a text is what the failing designer prints before it exits with 255."""
+    monkeypatch.setattr(native_form.shutil, "which", lambda name: name)
+    monkeypatch.setattr(native_form, "_display", lambda *args: {})
+    args = _fixture_args(tmp_path)
+    args.output_dir.mkdir()
+    managers = []
+
+    def spawn(_stack, argv, _env, log):
+        if Path(argv[0]).name == "ibcmd":
+            directory = Path(next(x.split("=", 1)[1] for x in argv if x.startswith("--db-path=")))
+            directory.mkdir()
+            (directory / "1Cv8.1CD").touch()
+            managers.append(directory)
+        elif "/DumpExternalDataProcessorOrReportToFiles" in argv:
+            xml = Path(argv[argv.index("/DumpExternalDataProcessorOrReportToFiles") + 1])
+            xml.write_text("<MetaDataObject><ExternalDataProcessor><Properties>"
+                           f"<DefaultForm>{args.form}</DefaultForm>"
+                           "</Properties></ExternalDataProcessor></MetaDataObject>", encoding="utf-8")
+        elif "/DumpConfigToFiles" in argv:
+            output = exports.pop(0)
+            if output is not None:
+                log.write_text(output, encoding="utf-8")
+                return SimpleNamespace(wait=lambda timeout: 255)
+            (Path(argv[argv.index("/DumpConfigToFiles") + 1]) / "Configuration.xml").touch()
+        return SimpleNamespace(wait=lambda timeout: 0)
+
+    monkeypatch.setattr(native_form, "_spawn", spawn)
+    sessions = []
+
+    def session(*session_args):
+        sessions.append(session_args[5])
+        return {"ok": True, "status": "command_completed", "screenshot": "screenshot.png", "cleanupComplete": True}
+
+    monkeypatch.setattr(native_form, "_run_session", session)
+    return args, managers, sessions
+
+
+def test_a_failed_manager_setup_is_retried_once_in_a_clean_directory(monkeypatch, tmp_path):
+    args, managers, sessions = _manager_setup(monkeypatch, tmp_path, ["Unable to connect to the display", None])
+    report = {"ok": False}
+
+    native_form._native_check(args, args.test_infobase, args.epf, args.output_dir, report)
+
+    assert report["ok"] is True
+    assert [retry["stage"] for retry in report["setupRetries"]] == ["manager_setup"]
+    retry = report["setupRetries"][0]
+    assert "exit code 255" in retry["error"] and "Unable to connect to the display" in retry["error"]
+    assert retry["designerProcessLog"] == "Unable to connect to the display"
+    assert managers[0].parent != managers[1].parent
+    assert sessions == [managers[1]]
+
+
+def test_a_manager_setup_that_fails_twice_names_what_the_designer_wrote(monkeypatch, tmp_path):
+    args, _, sessions = _manager_setup(monkeypatch, tmp_path, ["The infobase is damaged", "The infobase is damaged"])
+    report = {"ok": False}
+
+    native_form._native_check(args, args.test_infobase, args.epf, args.output_dir, report)
+
+    assert report["status"] == "setup_failed"
+    assert report["stage"] == "manager_setup"
+    assert report["error"].startswith("Could not export the empty manager configuration (exit code 255).")
+    assert "designerProcessLog: The infobase is damaged" in report["error"]
+    assert report["designerProcessLog"] == "The infobase is damaged"
+    assert len(report["setupRetries"]) == 1
+    assert sessions == []
+
+
+def test_a_license_refusal_in_the_manager_setup_is_not_retried(monkeypatch, tmp_path):
+    args, managers, _ = _manager_setup(monkeypatch, tmp_path, ["Не обнаружено свободной лицензии!", None])
+    report = {"ok": False}
+
+    native_form._native_check(args, args.test_infobase, args.epf, args.output_dir, report)
+
+    assert report["status"] == "license_unavailable"
+    assert "setupRetries" not in report
+    assert len(managers) == 1
+
+
 def test_the_check_runs_in_a_worker_thread(monkeypatch, tmp_path):
     # The MCP wrapper serves a tool call in a worker thread, and Python installs signal handlers
     # in the main thread only.
