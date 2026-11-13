@@ -7,10 +7,20 @@ lives only as long as its client. So a job here is a process of its own, detache
 its state and its answer in a directory of the user cache: a wrapper started again by a new client finds
 them there.
 
-A job directory holds state.json (the state, written by the job process), pid (written by the wrapper
-that started it), result.json (the answer, the same object the call returns without async) and log.txt
-(what the process wrote to stderr). The arguments of the call are passed in request.json and removed as
-soon as the job has read them: they may carry the password of the infobase user.
+A job directory holds state.json (the state, written by the job process), process.json (the pid and the
+start time of the process, written by the wrapper that started it), result.json (the answer, the same
+object the call returns without async), cancel (the time a cancel was asked) and log.txt (what the
+process wrote to stderr). The arguments of the call are passed in request.json and removed as soon as the
+job has read them: they may carry the password of the infobase user.
+
+A pid alone does not name a process for long: after the job ends or the machine restarts, the number goes
+to another process. So the start time is kept with it, and a process whose start time differs is not the
+job's - it is neither reported as running nor stopped.
+
+The temporary files of a job lie in a directory of its own inside the temporary directory the job
+inherits (where a stand allows the infobase copies a check opens). Whatever runs with that path in its
+command line - the copy of the infobase, the clients of the platform - belongs to the job, which is how a
+job stopped by force still leaves nothing behind.
 """
 from __future__ import annotations
 
@@ -22,6 +32,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -35,8 +46,12 @@ MAX_WAIT_SECONDS = 50
 DEFAULT_WAIT_SECONDS = 30
 #: How long a call with async=true waits before it answers with a job id: a refusal answers as itself.
 INLINE_SECONDS = 1.5
-#: How long a cancel waits for the job process to stop by itself before it is killed.
+#: How long a cancel call waits for the job to stop before it answers that the job is stopping.
 CANCEL_WAIT_SECONDS = 10
+#: How long a cancelled job may take to remove its processes and its copy of the infobase before it is
+#: killed and its leftovers are removed by force. A form check of a large configuration (a 3 GB infobase)
+#: cancelled in each of its stages took 0.8-1.4 s to clean up on Linux: the limit leaves a wide margin.
+GRACE_SECONDS = 60
 FINISHED = ("succeeded", "failed", "cancelled")
 STATUS_TOOL = "edt_job_status"
 CANCEL_TOOL = "edt_cancel_job"
@@ -86,30 +101,58 @@ def _read(path: Path):
     return None
 
 
-def _alive(pid) -> bool:
+def _started(pid):
+    """When the process with this pid started, as text, or None when no such process runs."""
     if not isinstance(pid, int) or pid <= 0:
-        return False
+        return None
     if os.name == "nt":
         import ctypes
+        from ctypes import wintypes
 
         kernel = ctypes.windll.kernel32
         handle = kernel.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
         if not handle:
-            return False
+            return None
         try:
             code = ctypes.c_ulong()
-            if not kernel.GetExitCodeProcess(handle, ctypes.byref(code)):
-                return False
-            return code.value == 259  # STILL_ACTIVE
+            if not kernel.GetExitCodeProcess(handle, ctypes.byref(code)) or code.value != 259:  # STILL_ACTIVE
+                return None
+            created, ended, kernel_time, user_time = (wintypes.FILETIME() for _ in range(4))
+            if not kernel.GetProcessTimes(handle, ctypes.byref(created), ctypes.byref(ended),
+                                          ctypes.byref(kernel_time), ctypes.byref(user_time)):
+                return None
+            return str((created.dwHighDateTime << 32) | created.dwLowDateTime)
         finally:
             kernel.CloseHandle(handle)
     try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
+        with open(f"/proc/{pid}/stat", "rb") as stream:
+            data = stream.read()
+        fields = data[data.rindex(b")") + 2:].split()
+        # The state comes first after the name, the start time is the 22nd field of the line.
+        return None if fields[0] == b"Z" else fields[19].decode("ascii")
+    except FileNotFoundError:
+        return None
+    except (OSError, IndexError, ValueError):
+        # No /proc: liveness is all there is to go by.
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return None
+        except PermissionError:
+            pass
+        return "alive"
+
+
+def _process(folder: Path) -> tuple[int | None, str | None]:
+    record = _read(folder / "process.json") or {}
+    pid = record.get("pid")
+    return (pid if isinstance(pid, int) else None), record.get("started")
+
+
+def _running(folder: Path) -> bool:
+    """Whether the job's own process still runs: the pid and the start time both match."""
+    pid, started = _process(folder)
+    return pid is not None and started is not None and _started(pid) == started
 
 
 def _runners() -> dict:
@@ -142,10 +185,17 @@ def start(tool: str, arguments: dict, *, environ=os.environ, spawn=_spawn) -> di
     job_id = PREFIX + secrets.token_hex(4)
     folder = root(environ) / job_id
     folder.mkdir(parents=True, mode=0o700)
-    _write(folder / "request.json", {"tool": tool, "arguments": arguments})
-    _write(folder / "state.json", {"jobId": job_id, "tool": tool, "status": "queued", "submittedAt": time.time()})
-    process = spawn(folder)
-    (folder / "pid").write_text(str(process.pid), encoding="ascii", newline="")
+    try:
+        _write(folder / "request.json", {"tool": tool, "arguments": arguments})
+        _write(folder / "state.json", {"jobId": job_id, "tool": tool, "status": "queued",
+                                       "submittedAt": time.time()})
+        process = spawn(folder)
+    except BaseException:
+        # Nothing started: the arguments, with any password among them, must not stay on disk.
+        shutil.rmtree(folder, ignore_errors=True)
+        raise
+    # A process that already ended has no start time to read: it is then taken as gone, never as running.
+    _write(folder / "process.json", {"pid": process.pid, "started": _started(process.pid)})
     return job_id
 
 
@@ -165,7 +215,23 @@ def run(folder: Path, *, runners=None) -> int:
     def stop(signum, frame):
         raise _Cancelled()
 
-    previous = signal.signal(signal.SIGTERM, stop) if os.name != "nt" else None
+    # Every temporary file of the job goes under one directory of its own, still inside the temporary
+    # directory the job inherited: a stand allows the infobase copies a check opens by that location.
+    scratch = Path(tempfile.gettempdir()) / f"edt-bridge-{folder.name}"
+    scratch.mkdir(mode=0o700, exist_ok=True)
+    inherited = tempfile.tempdir
+    tempfile.tempdir = str(scratch)
+    # The platform writes its own temporary files to TMPDIR: they go to the job's directory too.
+    inherited_env = {name: os.environ.get(name) for name in ("TMPDIR", "TEMP", "TMP")}
+    for name in inherited_env:
+        os.environ[name] = str(scratch)
+    state["scratch"] = str(scratch)
+    _write(folder / "state.json", state)
+
+    # Python installs a signal handler from the main thread only; a job run in another thread (the tests
+    # do that) goes without one.
+    in_main_thread = threading.current_thread() is threading.main_thread()
+    previous = signal.signal(signal.SIGTERM, stop) if os.name != "nt" and in_main_thread else None
     tool = request.get("tool")
     runner = (runners or _runners()).get(tool)
     try:
@@ -173,7 +239,10 @@ def run(folder: Path, *, runners=None) -> int:
             raise ValueError(f"no background run for {tool!r}")
         report = runner(request.get("arguments") or {})
         _write(folder / "result.json", report)
-        state.update(status="succeeded")
+        # The form check and the unit run catch SIGTERM themselves, clean up and return a report: the
+        # cancel the wrapper asked for is what tells a cancelled run from one that ended on its own.
+        cancelled = (folder / "cancel").exists() or (isinstance(report, dict) and report.get("status") == "cancelled")
+        state.update(status="cancelled", cancelRequested=True) if cancelled else state.update(status="succeeded")
     except _Cancelled:
         state.update(status="cancelled", cancelRequested=True)
     except Exception as error:  # the answer the call gives without async: "<tool> failed: ..."
@@ -181,6 +250,13 @@ def run(folder: Path, *, runners=None) -> int:
     finally:
         if previous is not None:
             signal.signal(signal.SIGTERM, previous)
+        tempfile.tempdir = inherited
+        for name, value in inherited_env.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+        shutil.rmtree(scratch, ignore_errors=True)
     state["finishedAt"] = time.time()
     _write(folder / "state.json", state)
     return 0
@@ -197,22 +273,58 @@ def _folder(job_id: str, environ) -> tuple[Path | None, str | None]:
     return folder, None
 
 
+def _leftovers(scratch: str) -> None:
+    """Stop what still runs on the job's temporary files and remove them: the clients of the platform run
+    in sessions of their own and outlive a job that was killed before it could stop them."""
+    if not scratch:
+        return
+    if os.name != "nt":
+        own = os.getpid()
+        for entry in Path("/proc").glob("[0-9]*"):
+            try:
+                if int(entry.name) == own:
+                    continue
+                command = (entry / "cmdline").read_bytes().replace(b"\0", b" ").decode("utf-8", "replace")
+            except (OSError, ValueError):
+                continue
+            if scratch in command:
+                try:
+                    os.kill(int(entry.name), signal.SIGKILL)
+                except (ProcessLookupError, PermissionError):
+                    pass
+    shutil.rmtree(scratch, ignore_errors=True)
+
+
 def _state(folder: Path) -> dict:
-    """The state of a job, with a job whose process died without an answer marked as failed."""
+    """The state of a job. A job whose process is gone without an answer is failed, or cancelled when a
+    cancel was asked; a cancelled job that has not stopped within GRACE_SECONDS is killed."""
     state = _read(folder / "state.json") or {}
+    if state.get("status") in FINISHED:
+        return state
+    asked = _read(folder / "cancel")
+    if asked:
+        state["cancelRequested"] = True
+    if _running(folder):
+        if asked and time.time() - (asked.get("at") or 0) > GRACE_SECONDS:
+            pid, _ = _process(folder)
+            _kill(pid, force=True)
+            _leftovers(state.get("scratch"))
+            state.update(status="cancelled", finishedAt=time.time(),
+                         error=f"the job did not stop within {GRACE_SECONDS} s of the cancel and was killed; "
+                               "its processes and temporary files were removed")
+            _write(folder / "state.json", state)
+        return state
+    # Read again: the process may have finished between the two reads.
+    state = _read(folder / "state.json") or state
     if state.get("status") not in FINISHED:
-        try:
-            pid = int((folder / "pid").read_text(encoding="ascii"))
-        except (OSError, ValueError):
-            pid = None
-        if pid is not None and not _alive(pid):
-            # Read again: the process may have finished between the two reads.
-            state = _read(folder / "state.json") or state
-            if state.get("status") not in FINISHED:
-                state.update(status="failed", finishedAt=time.time(),
-                             error="the process of the job ended without an answer: the machine restarted, "
-                                   "or the process was killed")
-                _write(folder / "state.json", state)
+        if asked:
+            state.update(status="cancelled", cancelRequested=True, finishedAt=time.time())
+        else:
+            state.update(status="failed", finishedAt=time.time(),
+                         error="the process of the job ended without an answer: the machine restarted, "
+                               "or the process was killed")
+        _leftovers(state.get("scratch"))
+        _write(folder / "state.json", state)
     return state
 
 
@@ -252,7 +364,9 @@ def status(job_id: str, wait_seconds=DEFAULT_WAIT_SECONDS, *, environ=os.environ
     return _render(folder, state), state.get("status") == "failed"
 
 
-def _kill(pid: int, force: bool) -> None:
+def _kill(pid, force: bool) -> None:
+    if pid is None:
+        return
     if os.name == "nt":
         subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], stdin=subprocess.DEVNULL, capture_output=True,
                        check=False, timeout=30)
@@ -271,25 +385,27 @@ def cancel(job_id: str, *, environ=os.environ) -> tuple[dict | str, bool]:
     state = _state(folder)
     if state.get("status") in FINISHED:
         return _render(folder, state, "the job had already ended: nothing to cancel"), False
-    try:
-        pid = int((folder / "pid").read_text(encoding="ascii"))
-    except (OSError, ValueError):
-        pid = None
-    if pid is not None:
-        # On Linux the job unwinds on SIGTERM and removes its copy of the infobase; Windows has no such
-        # signal, and the whole process tree is stopped at once.
+    if not (folder / "cancel").exists():
+        # Written before the signal: the job reads it to tell a cancel from an end of its own.
+        _write(folder / "cancel", {"at": time.time()})
+    if _running(folder):
+        pid, _ = _process(folder)
+        # On Linux the job unwinds on SIGTERM: it stops its clients and removes its copy of the infobase.
+        # Windows has no such signal: the process tree is stopped at once, and its files are removed here.
         _kill(pid, force=os.name == "nt")
+        if os.name == "nt":
+            _leftovers(state.get("scratch"))
         deadline = time.monotonic() + CANCEL_WAIT_SECONDS
-        while _alive(pid) and time.monotonic() < deadline:
+        while _running(folder) and time.monotonic() < deadline:
             time.sleep(0.2)
-        if _alive(pid):
-            _kill(pid, force=True)
-    state = _read(folder / "state.json") or state
-    if state.get("status") not in FINISHED:
-        state.update(status="cancelled", cancelRequested=True, finishedAt=time.time())
-        _write(folder / "state.json", state)
-    message = ("cancelled; a check works on its own copy of the test infobase, so nothing it did stays applied"
-               if state.get("status") == "cancelled" else "the job ended before it could be stopped")
+    state = _state(folder)
+    if state.get("status") == "cancelled":
+        message = "cancelled; a check works on its own copy of the test infobase, so nothing it did stays applied"
+    elif state.get("status") in FINISHED:
+        message = "the job ended before it could be stopped"
+    else:
+        message = (f"stopping: the job removes its processes and its copy of the infobase; {STATUS_TOOL} shows "
+                   f"when it ends, and a job still running {GRACE_SECONDS} s after the cancel is killed")
     return _render(folder, state, message), False
 
 
