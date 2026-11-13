@@ -346,6 +346,10 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
                 if isinstance(data.get("observedFields"), dict):
                     # A selector that missed: the fields of the open form, where the caller looks first.
                     report["observedFields"] = data["observedFields"]
+                if isinstance(data.get("dialog"), dict):
+                    # A window over the form that no step expected: what the solution showed, not a failure
+                    # of the check, so the caller can judge it.
+                    report["dialog"] = data["dialog"]
                 # The owned listener can open before the platform accepts a test connection.
                 if data["status"] != "driver_failed" or data.get("stage") != "connect":
                     break

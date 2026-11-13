@@ -195,6 +195,14 @@ Procedure RunScenario(Application, Target, MessageWindow, Request, Report)
                     Return;
                 EndIf;
                 Target.Activate();
+            ElsIf Step.Property("expect_warning") Then
+                If Not CloseExpectedWarning(Application, Target, Step.expect_warning, Observation, Request, Report) Then
+                    Return;
+                EndIf;
+                Target.Activate();
+            ElsIf UnexpectedDialog(Application, Target, Report) Then
+                // A window over the form stops the next step anyway; its text tells what the solution did.
+                Return;
             EndIf;
             If ObserveMessages Then
                 AfterMessages = VisibleMessages(MessageWindow, Report, "afterMessagePanel");
@@ -324,6 +332,156 @@ Function CloseExpectedErrorDialog(Application, ExpectedText, Observation, Reques
     Observation.Insert("errorDialog", ActualText);
     Observation.Insert("dialogClosed", True);
     Return True;
+EndFunction
+
+Function CloseExpectedWarning(Application, Target, ExpectedText, Observation, Request, Report)
+    Report.stage = "expected_warning";
+    Dialog = WaitForDialog(Application, Target, Request);
+    If Dialog = Undefined Then
+        Raise NStr("en = 'The expected warning window was not found.'; ru = 'Ожидаемое окно предупреждения не найдено.'");
+    EndIf;
+    Described = DescribeDialog(Dialog);
+    If Described.kind <> "warning" Then
+        Report.status = "unexpected_dialog";
+        Report.Insert("dialog", Described);
+        Return False;
+    EndIf;
+    Report.Insert("warningDialog", Described.text);
+    Report.Insert("expectedWarning", ExpectedText);
+    If Described.text <> ExpectedText Then
+        Report.status = "assertion_failed";
+        Return False;
+    EndIf;
+    Buttons = VisibleButtons(Dialog);
+    If Buttons.Count() <> 1 Then
+        Raise NStr("en = 'The warning window must have exactly one button.'; ru = 'В окне предупреждения должна быть ровно одна кнопка.'");
+    EndIf;
+    Button = Buttons[0];
+    If Not Button.CurrentEnable() Then
+        Raise NStr("en = 'The warning window button is unavailable.'; ru = 'Кнопка окна предупреждения недоступна.'");
+    EndIf;
+    Button.Click();
+    If Not Dialog.WaitForClosing(Request.waitSeconds) Then
+        Raise NStr("en = 'The warning window did not close.'; ru = 'Окно предупреждения не закрылось.'");
+    EndIf;
+    Observation.Insert("warningDialog", Described.text);
+    Observation.Insert("dialogClosed", True);
+    Return True;
+EndFunction
+
+Function UnexpectedDialog(Application, Target, Report)
+    Dialog = RaisedDialog(Application, Target);
+    If Dialog = Undefined Then
+        Return False;
+    EndIf;
+    Described = DescribeDialog(Dialog);
+    If Described.kind = "form" Then
+        // A regular form the click opened is the result of the command, not a window over the form.
+        Return False;
+    EndIf;
+    Report.status = "unexpected_dialog";
+    Report.Insert("dialog", Described);
+    Return True;
+EndFunction
+
+// The window a click raised over the form: a form of the active window when the selected form is not
+// in it. Undefined while the selected form is active.
+Function RaisedDialog(Application, Target)
+    Window = Application.GetActiveWindow();
+    If Window = Undefined Then
+        Return Undefined;
+    EndIf;
+    Dialog = Undefined;
+    For Each Candidate In Window.FindObjects(Type("TestedForm")) Do
+        If NormalizeFormName(Candidate.FormName) = NormalizeFormName(Target.FormName) Then
+            Return Undefined;
+        EndIf;
+        If Dialog = Undefined Then
+            Dialog = Candidate;
+        EndIf;
+    EndDo;
+    Return Dialog;
+EndFunction
+
+Function WaitForDialog(Application, Target, Request)
+    Deadline = CurrentUniversalDateInMilliseconds() + Request.waitSeconds * 1000;
+    While True Do
+        Dialog = RaisedDialog(Application, Target);
+        If Dialog <> Undefined Or CurrentUniversalDateInMilliseconds() >= Deadline Then
+            Return Dialog;
+        EndIf;
+    EndDo;
+EndFunction
+
+// A system window over the form: the error window, or MessageBox for ShowMessageBox and
+// ShowQueryBox. MessageBox keeps ten buttons and shows only the ones the call asked for, and a
+// decoration without a title answers its own name, so the text is read from its one decoration.
+Function DescribeDialog(Dialog)
+    Kind = "form";
+    TextItem = "";
+    If Dialog.FormName = "ErrorWindow" Then
+        Kind = "error";
+        TextItem = "ErrorInfo";
+    ElsIf IsMessageBox(Dialog.FormName) Then
+        Kind = "warning";
+        TextItem = "Message";
+    EndIf;
+    Buttons = New Array;
+    For Each Button In VisibleButtons(Dialog) Do
+        Buttons.Add(Button.TitleText);
+    EndDo;
+    If Kind = "warning" And Buttons.Count() > 1 Then
+        Kind = "question";
+    EndIf;
+    Text = "";
+    If Not IsBlankString(TextItem) Then
+        Texts = Dialog.FindObjects(Type("TestedFormDecoration"), , TextItem);
+        If Texts.Count() = 1 Then
+            Text = Texts[0].TitleText;
+        EndIf;
+    EndIf;
+    Described = New Structure("kind,formName,text,buttons", Kind, Dialog.FormName, Text, Buttons);
+    If Kind <> "form" And IsBlankString(Text) Then
+        // The text sits elsewhere in this window: its decorations tell the caller where.
+        Decorations = New Array;
+        For Each Decoration In Dialog.FindObjects(Type("TestedFormDecoration")) Do
+            Decorations.Add(New Structure("name,title", TestedObjectName(Decoration), Decoration.TitleText));
+        EndDo;
+        Described.Insert("decorations", Decorations);
+    EndIf;
+    Return Described;
+EndFunction
+
+// MessageBox, or MessageBox followed by a number: a box raised from an object form is numbered.
+Function IsMessageBox(FormName)
+    If Not StrStartsWith(FormName, "MessageBox") Then
+        Return False;
+    EndIf;
+    Suffix = Mid(FormName, StrLen("MessageBox") + 1);
+    For Position = 1 To StrLen(Suffix) Do
+        If StrFind("0123456789", Mid(Suffix, Position, 1)) = 0 Then
+            Return False;
+        EndIf;
+    EndDo;
+    Return True;
+EndFunction
+
+Function TestedObjectName(TestedObject)
+    Try
+        Return TestedObject.Name;
+    Except
+        Return "";
+    EndTry;
+EndFunction
+
+Function VisibleButtons(Dialog)
+    Buttons = New Array;
+    For Each Button In Dialog.FindObjects(Type("TestedFormButton")) Do
+        If Button.CurrentVisible() Then
+            Buttons.Add(Button);
+        EndIf;
+    EndDo;
+    Return Buttons;
 EndFunction
 
 Function ReadTable(Field, Request)

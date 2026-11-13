@@ -13,6 +13,16 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
+## Unreleased
+
+### Added
+
+- `edt_test_form` and `test-form` scenarios take a warning window. `expect_warning` on a `click`
+  gives the exact text of a `ShowMessageBox` window; the check closes it with OK and goes on, so
+  a solution that warns in `BeforeWrite` is still checked on the written values. A window no step
+  expected now ends the check with `unexpected_dialog`, its kind, text and buttons, instead of
+  `scenario_error`.
+
 ## 2026-11-13 – 0.43.0
 
 ### Added

@@ -195,6 +195,47 @@ def test_error_dialog_cannot_replace_result_assertions_or_accept_invalid_expecta
         native_scenario.validate(_scenario(*steps))
 
 
+@pytest.mark.parametrize("selector", [{"button": "Save"}, {"button_name": "SaveButton"}])
+def test_expected_warning_requires_observed_text_and_closed_window(selector):
+    """A solution may answer with ShowMessageBox: the click takes the window, closes it and goes on."""
+    steps = [{"action": "click", **selector, "expect_warning": "Check the shipment date"},
+             {"action": "assert_field", "field": "Number", "equals": "T007"}]
+    native_scenario.validate(_scenario(*steps))
+    observations = [{"action": "click", "completed": True, "warningDialog": "Check the shipment date",
+                     "dialogClosed": True},
+                    {"action": "assert_field", "actual": "T007"}]
+    result = native_scenario.evaluate(steps, observations)
+    assert result["ok"]
+    assert result["assertions"][0] == {"step": 1, "action": "expect_warning", "expected": "Check the shipment date",
+                                       "actual": "Check the shipment date", "ok": True}
+    observations[0]["warningDialog"] = "Another text"
+    assert native_scenario.evaluate(steps, observations)["status"] == "assertion_failed"
+    observations[0].pop("warningDialog")
+    with pytest.raises(native_scenario.DriverResultError, match="warning window"):
+        native_scenario.evaluate(steps, observations)
+    observations[0]["warningDialog"] = "Check the shipment date"
+    observations[0]["dialogClosed"] = False
+    with pytest.raises(native_scenario.DriverResultError):
+        native_scenario.evaluate(steps, observations)
+
+
+@pytest.mark.parametrize("step, problem", [
+    ({"action": "click", "button": "Save", "expect_warning": " "}, "expect_warning must be"),
+    ({"action": "click", "button": "Save", "expect_warning": ["Check"]}, "expect_warning must be"),
+    ({"action": "click", "button": "Save", "expect_warning": "Check", "expect_error_dialog": "Failed"},
+     "expect_error_dialog or expect_warning, not both"),
+    ({"action": "input", "field": "Date", "text": "1", "expect_warning": "Check"}, "unexpected expect_warning"),
+])
+def test_a_warning_expectation_is_one_nonempty_text_on_a_click(step, problem):
+    with pytest.raises(native_scenario.ScenarioError, match=problem):
+        native_scenario.validate(_scenario(step, {"action": "assert_field", "field": "Date", "equals": ""}))
+
+
+def test_the_click_schema_offers_both_window_expectations():
+    clicks = [schema for schema in native_scenario.step_schemas() if schema["properties"]["action"]["const"] == "click"]
+    assert clicks and all({"expect_error_dialog", "expect_warning"} <= set(schema["properties"]) for schema in clicks)
+
+
 # -- reading the whole form ------------------------------------------------------------------------
 
 _FORM = {

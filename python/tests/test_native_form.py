@@ -592,6 +592,34 @@ def test_a_selector_that_missed_brings_the_fields_of_the_open_form(monkeypatch, 
     assert report["observedFields"] == observed
 
 
+def test_a_window_no_step_expected_is_reported_with_its_text(monkeypatch, tmp_path):
+    """A warning over the form stops the scenario, and the caller sees what the solution showed."""
+    args = _fixture_args(tmp_path)
+    args.output_dir.mkdir()
+    monkeypatch.setattr(native_form, "_display", lambda *args: {})
+    monkeypatch.setattr(native_form, "_owns_listener", lambda *args: True)
+    monkeypatch.setattr(native_form, "_capture", lambda *args: {"screenshot": "screenshot.png"})
+    dialog = {"kind": "warning", "formName": "MessageBox", "text": "Check the shipment date", "buttons": ["OK"]}
+
+    def spawn(_stack, argv, _env, _log):
+        if "/TestManager" in argv:
+            request = json.loads(Path(next(arg[2:] for arg in argv if arg.startswith("/C"))).read_text(encoding="utf-8"))
+            Path(request["result"]).write_text(json.dumps({
+                "status": "unexpected_dialog", "stage": "click", "step": 1, "observations": [], "dialog": dialog},
+                ensure_ascii=False), encoding="utf-8")
+        return SimpleNamespace(poll=lambda: None)
+
+    monkeypatch.setattr(native_form, "_spawn", spawn)
+    steps = [{"action": "click", "button": "Save"}, {"action": "read_form"}]
+    report = native_form._run_session(args, args.test_infobase, args.epf, args.output_dir,
+                                      tmp_path / "session", tmp_path / "manager", {},
+                                      ["1cv8", "ENTERPRISE"], "Xvfb", time.monotonic() + 30, steps)
+
+    assert report["status"] == "unexpected_dialog"
+    assert report["dialog"] == dialog
+    assert not report["ok"]
+
+
 @pytest.mark.parametrize("refusal", ["Не обнаружено свободной лицензии!", "There are no free licenses!",
                                      "1C:Enterprise server did not detect any free license!"])
 def test_a_taken_network_license_is_reported_as_unavailable(monkeypatch, tmp_path, refusal):
