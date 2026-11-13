@@ -265,7 +265,7 @@ to the code and the reasoning behind it.
 - `edt_project_errors` says when the requested object is not in the project. It used to wait for a
   check that never started. ([#74](https://github.com/keyfire/edt-bridge/pull/74))
 
-## <span id="2026-11-07--0373-0380-0381-0382"></span>2026-11-07 – 0.38.2
+## <span id="2026-11-07--0373-0380-0381-0382"></span><span id="2026-11-07--0360-0370-0371-0372"></span><span id="2026-11-07--0372"></span>2026-11-07 – 0.38.2
 
 ### Added
 
@@ -273,26 +273,6 @@ to the code and the reasoning behind it.
   composition schema and has no custom main form. A `click` step can use the button's
   internal name when several buttons share a caption.
   ([#71](https://github.com/keyfire/edt-bridge/pull/71))
-
-### Fixed
-
-- `test-form` retries the connection to a slow-starting test client within the
-  remaining `--timeout`. Previously, retries stopped after 30 seconds.
-  ([#73](https://github.com/keyfire/edt-bridge/pull/73))
-
-- `test-form` reads the message panel only when a scenario checks messages. A table
-  check can now click "Generate" in an external report with an empty message panel.
-  ([#70](https://github.com/keyfire/edt-bridge/pull/70))
-
-### Changed
-
-- Rebuilt 0.38.0 for publication with PyPI attestations.
-  ([#72](https://github.com/keyfire/edt-bridge/pull/72))
-
-## <span id="2026-11-07--0360-0370-0371-0372"></span>2026-11-07 – 0.37.2
-
-### Added
-
 - `edt_create_external_object` creates an external report with `kind=report`. The default
   remains an external data processor; both support a base project, managed forms and export.
   ([#67](https://github.com/keyfire/edt-bridge/pull/67))
@@ -311,8 +291,20 @@ to the code and the reasoning behind it.
   infobase and saves a JSON report and PNG screenshot on Linux with Xvfb.
   ([#66](https://github.com/keyfire/edt-bridge/pull/66))
 
+### Changed
+
+- Rebuilt 0.38.0 for publication with PyPI attestations.
+  ([#72](https://github.com/keyfire/edt-bridge/pull/72))
+
 ### Fixed
 
+- `test-form` retries the connection to a slow-starting test client within the
+  remaining `--timeout`. Previously, retries stopped after 30 seconds.
+  ([#73](https://github.com/keyfire/edt-bridge/pull/73))
+
+- `test-form` reads the message panel only when a scenario checks messages. A table
+  check can now click "Generate" in an external report with an empty message panel.
+  ([#70](https://github.com/keyfire/edt-bridge/pull/70))
 - `/status` and `/shutdown` use separate workers from `/mcp`, so they can respond while
   both MCP workers are busy.
   ([#69](https://github.com/keyfire/edt-bridge/pull/69))
