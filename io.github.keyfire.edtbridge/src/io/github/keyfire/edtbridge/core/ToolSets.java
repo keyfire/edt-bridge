@@ -58,6 +58,7 @@ public final class ToolSets {
             "edt_apply_fix",
             "edt_metadata_objects",
             "edt_metadata_details",
+            "edt_role_rights",
             "edt_module_text",
             "edt_search_modules",
             "edt_search_queries",
@@ -113,7 +114,7 @@ public final class ToolSets {
                 List.of("edt_read_dcs", "edt_replace_dcs", "edt_modify_dcs")));
         sets.put("extension", joined(
                 List.of("edt_create_extension", "edt_adopt_object", "edt_build_extension",
-                        "edt_delete_object"),
+                        "edt_delete_object", "edt_modify_role_rights"),
                 MODULE_WRITES));
         return Collections.unmodifiableMap(sets);
     }
