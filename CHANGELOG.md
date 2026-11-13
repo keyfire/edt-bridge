@@ -13,7 +13,7 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
-## Unreleased
+## 2026-11-13 – 0.43.0, 0.44.0
 
 ### Added
 
@@ -38,22 +38,6 @@ to the code and the reasoning behind it.
   a solution that warns in `BeforeWrite` is still checked on the written values. A window no step
   expected now ends the check with `unexpected_dialog`, its kind, text and buttons, instead of
   `scenario_error`.
-
-### Fixed
-
-- The wrapper and the launch scripts pick the EDT installation by the build it records in
-  `configuration/config.ini`. The 1C launcher updates a release line in one directory, so
-  `1C_EDT 2026.2` held 2026.2.2 and still lost to `1C_EDT (Lite) 2026.2.0` because its name is
-  shorter.
-- An EDT installed by the 1C launcher starts from the wrapper and the launch scripts. Its ini names
-  no `-vm`, EDT took java from PATH, and a Java older than it requires stopped the start with a
-  modal dialog. The JDK from `JAVA_HOME` or from the JDK components of the 1C installer now goes
-  first on PATH of the EDT process.
-
-## 2026-11-13 – 0.43.0
-
-### Added
-
 - `edt_test_form` and `test-form` scenarios read the whole form. `read_form` returns the visible
   fields, form tables and spreadsheet fields with their values, `read_table` returns one of them, and
   `assert_table` now compares a form table too. Reads go to `reads` of the result; an attribute
@@ -87,6 +71,14 @@ to the code and the reasoning behind it.
 
 ### Fixed
 
+- The wrapper and the launch scripts pick the EDT installation by the build it records in
+  `configuration/config.ini`. The 1C launcher updates a release line in one directory, so
+  `1C_EDT 2026.2` held 2026.2.2 and still lost to `1C_EDT (Lite) 2026.2.0` because its name is
+  shorter.
+- An EDT installed by the 1C launcher starts from the wrapper and the launch scripts. Its ini names
+  no `-vm`, EDT took java from PATH, and a Java older than it requires stopped the start with a
+  modal dialog. The JDK from `JAVA_HOME` or from the JDK components of the 1C installer now goes
+  first on PATH of the EDT process.
 - `edt_build_extension` builds an extension with a borrowed form in a copy of the infobase named by
   `EDT_BRIDGE_DUMP_INFOBASE`. In an empty infobase ibcmd refused a borrowed form that excludes
   commands such as `Post`: they belong to the form's main attribute, which only the base
