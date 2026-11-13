@@ -83,4 +83,22 @@ class DumpInfobaseTest {
         assertTrue(empty.contains(DumpInfobase.ENV));
         assertNotNull(DumpInfobase.hint("XDTO exception while reading file - /t/xml/Reports/R/Templates/Main/Ext/Template.xml", false));
     }
+
+    @Test
+    void anExtensionThatNeedsItsBaseConfigurationIsExplainedOnlyForAnEmptyInfobase() {
+        // EDT-BUILD-01: ibcmd's answer for a borrowed document form that excludes Post, Write and
+        // PostAndClose, imported into an infobase without the base configuration.
+        String commands = "ibcmd.exe config import exit -1: [INFO] Импорт конфигурации из XML...\r\n"
+                + "[ERROR] Неверное имя команды элемента формы. - Post\r\n"
+                + "[ERROR] Импорт конфигурации из XML завершен с ошибкой";
+        String hint = DumpInfobase.extensionHint(commands, true);
+        assertNotNull(hint);
+        assertTrue(hint.contains(DumpInfobase.ENV));
+        assertTrue(hint.contains("borrowed form"));
+        assertNotNull(DumpInfobase.extensionHint("[ERROR] Неизвестное имя типа - CatalogRef.Контрагенты", true));
+        // With the base configuration there, the same text has another cause.
+        assertNull(DumpInfobase.extensionHint(commands, false));
+        assertNull(DumpInfobase.extensionHint("[ERROR] Ошибка блокировки информационной базы", true));
+        assertNull(DumpInfobase.extensionHint(null, true));
+    }
 }

@@ -70,15 +70,22 @@ public final class BuildExtensionTool {
                 + "bypassing EDT's platform resolver. Exports the model to designer XML in-process (no "
                 + "thick client), then builds the .cfe with a full on-disk 1C install via ibcmd "
                 + "(infobase create -> config import --extension -> config save --extension) in a "
-                + "throwaway temp base that is deleted afterwards. Pick platform to match the target "
-                + "base version. Dry-run by default; token-gated.");
+                + "throwaway temp base that is deleted afterwards. ibcmd checks the extension against the "
+                + "configuration of that base: a borrowed form whose excluded commands (Post, Write) belong "
+                + "to its main attribute, or a type of the base configuration, needs the base configuration "
+                + "there. With EDT_BRIDGE_DUMP_INFOBASE naming a file infobase that carries it, the build "
+                + "runs in a copy of that infobase. Pick platform to match the target base version. "
+                + "Dry-run by default; token-gated.");
         t.addProperty("descriptionRu",
                 "ЗАПИСЬ (Phase 2): собрать расширение конфигурации (.cfe) из проекта расширения EDT в "
                 + "обход резолвера платформы EDT. Модель выгружается в XML конструктора в процессе (толстый "
                 + "клиент не нужен), затем .cfe собирается полной установкой 1С с диска через ibcmd "
                 + "(infobase create -> config import --extension -> config save --extension) во временной "
-                + "базе, которая удаляется после. platform – под версию целевой базы. По умолчанию dry-run; "
-                + "требует токен.");
+                + "базе, которая удаляется после. ibcmd проверяет расширение по конфигурации этой базы: "
+                + "заимствованной форме, исключившей команды основного реквизита (Post, Write), и типам "
+                + "базовой конфигурации нужна базовая конфигурация в базе. Если EDT_BRIDGE_DUMP_INFOBASE "
+                + "указывает на файловую базу с ней, сборка идет в копии этой базы. platform – под версию "
+                + "целевой базы. По умолчанию dry-run; требует токен.");
         t.add("inputSchema", schema);
         return t;
     }
