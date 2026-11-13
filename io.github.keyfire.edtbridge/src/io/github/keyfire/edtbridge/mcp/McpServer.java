@@ -40,6 +40,7 @@ import org.osgi.framework.Version;
 import io.github.keyfire.edtbridge.core.ArgumentNames;
 import io.github.keyfire.edtbridge.core.FileUrlPaths;
 import io.github.keyfire.edtbridge.core.ToolSets;
+import io.github.keyfire.edtbridge.core.WriteScope;
 import io.github.keyfire.edtbridge.edt.ProjectGateway;
 import io.github.keyfire.edtbridge.tools.MoveMethodTool;
 import io.github.keyfire.edtbridge.tools.ReplaceMethodTool;
@@ -318,6 +319,7 @@ applyI18n();loadStatus();loadTools();
     private final Gson gson = new GsonBuilder().disableHtmlEscaping().create();
     /** Argument names by tool, built on the first call - the descriptors do not change at run time. */
     private Map<String, Set<String>> declaredArguments;
+    private Set<String> writeTools;
     private final ProjectErrorsTool projectErrors = new ProjectErrorsTool();
     private final ProjectsTool projects = new ProjectsTool();
     private final ModuleTextTool moduleText = new ModuleTextTool();
@@ -726,6 +728,7 @@ applyI18n();loadStatus();loadTools();
         o.addProperty("port", port);
         o.addProperty("tokenRequired", token() != null);
         o.add("toolset", toolsetStatus());
+        o.add("scope", scopeStatus());
         o.addProperty("serverTime", java.time.OffsetDateTime.now().toString());
         try {
             o.add("resources", gson.toJsonTree(RuntimeResources.snapshot()));
@@ -967,6 +970,10 @@ applyI18n();loadStatus();loadTools();
         JsonObject misnamed = unknownArgumentGate(name, args);
         if (misnamed != null) {
             return misnamed;
+        }
+        JsonObject outside = scopeGate(name, args);
+        if (outside != null) {
+            return outside;
         }
         if (toolHelp.name().equals(name)) {
             return toolHelp.call(args, toolsList().getAsJsonArray("tools"), toolset);
@@ -1309,17 +1316,78 @@ applyI18n();loadStatus();loadTools();
     private synchronized Map<String, Set<String>> declaredArguments() {
         if (declaredArguments == null) {
             Map<String, Set<String>> byTool = new HashMap<>();
+            Set<String> writing = new HashSet<>();
             for (JsonElement element : toolsList().getAsJsonArray("tools")) {
                 JsonObject tool = element.getAsJsonObject();
                 JsonObject schema = tool.has("inputSchema") ? tool.getAsJsonObject("inputSchema") : null;
                 JsonObject props = schema != null && schema.has("properties")
                         ? schema.getAsJsonObject("properties")
                         : new JsonObject();
-                byTool.put(tool.get("name").getAsString(), new HashSet<>(props.keySet()));
+                String name = tool.get("name").getAsString();
+                byTool.put(name, new HashSet<>(props.keySet()));
+                if (tool.has("description") && tool.get("description").getAsString().stripLeading().startsWith("WRITE")) {
+                    writing.add(name);
+                }
             }
+            writeTools = writing;
             declaredArguments = byTool;
         }
         return declaredArguments;
+    }
+
+    /** Tools whose description is marked WRITE: they change the project they name. */
+    private synchronized Set<String> writeTools() {
+        declaredArguments();
+        return writeTools;
+    }
+
+    /** The write scope of this server, read on every call like the tool set. */
+    private WriteScope scope() {
+        return WriteScope.parse(
+                System.getProperty(WriteScope.WRITE_PROPERTY, System.getenv(WriteScope.WRITE_ENV)),
+                System.getProperty(WriteScope.READ_PROPERTY, System.getenv(WriteScope.READ_ENV)),
+                System.getProperty(WriteScope.OUTPUT_PROPERTY, System.getenv(WriteScope.OUTPUT_ENV)));
+    }
+
+    /**
+     * Scope gate: a call outside the write scope is refused before the tool runs, naming what is
+     * allowed. Every client passes here, so going to the port directly does not get around it.
+     */
+    private JsonObject scopeGate(String name, JsonObject args) {
+        WriteScope scope = scope();
+        if (!scope.active() || !declaredArguments().containsKey(name)) {
+            return null;
+        }
+        Map<String, String> values = new HashMap<>();
+        for (Map.Entry<String, JsonElement> entry : args.entrySet()) {
+            if (entry.getValue().isJsonPrimitive()) {
+                values.put(entry.getKey(), entry.getValue().getAsString());
+            }
+        }
+        String refusal = scope.refusal(name, writeTools().contains(name), declaredArguments().get(name), values);
+        return refusal == null ? null : toolError(refusal);
+    }
+
+    /** The write scope for /status, so a client can see the boundary the server holds. */
+    private JsonObject scopeStatus() {
+        WriteScope scope = scope();
+        JsonObject o = new JsonObject();
+        o.addProperty("active", scope.active());
+        if (scope.projectsLimited()) {
+            JsonArray write = new JsonArray();
+            scope.writeProjects().forEach(write::add);
+            JsonArray read = new JsonArray();
+            scope.readProjects().forEach(read::add);
+            o.add("writeProjects", write);
+            o.add("readProjects", read);
+        }
+        if (scope.outputDir() != null) {
+            o.addProperty("outputDir", scope.outputDir().toString());
+        }
+        if (scope.problem() != null) {
+            o.addProperty("problem", scope.problem());
+        }
+        return o;
     }
 
     /**

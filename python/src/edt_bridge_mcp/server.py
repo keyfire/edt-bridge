@@ -21,6 +21,9 @@ Configuration (CLI flags override the environment):
     EDT_BRIDGE_HEAP           maximum JVM heap of an auto-started EDT, e.g. 4096m or 6g (-Xmx)
     EDT_BRIDGE_VMARGS         further JVM options of an auto-started EDT, e.g. -XX:+ExitOnOutOfMemoryError
     EDT_BRIDGE_TOOLSET        tool sets to list and run (processor, report, extension); empty - all tools
+    EDT_BRIDGE_WRITE_PROJECTS projects the tools may change, separated by commas (the write scope)
+    EDT_BRIDGE_READ_PROJECTS  projects the tools may only read
+    EDT_BRIDGE_OUTPUT_DIR     directory the files the tools write must go to
 
 Registration in Claude Code:
     claude mcp add edt-bridge -- edt-bridge-mcp --workspace <path-to-edt-workspace>
@@ -48,7 +51,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
 from . import __version__
-from . import cli, form_run, i18n, plugins, toolsets
+from . import cli, form_run, i18n, plugins, scope, toolsets
 
 PROTOCOL_FALLBACK = "2024-11-05"
 
@@ -1152,6 +1155,9 @@ class StdioServer:
             log(f"plugins add {len(self._plugin_tools)} tool(s): "
                 + ", ".join(sorted(self._plugin_tools)))
         self._toolset = toolsets.active()
+        self._scope = scope.from_environment()
+        #: When the running bridge's scope was last compared with the wrapper's, and the verdict.
+        self._scope_checked: tuple[float, str | None] | None = None
         #: The sets each bridge tool belongs to, as the descriptors listed so far declare.
         self._bridge_sets: dict[str, list] = {}
         self._unlabelled_noted = False
@@ -1331,6 +1337,10 @@ class StdioServer:
                 self._tool_error(req_id, f"edt-bridge backend is unavailable: {msg}. "
                                  + self.backend.start_hint())
                 return
+            outside = self._scope_problem()
+            if outside:
+                self._tool_error(req_id, outside)
+                return
             self._forward_or_error(message, req_id)
             return
         if method is None:
@@ -1341,6 +1351,20 @@ class StdioServer:
             self._forward_or_error(message, req_id)
         else:
             self._error(req_id, -32601, f"method not available while the backend is down: {method}")
+
+    def _scope_problem(self) -> str | None:
+        """Why a bridge call must not be forwarded: the running EDT holds another write scope.
+
+        The bridge enforces its own scope; this catches an EDT started without the settings this
+        wrapper has. The verdict is kept for a while, so a burst of calls asks /status once."""
+        if not self._scope.active:
+            return None
+        now = time.monotonic()
+        if self._scope_checked is not None and now - self._scope_checked[0] < 30:
+            return self._scope_checked[1]
+        verdict = scope.mismatch(self._scope, self.backend.status())
+        self._scope_checked = (now, verdict)
+        return verdict
 
     def _call_local(self, req_id, name: str, arguments: dict) -> None:
         """Run a wrapper-served tool and report as a normal tool result."""
