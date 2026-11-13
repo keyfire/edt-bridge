@@ -80,8 +80,8 @@
     },
     {
       "name": "edt_module_text",
-      "description": "READ: BSL source of a module (or a single method) + the module's procedure/function list with signatures, from the live workspace. Resolve by fqn (CommonModule.X, HTTPService.X, a form FQN, or an object + moduleType) or by modulePath. Pass includeMethods=false to skip the catalogue on a targeted read. If a top object has several modules and none is chosen, returns the candidates in availableModules.",
-      "descriptionRu": "ЧТЕНИЕ: исходный BSL модуля (или одного метода) + список процедур/функций модуля с сигнатурами, из живой рабочей области. Адресация по fqn (CommonModule.X, HTTPService.X, FQN формы или объект + moduleType) либо по modulePath. includeMethods=false пропускает каталог при точечном чтении. Если у объекта несколько модулей и не выбран moduleType – вернёт варианты в availableModules.",
+      "description": "READ: BSL source of a module (or a single method) from the live workspace, with the module's procedure/function list and signatures when the whole module is read. Resolve by fqn (CommonModule.X, HTTPService.X, a form FQN, or an object + moduleType) or by modulePath. A method read leaves the list out (methodsIncluded: false) unless includeMethods=true. If a top object has several modules and none is chosen, returns the candidates in availableModules.",
+      "descriptionRu": "ЧТЕНИЕ: исходный BSL модуля (или одного метода) из живой рабочей области, а при чтении модуля целиком еще и список процедур/функций с сигнатурами. Адресация по fqn (CommonModule.X, HTTPService.X, FQN формы или объект + moduleType) либо по modulePath. Чтение метода не возвращает список (methodsIncluded: false), если не передан includeMethods=true. Если у объекта несколько модулей и не выбран moduleType – вернёт варианты в availableModules.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -99,7 +99,7 @@
           },
           "method": {
             "type": "string",
-            "description": "Return only this procedure/function's source. Optional (the method list is still returned unless includeMethods=false)."
+            "description": "Return only this procedure/function's source. Optional. The module's catalogue is then left out unless includeMethods=true."
           },
           "modulePath": {
             "type": "string",
@@ -107,7 +107,7 @@
           },
           "includeMethods": {
             "type": "boolean",
-            "description": "true (default) = also return the module's procedure/function catalogue with signatures. false = skip it and return only the requested text – a targeted method read on a large module then avoids re-sending the whole list (147 methods on some)."
+            "description": "Also return the module's procedure/function catalogue with signatures. Default: true for a whole-module read, false when method is given - the catalogue of a large module is many times the size of one method."
           }
         },
         "required": [
@@ -651,8 +651,8 @@
     },
     {
       "name": "edt_add_template",
-      "description": "WRITE: create a template on a metadata object (report, external report, data processor, document, catalog): a DATA_COMPOSITION_SCHEMA with an empty schema, optionally the report's main one, or a SPREADSHEET_DOCUMENT - an empty print form layout. Fill a schema with edt_replace_dcs or edt_modify_dcs, a spreadsheet with edt_write_spreadsheet. EDT validation does not check the XML of either; the build (edt_dump_external_object) does. Dry-run by default; apply=true creates. Token-gated.",
-      "descriptionRu": "ЗАПИСЬ: создать макет у объекта метаданных (отчет, внешний отчет, обработка, документ, справочник): DATA_COMPOSITION_SCHEMA с пустой схемой, при необходимости основной схемой отчета, или SPREADSHEET_DOCUMENT – пустой макет печатной формы. Схему заполняют edt_replace_dcs или edt_modify_dcs, табличный макет – edt_write_spreadsheet. XML обоих проверяет не проверка EDT, а сборка (edt_dump_external_object). По умолчанию dry-run; apply=true создает. Требует токен.",
+      "description": "WRITE: create a template on a metadata object (report, external report, data processor, document, catalog): a DATA_COMPOSITION_SCHEMA with an empty schema, optionally the report's main one, or a SPREADSHEET_DOCUMENT - an empty print form layout. Fill a schema with edt_replace_dcs or edt_modify_dcs, a spreadsheet with edt_write_spreadsheet. EDT validation does not check the XML of either; the build (edt_dump_external_object) does. Dry-run by default; apply=true creates, waits until EDT has written the content file and reads it back: contentReadable, contentPath and sourceHash, which is the expectedHash of the first write. Token-gated.",
+      "descriptionRu": "ЗАПИСЬ: создать макет у объекта метаданных (отчет, внешний отчет, обработка, документ, справочник): DATA_COMPOSITION_SCHEMA с пустой схемой, при необходимости основной схемой отчета, или SPREADSHEET_DOCUMENT – пустой макет печатной формы. Схему заполняют edt_replace_dcs или edt_modify_dcs, табличный макет – edt_write_spreadsheet. XML обоих проверяет не проверка EDT, а сборка (edt_dump_external_object). По умолчанию dry-run; apply=true создает макет, ждет, пока EDT запишет файл содержимого, и читает его: contentReadable, contentPath и sourceHash, который служит expectedHash первой записи. Требует токен.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -723,8 +723,8 @@
     },
     {
       "name": "edt_replace_dcs",
-      "description": "WRITE: replace the complete source of one existing DATA_COMPOSITION_SCHEMA template with designer XML of the schema; EDT reloads the schema from the file. Dry-run returns oldText/newText, sourceHash and resultHash. Apply requires the current expectedHash and force=true, writes only the schema file and rereads it. EDT validation does not check the schema XML against the platform format: build the report or data processor with edt_dump_external_object to check it. To add a field or a parameter, edt_modify_dcs takes just the addition. Create the template with edt_add_template. Requires a configured write token.",
-      "descriptionRu": "ЗАПИСЬ: заменить полный текст существующего макета DATA_COMPOSITION_SCHEMA на XML схемы в формате конфигуратора; EDT перечитывает схему из файла. Dry-run возвращает oldText/newText, sourceHash и resultHash. Для apply нужны актуальный expectedHash и force=true; записывается только файл схемы, результат перечитывается. Проверка EDT не сверяет XML схемы с форматом платформы: результат проверяет сборка отчета или обработки (edt_dump_external_object). Поле или параметр добавляет edt_modify_dcs без передачи всей схемы. Макет создает edt_add_template. Нужен токен записи.",
+      "description": "WRITE: replace the complete source of one existing DATA_COMPOSITION_SCHEMA template with designer XML of the schema; EDT reloads the schema from the file. Dry-run returns oldText/newText, sourceHash and resultHash. Apply requires the current expectedHash and force=true, writes only the schema file and rereads it. EDT validation does not check the schema XML against the platform format: build the report or data processor with edt_dump_external_object to check it. To add a field or a parameter, edt_modify_dcs takes just the addition. Create the template with edt_add_template; when its schema file is not on disk yet, the call waits for it up to 15 s. Requires a configured write token.",
+      "descriptionRu": "ЗАПИСЬ: заменить полный текст существующего макета DATA_COMPOSITION_SCHEMA на XML схемы в формате конфигуратора; EDT перечитывает схему из файла. Dry-run возвращает oldText/newText, sourceHash и resultHash. Для apply нужны актуальный expectedHash и force=true; записывается только файл схемы, результат перечитывается. Проверка EDT не сверяет XML схемы с форматом платформы: результат проверяет сборка отчета или обработки (edt_dump_external_object). Поле или параметр добавляет edt_modify_dcs без передачи всей схемы. Макет создает edt_add_template; если файла схемы еще нет на диске, вызов ждет его до 15 с. Нужен токен записи.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -3411,8 +3411,8 @@
     },
     {
       "name": "edt_build_extension",
-      "description": "WRITE (Phase 2): build a configuration extension (.cfe) from an EDT extension project, bypassing EDT's platform resolver. Exports the model to designer XML in-process (no thick client), then builds the .cfe with a full on-disk 1C install via ibcmd (infobase create -> config import --extension -> config save --extension) in a throwaway temp base that is deleted afterwards. Pick platform to match the target base version. Dry-run by default; token-gated.",
-      "descriptionRu": "ЗАПИСЬ (Phase 2): собрать расширение конфигурации (.cfe) из проекта расширения EDT в обход резолвера платформы EDT. Модель выгружается в XML конструктора в процессе (толстый клиент не нужен), затем .cfe собирается полной установкой 1С с диска через ibcmd (infobase create -> config import --extension -> config save --extension) во временной базе, которая удаляется после. platform – под версию целевой базы. По умолчанию dry-run; требует токен.",
+      "description": "WRITE (Phase 2): build a configuration extension (.cfe) from an EDT extension project, bypassing EDT's platform resolver. Exports the model to designer XML in-process (no thick client), then builds the .cfe with a full on-disk 1C install via ibcmd (infobase create -> config import --extension -> config save --extension) in a throwaway temp base that is deleted afterwards. ibcmd checks the extension against the configuration of that base: a borrowed form whose excluded commands (Post, Write) belong to its main attribute, or a type of the base configuration, needs the base configuration there. With EDT_BRIDGE_DUMP_INFOBASE naming a file infobase that carries it, the build runs in a copy of that infobase. Pick platform to match the target base version. Dry-run by default; token-gated.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): собрать расширение конфигурации (.cfe) из проекта расширения EDT в обход резолвера платформы EDT. Модель выгружается в XML конструктора в процессе (толстый клиент не нужен), затем .cfe собирается полной установкой 1С с диска через ibcmd (infobase create -> config import --extension -> config save --extension) во временной базе, которая удаляется после. ibcmd проверяет расширение по конфигурации этой базы: заимствованной форме, исключившей команды основного реквизита (Post, Write), и типам базовой конфигурации нужна базовая конфигурация в базе. Если EDT_BRIDGE_DUMP_INFOBASE указывает на файловую базу с ней, сборка идет в копии этой базы. platform – под версию целевой базы. По умолчанию dry-run; требует токен.",
       "inputSchema": {
         "type": "object",
         "properties": {

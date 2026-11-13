@@ -68,6 +68,8 @@ flag twin, documented in [Commands](/cli).
 | `EDT_BRIDGE_EDT_DIR` | `--edt-dir` | the newest install | the EDT install directory (the folder with 1cedtcli and dropins) |
 | `EDT_BRIDGE_START_TIMEOUT` | `--start-timeout` | `360` | how many seconds to wait for a starting bridge |
 | `EDT_BRIDGE_AUTOSTART` | `--no-autostart` | on | `0` never launches anything and only forwards requests |
+| `EDT_BRIDGE_HEAP` | `--heap` | from the EDT installation | the maximum JVM heap of an auto-started headless EDT: a number with `k`, `m` or `g`, e.g. `6g`. It is passed as `-Xmx` and replaces the value from the installation's ini file |
+| `EDT_BRIDGE_VMARGS` | `--vmargs` | – | further JVM options of an auto-started headless EDT, separated by spaces, e.g. `-XX:+ExitOnOutOfMemoryError -Xlog:gc:file=gc.log`. Each option starts with a dash, and the bridge port is set with `EDT_BRIDGE_PORT` |
 | `EDT_BRIDGE_WINDOW_WAIT` | – | `90` | how many seconds the `gui` command waits for the EDT window. A large workspace loads for minutes, so a miss here is not an error but a reason to run the command again |
 | `EDT_BRIDGE_LANG` | – | the system locale | the language of the wrapper's help and messages (`ru` or `en`) |
 | `EDT_BRIDGE_NO_PLUGINS` | – | off | `1` skips the discovery of [wrapper plugins](#wrapper-plugins), leaving the wrapper's own capabilities only |
@@ -82,7 +84,7 @@ flag twin, documented in [Commands](/cli).
 | `EDT_BRIDGE_TOKEN` | `-Dedt.bridge.token` | from the preference page | the shared secret every write tool requires |
 | `EDT_BRIDGE_ALLOW_EVALUATE` | – | off | `1` enables `edt_evaluate`, arbitrary BSL executed against a live infobase. The preference page has the same switch |
 | `EDT_BRIDGE_AGENT_IDLE_MINUTES` | `-Dedt.bridge.agent-idle-minutes` | `30` | after how many idle minutes a configurator agent stops itself. `off` keeps agents forever |
-| `EDT_BRIDGE_DUMP_INFOBASE` | – | – | a file infobase (its directory, its `1Cv8.1CD` or `File="...";`) that carries the base configuration of external objects. The disk route of `edt_dump_external_object` builds in a copy of it, so types of the base configuration resolve; without it the build runs in an empty infobase |
+| `EDT_BRIDGE_DUMP_INFOBASE` | – | – | a file infobase (its directory, its `1Cv8.1CD` or `File="...";`) that carries the base configuration of external objects. The disk route of `edt_dump_external_object` builds in a copy of it, so types of the base configuration resolve; without it the build runs in an empty infobase. `edt_build_extension` also imports the extension into a copy of it: a borrowed form whose excluded commands (Post, Write) belong to its main attribute, and the base configuration's types, are checked against that configuration |
 | `EDT_BRIDGE_TEST_INFOBASE` | – | – | a file infobase with test data for `edt_test_form`; every run works on a fresh copy of its `1Cv8.1CD` |
 | `EDT_BRIDGE_TEST_PLATFORM` | – | – | the platform `bin` directory with `1cv8` and `ibcmd` that `edt_test_form` runs |
 | `EDT_BRIDGE_TEST_USER` | – | – | the infobase user `edt_test_form` signs in as, when the test infobase has users |
@@ -98,6 +100,45 @@ code and up to 16 KiB from the end of its combined stdout/stderr, decoded as UTF
 for invalid bytes. The supervisor exits with the CLI, and a later call can retry the launch.
 `--start-timeout` limits the readiness wait while the CLI is still running. A timeout leaves
 the live process running; EDT also continues running after a short-lived wrapper command exits.
+
+The bridge answers before a large project is indexed, and a tool called in between is refused
+with "no BM model". In a CI job, wait for the models with `edt-bridge-mcp wait-ready --project
+<name> --timeout <seconds>`. The command starts a headless EDT when none is running and polls
+`/status` until every named project reports `modelReady`; without `--project` it waits for every
+open EDT project. It exits with code 0 when the projects are ready, 1 when EDT is not running or
+has exited, and 2 when the time runs out while EDT is still loading. A project imported after the
+start is awaited as well.
+
+### A ready workspace
+
+Importing and indexing a large configuration takes a headless EDT tens of minutes, while a
+workspace that EDT saved on a graceful stop opens in a few. `edt-bridge-mcp workspace` moves
+such a workspace to the next machine or container:
+
+1. Start EDT on the workspace, import the projects and wait for the models:
+   `edt-bridge-mcp wait-ready --workspace <ws> --project <name>`.
+2. Save the EDT checks of the projects: `edt-bridge-mcp workspace checks --workspace <ws>
+   --object <fqn> --output before.json`. The command runs `edt_project_errors` with a refresh for
+   every project, or for every object given with `--object`, and refuses a list that is incomplete,
+   not settled or cut at its limit. On a large configuration check a few objects whose checks depend
+   on the indexed model: the whole project can exceed the problem limit.
+3. Stop EDT with `edt-bridge-mcp shutdown --workspace <ws>`, so that it saves its state.
+4. Pack the workspace: `edt-bridge-mcp workspace pack --workspace <ws> --archive ready.tar.gz`.
+5. On the next machine restore it: `edt-bridge-mcp workspace restore --archive ready.tar.gz`.
+6. Start EDT there, wait for the models and compare: `edt-bridge-mcp workspace checks
+   --workspace <ws> --compare before.json`.
+
+The archive is a PAX tar, `.tar`, `.tar.gz` or, with Python 3.14 and newer, `.tar.zst`. It keeps
+the modification times with their fraction of a second, because EDT compares them with the state
+it saved. It leaves out the workspace lock, the logs of `.metadata` (EDT writes its command line
+with the bridge token there) and the pid and log lock files. EDT keeps absolute paths in its
+metadata, so `restore` unpacks the workspace only under the path it was packed from, into a
+missing or empty directory, on the same kind of system. `pack` refuses while an EDT uses the
+workspace, and both commands name the process or the lock that holds it. A project whose files
+live outside the workspace directory is refused as well, because the archive would not carry it.
+`checks --compare` exits with code 0 when the checks match and 2 when they differ, and lists
+the problems found on one side only. Where the archives are kept and which inputs name one is
+left to the job that builds them.
 
 ### Build from source
 
@@ -115,6 +156,13 @@ powershell -ExecutionPolicy Bypass -File scripts/build-nomaven.ps1
 
 It produces `build/io.github.keyfire.edtbridge_<version>.<timestamp>.jar`. Maven and Tycho
 (`mvn -f pom.xml clean verify`, after editing `edt-bridge.target`) are there for CI.
+
+EDT does not pick the new jar up by itself. On Windows `scripts/run-headless.ps1 -Workspace <ws>
+-FromBuild` stops the headless EDT of that workspace, leaves the newest jar from `build/` as the
+only bridge jar in `dropins/` and starts EDT again; `-Jar <path>` installs a given jar. The script
+refuses while a GUI EDT holds the jar, and a jar that stays locked is reported without a copy. Once
+the bridge answers, its `bridgeBundleVersion` must match the version in the jar name, otherwise
+the script exits with code 3.
 
 Releases are cut from a locally built jar, because CI cannot compile it: the 1C:EDT SDK bundles are
 proprietary and cannot be fetched anonymously. The maintainer runs

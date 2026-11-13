@@ -13,6 +13,80 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
+## Unreleased
+
+### Added
+
+- `edt_test_form` and `test-form` scenarios read the whole form. `read_form` returns the visible
+  fields, form tables and spreadsheet fields with their values, `read_table` returns one of them, and
+  `assert_table` now compares a form table too. Reads go to `reads` of the result; an attribute
+  with no item on the form is not visible to the test client.
+  ([#81](https://github.com/keyfire/edt-bridge/pull/81))
+- `edt-bridge-mcp workspace` moves a ready EDT workspace to another machine, so a CI job does not
+  index a large configuration again. `pack` archives the workspace of a stopped EDT, `restore`
+  unpacks it under the same path, and `checks` compares the EDT checks before and after.
+  ([#81](https://github.com/keyfire/edt-bridge/pull/81))
+- `edt-bridge-mcp wait-ready` waits until EDT has loaded the models of the named projects. It exits
+  with 0 when they are ready, 1 when EDT is not running and 2 on timeout, so a CI job no longer
+  polls `edt_projects` itself. ([#81](https://github.com/keyfire/edt-bridge/pull/81))
+- `EDT_BRIDGE_HEAP` (`--heap`) sets the JVM heap of an auto-started headless EDT, and
+  `EDT_BRIDGE_VMARGS` (`--vmargs`) adds other JVM options. The auto-start used to take the heap
+  from the installation's ini file. ([#81](https://github.com/keyfire/edt-bridge/pull/81))
+- `test-form` and `edt_test_form` check `DisableUnsafeActionProtection` in `conf.cfg` before they
+  start the client. When no file sets it, the run stops with `client_environment` and the message
+  names the setting and a pattern for the infobase. Without it the client stopped at a security
+  warning that nobody answered. ([#81](https://github.com/keyfire/edt-bridge/pull/81))
+- `scripts/run-headless.ps1 -FromBuild` and `-Jar <path>` put the given bridge jar into `dropins/`
+  before EDT starts. The script then compares `bridgeBundleVersion` with the jar and exits with
+  code 3 on a mismatch; it used to start EDT with whatever jar was there.
+  ([#81](https://github.com/keyfire/edt-bridge/pull/81))
+
+### Changed
+
+- `edt_module_text` with `method` returns the method without the module's list of procedures and
+  says `methodsIncluded: false`; `includeMethods=true` brings the list back. On one form module the
+  answer shrank from 35.5 KiB to 2.1 KiB. A method that is not found is answered with similar names.
+  ([#81](https://github.com/keyfire/edt-bridge/pull/81))
+
+### Fixed
+
+- `edt_build_extension` builds an extension with a borrowed form in a copy of the infobase named by
+  `EDT_BRIDGE_DUMP_INFOBASE`. In an empty infobase ibcmd refused a borrowed form that excludes
+  commands such as `Post`: they belong to the form's main attribute, which only the base
+  configuration resolves. Without the setting the refusal now says so.
+  ([#81](https://github.com/keyfire/edt-bridge/pull/81))
+- `assert_messages` counts the messages the preceding click added, so a second click of the same
+  command is checked with `count` 1 again. The step used to answer `message_baseline_not_empty`
+  whenever the text was already on the panel. `panel` in the assertion says whether the click
+  appended to the panel or cleared it. ([#81](https://github.com/keyfire/edt-bridge/pull/81))
+- A step whose `field` matches no field, or several, answers with `observedFields`: the fields of
+  the open form with name, title and kind. The fields a form creates as it opens, such as the quick
+  settings of a report form, could not be found any other way.
+  ([#81](https://github.com/keyfire/edt-bridge/pull/81))
+- `edt_test_form` describes its steps: the schema of `steps` lists the keys of each action, and a
+  refused step names the unexpected and missing keys. The refusal used to say only
+  `Invalid 'input' step 1 in steps.`, and models spent calls guessing.
+  ([#81](https://github.com/keyfire/edt-bridge/pull/81))
+- `edt_test_form` and `test-form` find a form whose window adds the object presentation to the
+  title, as in "Shipment check: ShipmentCheck". `formTitle` and `--form-title` are now optional:
+  without them the form is found by its name. ([#81](https://github.com/keyfire/edt-bridge/pull/81))
+- `edt_replace_dcs` right after `edt_add_template` finds the new schema. EDT answered before the
+  file was on disk, and the next call was sometimes refused. `edt_add_template` now answers once
+  the file can be read and returns its `sourceHash`. ([#81](https://github.com/keyfire/edt-bridge/pull/81))
+- `edt_dump_external_object` builds a report or data processor with an empty spreadsheet template.
+  EDT exported such a template as a file with only the byte order mark, and DESIGNER refused the
+  whole object. The build now writes the empty document DESIGNER writes itself.
+  ([#81](https://github.com/keyfire/edt-bridge/pull/81))
+- `test-form` and `edt_test_form` answer `license_unavailable` when Designer finds no free license
+  on a shared key. The run used to say `setup_failed`, so a caller that retries on a busy license
+  gave up. ([#81](https://github.com/keyfire/edt-bridge/pull/81))
+- `test-form` creates the missing parent directories of `--output-dir`. A new path under a missing
+  folder used to be refused with `io_error` before the check started.
+  ([#81](https://github.com/keyfire/edt-bridge/pull/81))
+- `scripts/build-nomaven.ps1` builds from a git worktree. The javac command line got longer than
+  Windows allows; the source list now goes in an argument file.
+  ([#81](https://github.com/keyfire/edt-bridge/pull/81))
+
 ## 2026-11-12 – 0.42.0, 0.42.1, 0.42.2
 
 ### Changed
