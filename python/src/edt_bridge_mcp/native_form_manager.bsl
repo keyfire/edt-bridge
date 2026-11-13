@@ -35,12 +35,16 @@ Procedure RunCheck(Request, Report)
 
     Report.stage = "form_lookup";
     FormType = Type("TestedForm");
-    Application.WaitForObjectDisplayed(FormType, Request.formTitle, , Request.waitSeconds);
+    If IsBlankString(Request.formTitle) Then
+        WaitForNamedForm(Application, Request);
+    Else
+        Application.WaitForObjectDisplayed(FormType, Request.formTitle, , Request.waitSeconds);
+    EndIf;
     If ReadClientError(Application, Report, "form_open_error") Then
         Return;
     EndIf;
 
-    Forms = Application.FindObjects(FormType, Request.formTitle);
+    Forms = FindForms(Application, Request);
     Target = Undefined;
     For Each Candidate In Forms Do
         If NormalizeFormName(Candidate.FormName) = NormalizeFormName(Request.form) Then
@@ -119,10 +123,33 @@ Procedure RunCheck(Request, Report)
     EndIf;
 EndProcedure
 
+// The forms of the application or a window: those with the requested title, or all of them when the
+// request names the form only. The form is then picked by its name either way.
+Function FindForms(Owner, Request)
+    If IsBlankString(Request.formTitle) Then
+        Return Owner.FindObjects(Type("TestedForm"));
+    EndIf;
+    Return Owner.FindObjects(Type("TestedForm"), Request.formTitle);
+EndFunction
+
+// Without a title the form is awaited by its name: the open forms are looked through until one of that
+// name is shown or the wait ends. A title would wait for the window instead, and the window of an object
+// form adds the object presentation to the title of the form.
+Procedure WaitForNamedForm(Application, Request)
+    Deadline = CurrentUniversalDateInMilliseconds() + Request.waitSeconds * 1000;
+    While CurrentUniversalDateInMilliseconds() < Deadline Do
+        For Each Candidate In Application.FindObjects(Type("TestedForm")) Do
+            If NormalizeFormName(Candidate.FormName) = NormalizeFormName(Request.form) Then
+                Return;
+            EndIf;
+        EndDo;
+    EndDo;
+EndProcedure
+
 Function TargetWindow(Application, Target, Request)
     Window = Application.GetActiveWindow();
     If Window <> Undefined Then
-        For Each Candidate In Window.FindObjects(Type("TestedForm"), Request.formTitle) Do
+        For Each Candidate In FindForms(Window, Request) Do
             If NormalizeFormName(Candidate.FormName) = NormalizeFormName(Target.FormName) Then
                 Return Window;
             EndIf;
@@ -176,38 +203,63 @@ Procedure RunScenario(Application, Target, MessageWindow, Request, Report)
         ElsIf Step.action = "assert_messages" Then
             Observation.Insert("before", BeforeMessages);
             Observation.Insert("actual", AfterMessages);
+        ElsIf Step.action = "read_form" Then
+            Observation.Insert("actual", ReadForm(Target, Request));
         Else
-            Fields = Target.FindObjects(Type("TestedFormField"), , Step.field, Request.waitSeconds);
-            If Fields.Count() <> 1 Then
-                Raise NStr("en = 'The field selector must match exactly one field.'; ru = 'Селектор поля должен соответствовать ровно одному полю.'");
-            EndIf;
-            Field = Fields[0];
-            If Not Field.CurrentVisible() Then
-                Raise NStr("en = 'The selected field is not visible.'; ru = 'Выбранное поле не отображается.'");
-            EndIf;
-            If Step.action = "input" Then
-                Field.Activate();
-                If Step.text = "" Then
-                    Field.Clear();
-                Else
-                    Field.InputText(Step.text);
-                EndIf;
-                Target.GotoNextItem();
-                Observation.Insert("completed", True);
-            ElsIf Step.action = "assert_field" Then
-                Observation.Insert("actual", Field.GetDataPresentation());
+            Tables = New Array;
+            If Step.action = "assert_table" Or Step.action = "read_table" Then
+                // A form table is an object of its own type, not a field: both are looked for in turn.
+                Fields = FindFieldOrTable(Target, Step.field, Tables, Request);
             Else
-                If Field.Type <> FormFieldType.SpreadsheetDocumentField Then
-                    Raise NStr("en = 'The selected field is not a spreadsheet document.'; ru = 'Выбранное поле не является табличным документом.'");
+                Fields = Target.FindObjects(Type("TestedFormField"), , Step.field, Request.waitSeconds);
+            EndIf;
+            If Tables.Count() = 1 Then
+                // An assertion compares a complete table; a read returns what fits and says so.
+                FormTable = ReadFormTable(Tables[0], Request, Step.action = "read_table");
+                Observation.Insert("actual", FormTable.rows);
+                Observation.Insert("columns", FormTable.columns);
+                Observation.Insert("truncated", FormTable.truncated);
+            ElsIf Tables.Count() > 1 Then
+                Report.Insert("observedFields", ObservedFields(Target, Request));
+                Raise NStr("en = 'The table selector must match exactly one field or form table.'; ru = 'Селектор таблицы должен соответствовать ровно одному полю или таблице формы.'");
+            Else
+                If Fields.Count() <> 1 Then
+                    // The names of fields that appear only when the form opens are not in any source.
+                    Report.Insert("observedFields", ObservedFields(Target, Request));
+                    Raise NStr("en = 'The field selector must match exactly one field.'; ru = 'Селектор поля должен соответствовать ровно одному полю.'");
                 EndIf;
-                If Step.action = "assert_cell" Then
-                    Observation.Insert("actual", Field.GetAreaText(Step.cell));
-                ElsIf Step.action = "assert_table_size" Then
-                    Size = New Structure("rows,columns", Field.GetDocumentDataAreaVerticalSize(),
-                        Field.GetDocumentDataAreaHorizontalSize());
-                    Observation.Insert("actual", Size);
-                ElsIf Step.action = "assert_table" Then
-                    Observation.Insert("actual", ReadTable(Field, Request));
+                Field = Fields[0];
+                If Not Field.CurrentVisible() Then
+                    Raise NStr("en = 'The selected field is not visible.'; ru = 'Выбранное поле не отображается.'");
+                EndIf;
+                If Step.action = "input" Then
+                    Field.Activate();
+                    If Step.text = "" Then
+                        Field.Clear();
+                    Else
+                        Field.InputText(Step.text);
+                    EndIf;
+                    Target.GotoNextItem();
+                    Observation.Insert("completed", True);
+                ElsIf Step.action = "assert_field" Then
+                    Observation.Insert("actual", Field.GetDataPresentation());
+                Else
+                    If Field.Type <> FormFieldType.SpreadsheetDocumentField Then
+                        Raise NStr("en = 'The selected field is not a spreadsheet document.'; ru = 'Выбранное поле не является табличным документом.'");
+                    EndIf;
+                    If Step.action = "assert_cell" Then
+                        Observation.Insert("actual", Field.GetAreaText(Step.cell));
+                    ElsIf Step.action = "assert_table_size" Then
+                        Size = New Structure("rows,columns", Field.GetDocumentDataAreaVerticalSize(),
+                            Field.GetDocumentDataAreaHorizontalSize());
+                        Observation.Insert("actual", Size);
+                    ElsIf Step.action = "assert_table" Then
+                        Observation.Insert("actual", ReadTable(Field, Request));
+                    ElsIf Step.action = "read_table" Then
+                        Sheet = ReadSheet(Field, Request);
+                        Observation.Insert("actual", Sheet.rows);
+                        Observation.Insert("truncated", Sheet.truncated);
+                    EndIf;
                 EndIf;
             EndIf;
         EndIf;
@@ -290,6 +342,229 @@ Function ReadTable(Field, Request)
     EndDo;
     Return Rows;
 EndFunction
+
+// The fields and form tables the test client sees on the form, for a selector that matched none or several:
+// name, title, kind, visibility and availability. The visible ones come first, then the hidden ones, up to
+// the observation limit; total says how many there are.
+Function ObservedFields(Target, Request)
+    Visible = New Array;
+    Hidden = New Array;
+    CollectFields(Target.GetChildObjects(), Visible, Hidden);
+    Listed = New Array;
+    For Each Field In Visible Do
+        If Listed.Count() < Request.maxListed Then
+            Listed.Add(Field);
+        EndIf;
+    EndDo;
+    For Each Field In Hidden Do
+        If Listed.Count() < Request.maxListed Then
+            Listed.Add(Field);
+        EndIf;
+    EndDo;
+    Return New Structure("fields,total", Listed, Visible.Count() + Hidden.Count());
+EndFunction
+
+Procedure CollectFields(Items, Visible, Hidden)
+    For Each Item In Items Do
+        ItemType = TypeOf(Item);
+        If ItemType = Type("TestedFormField") Or ItemType = Type("TestedFormTable") Then
+            Kind = "FormTable";
+            If ItemType = Type("TestedFormField") Then
+                Kind = String(Item.Type);
+            EndIf;
+            Field = New Structure("name,title,kind,visible,enabled", Item.Name, Item.TitleText, Kind,
+                Item.CurrentVisible(), Item.CurrentEnable());
+            If Field.visible Then
+                Visible.Add(Field);
+            Else
+                Hidden.Add(Field);
+            EndIf;
+        EndIf;
+        If ItemType = Type("TestedFormGroup") Or ItemType = Type("TestedFormTable") Then
+            CollectFields(Item.GetChildObjects(), Visible, Hidden);
+        EndIf;
+    EndDo;
+EndProcedure
+
+// A field or a form table of this name. A form table is an object of its own type. The field is awaited
+// in short waits and the form table is looked for between them, so a form table is taken as soon as it is
+// drawn, while a field drawn late is still awaited for the whole wait. The form tables found go to
+// Tables, the fields found are returned.
+Function FindFieldOrTable(Target, Name, Tables, Request)
+    Deadline = CurrentUniversalDateInMilliseconds() + Request.waitSeconds * 1000;
+    While True Do
+        Fields = Target.FindObjects(Type("TestedFormField"), , Name, 1);
+        If Fields.Count() > 0 Then
+            Return Fields;
+        EndIf;
+        For Each Found In Target.FindObjects(Type("TestedFormTable"), , Name) Do
+            Tables.Add(Found);
+        EndDo;
+        If Tables.Count() > 0 Or CurrentUniversalDateInMilliseconds() >= Deadline Then
+            Return Fields;
+        EndIf;
+    EndDo;
+EndFunction
+
+// The values of the whole form as the test client sees them: every visible field with its name,
+// title and presentation, every form table by rows and columns, every spreadsheet field as a table.
+// The test client sees form items only, so an attribute without an item on the form is not read.
+// What does not fit the observation limits is left out, and truncated says so.
+Function ReadForm(Target, Request)
+    Result = New Structure("fields,tables,spreadsheets,truncated", New Array, New Array, New Array, False);
+    CollectItems(Target.GetChildObjects(), Result, Request);
+    Return Result;
+EndFunction
+
+Procedure CollectItems(Items, Result, Request)
+    For Each Item In Items Do
+        If Result.fields.Count() + Result.tables.Count() + Result.spreadsheets.Count() >= Request.maxItems Then
+            Result.truncated = True;
+            Return;
+        EndIf;
+        ItemType = TypeOf(Item);
+        If ItemType = Type("TestedFormTable") Then
+            If Item.CurrentVisible() Then
+                FormTable = ReadFormTable(Item, Request, True);
+                FormTable.Insert("name", Item.Name);
+                FormTable.Insert("title", Item.TitleText);
+                Result.tables.Add(FormTable);
+            EndIf;
+        ElsIf ItemType = Type("TestedFormField") Then
+            If Not Item.CurrentVisible() Then
+                Continue;
+            EndIf;
+            If Item.Type = FormFieldType.SpreadsheetDocumentField Then
+                Sheet = ReadSheet(Item, Request);
+                Sheet.Insert("name", Item.Name);
+                Sheet.Insert("title", Item.TitleText);
+                Result.spreadsheets.Add(Sheet);
+            Else
+                Field = New Structure("name,title", Item.Name, Item.TitleText);
+                Try
+                    Field.Insert("presentation", Item.GetDataPresentation());
+                Except
+                    Field.Insert("error", ОбработкаОшибок.КраткоеПредставлениеОшибки(ИнформацияОбОшибке()));
+                EndTry;
+                Result.fields.Add(Field);
+            EndIf;
+        ElsIf ItemType = Type("TestedFormGroup") Then
+            If Item.CurrentVisible() Then
+                CollectItems(Item.GetChildObjects(), Result, Request);
+            EndIf;
+        EndIf;
+    EndDo;
+EndProcedure
+
+// A spreadsheet field for a read: the rectangle up to the observation limits, and whether it was cut.
+Function ReadSheet(Field, Request)
+    RowCount = Field.GetDocumentDataAreaVerticalSize();
+    ColumnCount = Field.GetDocumentDataAreaHorizontalSize();
+    Rows = New Array;
+    For Row = 1 To Min(RowCount, Request.maxRows) Do
+        Cells = New Array;
+        For Column = 1 To Min(ColumnCount, Request.maxColumns) Do
+            Cells.Add(Field.GetAreaText("R" + String(Row) + "C" + String(Column)));
+        EndDo;
+        Rows.Add(Cells);
+    EndDo;
+    Return New Structure("rows,truncated", Rows, RowCount > Request.maxRows Or ColumnCount > Request.maxColumns);
+EndFunction
+
+// A form table read row by row through the test client. The columns are its visible fields, and a cell is
+// read by the column item name. The cursor goes down from the first row until a move fails. The end and an
+// empty table are told from a failure by the last row: a failed move counts as the end only when the last
+// row, reached with GotoLastRow, carries the cells read last. An empty table accepts GotoFirstRow but has no
+// row to read, and its last row cannot be read either. Any other failure is raised, so a broken read never
+// looks like a short table. Truncate cuts a table that exceeds the observation limits instead of failing;
+// an assertion compares complete tables only.
+Function ReadFormTable(FormTable, Request, Truncate)
+    State = New Structure("truncated", False);
+    Columns = New Array;
+    CollectColumns(FormTable.GetChildObjects(), Columns, Request, Truncate, State);
+    Rows = New Array;
+    Try
+        FormTable.GotoFirstRow();
+        Cells = RowCells(FormTable, Columns);
+    Except
+        Failure = ОбработкаОшибок.КраткоеПредставлениеОшибки(ИнформацияОбОшибке());
+        If LastRowReadable(FormTable, Columns) Then
+            Raise NStr("en = 'The form table has rows, but its first row cannot be read: '; ru = 'В таблице формы есть строки, но первую прочитать не удалось: '") + Failure;
+        EndIf;
+        Return New Structure("columns,rows,truncated", Columns, Rows, State.truncated);
+    EndTry;
+    While True Do
+        If Rows.Count() >= Request.maxRows Then
+            If Not Truncate Then
+                Raise NStr("en = 'The form table exceeds the scenario observation limit.'; ru = 'Таблица формы превышает предел размера для проверки сценария.'");
+            EndIf;
+            State.truncated = True;
+            Break;
+        EndIf;
+        Rows.Add(Cells);
+        Try
+            FormTable.GotoNextRow();
+        Except
+            Failure = ОбработкаОшибок.КраткоеПредставлениеОшибки(ИнформацияОбОшибке());
+            FormTable.GotoLastRow();
+            If Not SameCells(RowCells(FormTable, Columns), Cells) Then
+                Raise NStr("en = 'The form table read stopped before its last row: '; ru = 'Чтение таблицы формы прервалось до последней строки: '") + Failure;
+            EndIf;
+            Break;
+        EndTry;
+        Cells = RowCells(FormTable, Columns);
+    EndDo;
+    Return New Structure("columns,rows,truncated", Columns, Rows, State.truncated);
+EndFunction
+
+Function LastRowReadable(FormTable, Columns)
+    Try
+        FormTable.GotoLastRow();
+        RowCells(FormTable, Columns);
+        Return True;
+    Except
+        Return False;
+    EndTry;
+EndFunction
+
+Function RowCells(FormTable, Columns)
+    Cells = New Array;
+    For Each Column In Columns Do
+        Cells.Add(FormTable.GetCellText(Column.name));
+    EndDo;
+    Return Cells;
+EndFunction
+
+Function SameCells(First, Second)
+    If First.Count() <> Second.Count() Then
+        Return False;
+    EndIf;
+    For Index = 0 To First.Count() - 1 Do
+        If First[Index] <> Second[Index] Then
+            Return False;
+        EndIf;
+    EndDo;
+    Return True;
+EndFunction
+
+Procedure CollectColumns(Items, Columns, Request, Truncate, State)
+    For Each Item In Items Do
+        If TypeOf(Item) = Type("TestedFormField") Then
+            If Item.CurrentVisible() Then
+                If Columns.Count() >= Request.maxColumns Then
+                    If Not Truncate Then
+                        Raise NStr("en = 'The form table exceeds the scenario observation limit.'; ru = 'Таблица формы превышает предел размера для проверки сценария.'");
+                    EndIf;
+                    State.truncated = True;
+                    Return;
+                EndIf;
+                Columns.Add(New Structure("name,title", Item.Name, Item.TitleText));
+            EndIf;
+        ElsIf TypeOf(Item) = Type("TestedFormGroup") Then
+            CollectColumns(Item.GetChildObjects(), Columns, Request, Truncate, State);
+        EndIf;
+    EndDo;
+EndProcedure
 
 Function ReadClientError(Application, Report, Status)
     CurrentError = Application.GetCurrentErrorInfo();

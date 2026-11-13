@@ -3,12 +3,12 @@ import json
 import sys
 import threading
 import time
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
 
 import pytest
 
-from edt_bridge_mcp import cli, native_form
+from edt_bridge_mcp import cli, native_form, native_scenario
 
 
 def test_native_form_command_requires_explicit_test_base_and_scope():
@@ -34,6 +34,49 @@ def test_form_check_refuses_an_output_directory_in_the_selected_base(monkeypatch
     assert not result["ok"]
     assert result["status"] == "invalid_input"
     assert not args.output_dir.exists()
+
+
+def test_missing_parents_of_the_output_directory_are_created(monkeypatch, tmp_path):
+    monkeypatch.setattr(native_form.sys, "platform", "linux")
+    started = []
+    monkeypatch.setattr(native_form, "_native_check",
+                        lambda args, base, external, output, report: started.append(output))
+    args = _fixture_args(tmp_path)
+    args.output_dir = tmp_path / "job-41" / "checks" / "order-form"
+
+    report = native_form.run(args)
+
+    assert started == [args.output_dir.resolve()], report
+    assert (args.output_dir / "result.json").is_file()
+
+
+def test_output_directory_that_exists_is_still_refused(monkeypatch, tmp_path):
+    monkeypatch.setattr(native_form.sys, "platform", "linux")
+    monkeypatch.setattr(native_form, "_native_check",
+                        lambda *args: pytest.fail("an existing output directory must be refused first"))
+    args = _fixture_args(tmp_path)
+    args.output_dir.mkdir()
+
+    report = native_form.run(args)
+
+    assert (report["status"], report["stage"]) == ("invalid_input", "validation")
+    assert list(args.output_dir.iterdir()) == []
+
+
+def test_parent_that_cannot_be_created_is_named_in_the_refusal(monkeypatch, tmp_path):
+    monkeypatch.setattr(native_form.sys, "platform", "linux")
+    monkeypatch.setattr(native_form, "_native_check",
+                        lambda *args: pytest.fail("the check must not start without its output directory"))
+    blocker = tmp_path / "results.txt"
+    blocker.write_text("a file where a directory is expected", encoding="utf-8")
+    args = _fixture_args(tmp_path)
+    args.output_dir = blocker / "order-form"
+
+    report = native_form.run(args)
+
+    assert (report["status"], report["stage"]) == ("io_error", "validation")
+    assert "parent directory of --output-dir" in report["error"]
+    assert str(blocker) in report["error"]
 
 
 def test_empty_button_selector_is_rejected_before_starting_a_client(monkeypatch, tmp_path):
@@ -212,6 +255,10 @@ def _fixture_args(tmp_path):
     platform.mkdir()
     for program in ("1cv8", "ibcmd"):
         (platform / program).touch()
+    # The client opens the external object without the unsafe action warning in this base.
+    (platform / "conf").mkdir()
+    (platform / "conf" / "conf.cfg").write_text("DisableUnsafeActionProtection=.*test-infobase.*\n",
+                                                encoding="utf-8")
     base = tmp_path / "test-infobase"
     base.mkdir()
     (base / "1Cv8.1CD").touch()
@@ -357,3 +404,202 @@ def test_the_check_runs_in_a_worker_thread(monkeypatch, tmp_path):
     assert not worker.is_alive()
     assert started, reports
     assert reports and reports[0]["eventLog"] == {"read": True, "errors": []}
+
+
+# -- the client environment: conf.cfg of the platform ---------------------------------------------
+
+
+def _environment_args(tmp_path, conf=None, *, root_conf=None, user=None, link=False):
+    installation = tmp_path / "opt" / "1cv8"
+    platform = installation / "x86_64" / "8.3.27.1859"
+    platform.mkdir(parents=True)
+    for location, text in ((platform / "conf", conf), (installation / "conf", root_conf)):
+        if text is not None:
+            location.mkdir(parents=True, exist_ok=True)
+            (location / "conf.cfg").write_text(text, encoding="utf-8")
+    base = tmp_path / "srv" / "tests" / "orders-base"
+    base.mkdir(parents=True)
+    args = SimpleNamespace(user=user)
+    return args, platform, base, None if link else tmp_path / "sample.epf"
+
+
+def test_a_platform_without_the_setting_is_refused_with_its_name_and_a_pattern(tmp_path):
+    args, platform, base, external = _environment_args(tmp_path, "SystemLanguage=RU\n")
+    report = {}
+
+    with pytest.raises(native_form._CheckError) as refusal:
+        native_form._require_client_environment(args, platform, base, external, report)
+
+    assert refusal.value.status == "client_environment"
+    message = str(refusal.value)
+    assert "DisableUnsafeActionProtection" in message
+    assert f"in {platform / 'conf' / 'conf.cfg'}" in message
+    assert native_form._posix_bre(native_form._suggested_pattern(base)).fullmatch(f'File="{base}";')
+    environment = report["clientEnvironment"]
+    assert environment["unsafeActionProtection"]["disabledForTestInfobase"] is False
+    assert environment["systemLanguage"] == {"setting": "SystemLanguage", "value": "RU",
+                                             "source": str(platform / "conf" / "conf.cfg")}
+
+
+def test_patterns_that_match_nothing_warn_and_name_the_file_that_holds_them(tmp_path):
+    args, platform, base, external = _environment_args(
+        tmp_path, "SystemLanguage=RU\n", root_conf="DisableUnsafeActionProtection=stage_only_[0-9]x\n")
+    report = {}
+
+    native_form._require_client_environment(args, platform, base, external, report)
+
+    protection = report["clientEnvironment"]["unsafeActionProtection"]
+    assert protection["disabledForTestInfobase"] is False
+    assert f"in {platform.parents[1] / 'conf' / 'conf.cfg'}, or sign in" in protection["warning"]
+
+
+def test_conf_location_of_the_version_is_read(tmp_path):
+    shared = tmp_path / "etc" / "1c"
+    shared.mkdir(parents=True)
+    (shared / "conf.cfg").write_text("DisableUnsafeActionProtection=.*orders-base.*\n", encoding="utf-8")
+    args, platform, base, external = _environment_args(tmp_path, f"ConfLocation={shared}\n")
+    report = {}
+
+    native_form._require_client_environment(args, platform, base, external, report)
+
+    protection = report["clientEnvironment"]["unsafeActionProtection"]
+    assert protection["disabledForTestInfobase"] is True
+    assert protection["source"] == str(shared / "conf.cfg")
+
+
+def test_no_conf_file_at_all_names_where_it_was_looked_for(tmp_path):
+    args, platform, base, external = _environment_args(tmp_path)
+
+    with pytest.raises(native_form._CheckError) as refusal:
+        native_form._require_client_environment(args, platform, base, external, {})
+
+    assert f"no conf.cfg in {platform / 'conf'}" in str(refusal.value)
+
+
+@pytest.mark.parametrize("conf, root_conf", [
+    # Separator-agnostic patterns: the tests also run on Windows, the check itself on Linux.
+    ("DisableUnsafeActionProtection=.*srv.tests.orders-base.*\n", None),
+    ("SystemLanguage=System\n", r"DisableUnsafeActionProtection=stage_.*;.*orders-\(base\|copy\).*;" + "\n"),
+    ("disableunsafeactionprotection = .*orders-base.*\n", None),
+])
+def test_a_pattern_of_the_version_or_the_installation_conf_lets_the_check_run(tmp_path, conf, root_conf):
+    args, platform, base, external = _environment_args(tmp_path, conf, root_conf=root_conf)
+    report = {}
+
+    native_form._require_client_environment(args, platform, base, external, report)
+
+    protection = report["clientEnvironment"]["unsafeActionProtection"]
+    assert protection["disabledForTestInfobase"] is True
+    assert protection["matchedPattern"]
+
+
+def test_a_pattern_must_match_the_whole_connection_string(tmp_path):
+    # Measured with the platform: a bare path left the security warning, the same path inside .* did not.
+    bare = native_form._bre_literal(str(tmp_path / "srv" / "tests" / "orders-base"))
+    args, platform, base, external = _environment_args(tmp_path, "DisableUnsafeActionProtection=" + bare + "\n")
+    report = {}
+
+    native_form._require_client_environment(args, platform, base, external, report)
+
+    protection = report["clientEnvironment"]["unsafeActionProtection"]
+    assert protection["disabledForTestInfobase"] is False
+    assert native_form._suggested_pattern(base) in protection["warning"]
+
+
+def test_the_version_conf_wins_over_the_installation_conf(tmp_path):
+    args, platform, base, external = _environment_args(
+        tmp_path, "DisableUnsafeActionProtection=stage_only_[0-9]x\n",
+        root_conf="DisableUnsafeActionProtection=.*orders-base.*\n")
+    report = {}
+
+    native_form._require_client_environment(args, platform, base, external, report)
+
+    protection = report["clientEnvironment"]["unsafeActionProtection"]
+    assert protection["source"] == str(platform / "conf" / "conf.cfg")
+    assert protection["disabledForTestInfobase"] is False
+
+
+def test_basic_expression_operators_are_escaped_and_plain_characters_stay_plain():
+    assert native_form._posix_bre(r"base-\(a\|b\)").search('File="/x/base-b";')
+    assert not native_form._posix_bre(r"base-(a|b)").search('File="/x/base-b";')
+    assert native_form._posix_bre(r"c++").search('File="/x/c++";')
+    assert native_form._posix_bre(r"a\{2\}").search("aa")
+
+
+def test_a_user_or_a_configuration_form_is_not_refused(tmp_path):
+    args, platform, base, external = _environment_args(tmp_path, "", user="Tester")
+    report = {}
+    native_form._require_client_environment(args, platform, base, external, report)
+    assert "Tester" in report["clientEnvironment"]["unsafeActionProtection"]["note"]
+
+    args, platform, base, external = _environment_args(tmp_path / "link", "", link=True)
+    report = {}
+    native_form._require_client_environment(args, platform, base, external, report)
+    assert report["clientEnvironment"]["unsafeActionProtection"]["disabledForTestInfobase"] is False
+
+
+def test_the_copy_of_edt_test_form_gets_a_pattern_for_every_copy(tmp_path):
+    # The check runs on Linux, so the copy has a POSIX path.
+    base = PurePosixPath("/tmp/edt-bridge-form-run-k2x9/infobase")
+    pattern = native_form._suggested_pattern(base)
+    assert pattern == ".*/edt-bridge-form-run-.*"
+    assert native_form._posix_bre(pattern).search('File="/tmp/edt-bridge-form-run-77aa/infobase";')
+
+
+def test_the_refusal_comes_before_any_platform_process(monkeypatch, tmp_path):
+    _substitute_metadata_export(monkeypatch)
+    monkeypatch.setattr(native_form, "_spawn", lambda *args: pytest.fail("no process may start"))
+    args = _fixture_args(tmp_path)
+    (args.platform_bin / "conf" / "conf.cfg").unlink()
+
+    report = native_form.run(args)
+
+    assert (report["status"], report["stage"]) == ("client_environment", "client_environment")
+    assert "clientEnvironment" in report
+    assert (args.output_dir / "result.json").is_file()
+
+
+def test_a_selector_that_missed_brings_the_fields_of_the_open_form(monkeypatch, tmp_path):
+    args = _fixture_args(tmp_path)
+    args.output_dir.mkdir()
+    monkeypatch.setattr(native_form, "_display", lambda *args: {})
+    monkeypatch.setattr(native_form, "_owns_listener", lambda *args: True)
+    monkeypatch.setattr(native_form, "_capture", lambda *args: {"screenshot": "screenshot.png"})
+    observed = {"total": 2, "fields": [
+        {"name": "КомпоновщикНастроекПользовательскиеНастройкиЭлемент0ДатаНачала", "title": "Период",
+         "kind": "Поле ввода", "visible": True, "enabled": True},
+        {"name": "Период1ДатаНачала", "title": "", "kind": "Поле ввода", "visible": False, "enabled": True}]}
+    requests = []
+
+    def spawn(_stack, argv, _env, _log):
+        if "/TestManager" in argv:
+            request = json.loads(Path(next(arg[2:] for arg in argv if arg.startswith("/C"))).read_text(encoding="utf-8"))
+            requests.append(request)
+            Path(request["result"]).write_text(json.dumps({
+                "status": "scenario_error", "stage": "input", "step": 1, "observations": [],
+                "error": "The field selector must match exactly one field.", "observedFields": observed},
+                ensure_ascii=False), encoding="utf-8")
+        return SimpleNamespace(poll=lambda: None)
+
+    monkeypatch.setattr(native_form, "_spawn", spawn)
+    steps = [{"action": "input", "field": "ПериодДатаНачала", "text": "01.01.2026"}, {"action": "read_form"}]
+    report = native_form._run_session(args, args.test_infobase, args.epf, args.output_dir,
+                                      tmp_path / "session", tmp_path / "manager", {},
+                                      ["1cv8", "ENTERPRISE"], "Xvfb", time.monotonic() + 30, steps)
+
+    assert requests[0]["maxListed"] == native_scenario.MAX_LISTED
+    assert report["status"] == "scenario_error"
+    assert report["observedFields"] == observed
+
+
+@pytest.mark.parametrize("refusal", ["Не обнаружено свободной лицензии!", "There are no free licenses!",
+                                     "1C:Enterprise server did not detect any free license!"])
+def test_a_taken_network_license_is_reported_as_unavailable(monkeypatch, tmp_path, refusal):
+    # Seen on a shared network key: Designer wrote this and exited, and the run said setup_failed,
+    # so nothing retried it.
+    _substitute_metadata_export(monkeypatch, refusal=refusal)
+
+    report = native_form.run(_fixture_args(tmp_path))
+
+    assert report["status"] == "license_unavailable"
+    assert report["designerLog"] == refusal
