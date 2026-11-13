@@ -188,7 +188,10 @@ Copy-Item (Join-Path $bundle "OSGI-INF") $bin -Recurse -Force
 # icons/ holds the preference-page info image; include it in the jar (build.properties bin.includes).
 $iconsDir = Join-Path $bundle "icons"
 if (Test-Path $iconsDir) { Copy-Item $iconsDir $bin -Recurse -Force }
-$ts = Get-Date -Format "yyyyMMddHHmm"
+# SOURCE_DATE_EPOCH pins the stamp, as reproducible builds expect; otherwise it is the build time.
+$ts = if ($env:SOURCE_DATE_EPOCH) {
+  [DateTimeOffset]::FromUnixTimeSeconds([long]$env:SOURCE_DATE_EPOCH).ToLocalTime().ToString("yyyyMMddHHmm")
+} else { Get-Date -Format "yyyyMMddHHmm" }
 $mfRaw = Get-Content (Join-Path $bundle "META-INF\MANIFEST.MF") -Raw
 # Base version comes from the manifest's Bundle-Version (X.Y.Z.qualifier), so a version bump
 # there flows into the jar name; .qualifier is replaced with the build timestamp.

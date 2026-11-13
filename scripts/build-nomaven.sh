@@ -222,7 +222,12 @@ cp "$bundle/plugin.xml" "$bin/"
 # The DS component descriptor (Service-Component in the manifest) must be inside the jar, or the
 # lazy bundle never activates headless and the MCP server never starts (mirrors build.properties).
 cp -R "$bundle/OSGI-INF" "$bin/"
-ts="$(date +%Y%m%d%H%M)"
+# SOURCE_DATE_EPOCH pins the stamp, as reproducible builds expect; otherwise it is the build time.
+if [ -n "${SOURCE_DATE_EPOCH:-}" ]; then
+  ts="$(date -d "@$SOURCE_DATE_EPOCH" +%Y%m%d%H%M 2>/dev/null || date -r "$SOURCE_DATE_EPOCH" +%Y%m%d%H%M)"
+else
+  ts="$(date +%Y%m%d%H%M)"
+fi
 mf="$out/MANIFEST.MF"
 # Base version comes from the manifest's Bundle-Version (X.Y.Z.qualifier), so a version bump
 # there flows into the jar name; .qualifier is replaced with the build timestamp.
