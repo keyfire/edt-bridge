@@ -1246,7 +1246,16 @@ public final class DesignerAgentGateway {
                 + " (sessionTermination=" + r.sessionTermination + ")";
 
         r.answer = (answer == null || answer.isBlank()) ? null : answer.trim();
+        // Taken here, in the thread of the call: the confirmation below may come from a thread of the
+        // SSH client, where the job of this call is not known.
+        io.github.keyfire.edtbridge.core.Jobs.Context job = io.github.keyfire.edtbridge.core.Jobs.context();
         agent.lock.lock();
+        if (apply && job.cancelRequested()) {
+            agent.lock.unlock();
+            r.message = "the job was cancelled before the database update started; nothing was changed in "
+                    + agent.infobase;
+            return r;
+        }
         agent.answer = r.answer;
         agent.question = null;
         agent.questionOptions = List.of();
@@ -1255,6 +1264,7 @@ public final class DesignerAgentGateway {
             return withSession(agent, s -> {
                 List<String> collected = new ArrayList<>();
                 boolean[] refused = {false};
+                boolean[] stopped = {false};
                 // A real apply may move the configuration generation itself. Read it on both sides,
                 // so the record of the last load can follow that move - and only that one.
                 boolean tracked = apply && (extension == null || extension.isBlank());
@@ -1270,8 +1280,11 @@ public final class DesignerAgentGateway {
                         for (IDbStructureChange c : changes) {
                             collected.add("[" + c.getType() + "] " + c.getMessage());
                         }
-                        refused[0] = !apply;
-                        return apply;
+                        // A cancel that comes before the confirmation refuses it, and a refused
+                        // confirmation leaves the infobase as it was.
+                        stopped[0] = apply && job.cancelRequested();
+                        refused[0] = !apply || stopped[0];
+                        return apply && !stopped[0];
                     }).exec(Duration.ofHours(2));
                 } catch (Exception cancelled) {
                     // A dry-run ends by refusing the confirmation, and the client reports that by
@@ -1291,7 +1304,16 @@ public final class DesignerAgentGateway {
                 r.changes.clear();  // a retried first attempt must not double the list
                 r.changes.addAll(collected);
                 r.ok = true;
-                r.applied = apply;
+                r.applied = apply && !stopped[0];
+                if (stopped[0]) {
+                    r.ok = false;
+                    r.message = "the job was cancelled at the confirmation of " + collected.size()
+                            + " structure change(s); the DATABASE configuration was NOT updated";
+                    return r;
+                }
+                if (apply) {
+                    job.applied("the database configuration of " + agent.infobase + " is updated");
+                }
                 if (!apply) {
                     r.message = collected.isEmpty()
                             ? "dry-run: nothing to apply - the database configuration is already up to date"
@@ -1760,9 +1782,6 @@ public final class DesignerAgentGateway {
             UpdateResult update = updateDatabaseConfiguration(infobase, r.extension, sessionTermination,
                     null, user, password, platformVersion, answer, true);
             r.databaseConfigUpdated = update.applied;
-            if (update.applied) {
-                io.github.keyfire.edtbridge.core.Jobs.applied("the database configuration is updated");
-            }
             r.question = update.question;
             r.questionOptions.addAll(update.questionOptions);
             r.databaseChanges.addAll(update.changes);

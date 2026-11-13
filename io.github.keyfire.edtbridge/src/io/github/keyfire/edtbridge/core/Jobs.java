@@ -48,6 +48,10 @@ import java.util.regex.Pattern;
  * workspace operation closes the file channels it holds. The steps the job has already applied are
  * recorded with {@link #applied(String)}, so a cancelled job says what is done and what is not.
  *
+ * <p>A job ends as cancelled only when its code saw the request - read the flag and got yes. Work
+ * that has no check ran to its end, and it ends with its real result and {@code cancelRequested}:
+ * a database update that went through must not read as cancelled with nothing applied.
+ *
  * @param <R> the result of a job: an MCP tool result in the bridge, anything in the tests
  */
 public final class Jobs<R> {
@@ -82,6 +86,34 @@ public final class Jobs<R> {
         /** Not a job id at all. */
         MALFORMED
     }
+
+    /**
+     * The job as its running code sees it. A progress monitor keeps the context it was created with, so
+     * an EDT operation that asks the monitor from threads of its own still reaches the job.
+     */
+    public interface Context {
+        void stage(String text);
+
+        void applied(String text);
+
+        /** Whether the job has been asked to stop; a yes counts as the code having seen the request. */
+        boolean cancelRequested();
+    }
+
+    private static final Context NONE = new Context() {
+        @Override
+        public void stage(String text) {
+        }
+
+        @Override
+        public void applied(String text) {
+        }
+
+        @Override
+        public boolean cancelRequested() {
+            return false;
+        }
+    };
 
     /** The work of a job. */
     @FunctionalInterface
@@ -215,6 +247,20 @@ public final class Jobs<R> {
         return job.snapshot();
     }
 
+    /**
+     * Drop a finished job whose result the caller already has: a call with async=true that ended before
+     * it answered returns the result itself, and its job must not take a place among the kept results.
+     * A job still running is left alone.
+     */
+    public void forget(String id) {
+        synchronized (jobs) {
+            Job<R> job = id == null ? null : jobs.get(id.trim());
+            if (job != null && job.snapshot().state().finished()) {
+                jobs.remove(id.trim());
+            }
+        }
+    }
+
     /** Every job this run still keeps, the newest first. */
     public List<Snapshot<R>> list() {
         List<Snapshot<R>> all = new ArrayList<>();
@@ -230,12 +276,15 @@ public final class Jobs<R> {
 
     // ---------------------------------------------------------------- the running code's side
 
+    /** The job this thread runs, or a context that does nothing outside a job. */
+    public static Context context() {
+        Job<?> job = CURRENT.get();
+        return job != null ? job : NONE;
+    }
+
     /** The step the current job is on; nothing outside a job. */
     public static void stage(String text) {
-        Job<?> job = CURRENT.get();
-        if (job != null) {
-            job.setStage(text);
-        }
+        context().stage(text);
     }
 
     /**
@@ -243,16 +292,15 @@ public final class Jobs<R> {
      * after it: "the configuration is loaded into the infobase". Nothing outside a job.
      */
     public static void applied(String text) {
-        Job<?> job = CURRENT.get();
-        if (job != null) {
-            job.addApplied(text);
-        }
+        context().applied(text);
     }
 
-    /** Whether the current job has been asked to stop; always false outside a job. */
+    /**
+     * Whether the current job has been asked to stop; always false outside a job. A yes is taken as the
+     * code having seen the request: the job then ends as cancelled.
+     */
     public static boolean cancelRequested() {
-        Job<?> job = CURRENT.get();
-        return job != null && job.isCancelRequested();
+        return context().cancelRequested();
     }
 
     /** Whether this thread runs a job. */
@@ -284,7 +332,7 @@ public final class Jobs<R> {
             CURRENT.remove();
         }
         State end;
-        if (job.isCancelRequested()) {
+        if (job.cancelSeen) {
             end = State.CANCELLED;
         } else if (threw || (result != null && failed.test(result))) {
             end = State.FAILED;
@@ -321,15 +369,24 @@ public final class Jobs<R> {
                 }
             }
         }
-        for (Iterator<Job<R>> it = jobs.values().iterator(); it.hasNext() && finished > KEEP_FINISHED;) {
-            if (it.next().snapshot().state().finished()) {
-                it.remove();
-                finished--;
+        if (finished > KEEP_FINISHED) {
+            // By the time they finished, not by the order they were started in: a long job started first
+            // and finished last is the newest result, not the oldest.
+            List<Snapshot<R>> ended = new ArrayList<>();
+            for (Job<R> job : jobs.values()) {
+                Snapshot<R> state = job.snapshot();
+                if (state.state().finished()) {
+                    ended.add(state);
+                }
+            }
+            ended.sort(java.util.Comparator.comparingLong(Snapshot::finishedAt));
+            for (int i = 0; i < finished - KEEP_FINISHED; i++) {
+                jobs.remove(ended.get(i).id());
             }
         }
     }
 
-    private static final class Job<R> {
+    private static final class Job<R> implements Context {
         final String id;
         final String tool;
         final long submittedAt;
@@ -342,6 +399,8 @@ public final class Jobs<R> {
         R result;
         String error;
         volatile boolean cancelRequested;
+        /** The running code read the flag and got yes. */
+        volatile boolean cancelSeen;
 
         Job(String id, String tool, long submittedAt) {
             this.id = id;
@@ -361,6 +420,25 @@ public final class Jobs<R> {
 
         boolean isCancelRequested() {
             return cancelRequested;
+        }
+
+        @Override
+        public void stage(String text) {
+            setStage(text);
+        }
+
+        @Override
+        public void applied(String text) {
+            addApplied(text);
+        }
+
+        @Override
+        public boolean cancelRequested() {
+            if (!cancelRequested) {
+                return false;
+            }
+            cancelSeen = true;
+            return true;
         }
 
         void finish(State end, R value, String failure, long time) {

@@ -1481,6 +1481,9 @@ applyI18n();loadStatus();loadTools();
             Thread.currentThread().interrupt();
         }
         if (job.state() == Jobs.State.SUCCEEDED || job.state() == Jobs.State.FAILED) {
+            // The caller gets the result itself and never the id: the job must not take a place among
+            // the results kept for the jobs that are followed.
+            jobs.forget(job.id());
             return job.result() != null ? job.result() : toolError(name + " failed: " + job.error());
         }
         return JobStatusTool.render(job, "started as a background job");

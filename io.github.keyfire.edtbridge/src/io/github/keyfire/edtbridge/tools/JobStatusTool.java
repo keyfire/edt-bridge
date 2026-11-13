@@ -36,6 +36,7 @@ public final class JobStatusTool {
     static final int DEFAULT_WAIT_SECONDS = 30;
 
     private final Jobs<JsonObject> jobs;
+    private final java.util.concurrent.Semaphore waiter = new java.util.concurrent.Semaphore(1);
 
     public JobStatusTool(Jobs<JsonObject> jobs) {
         this.jobs = jobs;
@@ -75,17 +76,36 @@ public final class JobStatusTool {
         }
         int wait = DEFAULT_WAIT_SECONDS;
         if (args.has("waitSeconds") && !args.get("waitSeconds").isJsonNull()) {
-            wait = args.get("waitSeconds").getAsInt();
+            try {
+                wait = args.get("waitSeconds").getAsInt();
+            } catch (RuntimeException notANumber) {
+                return McpServer.toolError("waitSeconds must be a whole number of seconds, 0-"
+                        + Jobs.MAX_WAIT_MILLIS / 1000);
+            }
         }
         JsonObject refused = refusal(jobs, id);
         if (refused != null) {
             return refused;
         }
+        // The bridge serves calls on two workers. Only one status call waits at a time, so the other worker
+        // stays free for a cancel or any other call; a second waiter answers at once.
+        String note = null;
+        boolean waiting = wait > 0 && waiter.tryAcquire();
+        if (wait > 0 && !waiting) {
+            wait = 0;
+            note = "another " + name() + " call is already waiting, so this one answered at once";
+        }
         try {
-            return render(jobs.await(id, Math.max(0, wait) * 1000L), null);
+            Jobs.Snapshot<JsonObject> job = jobs.await(id, Math.max(0, wait) * 1000L);
+            // The job can leave the kept results between the check above and the wait.
+            return job == null ? gone(jobs, id) : render(job, note);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return McpServer.toolError("the wait for " + id + " was interrupted");
+        } finally {
+            if (waiting) {
+                waiter.release();
+            }
         }
     }
 
@@ -107,6 +127,12 @@ public final class JobStatusTool {
         }
         o.add("jobs", all);
         return McpServer.textResult(new GsonBuilder().setPrettyPrinting().create().toJson(o));
+    }
+
+    /** The refusal for a job that left the kept results while the call was looking at it. */
+    static JsonObject gone(Jobs<JsonObject> jobs, String id) {
+        JsonObject refused = refusal(jobs, id);
+        return refused != null ? refused : McpServer.toolError("no job " + id.trim() + " in this run of EDT");
     }
 
     /** The refusal for an id that names no job of this run, or {@code null} when it names one. */

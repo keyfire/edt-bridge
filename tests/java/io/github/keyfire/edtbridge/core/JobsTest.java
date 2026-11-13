@@ -139,7 +139,7 @@ class JobsTest {
     }
 
     @Test
-    @DisplayName("a cancel the job does not reach in time leaves it running with the request noted")
+    @DisplayName("work that never looks at the request ends with its real result and the request noted")
     void cancelNotYetReached() throws Exception {
         var release = new CountDownLatch(1);
         var started = new CountDownLatch(1);
@@ -153,10 +153,84 @@ class JobsTest {
         assertEquals(Jobs.State.RUNNING, pending.state());
         assertTrue(pending.cancelRequested());
         release.countDown();
-        // Asked to stop, it finished its step: still a cancelled job, with the result it returned.
+        // It never saw the request and did its work: a cancelled state with nothing applied would hide that.
         var end = jobs.await(job.id(), 5_000);
-        assertEquals(Jobs.State.CANCELLED, end.state());
+        assertEquals(Jobs.State.SUCCEEDED, end.state());
+        assertTrue(end.cancelRequested());
         assertEquals("done anyway", end.result());
+    }
+
+    @Test
+    @DisplayName("a context taken in the job thread sees the cancel from another thread")
+    void contextFromAnotherThread() throws Exception {
+        var job = jobs.submit("edt_build_extension", () -> {
+            Jobs.Context context = Jobs.context();
+            var seen = new AtomicBoolean();
+            // The way an EDT operation asks its progress monitor: from a thread of its own.
+            Thread worker = new Thread(() -> {
+                context.stage("exporting");
+                while (!context.cancelRequested()) {
+                    Thread.onSpinWait();
+                }
+                seen.set(true);
+            });
+            worker.start();
+            worker.join(10_000);
+            return seen.get() ? "stopped" : "ran out";
+        });
+        for (int i = 0; i < 100 && !"exporting".equals(jobs.await(job.id(), 0).stage()); i++) {
+            Thread.sleep(20);
+        }
+        var end = jobs.cancel(job.id(), 5_000);
+        assertEquals(Jobs.State.CANCELLED, end.state());
+        assertEquals("stopped", end.result());
+        assertFalse(Jobs.context().cancelRequested(), "outside a job the context says no");
+    }
+
+    @Test
+    @DisplayName("a long job started first and finished last is kept over the quick ones")
+    void retentionByFinishTime() throws Exception {
+        var two = Executors.newFixedThreadPool(2);
+        try {
+            var registry = new Jobs<String>("abc234", two, clock::get, result -> false);
+            var release = new CountDownLatch(1);
+            var slow = registry.submit("edt_update_infobase", () -> {
+                release.await();
+                return "loaded";
+            });
+            String first = null;
+            for (int i = 0; i <= Jobs.KEEP_FINISHED; i++) {
+                clock.incrementAndGet();
+                var quick = registry.submit("edt_project_errors", () -> "x");
+                registry.await(quick.id(), 5_000);
+                first = first == null ? quick.id() : first;
+            }
+            clock.incrementAndGet();
+            release.countDown();
+            registry.await(slow.id(), 5_000);
+            assertEquals(Jobs.Lookup.FOUND, registry.lookup(slow.id()));
+            assertEquals(Jobs.Lookup.UNKNOWN, registry.lookup(first));
+        } finally {
+            two.shutdownNow();
+        }
+    }
+
+    @Test
+    @DisplayName("a job whose result the caller already has is forgotten, a running one is kept")
+    void forget() throws Exception {
+        var done = jobs.submit("t", () -> "x");
+        jobs.await(done.id(), 5_000);
+        jobs.forget(done.id());
+        assertEquals(Jobs.Lookup.UNKNOWN, jobs.lookup(done.id()));
+
+        var release = new CountDownLatch(1);
+        var running = jobs.submit("t", () -> {
+            release.await();
+            return "y";
+        });
+        jobs.forget(running.id());
+        assertEquals(Jobs.Lookup.FOUND, jobs.lookup(running.id()));
+        release.countDown();
     }
 
     @Test

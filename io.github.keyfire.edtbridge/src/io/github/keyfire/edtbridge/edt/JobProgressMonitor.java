@@ -21,32 +21,37 @@ import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.NullProgressMonitor;
 
 /**
- * The progress monitor of a long EDT operation: it tells the current job which step the operation is on
- * and answers {@code isCanceled} once the job is cancelled, so an export or a synchronization stops at its
+ * The progress monitor of a long EDT operation: it tells the job which step the operation is on and
+ * answers {@code isCanceled} once the job is cancelled, so an export or a synchronization stops at its
  * next check. Outside a job it is a {@link NullProgressMonitor}.
+ *
+ * <p>The job is taken when the monitor is created, in the thread of the job. An EDT operation may ask
+ * the monitor from threads of its own, where the thread of the job is not known.
  */
 public final class JobProgressMonitor extends NullProgressMonitor {
 
+    private final Jobs.Context job;
     private String task = "";
 
-    private JobProgressMonitor() {
+    private JobProgressMonitor(Jobs.Context job) {
+        this.job = job;
     }
 
     /** A monitor for one EDT operation of the current call. */
     public static IProgressMonitor create() {
-        return new JobProgressMonitor();
+        return new JobProgressMonitor(Jobs.context());
     }
 
     @Override
     public boolean isCanceled() {
-        return super.isCanceled() || Jobs.cancelRequested();
+        return super.isCanceled() || job.cancelRequested();
     }
 
     @Override
     public void beginTask(String name, int totalWork) {
         task = name == null ? "" : name.strip();
         if (!task.isEmpty()) {
-            Jobs.stage(task);
+            job.stage(task);
         }
     }
 
@@ -59,7 +64,7 @@ public final class JobProgressMonitor extends NullProgressMonitor {
     public void subTask(String name) {
         String sub = name == null ? "" : name.strip();
         if (!sub.isEmpty()) {
-            Jobs.stage(task.isEmpty() ? sub : task + ": " + sub);
+            job.stage(task.isEmpty() ? sub : task + ": " + sub);
         }
     }
 }

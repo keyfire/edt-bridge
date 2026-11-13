@@ -74,17 +74,23 @@ public final class CancelJobTool {
             return refused;
         }
         try {
-            boolean wasFinished = jobs.await(id, 0).state().finished();
-            Jobs.Snapshot<JsonObject> job = jobs.cancel(id, WAIT_MILLIS);
+            Jobs.Snapshot<JsonObject> before = jobs.await(id, 0);
+            Jobs.Snapshot<JsonObject> job = before == null ? null : jobs.cancel(id, WAIT_MILLIS);
+            if (job == null) {
+                // The job left the kept results between the check above and the cancel.
+                return JobStatusTool.gone(jobs, id);
+            }
             String message;
-            if (wasFinished) {
+            if (before.state().finished()) {
                 message = "the job had already ended: nothing to cancel";
             } else if (job.state() == Jobs.State.CANCELLED) {
                 message = job.applied().isEmpty()
                         ? "cancelled; the job had applied nothing"
                         : "cancelled; the steps in applied stay done";
             } else if (job.state().finished()) {
-                message = "the job ended before it reached a point where it could stop";
+                // Its code had no point where it looked at the request: it ran to its end, and the result
+                // is what it did.
+                message = "the job ended before it reached a point where it could stop; result is what it did";
             } else {
                 message = "cancellation requested: the job stops at its next step; " + JobTools.STATUS
                         + " shows when it does";

@@ -97,6 +97,10 @@ class McpJobsTest {
         // Refused by the token gate or for the missing project, whichever comes first: either way at once.
         assertTrue(result.has("isError"), text(result));
         assertFalse(text(result).contains("jobId"), text(result));
+        // Its job does not stay among the kept results: the caller never saw its id.
+        for (var kept : jobs().list()) {
+            assertFalse("edt_clean_project".equals(kept.tool()), kept.id());
+        }
     }
 
     @Test
@@ -165,6 +169,40 @@ class McpJobsTest {
         assertEquals("the configuration is loaded into the infobase",
                 cancelled.getAsJsonArray("applied").get(0).getAsString());
         assertTrue(cancelled.get("message").getAsString().contains("stay done"));
+    }
+
+    @Test
+    void aWaitThatIsNoNumberIsRefusedAndOnlyOneStatusCallWaits() throws Exception {
+        var release = new CountDownLatch(1);
+        var started = new CountDownLatch(1);
+        var job = jobs().submit("edt_infobase_dump", () -> {
+            started.countDown();
+            release.await(30, TimeUnit.SECONDS);
+            return McpServer.textResult("{}");
+        });
+        try {
+            assertTrue(started.await(10, TimeUnit.SECONDS));
+            JsonObject bad = call(JobTools.STATUS, args("jobId", job.id(), "waitSeconds", "soon"));
+            assertTrue(text(bad).contains("waitSeconds must be a whole number"), text(bad));
+
+            Thread first = new Thread(() -> {
+                try {
+                    call(JobTools.STATUS, args("jobId", job.id(), "waitSeconds", "20"));
+                } catch (Exception ignored) {
+                    // the first waiter only has to hold the wait
+                }
+            });
+            first.start();
+            Thread.sleep(500);
+            long before = System.nanoTime();
+            JsonObject second = body(call(JobTools.STATUS, args("jobId", job.id(), "waitSeconds", "20")));
+            assertTrue(System.nanoTime() - before < TimeUnit.SECONDS.toNanos(5));
+            assertTrue(second.get("message").getAsString().contains("already waiting"), second.toString());
+            release.countDown();
+            first.join(10_000);
+        } finally {
+            release.countDown();
+        }
     }
 
     @Test
