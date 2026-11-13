@@ -11,19 +11,48 @@
 # keeps ping output out of the pipe (only the single command reaches the CLI).
 #
 # Defaults assume a typical install; -EdtDir is auto-detected (newest installation) if omitted.
+#
+# A fresh build is not picked up by itself: EDT loads whatever jar lies in dropins. -Jar <path> or
+# -FromBuild (the newest jar in build/) puts exactly that jar into dropins once EDT has stopped, and
+# the version the started bridge reports is then compared with the jar's.
+#
+# Exit codes: 0 ready (or the server is up in a workspace without projects), 1 not ready in time,
+# 2 refused before the start, 3 the bridge that answered runs another bundle than the installed jar.
 param(
   [Parameter(Mandatory = $true)][string]$Workspace,
   [string]$EdtDir,
   [int]$Port    = 8770,
-  [int]$WaitSec = 360
+  [int]$WaitSec = 360,
+  [string]$Jar,
+  [switch]$FromBuild
 )
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "edt-common.ps1")
 
+# Every refusal about the jar comes before anything is stopped.
+$buildDir = Join-Path $PSScriptRoot "..\build"
+if ($Jar -and $FromBuild) { Write-Warning "Pass either -Jar or -FromBuild, not both."; exit 2 }
+if ($FromBuild) {
+  $built = Get-ChildItem -LiteralPath $buildDir -Filter "io.github.keyfire.edtbridge_*.jar" -ErrorAction SilentlyContinue |
+    Sort-Object LastWriteTime -Descending | Select-Object -First 1
+  if (-not $built) { Write-Warning "-FromBuild: no bridge jar in $buildDir - run scripts/build-nomaven.ps1 first."; exit 2 }
+  $Jar = $built.FullName
+}
+$expectedVersion = $null
+if ($Jar) {
+  if (-not (Test-Path -LiteralPath $Jar -PathType Leaf)) { Write-Warning "-Jar: file not found: $Jar"; exit 2 }
+  $Jar = (Resolve-Path -LiteralPath $Jar).Path
+  $expectedVersion = Get-BridgeJarVersion -Path $Jar
+  if (-not $expectedVersion) {
+    Write-Warning "-Jar: $(Split-Path -Leaf $Jar) is not named like a bridge jar (io.github.keyfire.edtbridge_<version>.jar)"
+    exit 2
+  }
+}
+
 $EdtDir = Resolve-EdtDir -EdtDir $EdtDir -RequireExe "1cedtcli.exe"
-# Из какой установки идёт запуск - первой же строкой: правка, ушедшая в другую установку,
-# выглядела как несобравшийся jar (см. Write-EdtSelection).
-Write-EdtSelection -EdtDir $EdtDir -BuildDir (Join-Path $PSScriptRoot "..uild")
+# The installation goes first: a jar replaced in another installation looked like a build that did
+# not take effect (see Write-EdtSelection).
+Write-EdtSelection -EdtDir $EdtDir -BuildDir $buildDir
 
 # 1) SAFETY: never disturb a GUI 1C:EDT (1cedt.exe) the user may be working in. What actually
 #    collides with one is narrow, so check FOR THE COLLISION rather than for the process:
@@ -35,6 +64,10 @@ Write-EdtSelection -EdtDir $EdtDir -BuildDir (Join-Path $PSScriptRoot "..uild")
 #    workspace and port, and then the script refused that too. Anything left over from a GUI that
 #    was closed but has not finished exiting also counted as "running" and blocked the launch.
 $guiRunning = [bool](Get-Process -Name '1cedt' -ErrorAction SilentlyContinue)
+if ($guiRunning -and $Jar) {
+  Write-Warning "A GUI 1C:EDT is running and holds the dropins jar, so -Jar/-FromBuild cannot replace it. Close it first."
+  exit 2
+}
 if ($guiRunning) {
   $portBusy = $false
   try { $portBusy = [bool](Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction Stop) } catch {}
@@ -50,13 +83,24 @@ Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
   Where-Object { $_.CommandLine -and ($_.CommandLine -match 'edtbridge-headless|edt_headless|999999 127\.0\.0\.1') } |
   ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop } catch {} }
 Get-Process -Name '1cedtcli' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+if ($Jar) {
+  # The runtime the CLI spawned (1cedtc) outlives it for a while and keeps the jar open. Only the
+  # one started on THIS workspace is ours to stop.
+  foreach ($p in (Get-EdtProcess -Workspace $Workspace)) {
+    try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop } catch {}
+  }
+}
 Start-Sleep -Seconds 3
 # After clearing OUR headless, anything still holding the lock belongs to someone else - stomping it
 # would take a live instance down, so stop instead.
 if (-not (Assert-WorkspaceFree -Workspace $Workspace)) { exit 2 }
 Clear-StaleWorkspaceLock -Workspace $Workspace
 # Only when nothing else holds the jar open - see the collision note above.
-if (-not $guiRunning) { Set-SingleDropinJar -EdtDir $EdtDir }
+if ($Jar) {
+  if (-not (Install-DropinJar -EdtDir $EdtDir -Jar $Jar)) { exit 2 }
+} elseif (-not $guiRunning) {
+  Set-SingleDropinJar -EdtDir $EdtDir
+}
 
 # 2) launch headless via a hidden bat (cmd does the native pipe, clean ASCII stdin)
 $cli = Join-Path $EdtDir "1cedtcli.exe"
@@ -89,11 +133,24 @@ Start-Process -FilePath $bat -WorkingDirectory $EdtDir -WindowStyle Hidden
 $deadline = (Get-Date).AddSeconds($WaitSec)
 $lastStatus = $null
 while ((Get-Date) -lt $deadline) {
-  try {
-    $s = (Invoke-WebRequest "http://127.0.0.1:$Port/status" -UseBasicParsing -TimeoutSec 3).Content
+  $s = $null
+  try { $s = (Invoke-WebRequest "http://127.0.0.1:$Port/status" -UseBasicParsing -TimeoutSec 3).Content } catch {}
+  if ($s) {
     $lastStatus = $s
+    if ($expectedVersion) {
+      # The first answer already says which bundle runs; there is no point waiting for the model.
+      $live = $null
+      try { $live = ($s | ConvertFrom-Json).bridgeBundleVersion } catch {}
+      if ($live -ne $expectedVersion) {
+        $shown = if ($live) { $live } else { "a bridge without bridgeBundleVersion" }
+        "MISMATCH: installed jar $expectedVersion, the bridge on port $Port runs $shown. Stop it (edt-bridge-mcp shutdown) and check which installation and port it uses."
+        exit 3
+      }
+      $expectedVersion = $null
+      "bundle checked:   $live"
+    }
     if ($s -match '"openProjects":\["') { "READY: $s"; exit 0 }
-  } catch {}
+  }
   Start-Sleep -Seconds 5
 }
 if ($lastStatus) {

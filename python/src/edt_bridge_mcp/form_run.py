@@ -18,7 +18,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from . import native_form
+from . import native_form, native_scenario
 
 ENV_INFOBASE = "EDT_BRIDGE_TEST_INFOBASE"
 ENV_PLATFORM = "EDT_BRIDGE_TEST_PLATFORM"
@@ -32,8 +32,13 @@ DESCRIPTOR = {
         "(EDT_BRIDGE_TEST_INFOBASE, platform EDT_BRIDGE_TEST_PLATFORM) through the platform's native "
         "test client, on Linux with Xvfb. Either press one command (button) and get the messages and "
         "any error, or play a scenario (steps: input, click, assert_messages, assert_field, "
-        "assert_cell, assert_table, assert_table_size; the last action must be followed by an "
-        "assertion). The answer carries status, the observed messages, the error dialog and the "
+        "assert_cell, assert_table, assert_table_size, read_form, read_table; the last action must "
+        "be followed by an assertion or a read). read_form returns every visible field, form table "
+        "and spreadsheet of the form in reads; assert_table and read_table take a form table too. "
+        "assert_messages counts the messages with its text that the preceding click added, so a "
+        "repeated click is checked with count 1 again. A field selector that matches no field or "
+        "several answers with observedFields, the fields of the open form by name and title. The "
+        "answer carries status, the observed messages, the error dialog and the "
         "exception text - what a static check cannot see, e.g. a method of the object module called "
         "on form data. eventLog.errors adds the errors the platform logged during the run with "
         "message, module and line, which the client only shows as an error window. The infobase "
@@ -44,8 +49,13 @@ DESCRIPTOR = {
         "(EDT_BRIDGE_TEST_INFOBASE, платформа EDT_BRIDGE_TEST_PLATFORM) штатным тестовым клиентом "
         "платформы, на Linux с Xvfb. Либо нажать одну команду (button) и получить сообщения и ошибку, "
         "либо проиграть сценарий (steps: input, click, assert_messages, assert_field, assert_cell, "
-        "assert_table, assert_table_size; после последнего действия нужна проверка). Ответ содержит "
-        "статус, сообщения, окно ошибки и текст исключения - то, чего не видит статическая проверка, "
+        "assert_table, assert_table_size, read_form, read_table; после последнего действия нужна "
+        "проверка или чтение). read_form возвращает в reads все видимые поля, таблицы формы и "
+        "табличные документы формы; assert_table и read_table принимают и таблицу формы. "
+        "assert_messages считает сообщения со своим текстом, которые добавило предыдущее нажатие, "
+        "поэтому повторное нажатие снова проверяется с count 1. Селектор поля, не нашедший ровно "
+        "одно поле, отвечает с observedFields: поля открытой формы с именем и заголовком. Ответ "
+        "содержит статус, сообщения, окно ошибки и текст исключения - то, чего не видит статическая проверка, "
         "например вызов метода модуля объекта у данных формы. eventLog.errors добавляет ошибки, "
         "записанные платформой в журнал регистрации за время запуска, с текстом, модулем и строкой: "
         "клиент показывает их только окном ошибки. Сама база не меняется. Обслуживает обвязка, EDT "
@@ -61,21 +71,24 @@ DESCRIPTOR = {
                                     "ExternalReport.Name.Form for a report opened with the standard "
                                     "report form"},
             "formTitle": {"type": "string",
-                          "description": "Window title of the opened form. * (any run of characters) "
-                                         "and ? (one character) are wildcards, e.g. \"Order 7 dated *\" "
-                                         "for a title that carries a date"},
+                          "description": "Window title of the opened form. Optional: without it the form is "
+                                         "found by its name when one form of that name is open. The window of "
+                                         "an object form adds the object presentation to the form title, e.g. "
+                                         "\"Check: Products\" for a form titled \"Check\", so pass a pattern such as "
+                                         "\"Check*\". * (any run of characters) and ? (one character) are wildcards, "
+                                         "e.g. \"Order 7 dated *\" for a title that carries a date"},
             "button": {"type": "string",
                        "description": "Caption of the command to press. Mutually exclusive with steps"},
             "expectMessage": {"type": "string",
                               "description": "Optional message text the button must produce"},
-            "steps": {"type": "array", "items": {"type": "object"},
-                      "description": "Scenario steps, e.g. [{\"action\": \"click\", \"button\": "
-                                     "\"Check\"}, {\"action\": \"assert_messages\", \"text\": "
-                                     "\"Done\", \"count\": 1}]"},
+            "steps": {"type": "array", "items": {"oneOf": native_scenario.step_schemas()},
+                      "description": "Scenario steps. Each step is one of the kinds in items, with exactly "
+                                     "the keys of its kind, e.g. " + native_scenario.EXAMPLE + ". A refused step is "
+                                     "named with its unexpected and missing keys."},
             "timeoutSeconds": {"type": "integer",
                                "description": "Whole run limit, 60-900 seconds (default 300)"},
         },
-        "required": ["path", "form", "formTitle"],
+        "required": ["path", "form"],
     },
     # The tool sets that carry it (EDT_BRIDGE_TOOLSET): the jobs that build an .epf or an .erf.
     "toolsets": ["processor", "report"],
@@ -125,7 +138,8 @@ def run_tool(arguments: dict, *, runner=native_form.run, environ=os.environ) -> 
             platform_bin=Path(platform), test_infobase=copy, scope="fixture",
             epf=path if suffix == ".epf" else None, erf=path if suffix == ".erf" else None,
             navigation_link=None, form=str(arguments.get("form") or ""),
-            form_title=str(arguments.get("formTitle") or ""), button=button, scenario=scenario,
+            form_title=None if arguments.get("formTitle") is None else str(arguments["formTitle"]),
+            button=button, scenario=scenario,
             expect_message=arguments.get("expectMessage"), user=environ.get(ENV_USER),
             output_dir=root / "output", timeout=timeout)
         report = runner(args)

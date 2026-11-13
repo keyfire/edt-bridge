@@ -43,6 +43,8 @@ edt-bridge-mcp call edt_projects        # вызвать инструмент и
 edt-bridge-mcp call edt_metadata_details --json '{"projectName": "SM", "fqn": "CommonModule.Foo"}'
 edt-bridge-mcp call edt_create_extension --json-file args.json   # аргументы из файла UTF-8
 edt-bridge-mcp status                   # поднят ли мост (сам ничего не запускает)
+edt-bridge-mcp wait-ready --project Demo --timeout 3600   # пока не загрузится модель Demo
+edt-bridge-mcp workspace pack --workspace <ws> --archive ready.tar.gz   # остановленная рабочая область для другой машины
 ```
 
 `--raw` печатает результат в JSON вместо текста, который вернул инструмент. Аргументы берутся из
@@ -50,7 +52,8 @@ edt-bridge-mcp status                   # поднят ли мост (сам н�
 
 Коды возврата: `0` – порядок, `1` – вызов вообще не состоялся (моста нет, ошибка использования или
 транспорта), `2` – мост выполнил инструмент, и тот сообщил об ошибке. Так скрипт отличает "упало" от
-"не запускалось".
+"не запускалось". `wait-ready` возвращает `0`, когда проекты готовы, `1`, если EDT не запущена или
+завершилась, и `2`, если срок истек, а EDT еще загружается.
 
 ## Самообновление
 
@@ -108,6 +111,8 @@ Editable-установку обновление не перезаписывае
 | `EDT_BRIDGE_EDT_DIR` | `--edt-dir` | каталог установки EDT (папка с 1cedtcli и dropins); без него берется самая свежая установка |
 | `EDT_BRIDGE_START_TIMEOUT` | `--start-timeout` | сколько секунд ожидать запуск моста (по умолчанию 360) |
 | `EDT_BRIDGE_AUTOSTART` | `--no-autostart` | `0` или флаг – только пересылать запросы и ничего не запускать |
+| `EDT_BRIDGE_HEAP` | `--heap` | наибольший размер кучи JVM для автоматически запущенной EDT, например `6g`; заменяет `-Xmx` установки |
+| `EDT_BRIDGE_VMARGS` | `--vmargs` | другие параметры JVM для автоматически запущенной EDT через пробел; флаг передавать как `--vmargs=...` |
 
 Редко нужные (`EDT_BRIDGE_PORT_SCAN`, `EDT_BRIDGE_WINDOW_WAIT`, `EDT_BRIDGE_LANG`) и переменные
 самого плагина собраны в разделе

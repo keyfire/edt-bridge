@@ -18,6 +18,8 @@ Configuration (CLI flags override the environment):
     EDT_BRIDGE_EDT_DIR        EDT install dir (the folder with 1cedtcli and dropins); auto-detected when omitted
     EDT_BRIDGE_START_TIMEOUT  seconds to wait for a starting backend (default 360)
     EDT_BRIDGE_AUTOSTART      set to 0/false to never launch anything (proxy-only)
+    EDT_BRIDGE_HEAP           maximum JVM heap of an auto-started EDT, e.g. 4096m or 6g (-Xmx)
+    EDT_BRIDGE_VMARGS         further JVM options of an auto-started EDT, e.g. -XX:+ExitOnOutOfMemoryError
     EDT_BRIDGE_TOOLSET        tool sets to list and run (processor, report, extension); empty - all tools
 
 Registration in Claude Code:
@@ -140,6 +142,41 @@ def write_headless_batch(path: Path, cli: Path, workspace: Path, token: str = ""
     return path
 
 
+#: A heap size for -Xmx: a number with k, m or g. The JVM reads a bare number as bytes, so 4096 would
+#: ask for 4 KiB and stop the start with a message that names neither the setting nor the unit.
+_HEAP = re.compile(r"[1-9][0-9]*[kKmMgG]")
+
+
+def jvm_options(heap: str | None, vmargs: str | None) -> list[str]:
+    """The JVM options of an auto-started EDT, after the bridge port; ValueError explains a refusal.
+
+    The CLI passes them after -vmargs, behind the options of the installation's ini file, and the
+    JVM takes the last -Xmx it is given - so the heap set here replaces the installation's one.
+    On Windows the options are split the way a command line is, and a backslash stays a backslash:
+    a path such as -Xlog:gc:file=C:\\logs\\gc.log must reach the JVM unchanged.
+    """
+    options = []
+    if heap:
+        if not _HEAP.fullmatch(heap):
+            raise ValueError(f"EDT_BRIDGE_HEAP={heap!r} is not a heap size; use a number with k, m or g, "
+                             "e.g. 4096m or 6g")
+        options.append("-Xmx" + heap)
+    if vmargs and vmargs.strip():
+        try:
+            parts = shlex.split(vmargs, posix=not _WINDOWS)
+        except ValueError as bad:
+            raise ValueError(f"EDT_BRIDGE_VMARGS cannot be split into options: {bad}") from None
+        if _WINDOWS:
+            parts = [part[1:-1] if len(part) > 1 and part[0] == part[-1] == '"' else part for part in parts]
+        for part in parts:
+            if not part.startswith("-"):
+                raise ValueError(f"EDT_BRIDGE_VMARGS: {part!r} is not a JVM option; every option starts with -")
+            if part.startswith("-Dedt.bridge.port="):
+                raise ValueError("EDT_BRIDGE_VMARGS must not set the bridge port; use EDT_BRIDGE_PORT or --port")
+        options += parts
+    return options
+
+
 def request_failure(error: Exception) -> str:
     if isinstance(error, urllib.error.HTTPError) and error.code == 401:
         return cli._TOKEN_HINT
@@ -158,6 +195,8 @@ class Backend:
         autostart = (os.environ.get("EDT_BRIDGE_AUTOSTART") or "1").strip().lower()
         self.autostart = autostart not in ("0", "false", "no")
         self.scan_range = int(os.environ.get("EDT_BRIDGE_PORT_SCAN", "20"))
+        self.heap = (os.environ.get("EDT_BRIDGE_HEAP") or "").strip() or None
+        self.vmargs = (os.environ.get("EDT_BRIDGE_VMARGS") or "").strip() or None
         self._active_port = self.port  # the port the live bridge was last found on
         self._start_lock = threading.Lock()
         self._starting = False
@@ -437,6 +476,14 @@ class Backend:
             "EDT_BRIDGE_START_TIMEOUT)"
         )
 
+    def startup_failure(self) -> str | None:
+        """Why the headless EDT this process launched has exited, or None while it runs or if none was."""
+        return self._startup_failure()
+
+    def launched_alive(self) -> bool:
+        """Whether this process launched a headless EDT whose supervisor is still running."""
+        return self._headless_process is not None and self._headless_process.poll() is None
+
     def _startup_failure(self) -> str | None:
         """Read the supervised CLI exit, not the lifetime of its stdin feeder."""
         if self._headless_process is None:
@@ -690,11 +737,15 @@ class Backend:
                 "1cedtcli not found – pass --edt-dir or set EDT_BRIDGE_EDT_DIR to the "
                 "EDT install directory (the folder with 1cedtcli and dropins)"
             )
+        try:
+            options = jvm_options(self.heap, self.vmargs)
+        except ValueError as bad:
+            return False, str(bad)
         jar_ok, jar_msg = self._ensure_plugin_jar(cli.parent)
         if not jar_ok:
             return False, jar_msg
         ws = Path(self.workspace)
-        log(f"starting headless EDT: {cli} -data {ws}")
+        log(f"starting headless EDT: {cli} -data {ws}" + (f" with {' '.join(options)}" if options else ""))
         try:
             folder = Path(tempfile.mkdtemp(prefix="edtbridge-headless-"))
             self._headless_state = folder / "state.json"
@@ -702,7 +753,7 @@ class Backend:
             command = [sys.executable, str(Path(__file__).with_name("headless.py")),
                        "--state", str(self._headless_state), "--output", str(self._headless_output),
                        "--", str(cli), "-data", str(ws), "-nl", "en_US",
-                       "-vmargs", f"-Dedt.bridge.port={self.port}"]
+                       "-vmargs", f"-Dedt.bridge.port={self.port}", *options]
             environment = os.environ.copy()
             if self.token:
                 environment["EDT_BRIDGE_TOKEN"] = self.token
@@ -1454,6 +1505,10 @@ def apply_connection_options(args) -> None:
         os.environ["EDT_BRIDGE_START_TIMEOUT"] = str(args.start_timeout)
     if getattr(args, "no_autostart", False):
         os.environ["EDT_BRIDGE_AUTOSTART"] = "0"
+    if getattr(args, "heap", None):
+        os.environ["EDT_BRIDGE_HEAP"] = args.heap
+    if getattr(args, "vmargs", None):
+        os.environ["EDT_BRIDGE_VMARGS"] = args.vmargs
 
 
 def build_parser() -> argparse.ArgumentParser:

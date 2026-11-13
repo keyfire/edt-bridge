@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -68,9 +69,50 @@ public final class HtmlTemplateGateway {
     /** The language slot of a spreadsheet template: one Template.mxlx file, like the schema. */
     static final String SPREADSHEET = "spreadsheet";
 
+    /**
+     * How long the first resolve of a schema or a spreadsheet waits for its content file. EDT answers
+     * edt_add_template before its export has written Template.dcs or Template.mxlx, so a read or a
+     * replacement sent right after the creation can find the template in the model and no file yet.
+     */
+    static final long CONTENT_FILE_WAIT_MS = 15_000;
+    private static final long CONTENT_FILE_POLL_MS = 250;
+    /**
+     * How long after edt_add_template its content file is awaited. Only a template created a moment ago
+     * can be waiting for its export; a template whose file is gone for another reason is refused at once,
+     * so a caller trying one call after another does not lose the wait on each.
+     */
+    static final long RECENT_CREATION_MS = 120_000;
+    private static final Map<String, Long> RECENTLY_CREATED = new ConcurrentHashMap<>();
+
+    /** Called by edt_add_template: the content file of this template may still be on its way to disk. */
+    static void noteCreated(String projectName, String fqn) {
+        RECENTLY_CREATED.put(creationKey(projectName, fqn), System.nanoTime());
+    }
+
+    static boolean recentlyCreated(String projectName, String fqn) {
+        String key = creationKey(projectName, fqn);
+        Long at = RECENTLY_CREATED.get(key);
+        if (at == null) return false;
+        if (System.nanoTime() - at > TimeUnit.MILLISECONDS.toNanos(RECENT_CREATION_MS)) {
+            RECENTLY_CREATED.remove(key, at);
+            return false;
+        }
+        return true;
+    }
+
+    private static String creationKey(String projectName, String fqn) {
+        return projectName + '\u0000' + fqn.toLowerCase(java.util.Locale.ROOT);
+    }
+
     /** EDT is occupied by another operation; nothing was written and the call may be repeated. */
     static final class BusyException extends IllegalStateException {
         BusyException(String message) { super(message); }
+    }
+
+    /** A template file that the workspace does not have (yet); {@code file} is its handle when EDT knows it. */
+    static final class ContentFileMissingException extends IllegalArgumentException {
+        final transient IFile file;
+        ContentFileMissingException(String message, IFile file) { super(message); this.file = file; }
     }
 
     record Target(String projectName, String templateFqn, String templateUuid, String templateType,
@@ -91,6 +133,8 @@ public final class HtmlTemplateGateway {
         void requireWritable(Target target) throws Exception;
         void exclusive(Target target, Runnable operation) throws Exception;
         void write(Target target, byte[] bytes) throws Exception;
+        /** Make a content file that is already on disk visible to the workspace; {@code file} may be null. */
+        default void refresh(IFile file) throws Exception {}
     }
 
     public static final class Result {
@@ -102,14 +146,19 @@ public final class HtmlTemplateGateway {
     }
 
     private final Access access;
+    private final long contentFileWaitMs;
     public HtmlTemplateGateway() { this(new EdtAccess()); }
-    HtmlTemplateGateway(Access access) { this.access = Objects.requireNonNull(access); }
+    HtmlTemplateGateway(Access access) { this(access, CONTENT_FILE_WAIT_MS); }
+    HtmlTemplateGateway(Access access, long contentFileWaitMs) {
+        this.access = Objects.requireNonNull(access);
+        this.contentFileWaitMs = contentFileWaitMs;
+    }
 
     public Result read(String projectName, String fqn, String language) {
         Result result = new Result();
         try {
             requireArguments(projectName, fqn, language);
-            Target target = access.resolve(projectName, fqn, language);
+            Target target = resolveFirst(projectName, fqn, language);
             describe(result, target);
             Source source = access.read(target);
             access.requireSaved(target, source.text());
@@ -138,7 +187,7 @@ public final class HtmlTemplateGateway {
                 throw new IllegalArgumentException("apply requires expectedHash from a current read or dry-run");
             }
             if (apply && !force) throw new IllegalArgumentException("apply requires force=true");
-            Target target = access.resolve(projectName, fqn, language);
+            Target target = resolveFirst(projectName, fqn, language);
             describe(result, target);
             Source source = access.read(target);
             access.requireSaved(target, source.text());
@@ -260,6 +309,43 @@ public final class HtmlTemplateGateway {
     public Result replaceSpreadsheet(String projectName, String fqn, String text, String expectedHash,
             boolean apply, boolean force) {
         return replace(projectName, fqn, SPREADSHEET, text, expectedHash, apply, force);
+    }
+
+    /**
+     * The first resolve of a read or a replacement. For a schema or a spreadsheet that edt_add_template has
+     * just created and whose file is not in the workspace yet it repeats until the file appears or the wait
+     * ends. Every other refusal, a template that does not exist among them, is returned at once.
+     */
+    private Target resolveFirst(String projectName, String fqn, String language) throws Exception {
+        boolean content = (SCHEMA.equals(language) || SPREADSHEET.equals(language)) && recentlyCreated(projectName, fqn);
+        long started = System.nanoTime();
+        while (true) {
+            try {
+                return access.resolve(projectName, fqn, language);
+            } catch (Exception exception) {
+                ContentFileMissingException missing = missingContent(exception);
+                if (!content || missing == null) throw exception;
+                long waited = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
+                if (waited >= contentFileWaitMs) {
+                    throw new ContentFileMissingException(missing.getMessage() + " (waited " + waited
+                            + " ms for EDT to write it)", missing.file);
+                }
+                access.refresh(missing.file);
+                try {
+                    Thread.sleep(Math.min(CONTENT_FILE_POLL_MS, Math.max(1, contentFileWaitMs - waited)));
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw interrupted;
+                }
+            }
+        }
+    }
+
+    private static ContentFileMissingException missingContent(Throwable exception) {
+        for (Throwable cause = exception; cause != null; cause = cause.getCause() == cause ? null : cause.getCause()) {
+            if (cause instanceof ContentFileMissingException missing) return missing;
+        }
+        return null;
     }
 
     private static String kind(String language) {
@@ -403,10 +489,14 @@ public final class HtmlTemplateGateway {
                 IProjectOperationApi operations, IResourceLookup lookup, String language) {
             TemplateType expected = SCHEMA.equals(language) ? TemplateType.DATA_COMPOSITION_SCHEMA
                     : TemplateType.SPREADSHEET_DOCUMENT;
-            if (template.getTemplateType() != expected
-                    || template.getTemplate() == null || template.getTemplate().eIsProxy()) {
+            if (template.getTemplateType() != expected) {
                 throw new IllegalArgumentException("template must be an existing resolved " + expected.getName()
                         + "; this one is " + template.getTemplateType().getName());
+            }
+            if (template.getTemplate() == null || template.getTemplate().eIsProxy()) {
+                // EDT unloads the content when its file is removed or cannot be read.
+                throw new IllegalArgumentException("the " + expected.getName() + " content of the template is not "
+                        + "loaded in EDT; check that its file exists and is valid, then refresh the project");
             }
             if (template.getUuid() == null) throw new IllegalArgumentException("template UUID is unavailable");
             requireContextSaved(operations.getExistingContext(template));
@@ -551,9 +641,18 @@ public final class HtmlTemplateGateway {
             return project;
         }
 
+        public void refresh(IFile file) throws Exception {
+            // EDT can write the file past the workspace tree; a refresh of the one file makes it visible.
+            if (file != null && !file.exists() && file.getLocation() != null && file.getLocation().toFile().isFile()) {
+                file.refreshLocal(IResource.DEPTH_ZERO, new NullProgressMonitor());
+            }
+        }
+
         private static void requireFile(String projectName, IFile file) {
-            if (file == null || !file.exists() || !file.isAccessible()
-                    || !projectName.equals(file.getProject().getName())) {
+            if (file == null || !file.exists() || !file.isAccessible()) {
+                throw new ContentFileMissingException("existing template file is unavailable in the requested project", file);
+            }
+            if (!projectName.equals(file.getProject().getName())) {
                 throw new IllegalArgumentException("existing template file is unavailable in the requested project");
             }
             if (!file.isSynchronized(IResource.DEPTH_ZERO)) throw new IllegalArgumentException("template file is out of sync; refresh it in EDT");

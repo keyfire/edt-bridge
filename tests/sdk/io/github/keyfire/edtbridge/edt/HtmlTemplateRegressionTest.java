@@ -334,6 +334,79 @@ class HtmlTemplateRegressionTest {
         assertEquals("new saved source", access.text); assertEquals(0, access.writes);
     }
 
+    @Test void schemaFileWrittenAfterTheTemplateIsAwaitedByTheFirstResolve() {
+        HtmlTemplateGateway.noteCreated("Demo", "ExternalReport.Demo.Template.Main");
+        var access = new MemoryAccess();
+        // EDT answers edt_add_template before its export writes Template.dcs; the model may wrap the refusal.
+        access.onResolve = call -> call <= 2 ? new RuntimeException("bm task failed",
+                new HtmlTemplateGateway.ContentFileMissingException("existing template file is unavailable in the requested project", null))
+                : null;
+        var gateway = new HtmlTemplateGateway(access, 5_000);
+        var read = gateway.read("Demo", "ExternalReport.Demo.Template.Main", HtmlTemplateGateway.SCHEMA);
+        assertTrue(read.ok, read.message);
+        assertEquals(2, access.refreshes);
+        access.resolves = 0; access.refreshes = 0;
+        var preview = gateway.replace("Demo", "ExternalReport.Demo.Template.Main", HtmlTemplateGateway.SCHEMA,
+                "<schema/>", null, false, false);
+        assertTrue(preview.ok, preview.message);
+        assertEquals(2, access.refreshes);
+        assertEquals(0, access.writes);
+    }
+
+    @Test void schemaFileThatNeverAppearsIsRefusedAfterTheBoundedWait() {
+        HtmlTemplateGateway.noteCreated("Demo", "ExternalReport.Demo.Template.Main");
+        var access = new MemoryAccess();
+        access.onResolve = call -> new HtmlTemplateGateway.ContentFileMissingException(
+                "existing template file is unavailable in the requested project", null);
+        long started = System.nanoTime();
+        var result = new HtmlTemplateGateway(access, 300).replace("Demo", "ExternalReport.Demo.Template.Main",
+                HtmlTemplateGateway.SCHEMA, "<schema/>", null, false, false);
+        long elapsedMs = (System.nanoTime() - started) / 1_000_000;
+        assertFalse(result.ok);
+        assertTrue(result.message.contains("unavailable in the requested project"), result.message);
+        assertTrue(result.message.contains("ms for EDT to write it"), result.message);
+        assertTrue(elapsedMs >= 300 && elapsedMs < 3_000, "waited " + elapsedMs + " ms");
+        assertTrue(access.resolves > 1);
+        assertEquals(0, access.writes);
+    }
+
+    @Test void missingFileOfATemplateNotCreatedJustNowIsRefusedWithoutWaiting() {
+        var access = new MemoryAccess();
+        access.onResolve = call -> new HtmlTemplateGateway.ContentFileMissingException(
+                "existing template file is unavailable in the requested project", null);
+        long started = System.nanoTime();
+        var result = new HtmlTemplateGateway(access, 60_000).read("Demo", "ExternalReport.Demo.Template.Older",
+                HtmlTemplateGateway.SCHEMA);
+        assertFalse(result.ok);
+        assertEquals(1, access.resolves);
+        assertEquals(0, access.refreshes);
+        assertTrue((System.nanoTime() - started) / 1_000_000 < 2_000);
+        assertFalse(HtmlTemplateGateway.recentlyCreated("Demo", "ExternalReport.Demo.Template.Older"));
+        HtmlTemplateGateway.noteCreated("Demo", "ExternalReport.Demo.Template.Older");
+        assertTrue(HtmlTemplateGateway.recentlyCreated("Demo", "externalreport.demo.template.older"));
+    }
+
+    @Test void missingTemplateAndOtherRefusalsAreReturnedWithoutWaiting() {
+        var access = new MemoryAccess();
+        access.onResolve = call -> new IllegalArgumentException("existing common or nested template not found: "
+                + "ExternalReport.Demo.Template.Missing");
+        var gateway = new HtmlTemplateGateway(access, 60_000);
+        long started = System.nanoTime();
+        var result = gateway.replace("Demo", "ExternalReport.Demo.Template.Missing", HtmlTemplateGateway.SCHEMA,
+                "<schema/>", null, false, false);
+        assertFalse(result.ok);
+        assertTrue(result.message.contains("template not found"), result.message);
+        assertEquals(1, access.resolves);
+        assertTrue((System.nanoTime() - started) / 1_000_000 < 2_000);
+        // An HTML locale has no export lag to wait for: its missing page is refused at once as well.
+        access.resolves = 0;
+        access.onResolve = call -> new HtmlTemplateGateway.ContentFileMissingException(
+                "existing template file is unavailable in the requested project", null);
+        assertFalse(gateway.read("Demo", "CommonTemplate.Notice", "ru").ok);
+        assertEquals(1, access.resolves);
+        assertEquals(0, access.refreshes);
+    }
+
     private static IFile editorFile(IProject project, String path) {
         return (IFile) Proxy.newProxyInstance(IFile.class.getClassLoader(), new Class<?>[] {IFile.class},
                 (proxy, method, arguments) -> switch (method.getName()) {
@@ -367,13 +440,22 @@ class HtmlTemplateRegressionTest {
         boolean readOnly;
         boolean swallowExclusiveFailure;
         boolean skipExclusiveCallback;
+        int resolves;
+        int refreshes;
         Runnable onExclusive = () -> {};
         Runnable onSavedCheck = () -> {};
+        /** The failure of the n-th resolve (1-based), or null to resolve. */
+        java.util.function.IntFunction<RuntimeException> onResolve = call -> null;
         HtmlTemplateGateway.Target target = new HtmlTemplateGateway.Target("Demo", "CommonTemplate.Notice",
                 "original-uuid", "HTMLDocument", "ru", List.of("ru", "en"),
                 Map.of("ru", "src/CommonTemplates/Notice/ru/Template.html", "en", "src/CommonTemplates/Notice/en/Template.html"),
                 null, null, null);
-        public HtmlTemplateGateway.Target resolve(String project, String fqn, String language) { return target; }
+        public HtmlTemplateGateway.Target resolve(String project, String fqn, String language) {
+            RuntimeException failure = onResolve.apply(++resolves);
+            if (failure != null) throw failure;
+            return target;
+        }
+        public void refresh(IFile file) { refreshes++; }
         public HtmlTemplateGateway.Source read(HtmlTemplateGateway.Target target) {
             return new HtmlTemplateGateway.Source(text, stamp, "UTF-8");
         }

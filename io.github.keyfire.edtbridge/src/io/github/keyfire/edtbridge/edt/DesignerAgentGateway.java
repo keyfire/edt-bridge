@@ -41,6 +41,7 @@ import io.github.keyfire.edtbridge.core.AgentLeftovers;
 import io.github.keyfire.edtbridge.core.AgentRecord;
 import io.github.keyfire.edtbridge.core.AgentStop;
 import io.github.keyfire.edtbridge.core.AgentUser;
+import io.github.keyfire.edtbridge.core.BlankTemplates;
 import io.github.keyfire.edtbridge.core.LoadPlan;
 import io.github.keyfire.edtbridge.core.LoadSnapshot;
 import io.github.keyfire.edtbridge.core.QuestionChoice;
@@ -1606,6 +1607,9 @@ public final class DesignerAgentGateway {
                         r.message = "export to designer XML failed: " + exported.getMessage();
                         return ExtensionLoadOutcome.FAILED;
                     }
+                    // An empty spreadsheet template exports as a byte order mark alone, which the load
+                    // refuses; it gets the empty document DESIGNER writes itself.
+                    BlankTemplates.fill(exportDir);
 
                     r.exportMillis = millisSince(exportStarted);
 

@@ -31,7 +31,17 @@ _ACCESS_DENIED = (
     "access denied", "insufficient rights", "insufficient access rights",
     "доступ запрещен", "доступ запрещён", "недостаточно прав", "нарушение прав доступа",
 )
-_LICENSE_MISSING = ("license not found", "no license found", "не найдена лицензия")
+#: A license that is missing or taken. The free-license texts are those of the platform resources
+#: (backbas_ru.res, backbas_root.res): "Не обнаружено свободной лицензии!" / "There are no free licenses!",
+#: and the COM connection and server variants "... did not detect any free license!".
+_LICENSE_MISSING = ("license not found", "no license found", "не найдена лицензия",
+                    "свободной лицензии", "no free licenses", "any free license")
+#: The conf.cfg settings the client of the check depends on.
+_CONF = "conf.cfg"
+_UNSAFE_SETTING = "DisableUnsafeActionProtection"
+_LANGUAGE_SETTING = "SystemLanguage"
+#: The directory prefix edt_test_form copies its test infobase under.
+_RUN_COPY_PREFIX = "edt-bridge-form-run-"
 
 
 class _CheckError(Exception):
@@ -74,7 +84,7 @@ def add_arguments(parser):
     target.add_argument("--erf", type=Path, help=i18n.t("test-form.erf"))
     target.add_argument("--navigation-link", help=i18n.t("test-form.navigation-link"))
     parser.add_argument("--form", required=True, help=i18n.t("test-form.form"))
-    parser.add_argument("--form-title", required=True, help=i18n.t("test-form.form-title"))
+    parser.add_argument("--form-title", help=i18n.t("test-form.form-title"))
     operation = parser.add_mutually_exclusive_group(required=True)
     operation.add_argument("--button", help=i18n.t("test-form.button"))
     operation.add_argument("--scenario", type=Path, help=i18n.t("test-form.scenario"))
@@ -118,7 +128,7 @@ def _validated_paths(args):
         raise _CheckError("invalid_input", "Use the fully qualified managed form name of the selected target.")
     # The platform reads * and ? in a title as wildcards. A form title may carry them: the form
     # is still selected by its exact name. A button has no second selector, so it stays exact.
-    if not args.form_title.strip("*? \t") or "\x00" in args.form_title:
+    if args.form_title is not None and (not args.form_title.strip("*? \t") or "\x00" in args.form_title):
         raise _CheckError("invalid_input", "Use a form title with text in it; * and ? are wildcards.")
     if args.button is not None and (not args.button.strip() or any(c in args.button for c in "*?\x00")):
         raise _CheckError("invalid_input", "Use an exact, nonempty button selector.")
@@ -305,13 +315,15 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
             report["stage"] = "form_interaction"
             request = root / "request.json"
             result = root / "manager-result.json"
-            payload = {"port": port, "form": args.form, "formTitle": args.form_title,
+            # No title: the manager waits for the form by its name.
+            payload = {"port": port, "form": args.form, "formTitle": args.form_title or "",
                        "button": args.button or "", "expectedMessage": args.expect_message or "",
                        "waitSeconds": min(10, max(1, int(_seconds_left(deadline) / 2))),
                        "result": str(result), "progress": str(progress)}
             if steps is not None:
                 payload.update(steps=steps, maxRows=native_scenario.MAX_ROWS,
-                               maxColumns=native_scenario.MAX_COLUMNS)
+                               maxColumns=native_scenario.MAX_COLUMNS, maxItems=native_scenario.MAX_ITEMS,
+                               maxListed=native_scenario.MAX_LISTED)
             request.write_text(json.dumps(payload), encoding="utf-8", newline="")
             manager_args = [*enterprise, "/F" + str(manager_base), "/TestManager",
                             "/C" + str(request), "/Out", str(manager_log)]
@@ -331,6 +343,9 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
                 if not isinstance(data, dict) or not isinstance(data.get("status"), str):
                     raise _CheckError("driver_failed", "The test manager returned an invalid result.")
                 report.update(interaction=data, status=data["status"])
+                if isinstance(data.get("observedFields"), dict):
+                    # A selector that missed: the fields of the open form, where the caller looks first.
+                    report["observedFields"] = data["observedFields"]
                 # The owned listener can open before the platform accepts a test connection.
                 if data["status"] != "driver_failed" or data.get("stage") != "connect":
                     break
@@ -384,12 +399,145 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
     return report
 
 
+def _conf_files(platform):
+    """The conf.cfg files the client of the check reads: the version's, the directory its ConfLocation
+    names, and the installation root's.
+
+    The platform also reads ~/.1cv8/1C/1cv8/conf/conf.cfg, but the check gives the client a HOME of
+    its own, so the file of the person running it is not among them.
+    """
+    version = platform / "conf" / _CONF
+    candidates = [version]
+    if _is_regular_file(version):
+        location = _read_conf(version).get("conflocation", (None, ""))[1]
+        if location:
+            candidates.append(Path(location) / _CONF)
+    if len(platform.parents) >= 2:
+        candidates.append(platform.parents[1] / "conf" / _CONF)
+    return [path for path in dict.fromkeys(candidates) if _is_regular_file(path)]
+
+
+def _read_conf(path):
+    """key (case-folded) -> (key, value) of one conf.cfg; the first line of a key wins."""
+    settings = {}
+    for line in path.read_text(encoding="utf-8-sig", errors="replace").splitlines():
+        key, separator, value = line.partition("=")
+        key = key.strip()
+        if separator and key and not key.startswith("#"):
+            settings.setdefault(key.casefold(), (key, value.strip()))
+    return settings
+
+
+def _posix_bre(pattern):
+    """A POSIX basic regular expression, the syntax conf.cfg patterns use, as a Python pattern.
+
+    In a basic expression ( ) { } | + ? are plain characters and the escaped forms are the operators.
+    """
+    converted, index = [], 0
+    while index < len(pattern):
+        char = pattern[index]
+        if char == "\\" and index + 1 < len(pattern):
+            following = pattern[index + 1]
+            converted.append(following if following in "(){}|" else
+                             "\\" + following if following.isdigit() else re.escape(following))
+            index += 2
+            continue
+        converted.append("\\" + char if char in "(){}|+?" else char)
+        index += 1
+    return re.compile("".join(converted))
+
+
+def _bre_literal(text):
+    return re.sub(r"([\\.\[\]*^$])", r"\\\1", text)
+
+
+def _client_environment(platform, base):
+    """What the conf.cfg files say about the client of this check, for the report and the preflight.
+
+    DisableUnsafeActionProtection lists patterns that are matched against the whole connection string
+    of an infobase, File="<path>"; for a file infobase: the platform opened the external object for
+    .*/<path>.* and showed the warning for the bare path (measured with 8.5.1.1529 on 12.11.2026).
+    Where one matches, the client opens an external data processor or report without the
+    unsafe action warning; where none does, it stops at that warning, which nothing in the check can
+    answer. SystemLanguage sets the platform interface language, which the captions of the standard
+    report form are in. Each setting is taken from the first file that has it.
+    """
+    files = _conf_files(platform)
+    found = {}
+    for path in files:
+        for folded, (_key, value) in _read_conf(path).items():
+            found.setdefault(folded, (value, str(path)))
+    connection = f'File="{base}";'
+    patterns, source = found.get(_UNSAFE_SETTING.casefold(), ("", None))
+    patterns = [pattern for pattern in patterns.split(";") if pattern.strip()]
+    matched, invalid = None, []
+    for pattern in patterns:
+        try:
+            if _posix_bre(pattern).fullmatch(connection):
+                matched = pattern
+                break
+        except re.error:
+            invalid.append(pattern)
+    language, language_source = found.get(_LANGUAGE_SETTING.casefold(), (None, None))
+    protection = {"setting": _UNSAFE_SETTING, "patterns": patterns, "source": source,
+                  "disabledForTestInfobase": matched is not None}
+    if matched is not None:
+        protection["matchedPattern"] = matched
+    if invalid:
+        protection["invalidPatterns"] = invalid
+    return {"confFiles": [str(path) for path in files], "connectionString": connection,
+            "unsafeActionProtection": protection,
+            "systemLanguage": {"setting": _LANGUAGE_SETTING, "value": language, "source": language_source}}
+
+
+def _suggested_pattern(base):
+    if base.parent.name.startswith(_RUN_COPY_PREFIX):
+        # edt_test_form works on a fresh copy in a directory with a random suffix.
+        return f".*/{_RUN_COPY_PREFIX}.*"
+    return ".*" + _bre_literal(str(base)) + ".*"
+
+
+def _require_client_environment(args, platform, base, external, report):
+    environment = _client_environment(platform, base)
+    report["clientEnvironment"] = environment
+    protection = environment["unsafeActionProtection"]
+    if protection["disabledForTestInfobase"] or not external:
+        return
+    if args.user:
+        # The flag "Unsafe action protection" of the infobase user disables it as well; the file
+        # cannot tell whether the user has it cleared.
+        protection["note"] = (f"{_UNSAFE_SETTING} does not cover the test infobase; the check relies on "
+                              f"the unsafe action protection flag of user {args.user} being cleared")
+        return
+    # The file that already holds the setting is the one the patterns are added to; patterns are
+    # separated by ";".
+    target = protection["source"] or platform / "conf" / _CONF
+    advice = (f"Add {_suggested_pattern(base)} to {_UNSAFE_SETTING} in {target}, or sign in with --user whose "
+              "unsafe action protection is cleared.")
+    if protection["patterns"]:
+        # The patterns are matched here by a model of the platform's rules: POSIX basic expressions over
+        # the whole connection string. A pattern it misreads must not stop a run the platform would allow,
+        # so the run goes on and the report says what to look at if the warning appears.
+        protection["warning"] = (f"no {_UNSAFE_SETTING} pattern matches {environment['connectionString']} as the "
+                                 "check reads them; if the client stops at the unsafe action warning, " + advice)
+        return
+    looked = [platform / "conf"] + ([platform.parents[1] / "conf"] if len(platform.parents) >= 2 else [])
+    read = ", ".join(environment["confFiles"]) or f"no {_CONF} in " + " or ".join(map(str, looked))
+    raise _CheckError(
+        "client_environment",
+        f"no {_CONF} the client reads sets {_UNSAFE_SETTING}, so the client would stop at the unsafe action "
+        f"warning when it opens the external object in {environment['connectionString']}. {advice} "
+        f"Read: {read}.")
+
+
 def _native_check(args, base, external, output, report):
     platform = args.platform_bin.resolve()
     client_exe, ibcmd = (platform / name for name in ("1cv8", "ibcmd"))
     xvfb = shutil.which("Xvfb")
     if not client_exe.is_file() or not ibcmd.is_file() or not xvfb:
         raise _CheckError("dependency_missing", "The check requires 1cv8, ibcmd, Xvfb and libX11.")
+    report["stage"] = "client_environment"
+    _require_client_environment(args, platform, base, external, report)
 
     deadline = time.monotonic() + args.timeout
     with tempfile.TemporaryDirectory(prefix="edt-bridge-form-") as temporary, contextlib.ExitStack() as stack:
@@ -532,6 +680,12 @@ def run(args):
     try:
         base, external, destination = _validated_paths(args)
         args._scenario = native_scenario.load(args.scenario) if args.scenario else None
+        try:
+            # A run often names a directory per check inside a folder nobody has made yet.
+            destination.parent.mkdir(parents=True, exist_ok=True)
+        except OSError as error:
+            raise _CheckError("io_error", "Could not create the parent directory of --output-dir "
+                                          f"{destination.parent}: {error}") from error
         destination.mkdir(mode=0o700)
         output = destination
         report.update(testInfobase=str(base), form=args.form, formTitle=args.form_title)

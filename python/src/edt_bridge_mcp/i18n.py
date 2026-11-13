@@ -76,8 +76,12 @@ MESSAGES = {
         "en": "fully qualified managed form name, for example ExternalReport.Sales.Form for a standard DCS form",
     },
     "test-form.form-title": {
-        "ru": "заголовок формы в клиенте; * и ? – знаки подстановки",
-        "en": "form title in the client; * and ? are wildcards",
+        "ru": "заголовок окна формы в клиенте; * и ? – знаки подстановки. Окно формы объекта дописывает к "
+              "заголовку представление объекта, поэтому передавать шаблон вида \"Заголовок*\". Без флага форма "
+              "ищется по имени из --form",
+        "en": "window title of the form in the client; * and ? are wildcards. The window of an object form "
+              "adds the object presentation to the title, so pass a pattern such as \"Title*\". Without it the "
+              "form is found by its --form name",
     },
     "test-form.button": {
         "ru": "точный заголовок кнопки, выполняющей команду",
@@ -92,8 +96,8 @@ MESSAGES = {
         "en": "test infobase user name for a login that does not require a password",
     },
     "test-form.output-dir": {
-        "ru": "новый каталог для отчета JSON и снимка PNG",
-        "en": "new directory for the JSON report and PNG screenshot",
+        "ru": "новый каталог для отчета JSON и снимка PNG; недостающие родительские каталоги создаются",
+        "en": "new directory for the JSON report and PNG screenshot; missing parent directories are created",
     },
     "test-form.timeout": {
         "ru": "предел времени проверки в секундах, по умолчанию 120",
@@ -120,9 +124,11 @@ MESSAGES = {
               "  call <инструмент>   вызвать один инструмент моста и напечатать ответ\n"
               "  tools               перечислить инструменты запущенного моста\n"
               "  status              состояние моста без его запуска\n"
+              "  wait-ready          дождаться загрузки моделей проектов\n"
               "  shutdown            штатно завершить EDT, обслуживающую мост\n"
               "  gui                 остановить headless и открыть клиентскую EDT\n"
               "  plugins             перечислить плагины обвязки и их инструменты\n"
+              "  workspace           упаковать, восстановить и сверить рабочую область EDT\n"
               "  test-form           проверить форму и результат сценария в тестовой базе\n"
               "  self-update         обновить jar плагина и саму обвязку\n"
               "\n"
@@ -132,9 +138,11 @@ MESSAGES = {
               "  call <tool>   call one bridge tool and print what it returned\n"
               "  tools         list the tools the running bridge serves\n"
               "  status        report the running bridge (never starts one)\n"
+              "  wait-ready    wait until the project models are loaded\n"
               "  shutdown      shut down the EDT behind the bridge\n"
               "  gui           stop the headless EDT and open the GUI one\n"
               "  plugins       list the wrapper's plugins and their tools\n"
+              "  workspace     pack, restore and compare an EDT workspace\n"
               "  test-form     check a form and scenario results in a test infobase\n"
               "  self-update   refresh the plugin jar and this wrapper\n"
               "\n"
@@ -161,6 +169,79 @@ MESSAGES = {
     "conn.no-autostart": {
         "ru": "не поднимать headless EDT ни при каких условиях",
         "en": "never launch a headless EDT",
+    },
+    "conn.heap": {
+        "ru": "наибольший размер кучи JVM для автозапуска headless EDT, например 4096m или 6g",
+        "en": "maximum JVM heap of an auto-started headless EDT, e.g. 4096m or 6g",
+    },
+    "conn.vmargs": {
+        "ru": "другие параметры JVM для автозапуска headless EDT через пробел; присоединять к флагу "
+              "знаком =, потому что они начинаются с дефиса",
+        "en": "further JVM options of an auto-started headless EDT, separated by spaces; join them "
+              "to the flag with = because they start with a dash",
+    },
+    "wait-ready.description": {
+        "ru": "Дождаться загрузки моделей проектов EDT (modelReady). При необходимости запускает "
+              "headless EDT. Код 0 - проекты готовы, 1 - EDT не запущена или завершилась, "
+              "2 - срок истек, а EDT еще загружается.",
+        "en": "Wait until the EDT models of the projects are loaded (modelReady), starting a "
+              "headless EDT if needed. Exit code 0 the projects are ready, 1 EDT is not running or "
+              "has exited, 2 the time ran out while EDT is still loading.",
+    },
+    "workspace.description": {
+        "ru": "Готовая рабочая область EDT: pack упаковывает рабочую область остановленной EDT в "
+              "архив tar с временами изменения, restore восстанавливает ее по тому же пути, checks "
+              "сохраняет замечания EDT по проектам в файл (--output) или сравнивает с ним (--compare). "
+              "Журналы .metadata с командной строкой EDT в архив не попадают.",
+        "en": "A ready EDT workspace: pack archives the workspace of a stopped EDT as a tar with its "
+              "modification times, restore unpacks it under the same path, checks saves the EDT "
+              "checks of the projects to a file (--output) or compares them with one (--compare). "
+              "The .metadata logs, which carry the EDT command line, stay out of the archive.",
+    },
+    "workspace.action": {
+        "ru": "действие: pack, restore или checks",
+        "en": "action: pack, restore or checks",
+    },
+    "workspace.archive": {
+        "ru": "архив рабочей области: .tar, .tar.gz или .tar.zst (Python 3.14 и новее)",
+        "en": "workspace archive: .tar, .tar.gz or .tar.zst (Python 3.14 or newer)",
+    },
+    "workspace.output": {
+        "ru": "checks: новый файл для сохранения замечаний",
+        "en": "checks: a new file to save the checks to",
+    },
+    "workspace.compare": {
+        "ru": "checks: файл сохраненных замечаний для сравнения; код 2, если замечания различаются",
+        "en": "checks: a saved checks file to compare with; exit code 2 when they differ",
+    },
+    "workspace.project": {
+        "ru": "checks: проект для проверки; можно повторять. Без флага проверяются все открытые проекты EDT",
+        "en": "checks: a project to check; repeat for several. Without it every open EDT project counts",
+    },
+    "workspace.object": {
+        "ru": "checks: объект метаданных, замечания которого сравниваются, например Document.Order; "
+              "можно повторять. Без флага проверяется проект целиком, что на большой конфигурации "
+              "упирается в предел числа замечаний",
+        "en": "checks: a metadata object whose problems are compared, e.g. Document.Order; repeat for "
+              "several. Without it the whole project is checked, which on a large configuration runs into "
+              "the problem limit",
+    },
+    "workspace.wait": {
+        "ru": "checks: сколько секунд ждать завершения проверки каждого проекта (по умолчанию 600)",
+        "en": "checks: seconds to wait for the validation of each project (default 600)",
+    },
+    "wait-ready.project": {
+        "ru": "проект, которого нужно дождаться; можно повторять. Без флага ожидаются все открытые "
+              "проекты EDT",
+        "en": "a project to wait for; repeat for several. Without it every open EDT project counts",
+    },
+    "wait-ready.timeout": {
+        "ru": "сколько секунд ждать (по умолчанию 3600)",
+        "en": "seconds to wait (default 3600)",
+    },
+    "wait-ready.interval": {
+        "ru": "пауза между опросами в секундах (по умолчанию 5)",
+        "en": "seconds between polls (default 5)",
     },
     # -- the call / tools / status commands (cli.py) --
     "call.description": {

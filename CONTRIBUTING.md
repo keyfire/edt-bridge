@@ -41,7 +41,12 @@ build; edit `edt-bridge.target` first. More detail: [README](README.md#build-fro
 ## Running your build
 
 Copy the built jar into EDT's `dropins/` and restart EDT, or let the wrapper deliver it. Keep exactly
-one EDT-Bridge jar there, because two make Equinox load an arbitrary one. The MCP server comes up on
+one EDT-Bridge jar there, because two make Equinox load an arbitrary one. On Windows
+`scripts/run-headless.ps1 -Workspace <ws> -FromBuild` does both for a headless EDT: it stops the
+headless session of that workspace, leaves the newest jar from `build/` as the only one in
+`dropins/` and starts EDT. `-Jar <path>` installs a given jar instead. The script then compares the
+`bridgeBundleVersion` the bridge reports with the version in the jar name and exits with code 3 when
+they differ. The MCP server comes up on
 `http://127.0.0.1:8770/mcp`, and the page at `http://127.0.0.1:8770/` has a runner for every tool.
 See [Manual install](README.md#manual-install-without-the-wrapper).
 

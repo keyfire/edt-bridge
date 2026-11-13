@@ -93,10 +93,11 @@ public final class SpreadsheetLayout {
     /** The checked layout on a grid: the width of every column and every row of the document. */
     record Grid(int[] widths, List<GridRow> rows) { }
 
-    private static final String NS = "http://v8.1c.ru/8.2/data/spreadsheet";
+    static final String NS = "http://v8.1c.ru/8.2/data/spreadsheet";
     private static final String XSI = "http://www.w3.org/2001/XMLSchema-instance";
     private static final String NL = "\r\n";
-    private static final String HEAD = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" + NL
+    /** The declaration, the root element and the language settings every file starts with. */
+    static final String HEAD ="<?xml version=\"1.0\" encoding=\"UTF-8\"?>" + NL
             + "<document xmlns=\"http://v8.1c.ru/8.2/data/spreadsheet\""
             + " xmlns:pal=\"http://v8.1c.ru/8.1/data/ui/colors/palette\""
             + " xmlns:style=\"http://v8.1c.ru/8.1/data/ui/style\""

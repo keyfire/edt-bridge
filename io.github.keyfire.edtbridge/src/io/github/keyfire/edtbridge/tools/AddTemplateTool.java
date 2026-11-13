@@ -49,12 +49,16 @@ public final class AddTemplateTool {
                 + "the report's main one, or a SPREADSHEET_DOCUMENT - an empty print form layout. Fill a schema with "
                 + "edt_replace_dcs or edt_modify_dcs, a spreadsheet with edt_write_spreadsheet. EDT validation does "
                 + "not check the XML of either; the build (edt_dump_external_object) does. Dry-run by default; "
-                + "apply=true creates. Token-gated.");
+                + "apply=true creates, waits until EDT has written the content file and reads it back: "
+                + "contentReadable, contentPath and sourceHash, which is the expectedHash of the first write. "
+                + "Token-gated.");
         t.addProperty("descriptionRu", "ЗАПИСЬ: создать макет у объекта метаданных (отчет, внешний отчет, обработка, "
                 + "документ, справочник): DATA_COMPOSITION_SCHEMA с пустой схемой, при необходимости основной схемой "
                 + "отчета, или SPREADSHEET_DOCUMENT – пустой макет печатной формы. Схему заполняют edt_replace_dcs или "
                 + "edt_modify_dcs, табличный макет – edt_write_spreadsheet. XML обоих проверяет не проверка EDT, а "
-                + "сборка (edt_dump_external_object). По умолчанию dry-run; apply=true создает. Требует токен.");
+                + "сборка (edt_dump_external_object). По умолчанию dry-run; apply=true создает макет, ждет, пока EDT "
+                + "запишет файл содержимого, и читает его: contentReadable, contentPath и sourceHash, который служит "
+                + "expectedHash первой записи. Требует токен.");
         t.add("inputSchema", schema);
         return t;
     }

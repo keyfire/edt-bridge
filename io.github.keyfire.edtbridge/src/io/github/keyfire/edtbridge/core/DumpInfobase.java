@@ -19,10 +19,11 @@ package io.github.keyfire.edtbridge.core;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.List;
 import java.util.Locale;
 
 /**
- * The infobase the on-disk build of an external data processor or report runs in.
+ * The infobase the on-disk build of an external data processor or report, or of an extension, runs in.
  *
  * <p>{@code 1cv8 DESIGNER /LoadExternalDataProcessorOrReportFromFiles} resolves every type the
  * object names against the configuration of the infobase it runs in. An empty throwaway infobase
@@ -118,6 +119,31 @@ public final class DumpInfobase {
             return emptyInfobase ? schema + "; if the schema uses types of the base configuration, " + types : schema;
         }
         return emptyInfobase ? types : null;
+    }
+
+    /**
+     * Messages ibcmd gives when an extension needs its base configuration to be imported: a borrowed
+     * form excludes a standard command (Post, Write) of its main attribute, or an adopted object names
+     * a type of the base configuration. The texts are those of the platform resources
+     * ({@code mngbase_ru.res}, {@code backend_ru.res}).
+     */
+    private static final List<String> EXTENSION_NEEDS_BASE =
+            List.of("Неверное имя команды элемента формы", "Неизвестное имя типа");
+
+    /**
+     * The explanation to append to a failed extension build, or {@code null} when there is nothing to
+     * add: an extension imported into an infobase without its base configuration cannot resolve what
+     * it takes from that configuration.
+     */
+    public static String extensionHint(String output, boolean emptyInfobase) {
+        if (!emptyInfobase || output == null || EXTENSION_NEEDS_BASE.stream().noneMatch(output::contains)) {
+            return null;
+        }
+        return "the build ran in an empty infobase without the base configuration, so ibcmd cannot resolve"
+                + " what the extension takes from it: the standard commands of a borrowed form, such as Post"
+                + " or Write that the form excludes, and the types of the base configuration. Set " + ENV
+                + " to a file infobase that carries the base configuration: the build then runs in a copy"
+                + " of it";
     }
 
     private static final java.util.regex.Pattern TEMPLATE_FILE =

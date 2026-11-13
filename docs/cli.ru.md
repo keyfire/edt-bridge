@@ -33,6 +33,8 @@ usage: edt-bridge-mcp [опции]                   (без команды: з�
 | `--port PORT` | порт моста (по умолчанию 8770) |
 | `--start-timeout START_TIMEOUT` | сколько секунд ждать поднимающийся мост |
 | `--no-autostart` | не поднимать headless EDT ни при каких условиях |
+| `--heap HEAP` | наибольший размер кучи JVM для автозапуска headless EDT, например 4096m или 6g |
+| `--vmargs OPTIONS` | другие параметры JVM для автозапуска headless EDT через пробел; присоединять к флагу знаком =, потому что они начинаются с дефиса |
 | `--version` | показать версию и выйти |
 
 **Команды**
@@ -42,9 +44,11 @@ usage: edt-bridge-mcp [опции]                   (без команды: з�
 | `call <инструмент>` | вызвать один инструмент моста и напечатать ответ |
 | `tools` | перечислить инструменты запущенного моста |
 | `status` | состояние моста без его запуска |
+| `wait-ready` | дождаться загрузки моделей проектов |
 | `shutdown` | штатно завершить EDT, обслуживающую мост |
 | `gui` | остановить headless и открыть клиентскую EDT |
 | `plugins` | перечислить плагины обвязки и их инструменты |
+| `workspace` | упаковать, восстановить и сверить рабочую область EDT |
 | `test-form` | проверить форму и результат сценария в тестовой базе |
 | `self-update` | обновить jar плагина и саму обвязку |
 
@@ -57,8 +61,8 @@ usage: edt-bridge-mcp [опции]                   (без команды: з�
 ```bash
 usage: edt-bridge-mcp call [-h] [--json JSON | --json-file PATH | --stdin] [--raw]
                            [--workspace WORKSPACE] [--edt-dir EDT_DIR] [--port PORT]
-                           [--start-timeout START_TIMEOUT] [--no-autostart] [--version]
-                           tool
+                           [--start-timeout START_TIMEOUT] [--no-autostart] [--heap
+                           HEAP] [--vmargs OPTIONS] [--version] tool
 ```
 
 **Аргументы**
@@ -81,6 +85,8 @@ usage: edt-bridge-mcp call [-h] [--json JSON | --json-file PATH | --stdin] [--ra
 | `--port PORT` | порт моста (по умолчанию 8770) |
 | `--start-timeout START_TIMEOUT` | сколько секунд ждать поднимающийся мост |
 | `--no-autostart` | не поднимать headless EDT ни при каких условиях |
+| `--heap HEAP` | наибольший размер кучи JVM для автозапуска headless EDT, например 4096m или 6g |
+| `--vmargs OPTIONS` | другие параметры JVM для автозапуска headless EDT через пробел; присоединять к флагу знаком =, потому что они начинаются с дефиса |
 | `--version` | показать версию и выйти |
 
 Аргументы инструмента принимаются из `--json`, файла (`--json-file`) или потока ввода (`--stdin`). На Windows передавать кириллицу в файле: консольная кодировка может исказить аргументы командной строки.
@@ -92,7 +98,8 @@ usage: edt-bridge-mcp call [-h] [--json JSON | --json-file PATH | --stdin] [--ra
 ```bash
 usage: edt-bridge-mcp tools [-h] [--raw] [--workspace WORKSPACE] [--edt-dir EDT_DIR]
                             [--port PORT] [--start-timeout START_TIMEOUT]
-                            [--no-autostart] [--version]
+                            [--no-autostart] [--heap HEAP] [--vmargs OPTIONS]
+                            [--version]
 ```
 
 **Параметры**
@@ -106,6 +113,8 @@ usage: edt-bridge-mcp tools [-h] [--raw] [--workspace WORKSPACE] [--edt-dir EDT_
 | `--port PORT` | порт моста (по умолчанию 8770) |
 | `--start-timeout START_TIMEOUT` | сколько секунд ждать поднимающийся мост |
 | `--no-autostart` | не поднимать headless EDT ни при каких условиях |
+| `--heap HEAP` | наибольший размер кучи JVM для автозапуска headless EDT, например 4096m или 6g |
+| `--vmargs OPTIONS` | другие параметры JVM для автозапуска headless EDT через пробел; присоединять к флагу знаком =, потому что они начинаются с дефиса |
 | `--version` | показать версию и выйти |
 
 ## `edt-bridge-mcp status`
@@ -115,7 +124,8 @@ usage: edt-bridge-mcp tools [-h] [--raw] [--workspace WORKSPACE] [--edt-dir EDT_
 ```bash
 usage: edt-bridge-mcp status [-h] [--all] [--ports PORTS] [--workspace WORKSPACE]
                              [--edt-dir EDT_DIR] [--port PORT] [--start-timeout
-                             START_TIMEOUT] [--no-autostart] [--version]
+                             START_TIMEOUT] [--no-autostart] [--heap HEAP] [--vmargs
+                             OPTIONS] [--version]
 ```
 
 **Параметры**
@@ -130,6 +140,37 @@ usage: edt-bridge-mcp status [-h] [--all] [--ports PORTS] [--workspace WORKSPACE
 | `--port PORT` | порт моста (по умолчанию 8770) |
 | `--start-timeout START_TIMEOUT` | сколько секунд ждать поднимающийся мост |
 | `--no-autostart` | не поднимать headless EDT ни при каких условиях |
+| `--heap HEAP` | наибольший размер кучи JVM для автозапуска headless EDT, например 4096m или 6g |
+| `--vmargs OPTIONS` | другие параметры JVM для автозапуска headless EDT через пробел; присоединять к флагу знаком =, потому что они начинаются с дефиса |
+| `--version` | показать версию и выйти |
+
+## `edt-bridge-mcp wait-ready`
+
+Дождаться загрузки моделей проектов EDT (modelReady). При необходимости запускает headless EDT. Код 0 - проекты готовы, 1 - EDT не запущена или завершилась, 2 - срок истек, а EDT еще загружается.
+
+```bash
+usage: edt-bridge-mcp wait-ready [-h] [--project NAME] [--timeout TIMEOUT] [--interval
+                                 INTERVAL] [--workspace WORKSPACE] [--edt-dir EDT_DIR]
+                                 [--port PORT] [--start-timeout START_TIMEOUT]
+                                 [--no-autostart] [--heap HEAP] [--vmargs OPTIONS]
+                                 [--version]
+```
+
+**Параметры**
+
+| Параметр | Описание |
+|---|---|
+| `-h, --help` | показать эту справку и выйти |
+| `--project NAME` | проект, которого нужно дождаться; можно повторять. Без флага ожидаются все открытые проекты EDT |
+| `--timeout TIMEOUT` | сколько секунд ждать (по умолчанию 3600) |
+| `--interval INTERVAL` | пауза между опросами в секундах (по умолчанию 5) |
+| `--workspace WORKSPACE` | рабочая область EDT для автозапуска headless |
+| `--edt-dir EDT_DIR` | каталог установки EDT (папка с 1cedtcli и dropins); без флага определяется сам |
+| `--port PORT` | порт моста (по умолчанию 8770) |
+| `--start-timeout START_TIMEOUT` | сколько секунд ждать поднимающийся мост |
+| `--no-autostart` | не поднимать headless EDT ни при каких условиях |
+| `--heap HEAP` | наибольший размер кучи JVM для автозапуска headless EDT, например 4096m или 6g |
+| `--vmargs OPTIONS` | другие параметры JVM для автозапуска headless EDT через пробел; присоединять к флагу знаком =, потому что они начинаются с дефиса |
 | `--version` | показать версию и выйти |
 
 ## `edt-bridge-mcp shutdown`
@@ -139,7 +180,8 @@ usage: edt-bridge-mcp status [-h] [--all] [--ports PORTS] [--workspace WORKSPACE
 ```bash
 usage: edt-bridge-mcp shutdown [-h] [--force] [--no-wait] [--workspace WORKSPACE]
                                [--edt-dir EDT_DIR] [--port PORT] [--start-timeout
-                               START_TIMEOUT] [--no-autostart] [--version]
+                               START_TIMEOUT] [--no-autostart] [--heap HEAP] [--vmargs
+                               OPTIONS] [--version]
 ```
 
 **Параметры**
@@ -154,6 +196,8 @@ usage: edt-bridge-mcp shutdown [-h] [--force] [--no-wait] [--workspace WORKSPACE
 | `--port PORT` | порт моста (по умолчанию 8770) |
 | `--start-timeout START_TIMEOUT` | сколько секунд ждать поднимающийся мост |
 | `--no-autostart` | не поднимать headless EDT ни при каких условиях |
+| `--heap HEAP` | наибольший размер кучи JVM для автозапуска headless EDT, например 4096m или 6g |
+| `--vmargs OPTIONS` | другие параметры JVM для автозапуска headless EDT через пробел; присоединять к флагу знаком =, потому что они начинаются с дефиса |
 | `--version` | показать версию и выйти |
 
 ## `edt-bridge-mcp gui`
@@ -163,7 +207,8 @@ usage: edt-bridge-mcp shutdown [-h] [--force] [--no-wait] [--workspace WORKSPACE
 ```bash
 usage: edt-bridge-mcp gui [-h] [--force] [--timeout TIMEOUT] [--workspace WORKSPACE]
                           [--edt-dir EDT_DIR] [--port PORT] [--start-timeout
-                          START_TIMEOUT] [--no-autostart] [--version]
+                          START_TIMEOUT] [--no-autostart] [--heap HEAP] [--vmargs
+                          OPTIONS] [--version]
 ```
 
 **Параметры**
@@ -178,6 +223,8 @@ usage: edt-bridge-mcp gui [-h] [--force] [--timeout TIMEOUT] [--workspace WORKSP
 | `--port PORT` | порт моста (по умолчанию 8770) |
 | `--start-timeout START_TIMEOUT` | сколько секунд ждать поднимающийся мост |
 | `--no-autostart` | не поднимать headless EDT ни при каких условиях |
+| `--heap HEAP` | наибольший размер кучи JVM для автозапуска headless EDT, например 4096m или 6g |
+| `--vmargs OPTIONS` | другие параметры JVM для автозапуска headless EDT через пробел; присоединять к флагу знаком =, потому что они начинаются с дефиса |
 | `--version` | показать версию и выйти |
 
 ## `edt-bridge-mcp plugins`
@@ -187,7 +234,7 @@ usage: edt-bridge-mcp gui [-h] [--force] [--timeout TIMEOUT] [--workspace WORKSP
 ```bash
 usage: edt-bridge-mcp plugins [-h] [--workspace WORKSPACE] [--edt-dir EDT_DIR] [--port
                               PORT] [--start-timeout START_TIMEOUT] [--no-autostart]
-                              [--version]
+                              [--heap HEAP] [--vmargs OPTIONS] [--version]
 ```
 
 **Параметры**
@@ -200,6 +247,47 @@ usage: edt-bridge-mcp plugins [-h] [--workspace WORKSPACE] [--edt-dir EDT_DIR] [
 | `--port PORT` | порт моста (по умолчанию 8770) |
 | `--start-timeout START_TIMEOUT` | сколько секунд ждать поднимающийся мост |
 | `--no-autostart` | не поднимать headless EDT ни при каких условиях |
+| `--heap HEAP` | наибольший размер кучи JVM для автозапуска headless EDT, например 4096m или 6g |
+| `--vmargs OPTIONS` | другие параметры JVM для автозапуска headless EDT через пробел; присоединять к флагу знаком =, потому что они начинаются с дефиса |
+| `--version` | показать версию и выйти |
+
+## `edt-bridge-mcp workspace`
+
+Готовая рабочая область EDT: pack упаковывает рабочую область остановленной EDT в архив tar с временами изменения, restore восстанавливает ее по тому же пути, checks сохраняет замечания EDT по проектам в файл (`--output`) или сравнивает с ним (`--compare`). Журналы .metadata с командной строкой EDT в архив не попадают.
+
+```bash
+usage: edt-bridge-mcp workspace [-h] [--archive PATH] [--output PATH] [--compare PATH]
+                                [--project NAME] [--object FQN] [--wait WAIT]
+                                [--workspace WORKSPACE] [--edt-dir EDT_DIR] [--port
+                                PORT] [--start-timeout START_TIMEOUT] [--no-autostart]
+                                [--heap HEAP] [--vmargs OPTIONS] [--version]
+                                {pack,restore,checks}
+```
+
+**Аргументы**
+
+| Параметр | Описание |
+|---|---|
+| `{pack,restore,checks}` | действие: pack, restore или checks |
+
+**Параметры**
+
+| Параметр | Описание |
+|---|---|
+| `-h, --help` | показать эту справку и выйти |
+| `--archive PATH` | архив рабочей области: .tar, .tar.gz или .tar.zst (Python 3.14 и новее) |
+| `--output PATH` | checks: новый файл для сохранения замечаний |
+| `--compare PATH` | checks: файл сохраненных замечаний для сравнения; код 2, если замечания различаются |
+| `--project NAME` | checks: проект для проверки; можно повторять. Без флага проверяются все открытые проекты EDT |
+| `--object FQN` | checks: объект метаданных, замечания которого сравниваются, например Document.Order; можно повторять. Без флага проверяется проект целиком, что на большой конфигурации упирается в предел числа замечаний |
+| `--wait WAIT` | checks: сколько секунд ждать завершения проверки каждого проекта (по умолчанию 600) |
+| `--workspace WORKSPACE` | рабочая область EDT для автозапуска headless |
+| `--edt-dir EDT_DIR` | каталог установки EDT (папка с 1cedtcli и dropins); без флага определяется сам |
+| `--port PORT` | порт моста (по умолчанию 8770) |
+| `--start-timeout START_TIMEOUT` | сколько секунд ждать поднимающийся мост |
+| `--no-autostart` | не поднимать headless EDT ни при каких условиях |
+| `--heap HEAP` | наибольший размер кучи JVM для автозапуска headless EDT, например 4096m или 6g |
+| `--vmargs OPTIONS` | другие параметры JVM для автозапуска headless EDT через пробел; присоединять к флагу знаком =, потому что они начинаются с дефиса |
 | `--version` | показать версию и выйти |
 
 ## `edt-bridge-mcp test-form`
@@ -210,7 +298,7 @@ usage: edt-bridge-mcp plugins [-h] [--workspace WORKSPACE] [--edt-dir EDT_DIR] [
 usage: edt-bridge-mcp test-form [-h] --platform-bin PLATFORM_BIN --test-infobase
                                 TEST_INFOBASE --scope {empty,fixture,application} (--epf
                                 EPF | --erf ERF | --navigation-link NAVIGATION_LINK)
-                                --form FORM --form-title FORM_TITLE (--button BUTTON |
+                                --form FORM [--form-title FORM_TITLE] (--button BUTTON |
                                 --scenario SCENARIO) [--expect-message EXPECT_MESSAGE]
                                 [--user USER] --output-dir OUTPUT_DIR [--timeout
                                 TIMEOUT] [--version]
@@ -228,12 +316,12 @@ usage: edt-bridge-mcp test-form [-h] --platform-bin PLATFORM_BIN --test-infobase
 | `--erf ERF` | файл проверяемого внешнего отчета |
 | `--navigation-link NAVIGATION_LINK` | внутренняя ссылка e1cib/data на документ или элемент справочника в тестовой базе |
 | `--form FORM` | полное имя управляемой формы, например ExternalReport.Sales.Form для штатной формы СКД |
-| `--form-title FORM_TITLE` | заголовок формы в клиенте; * и ? – знаки подстановки |
+| `--form-title FORM_TITLE` | заголовок окна формы в клиенте; * и ? – знаки подстановки. Окно формы объекта дописывает к заголовку представление объекта, поэтому передавать шаблон вида "Заголовок*". Без флага форма ищется по имени из `--form` |
 | `--button BUTTON` | точный заголовок кнопки, выполняющей команду |
 | `--scenario SCENARIO` | файл JSON со сценарием ввода, команд и проверок наблюдаемого результата |
 | `--expect-message EXPECT_MESSAGE` | точное новое сообщение после команды для подтверждения результата |
 | `--user USER` | имя пользователя тестовой базы, если оно необходимо для входа без пароля |
-| `--output-dir OUTPUT_DIR` | новый каталог для отчета JSON и снимка PNG |
+| `--output-dir OUTPUT_DIR` | новый каталог для отчета JSON и снимка PNG; недостающие родительские каталоги создаются |
 | `--timeout TIMEOUT` | предел времени проверки в секундах, по умолчанию 120 |
 | `--version` | показать версию и выйти |
 
@@ -252,6 +340,7 @@ usage: edt-bridge-mcp self-update [-h] [--jar-only | --pip-only | --plugins-only
                                   [--from PATH | --version X.Y.Z] [--workspace
                                   WORKSPACE] [--edt-dir EDT_DIR] [--port PORT]
                                   [--start-timeout START_TIMEOUT] [--no-autostart]
+                                  [--heap HEAP] [--vmargs OPTIONS]
 ```
 
 **Параметры**
@@ -269,6 +358,8 @@ usage: edt-bridge-mcp self-update [-h] [--jar-only | --pip-only | --plugins-only
 | `--port PORT` | порт моста (по умолчанию 8770) |
 | `--start-timeout START_TIMEOUT` | сколько секунд ждать поднимающийся мост |
 | `--no-autostart` | не поднимать headless EDT ни при каких условиях |
+| `--heap HEAP` | наибольший размер кучи JVM для автозапуска headless EDT, например 4096m или 6g |
+| `--vmargs OPTIONS` | другие параметры JVM для автозапуска headless EDT через пробел; присоединять к флагу знаком =, потому что они начинаются с дефиса |
 
 С параметром `--version` команда берет jar по тегу vX.Y.Z на GitHub и обвязку с PyPI. Параметры `--version` и `--from` нельзя сочетать с `--plugins-only`. Параметр `--from` также несовместим с `--jar-only`.
 

@@ -65,6 +65,9 @@ public final class TemplateWriteGateway {
         public String projectName, ownerFqn, ownerType, name, templateType, templateFqn, plan, message;
         public boolean mainSchema;
         public List<String> existingTemplates = new ArrayList<>();
+        /** After apply: whether the content file was read back, its path and the sourceHash for the next write. */
+        public Boolean contentReadable;
+        public String contentPath, sourceHash;
     }
 
     /**
@@ -216,13 +219,28 @@ public final class TemplateWriteGateway {
         boolean exportedOwner = dtProject != null && mm.forceExport(dtProject, ownerFqn);
         boolean exportedContent = dtProject != null && mm.forceExport(dtProject, created[0]);
         r.applied = true;
+        String file = type == TemplateType.SPREADSHEET_DOCUMENT ? "Template.mxlx" : "Template.dcs";
+        // EDT accepts the export before the file is written. Reading it back here, with the wait of the
+        // template read, means the next edt_replace_dcs or edt_write_spreadsheet finds the file. An export
+        // EDT did not accept writes no file, so there is nothing to wait for.
+        HtmlTemplateGateway.noteCreated(projectName, r.templateFqn);
+        HtmlTemplateGateway.Result content = new HtmlTemplateGateway.Result();
+        content.message = "EDT did not accept the export of the content";
+        if (exportedContent) {
+            content = new HtmlTemplateGateway().read(projectName, r.templateFqn,
+                    type == TemplateType.SPREADSHEET_DOCUMENT ? HtmlTemplateGateway.SPREADSHEET : HtmlTemplateGateway.SCHEMA);
+        }
+        r.contentReadable = content.ok;
+        r.contentPath = content.path;
+        r.sourceHash = content.ok ? content.sourceHash : null;
         r.message = "created template " + r.templateFqn + " [" + r.templateType + "]"
                 + (setMainSchema ? " as the main data composition schema" : "")
                 + ((exportedOwner && exportedContent)
-                        ? " (serialized: owner .mdo + " + (type == TemplateType.SPREADSHEET_DOCUMENT
-                                ? "Template.mxlx" : "Template.dcs") + ");"
+                        ? " (serialized: owner .mdo + " + file + ");"
                         : " - WARNING: forceExport incomplete (owner=" + exportedOwner + ", content="
                                 + exportedContent + ");")
+                + (content.ok ? " " + file + " is on disk and readable, sourceHash " + content.sourceHash + ";"
+                        : " WARNING: " + file + " could not be read back: " + content.message + ";")
                 + (type == TemplateType.SPREADSHEET_DOCUMENT
                         ? " describe its areas and cells with edt_write_spreadsheet"
                         : " write its text with edt_replace_dcs or edt_modify_dcs");

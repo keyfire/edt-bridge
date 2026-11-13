@@ -34,14 +34,16 @@ public final class ReplaceDcsTool {
                 + "writes only the schema file and rereads it. EDT validation does not check the schema XML against the "
                 + "platform format: build the report or data processor with edt_dump_external_object to check it. "
                 + "To add a field or a parameter, edt_modify_dcs takes just the addition. Create the template with "
-                + "edt_add_template. Requires a configured write token.");
+                + "edt_add_template; when its schema file is not on disk yet, the call waits for it up to 15 s. "
+                + "Requires a configured write token.");
         descriptor.addProperty("descriptionRu", "ЗАПИСЬ: заменить полный текст существующего макета "
                 + "DATA_COMPOSITION_SCHEMA на XML схемы в формате конфигуратора; EDT перечитывает схему из файла. "
                 + "Dry-run возвращает oldText/newText, sourceHash и resultHash. Для apply нужны актуальный expectedHash и "
                 + "force=true; записывается только файл схемы, результат перечитывается. Проверка EDT не сверяет XML "
                 + "схемы с форматом платформы: результат проверяет сборка отчета или обработки "
                 + "(edt_dump_external_object). Поле или параметр добавляет edt_modify_dcs без передачи всей схемы. "
-                + "Макет создает edt_add_template. Нужен токен записи.");
+                + "Макет создает edt_add_template; если файла схемы еще нет на диске, вызов ждет его до 15 с. "
+                + "Нужен токен записи.");
         descriptor.add("inputSchema", ReadDcsTool.schema(properties, true));
         return descriptor;
     }

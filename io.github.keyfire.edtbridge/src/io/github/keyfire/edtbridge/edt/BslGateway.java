@@ -472,8 +472,10 @@ public final class BslGateway {
             }
             r.found = true;
             EObject methodEObj = null;
+            List<String> names = new ArrayList<>();
             if (module != null) {
                 for (com._1c.g5.v8.dt.bsl.model.Method m : module.allMethods()) {
+                    names.add(m.getName());
                     if (includeMethods) {
                         BslMethod bm = new BslMethod();
                         bm.name = m.getName();
@@ -497,7 +499,8 @@ public final class BslGateway {
             }
             if (method != null) {
                 if (methodEObj == null) {
-                    r.message = "method not found in module: " + method;
+                    // Without the catalogue the caller has no list to pick the right name from.
+                    r.message = "method not found in module: " + method + similarNames(names, method);
                     return r;
                 }
                 ICompositeNode node = NodeModelUtils.getNode(methodEObj);
@@ -510,6 +513,20 @@ public final class BslGateway {
                     + (ex.getMessage() != null ? ": " + ex.getMessage() : "");
         }
         return r;
+    }
+
+    /** Up to ten method names that contain the requested one or are contained in it, for a refusal. */
+    static String similarNames(List<String> names, String method) {
+        String wanted = method.toLowerCase(java.util.Locale.ROOT);
+        List<String> similar = new ArrayList<>();
+        for (String name : names) {
+            String candidate = name.toLowerCase(java.util.Locale.ROOT);
+            if ((candidate.contains(wanted) || wanted.contains(candidate)) && similar.size() < 10) {
+                similar.add(name);
+            }
+        }
+        return similar.isEmpty() ? "; the module has " + names.size() + " methods, pass includeMethods=true for the list"
+                : "; similar names: " + String.join(", ", similar);
     }
 
     private String cap(String s, ModuleTextResult r) {

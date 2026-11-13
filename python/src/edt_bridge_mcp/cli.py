@@ -10,9 +10,12 @@ behave as they do for an MCP client:
     edt-bridge-mcp call edt_metadata_details --json '{"fqn": "CommonModule.Foo"}'
     edt-bridge-mcp call edt_create_extension --json-file args.json
     edt-bridge-mcp status
+    edt-bridge-mcp wait-ready --project Demo --timeout 3600
+    edt-bridge-mcp workspace pack --workspace <ws> --archive ready.tar.gz
 
 Exit codes: 0 fine, 1 the call could not be made (no bridge, bad usage, transport error), 2 the
-bridge ran the tool and the tool reported an error.
+bridge ran the tool and the tool reported an error. `wait-ready` answers 1 when EDT is not running
+or has exited and 2 when the time ran out with EDT still loading.
 """
 
 from __future__ import annotations
@@ -20,13 +23,15 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import tarfile
 import time
 import urllib.error
+from pathlib import Path
 
 from . import __version__, i18n
 
-BRIDGE_COMMANDS = ("call", "tools", "status", "shutdown", "gui", "plugins")
-COMMANDS = (*BRIDGE_COMMANDS, "test-form")
+BRIDGE_COMMANDS = ("call", "tools", "status", "wait-ready", "shutdown", "gui", "plugins")
+COMMANDS = (*BRIDGE_COMMANDS, "workspace", "test-form")
 
 _TOKEN_HINT = (
     "the bridge refused the request (401). Write tools - and, on a token-protected server, every "
@@ -41,6 +46,8 @@ def add_connection_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--port", type=int, help=i18n.t("conn.port"))
     parser.add_argument("--start-timeout", type=int, help=i18n.t("conn.start-timeout"))
     parser.add_argument("--no-autostart", action="store_true", help=i18n.t("conn.no-autostart"))
+    parser.add_argument("--heap", help=i18n.t("conn.heap"))
+    parser.add_argument("--vmargs", metavar="OPTIONS", help=i18n.t("conn.vmargs"))
 
 
 def build_parser(command: str) -> argparse.ArgumentParser:
@@ -67,6 +74,18 @@ def build_parser(command: str) -> argparse.ArgumentParser:
     if command == "gui":
         parser.add_argument("--force", action="store_true", help=i18n.t("gui.force"))
         parser.add_argument("--timeout", type=int, default=90, help=i18n.t("gui.timeout"))
+    if command == "wait-ready":
+        parser.add_argument("--project", action="append", metavar="NAME", help=i18n.t("wait-ready.project"))
+        parser.add_argument("--timeout", type=_positive, default=3600, help=i18n.t("wait-ready.timeout"))
+        parser.add_argument("--interval", type=_positive, default=5, help=i18n.t("wait-ready.interval"))
+    if command == "workspace":
+        parser.add_argument("action", choices=("pack", "restore", "checks"), help=i18n.t("workspace.action"))
+        parser.add_argument("--archive", metavar="PATH", help=i18n.t("workspace.archive"))
+        parser.add_argument("--output", metavar="PATH", help=i18n.t("workspace.output"))
+        parser.add_argument("--compare", metavar="PATH", help=i18n.t("workspace.compare"))
+        parser.add_argument("--project", action="append", metavar="NAME", help=i18n.t("workspace.project"))
+        parser.add_argument("--object", action="append", metavar="FQN", help=i18n.t("workspace.object"))
+        parser.add_argument("--wait", type=_positive, default=600, help=i18n.t("workspace.wait"))
     if command == "test-form":
         from . import native_form
         native_form.add_arguments(parser)
@@ -75,6 +94,16 @@ def build_parser(command: str) -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", help=i18n.t("version"),
                         version=f"%(prog)s {__version__}")
     return parser
+
+
+def _positive(text: str) -> int:
+    try:
+        value = int(text)
+    except ValueError:
+        value = 0
+    if value < 1:
+        raise argparse.ArgumentTypeError("use a whole number of seconds, 1 or more")
+    return value
 
 
 def _ports(text: str) -> list[int]:
@@ -298,6 +327,211 @@ def _end_headless_session(backend, args: argparse.Namespace) -> int:
     return 2
 
 
+#: How often wait-ready says how far the projects are while nothing changes, in seconds.
+_PROGRESS_EVERY = 300
+
+
+def _project_rows(status: dict) -> list[dict] | None:
+    """The per-project rows of /status, or None for a bridge too old to report readiness."""
+    rows = status.get("projects")
+    if not isinstance(rows, list):
+        return None
+    return [row for row in rows if isinstance(row, dict) and isinstance(row.get("name"), str)]
+
+
+def _readiness(rows: list[dict], names: list[str]) -> tuple[bool, list[dict]]:
+    """Whether the projects are ready, and the state of each one waited for.
+
+    Named projects must all be there and ready; one that is not in the workspace yet may still be
+    imported, so it counts as not ready rather than as an error. Without names every open EDT
+    project counts, and a workspace without any is not ready.
+    """
+    by_name = {row["name"]: row for row in rows}
+    if names:
+        state = [{"name": name, "modelReady": bool(by_name.get(name, {}).get("modelReady")),
+                  **({} if name in by_name else {"present": False})} for name in names]
+        return all(item["modelReady"] for item in state), state
+    state = [{"name": row["name"], "modelReady": bool(row.get("modelReady"))}
+             for row in rows if row.get("dtProject", True) and row.get("open", True)]
+    return bool(state) and all(item["modelReady"] for item in state), state
+
+
+def _edt_alive(backend) -> bool:
+    """Whether an EDT is there for the bridge to come back from: a process, not the port."""
+    return backend.launched_alive() or bool(backend.headless_pids()) or bool(backend.gui_pids())
+
+
+def _wait_ready(backend, args: argparse.Namespace) -> int:
+    """Wait until the EDT models of the projects are loaded - the step between a start and a job.
+
+    The bridge answers long before a big project is indexed, and a call made in between is refused
+    with "no BM model". This command polls /status, which the bridge serves apart from the tools,
+    so a busy model does not slow the poll down. Exit codes: 0 ready, 1 no EDT to wait for (it did
+    not start, exited, or autostart is off and nothing runs), 2 the time ran out while EDT runs.
+    """
+    names = list(dict.fromkeys(args.project or []))
+    ok, why = backend.ensure(wait=False)
+    if not ok and why != "starting":
+        print(f"no bridge to wait for: {why}", file=sys.stderr)
+        return 1
+    started = time.monotonic()
+    deadline = started + args.timeout
+    last, last_said = None, started
+    state: list[dict] = []
+
+    def finish(code: int, reason: str | None) -> int:
+        summary = {"ready": code == 0, "projects": state,
+                   "waitedSeconds": round(time.monotonic() - started, 1)}
+        if reason:
+            summary["reason"] = reason
+            print(reason, file=sys.stderr)
+        _emit(json.dumps(summary, ensure_ascii=False, indent=2))
+        return code
+
+    while True:
+        status = backend.status()
+        if status is None:
+            failure = backend.startup_failure()
+            if failure:
+                return finish(1, failure)
+            if not _edt_alive(backend):
+                return finish(1, "EDT is not running: it exited, or nothing serves the bridge port "
+                                 f"{backend.port}" + (f" for workspace {backend.workspace}" if backend.workspace else ""))
+        else:
+            rows = _project_rows(status)
+            if rows is None:
+                return finish(1, f"the bridge {status.get('version')} does not report per-project "
+                                 "readiness; update it (edt-bridge-mcp self-update)")
+            ready, state = _readiness(rows, names)
+            if ready:
+                return finish(0, None)
+            now = time.monotonic()
+            if state != last or now - last_said >= _PROGRESS_EVERY:
+                waiting = ", ".join(item["name"] + ("" if item.get("present", True) else " (not in the workspace)")
+                                    for item in state if not item["modelReady"]) or "an open project"
+                print(f"waiting for {waiting} ({round(now - started)} s)", file=sys.stderr)
+                last, last_said = state, now
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            pending = [item["name"] for item in state if not item["modelReady"]]
+            return finish(2, f"not ready after {args.timeout} s: "
+                             + (", ".join(pending) if pending else "the bridge did not answer"))
+        time.sleep(min(args.interval, remaining))
+
+
+def _edt_on_workspace(backend):
+    """The probe workspace pack and restore use: what still holds the workspace, or None."""
+    def probe(path) -> str | None:
+        backend.workspace = str(path)
+        if backend.status() is not None:
+            return "a bridge for it answers"
+        owner = backend._workspace_owner()
+        if owner is not None:
+            return f"EDT process {owner.get('ProcessId', 'unknown')} runs on it"
+        if backend._workspace_locked():
+            return "its .metadata/.lock is held"
+        return None
+    return probe
+
+
+def _workspace_checks(backend, args: argparse.Namespace) -> int:
+    from . import workspace as packing
+
+    if bool(args.output) == bool(args.compare):
+        print("pass --output to save the checks or --compare to compare with saved ones", file=sys.stderr)
+        return 1
+    status = backend.status()
+    if status is None:
+        print("no bridge serves this workspace; start EDT and run wait-ready first", file=sys.stderr)
+        return 1
+    rows = _project_rows(status)
+    if rows is None:
+        print(f"the bridge {status.get('version')} does not report per-project readiness", file=sys.stderr)
+        return 1
+    ready, state = _readiness(rows, list(dict.fromkeys(args.project or [])))
+    if not ready:
+        pending = ", ".join(item["name"] for item in state if not item["modelReady"]) or "no open EDT project"
+        print(f"not ready: {pending}; run wait-ready first", file=sys.stderr)
+        return 1
+    snapshot = {"workspace": status.get("workspace"), "bridgeVersion": status.get("version"), "projects": {}}
+    # A whole large configuration can outgrow the problem limit; --object narrows the check to the
+    # objects whose checks depend on the indexed model, the way a ready workspace is usually proven.
+    targets = [(item["name"], fqn) for item in state for fqn in (args.object or [None])]
+    for name, fqn in targets:
+        key = packing.check_key(name, fqn)
+        try:
+            answer = json.loads(backend.call_tool("edt_project_errors",
+                                                  packing.check_arguments(name, args.wait, fqn)))
+        except (RuntimeError, ValueError) as failure:
+            print(f"{key}: edt_project_errors failed: {failure}", file=sys.stderr)
+            return 1
+        project = packing.snapshot_project(answer)
+        if project["truncated"]:
+            print(f"{key}: the list of problems was cut at its limit; a partial list proves nothing either "
+                  "way - narrow the check with --object", file=sys.stderr)
+            return 1
+        if not packing.usable(project):
+            print(f"{key}: the validation did not finish (complete={project['complete']}, "
+                  f"settled={project['settled']}); a partial list proves nothing either way - raise --wait",
+                  file=sys.stderr)
+            return 1
+        snapshot["projects"][key] = project
+    totals = {name: project["total"] for name, project in snapshot["projects"].items()}
+    if args.output:
+        try:
+            with open(args.output, "x", encoding="utf-8", newline="") as handle:
+                json.dump(snapshot, handle, ensure_ascii=False, indent=2)
+        except OSError as failure:
+            print(f"could not write {args.output}: {failure}", file=sys.stderr)
+            return 1
+        _emit(json.dumps({"saved": args.output, "totals": totals}, ensure_ascii=False, indent=2))
+        return 0
+    try:
+        with open(args.compare, encoding="utf-8-sig") as handle:
+            before = json.load(handle)["projects"]
+    except (OSError, ValueError, KeyError, TypeError) as failure:
+        print(f"could not read the saved checks {args.compare}: {failure}", file=sys.stderr)
+        return 1
+    if not args.project:
+        # Without names the saved snapshot says which projects count.
+        missing = sorted(set(before) - set(snapshot["projects"]))
+        if missing:
+            print("not in this workspace now: " + ", ".join(missing), file=sys.stderr)
+    result = packing.compare(before, snapshot["projects"])
+    _emit(json.dumps(result, ensure_ascii=False, indent=2))
+    if not result["equal"]:
+        print("the checks of EDT differ from the saved ones", file=sys.stderr)
+    return 0 if result["equal"] else 2
+
+
+def _workspace(backend, args: argparse.Namespace) -> int:
+    """pack, restore or compare the checks of a workspace - see the workspace module."""
+    from . import workspace as packing
+
+    if args.action == "checks":
+        return _workspace_checks(backend, args)
+    if not args.archive:
+        print(f"workspace {args.action} needs --archive", file=sys.stderr)
+        return 1
+    try:
+        if args.action == "pack":
+            if not backend.workspace:
+                print("workspace pack needs --workspace", file=sys.stderr)
+                return 1
+            result = packing.pack(Path(backend.workspace), Path(args.archive), edt_running=_edt_on_workspace(backend))
+        else:
+            result = packing.restore(Path(args.archive), Path(args.workspace) if args.workspace else None,
+                                     edt_running=_edt_on_workspace(backend))
+    except (packing.WorkspaceError, OSError, ValueError) as failure:
+        print(f"workspace {args.action} refused: {failure}", file=sys.stderr)
+        return 1
+    except tarfile.TarError as failure:
+        print(f"workspace {args.action} failed: the archive cannot be read: {failure}", file=sys.stderr)
+        return 1
+    _emit(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
 def _with_jar_on_disk(status: dict) -> dict:
     """The bridge's own status plus the jar lying in dropins - the code it would load next.
 
@@ -403,7 +637,6 @@ def _run(command: str, argv: list[str]) -> int:
             except ValueError as invalid:
                 print(str(invalid), file=sys.stderr)
                 return 1
-            from pathlib import Path
             from .update import installed_jar, plugin_version_gap
             bridges = []
             for row in rows:
@@ -441,6 +674,12 @@ def _run(command: str, argv: list[str]) -> int:
 
     if command == "shutdown":
         return _shutdown(backend, args)
+
+    if command == "wait-ready":
+        return _wait_ready(backend, args)
+
+    if command == "workspace":
+        return _workspace(backend, args)
 
     if command == "gui":
         # Never starts a backend on the way: the point of the command is to END the headless

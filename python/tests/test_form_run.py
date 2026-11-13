@@ -76,3 +76,26 @@ def test_bad_calls_are_refused_before_any_run(setup, arguments, status):
 
 def test_the_wrapper_lists_the_tool():
     assert "edt_test_form" in server.LOCAL_TOOL_NAMES
+
+
+def test_the_form_title_may_be_left_out(setup):
+    # The window of an object form adds the object presentation to the title; without a title the form
+    # is found by its name.
+    _, artifact, environ = setup
+    seen = []
+    call({"path": str(artifact), "form": "ExternalDataProcessor.Check.Form.Form", "button": "Run"}, environ, seen)
+    assert seen[0].form_title is None
+    assert "formTitle" not in form_run.DESCRIPTOR["inputSchema"]["required"]
+
+
+def test_the_schema_describes_every_kind_of_step():
+    items = form_run.DESCRIPTOR["inputSchema"]["properties"]["steps"]["items"]["oneOf"]
+    kinds = {item["properties"]["action"]["const"] for item in items}
+    assert kinds == set(native_scenario.ACTIONS)
+    for item in items:
+        action = item["properties"]["action"]["const"]
+        # A step built from the schema's required keys is a step the check accepts, key for key.
+        assert item["additionalProperties"] is False
+        assert set(item["required"]) <= set(item["properties"])
+        if action != "click":
+            assert set(item["required"]) == native_scenario._KEYS[action]

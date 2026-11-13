@@ -48,6 +48,7 @@ import com._1c.g5.v8.dt.platform.services.core.infobases.sync.IInfobaseUpdateCal
 import com._1c.g5.v8.dt.platform.services.core.infobases.sync.IInfobaseUpdateConflictResolver;
 import com._1c.g5.v8.dt.platform.services.core.infobases.sync.InfobaseConflictResolution;
 import io.github.keyfire.edtbridge.core.ArtifactBuild;
+import io.github.keyfire.edtbridge.core.BlankTemplates;
 import io.github.keyfire.edtbridge.core.DumpInfobase;
 import io.github.keyfire.edtbridge.core.IbcmdArgs;
 import io.github.keyfire.edtbridge.core.PlatformBuildProbe;
@@ -956,6 +957,9 @@ public final class PlatformGateway {
             if (est != null && est.getSeverity() == IStatus.ERROR) {
                 return "export to designer files failed: " + est.getMessage();
             }
+            // An empty spreadsheet template exports as a file with only the byte order mark, and
+            // DESIGNER refuses the whole object on it; the empty document DESIGNER writes itself loads.
+            List<String> filled = BlankTemplates.fill(xmlDir);
             // DESIGNER wants the object's ROOT .xml file, not the export directory, and refuses a
             // directory outright. The export nests it one level down - xml/ExternalDataProcessors/
             // <Name>.xml - so take the shallowest .xml in the tree.
@@ -1022,6 +1026,10 @@ public final class PlatformGateway {
                     methodOut.append("disk:").append(dp.version);
                     if (configured != null) {
                         methodOut.append(" in a copy of ").append(configured);
+                    }
+                    if (!filled.isEmpty()) {
+                        methodOut.append("; empty spreadsheet templates built as empty documents: ")
+                                .append(String.join(", ", filled));
                     }
                     return null;
                 }
@@ -1289,10 +1297,24 @@ public final class PlatformGateway {
             return r;
         }
         r.platform = ib.version;
+        // ibcmd checks an extension against the configuration of the infobase it is imported into: a
+        // borrowed form's excluded commands and the base configuration's types resolve only where that
+        // configuration is. The infobase configured for the on-disk builds carries it; the build works
+        // on a copy of its data file.
+        java.nio.file.Path configured = DumpInfobase.directory(System.getenv(DumpInfobase.ENV));
+        if (configured != null) {
+            String unusable = DumpInfobase.unusable(configured);
+            if (unusable != null) {
+                r.message = unusable;
+                return r;
+            }
+        }
         java.nio.file.Path outputParent = java.nio.file.Path.of(outputPath).toAbsolutePath().getParent();
         boolean parentMissing = outputParent != null && !java.nio.file.Files.isDirectory(outputParent);
         r.plan = "Export extension \"" + extName + "\" from " + projectName + " and build .cfe via ibcmd "
-                + ib.version + " (throwaway temp base) -> " + outputPath
+                + ib.version + (configured != null
+                        ? " in a copy of the infobase " + configured + " (" + DumpInfobase.ENV + ")"
+                        : " (throwaway temp base without the base configuration)") + " -> " + outputPath
                 + (parentMissing ? "; the directory " + outputParent + " does not exist yet and will "
                         + "be created" : "");
         if (!apply) {
@@ -1327,15 +1349,36 @@ public final class PlatformGateway {
                         + " (kept temp: " + tempRoot + ")";
                 return r;
             }
+            // An empty spreadsheet template exports as a byte order mark alone, which the import refuses.
+            BlankTemplates.fill(xmlDir);
             java.nio.file.Path ibcmd = firstExisting(ib.binDir, "ibcmd.exe", "ibcmd");
             java.nio.file.Path tempData = tempRoot.resolve("data");
             java.nio.file.Files.createDirectories(tempData);
             java.nio.file.Path tempDb = tempRoot.resolve("db"); // ibcmd creates the base here
-            String err = runPlatformCommand(ibcmd, "infobase", "create",
-                    "--data=" + tempData, "--database-path=" + tempDb);
+            String err;
+            List<String> database;
+            if (configured != null) {
+                // A copy keeps the configured infobase closed and unchanged, whatever ibcmd writes.
+                java.nio.file.Files.createDirectories(tempDb);
+                java.nio.file.Files.copy(configured.resolve(DumpInfobase.DATA_FILE),
+                        tempDb.resolve(DumpInfobase.DATA_FILE), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                database = List.of("--db-path=" + tempDb);
+                err = null;
+            } else {
+                database = List.of("--data=" + tempData, "--database-path=" + tempDb);
+                err = runPlatformCommand(ibcmd, "infobase", "create",
+                        "--data=" + tempData, "--database-path=" + tempDb);
+            }
             if (err == null) {
-                err = runPlatformCommand(ibcmd, "config", "import", "--data=" + tempData,
-                        "--database-path=" + tempDb, "--extension=" + extName, xmlDir.toString());
+                List<String> args = new ArrayList<>(List.of("config", "import"));
+                args.addAll(database);
+                args.add("--extension=" + extName);
+                args.add(xmlDir.toString());
+                err = runPlatformCommand(ibcmd, args.toArray(String[]::new));
+                String hint = err == null ? null : DumpInfobase.extensionHint(err, configured == null);
+                if (hint != null) {
+                    err = err + " - " + hint;
+                }
             }
             if (err == null) {
                 // ibcmd does not create the directory of the file it writes: it answers
@@ -1345,8 +1388,11 @@ public final class PlatformGateway {
                 if (parent != null) {
                     java.nio.file.Files.createDirectories(parent);
                 }
-                err = runPlatformCommand(ibcmd, "config", "save", "--data=" + tempData,
-                        "--database-path=" + tempDb, "--extension=" + extName, outputPath);
+                List<String> args = new ArrayList<>(List.of("config", "save"));
+                args.addAll(database);
+                args.add("--extension=" + extName);
+                args.add(outputPath);
+                err = runPlatformCommand(ibcmd, args.toArray(String[]::new));
             }
             if (err != null) {
                 keepTemp = true;
@@ -1356,7 +1402,8 @@ public final class PlatformGateway {
             r.applied = java.nio.file.Files.exists(java.nio.file.Path.of(outputPath));
             r.ok = r.applied;
             r.message = r.applied
-                    ? ("built .cfe for extension " + extName + " -> " + outputPath + " (ibcmd " + ib.version + ")")
+                    ? ("built .cfe for extension " + extName + " -> " + outputPath + " (ibcmd " + ib.version
+                            + (configured != null ? ", in a copy of " + configured : "") + ")")
                     : "ibcmd finished but the .cfe is missing at " + outputPath;
         } catch (java.io.IOException | RuntimeException ex) {
             r.message = "build failed: " + GatewaySupport.describeCause(ex);

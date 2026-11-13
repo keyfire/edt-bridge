@@ -33,6 +33,8 @@ usage: edt-bridge-mcp [options]           (no command: run as an MCP server)
 | `--port PORT` | bridge port (default 8770) |
 | `--start-timeout START_TIMEOUT` | seconds to wait for a starting backend |
 | `--no-autostart` | never launch a headless EDT |
+| `--heap HEAP` | maximum JVM heap of an auto-started headless EDT, e.g. 4096m or 6g |
+| `--vmargs OPTIONS` | further JVM options of an auto-started headless EDT, separated by spaces; join them to the flag with = because they start with a dash |
 | `--version` | show the version and exit |
 
 **Commands**
@@ -42,9 +44,11 @@ usage: edt-bridge-mcp [options]           (no command: run as an MCP server)
 | `call <tool>` | call one bridge tool and print what it returned |
 | `tools` | list the tools the running bridge serves |
 | `status` | report the running bridge (never starts one) |
+| `wait-ready` | wait until the project models are loaded |
 | `shutdown` | shut down the EDT behind the bridge |
 | `gui` | stop the headless EDT and open the GUI one |
 | `plugins` | list the wrapper's plugins and their tools |
+| `workspace` | pack, restore and compare an EDT workspace |
 | `test-form` | check a form and scenario results in a test infobase |
 | `self-update` | refresh the plugin jar and this wrapper |
 
@@ -57,8 +61,8 @@ Call one bridge tool and print its result.
 ```bash
 usage: edt-bridge-mcp call [-h] [--json JSON | --json-file PATH | --stdin] [--raw]
                            [--workspace WORKSPACE] [--edt-dir EDT_DIR] [--port PORT]
-                           [--start-timeout START_TIMEOUT] [--no-autostart] [--version]
-                           tool
+                           [--start-timeout START_TIMEOUT] [--no-autostart] [--heap
+                           HEAP] [--vmargs OPTIONS] [--version] tool
 ```
 
 **Arguments**
@@ -81,6 +85,8 @@ usage: edt-bridge-mcp call [-h] [--json JSON | --json-file PATH | --stdin] [--ra
 | `--port PORT` | bridge port (default 8770) |
 | `--start-timeout START_TIMEOUT` | seconds to wait for a starting backend |
 | `--no-autostart` | never launch a headless EDT |
+| `--heap HEAP` | maximum JVM heap of an auto-started headless EDT, e.g. 4096m or 6g |
+| `--vmargs OPTIONS` | further JVM options of an auto-started headless EDT, separated by spaces; join them to the flag with = because they start with a dash |
 | `--version` | show the version and exit |
 
 Tool arguments come from `--json`, a file (`--json-file`) or standard input (`--stdin`). On Windows, pass non-ASCII arguments in a file because the console code page can corrupt them on the command line.
@@ -92,7 +98,8 @@ List the tools the running bridge serves.
 ```bash
 usage: edt-bridge-mcp tools [-h] [--raw] [--workspace WORKSPACE] [--edt-dir EDT_DIR]
                             [--port PORT] [--start-timeout START_TIMEOUT]
-                            [--no-autostart] [--version]
+                            [--no-autostart] [--heap HEAP] [--vmargs OPTIONS]
+                            [--version]
 ```
 
 **Options**
@@ -106,6 +113,8 @@ usage: edt-bridge-mcp tools [-h] [--raw] [--workspace WORKSPACE] [--edt-dir EDT_
 | `--port PORT` | bridge port (default 8770) |
 | `--start-timeout START_TIMEOUT` | seconds to wait for a starting backend |
 | `--no-autostart` | never launch a headless EDT |
+| `--heap HEAP` | maximum JVM heap of an auto-started headless EDT, e.g. 4096m or 6g |
+| `--vmargs OPTIONS` | further JVM options of an auto-started headless EDT, separated by spaces; join them to the flag with = because they start with a dash |
 | `--version` | show the version and exit |
 
 ## `edt-bridge-mcp status`
@@ -115,7 +124,8 @@ Report the running bridge and the version of the JAR in dropins. Version mismatc
 ```bash
 usage: edt-bridge-mcp status [-h] [--all] [--ports PORTS] [--workspace WORKSPACE]
                              [--edt-dir EDT_DIR] [--port PORT] [--start-timeout
-                             START_TIMEOUT] [--no-autostart] [--version]
+                             START_TIMEOUT] [--no-autostart] [--heap HEAP] [--vmargs
+                             OPTIONS] [--version]
 ```
 
 **Options**
@@ -130,6 +140,37 @@ usage: edt-bridge-mcp status [-h] [--all] [--ports PORTS] [--workspace WORKSPACE
 | `--port PORT` | bridge port (default 8770) |
 | `--start-timeout START_TIMEOUT` | seconds to wait for a starting backend |
 | `--no-autostart` | never launch a headless EDT |
+| `--heap HEAP` | maximum JVM heap of an auto-started headless EDT, e.g. 4096m or 6g |
+| `--vmargs OPTIONS` | further JVM options of an auto-started headless EDT, separated by spaces; join them to the flag with = because they start with a dash |
+| `--version` | show the version and exit |
+
+## `edt-bridge-mcp wait-ready`
+
+Wait until the EDT models of the projects are loaded (modelReady), starting a headless EDT if needed. Exit code 0 the projects are ready, 1 EDT is not running or has exited, 2 the time ran out while EDT is still loading.
+
+```bash
+usage: edt-bridge-mcp wait-ready [-h] [--project NAME] [--timeout TIMEOUT] [--interval
+                                 INTERVAL] [--workspace WORKSPACE] [--edt-dir EDT_DIR]
+                                 [--port PORT] [--start-timeout START_TIMEOUT]
+                                 [--no-autostart] [--heap HEAP] [--vmargs OPTIONS]
+                                 [--version]
+```
+
+**Options**
+
+| Option | Description |
+|---|---|
+| `-h, --help` | show this help message and exit |
+| `--project NAME` | a project to wait for; repeat for several. Without it every open EDT project counts |
+| `--timeout TIMEOUT` | seconds to wait (default 3600) |
+| `--interval INTERVAL` | seconds between polls (default 5) |
+| `--workspace WORKSPACE` | EDT workspace path for the headless auto-start |
+| `--edt-dir EDT_DIR` | EDT install dir (the folder with 1cedtcli and dropins); auto-detected when omitted |
+| `--port PORT` | bridge port (default 8770) |
+| `--start-timeout START_TIMEOUT` | seconds to wait for a starting backend |
+| `--no-autostart` | never launch a headless EDT |
+| `--heap HEAP` | maximum JVM heap of an auto-started headless EDT, e.g. 4096m or 6g |
+| `--vmargs OPTIONS` | further JVM options of an auto-started headless EDT, separated by spaces; join them to the flag with = because they start with a dash |
 | `--version` | show the version and exit |
 
 ## `edt-bridge-mcp shutdown`
@@ -139,7 +180,8 @@ Shut down the EDT behind the bridge - instead of killing its processes. A headle
 ```bash
 usage: edt-bridge-mcp shutdown [-h] [--force] [--no-wait] [--workspace WORKSPACE]
                                [--edt-dir EDT_DIR] [--port PORT] [--start-timeout
-                               START_TIMEOUT] [--no-autostart] [--version]
+                               START_TIMEOUT] [--no-autostart] [--heap HEAP] [--vmargs
+                               OPTIONS] [--version]
 ```
 
 **Options**
@@ -154,6 +196,8 @@ usage: edt-bridge-mcp shutdown [-h] [--force] [--no-wait] [--workspace WORKSPACE
 | `--port PORT` | bridge port (default 8770) |
 | `--start-timeout START_TIMEOUT` | seconds to wait for a starting backend |
 | `--no-autostart` | never launch a headless EDT |
+| `--heap HEAP` | maximum JVM heap of an auto-started headless EDT, e.g. 4096m or 6g |
+| `--vmargs OPTIONS` | further JVM options of an auto-started headless EDT, separated by spaces; join them to the flag with = because they start with a dash |
 | `--version` | show the version and exit |
 
 ## `edt-bridge-mcp gui`
@@ -163,7 +207,8 @@ Hand the workspace over to the GUI EDT: stop the headless one, wait until its pr
 ```bash
 usage: edt-bridge-mcp gui [-h] [--force] [--timeout TIMEOUT] [--workspace WORKSPACE]
                           [--edt-dir EDT_DIR] [--port PORT] [--start-timeout
-                          START_TIMEOUT] [--no-autostart] [--version]
+                          START_TIMEOUT] [--no-autostart] [--heap HEAP] [--vmargs
+                          OPTIONS] [--version]
 ```
 
 **Options**
@@ -178,6 +223,8 @@ usage: edt-bridge-mcp gui [-h] [--force] [--timeout TIMEOUT] [--workspace WORKSP
 | `--port PORT` | bridge port (default 8770) |
 | `--start-timeout START_TIMEOUT` | seconds to wait for a starting backend |
 | `--no-autostart` | never launch a headless EDT |
+| `--heap HEAP` | maximum JVM heap of an auto-started headless EDT, e.g. 4096m or 6g |
+| `--vmargs OPTIONS` | further JVM options of an auto-started headless EDT, separated by spaces; join them to the flag with = because they start with a dash |
 | `--version` | show the version and exit |
 
 ## `edt-bridge-mcp plugins`
@@ -187,7 +234,7 @@ List the wrapper's plugins: packages, entry points and the tools they add. Plugi
 ```bash
 usage: edt-bridge-mcp plugins [-h] [--workspace WORKSPACE] [--edt-dir EDT_DIR] [--port
                               PORT] [--start-timeout START_TIMEOUT] [--no-autostart]
-                              [--version]
+                              [--heap HEAP] [--vmargs OPTIONS] [--version]
 ```
 
 **Options**
@@ -200,6 +247,47 @@ usage: edt-bridge-mcp plugins [-h] [--workspace WORKSPACE] [--edt-dir EDT_DIR] [
 | `--port PORT` | bridge port (default 8770) |
 | `--start-timeout START_TIMEOUT` | seconds to wait for a starting backend |
 | `--no-autostart` | never launch a headless EDT |
+| `--heap HEAP` | maximum JVM heap of an auto-started headless EDT, e.g. 4096m or 6g |
+| `--vmargs OPTIONS` | further JVM options of an auto-started headless EDT, separated by spaces; join them to the flag with = because they start with a dash |
+| `--version` | show the version and exit |
+
+## `edt-bridge-mcp workspace`
+
+A ready EDT workspace: pack archives the workspace of a stopped EDT as a tar with its modification times, restore unpacks it under the same path, checks saves the EDT checks of the projects to a file (`--output`) or compares them with one (`--compare`). The .metadata logs, which carry the EDT command line, stay out of the archive.
+
+```bash
+usage: edt-bridge-mcp workspace [-h] [--archive PATH] [--output PATH] [--compare PATH]
+                                [--project NAME] [--object FQN] [--wait WAIT]
+                                [--workspace WORKSPACE] [--edt-dir EDT_DIR] [--port
+                                PORT] [--start-timeout START_TIMEOUT] [--no-autostart]
+                                [--heap HEAP] [--vmargs OPTIONS] [--version]
+                                {pack,restore,checks}
+```
+
+**Arguments**
+
+| Option | Description |
+|---|---|
+| `{pack,restore,checks}` | action: pack, restore or checks |
+
+**Options**
+
+| Option | Description |
+|---|---|
+| `-h, --help` | show this help message and exit |
+| `--archive PATH` | workspace archive: .tar, .tar.gz or .tar.zst (Python 3.14 or newer) |
+| `--output PATH` | checks: a new file to save the checks to |
+| `--compare PATH` | checks: a saved checks file to compare with; exit code 2 when they differ |
+| `--project NAME` | checks: a project to check; repeat for several. Without it every open EDT project counts |
+| `--object FQN` | checks: a metadata object whose problems are compared, e.g. Document.Order; repeat for several. Without it the whole project is checked, which on a large configuration runs into the problem limit |
+| `--wait WAIT` | checks: seconds to wait for the validation of each project (default 600) |
+| `--workspace WORKSPACE` | EDT workspace path for the headless auto-start |
+| `--edt-dir EDT_DIR` | EDT install dir (the folder with 1cedtcli and dropins); auto-detected when omitted |
+| `--port PORT` | bridge port (default 8770) |
+| `--start-timeout START_TIMEOUT` | seconds to wait for a starting backend |
+| `--no-autostart` | never launch a headless EDT |
+| `--heap HEAP` | maximum JVM heap of an auto-started headless EDT, e.g. 4096m or 6g |
+| `--vmargs OPTIONS` | further JVM options of an auto-started headless EDT, separated by spaces; join them to the flag with = because they start with a dash |
 | `--version` | show the version and exit |
 
 ## `edt-bridge-mcp test-form`
@@ -210,7 +298,7 @@ Check an EPF, ERF or configuration object form in an explicitly selected file te
 usage: edt-bridge-mcp test-form [-h] --platform-bin PLATFORM_BIN --test-infobase
                                 TEST_INFOBASE --scope {empty,fixture,application} (--epf
                                 EPF | --erf ERF | --navigation-link NAVIGATION_LINK)
-                                --form FORM --form-title FORM_TITLE (--button BUTTON |
+                                --form FORM [--form-title FORM_TITLE] (--button BUTTON |
                                 --scenario SCENARIO) [--expect-message EXPECT_MESSAGE]
                                 [--user USER] --output-dir OUTPUT_DIR [--timeout
                                 TIMEOUT] [--version]
@@ -228,12 +316,12 @@ usage: edt-bridge-mcp test-form [-h] --platform-bin PLATFORM_BIN --test-infobase
 | `--erf ERF` | external report file to check |
 | `--navigation-link NAVIGATION_LINK` | internal e1cib/data link to a document or catalog item in the test infobase |
 | `--form FORM` | fully qualified managed form name, for example ExternalReport.Sales.Form for a standard DCS form |
-| `--form-title FORM_TITLE` | form title in the client; * and ? are wildcards |
+| `--form-title FORM_TITLE` | window title of the form in the client; * and ? are wildcards. The window of an object form adds the object presentation to the title, so pass a pattern such as "Title*". Without it the form is found by its `--form` name |
 | `--button BUTTON` | exact title of the button that invokes the command |
 | `--scenario SCENARIO` | JSON scenario containing inputs, commands and assertions of observed results |
 | `--expect-message EXPECT_MESSAGE` | exact new user message required to confirm the command result |
 | `--user USER` | test infobase user name for a login that does not require a password |
-| `--output-dir OUTPUT_DIR` | new directory for the JSON report and PNG screenshot |
+| `--output-dir OUTPUT_DIR` | new directory for the JSON report and PNG screenshot; missing parent directories are created |
 | `--timeout TIMEOUT` | check time limit in seconds, default 120 |
 | `--version` | show the version and exit |
 
@@ -252,6 +340,7 @@ usage: edt-bridge-mcp self-update [-h] [--jar-only | --pip-only | --plugins-only
                                   [--from PATH | --version X.Y.Z] [--workspace
                                   WORKSPACE] [--edt-dir EDT_DIR] [--port PORT]
                                   [--start-timeout START_TIMEOUT] [--no-autostart]
+                                  [--heap HEAP] [--vmargs OPTIONS]
 ```
 
 **Options**
@@ -269,6 +358,8 @@ usage: edt-bridge-mcp self-update [-h] [--jar-only | --pip-only | --plugins-only
 | `--port PORT` | bridge port (default 8770) |
 | `--start-timeout START_TIMEOUT` | seconds to wait for a starting backend |
 | `--no-autostart` | never launch a headless EDT |
+| `--heap HEAP` | maximum JVM heap of an auto-started headless EDT, e.g. 4096m or 6g |
+| `--vmargs OPTIONS` | further JVM options of an auto-started headless EDT, separated by spaces; join them to the flag with = because they start with a dash |
 
 With `--version`, the command gets the jar from the vX.Y.Z tag on GitHub and the wrapper from PyPI. Both `--version` and `--from` require a mode other than `--plugins-only`. The `--from` option also requires a mode other than `--jar-only`.
 

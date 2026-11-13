@@ -42,6 +42,8 @@ edt-bridge-mcp call edt_projects        # call a tool, print what it returned
 edt-bridge-mcp call edt_metadata_details --json '{"projectName": "SM", "fqn": "CommonModule.Foo"}'
 edt-bridge-mcp call edt_create_extension --json-file args.json   # arguments from a UTF-8 file
 edt-bridge-mcp status                   # is a bridge up? (never starts one)
+edt-bridge-mcp wait-ready --project Demo --timeout 3600   # until the model of Demo is loaded
+edt-bridge-mcp workspace pack --workspace <ws> --archive ready.tar.gz   # a stopped workspace for the next machine
 ```
 
 `--raw` prints the JSON result instead of the text a tool returned. Arguments come from `--json`,
@@ -49,7 +51,8 @@ edt-bridge-mcp status                   # is a bridge up? (never starts one)
 
 Exit codes: `0` is fine, `1` means the call could not be made at all (no bridge, bad usage, transport
 error), and `2` means the bridge ran the tool and the tool reported an error. That lets a script tell
-"it failed" from "it never ran".
+"it failed" from "it never ran". `wait-ready` answers `0` when the projects are ready, `1` when EDT
+is not running or has exited and `2` when the time ran out while EDT is still loading.
 
 ## Self-update
 
@@ -108,6 +111,8 @@ CLI flags override the environment.
 | `EDT_BRIDGE_EDT_DIR` | `--edt-dir` | EDT install dir (the folder with 1cedtcli and dropins); the newest install is found automatically when omitted |
 | `EDT_BRIDGE_START_TIMEOUT` | `--start-timeout` | seconds to wait for a starting bridge (default 360) |
 | `EDT_BRIDGE_AUTOSTART` | `--no-autostart` | set `0` or pass the flag to forward requests and start nothing |
+| `EDT_BRIDGE_HEAP` | `--heap` | maximum JVM heap of an auto-started EDT, e.g. `6g`; replaces the installation's `-Xmx` |
+| `EDT_BRIDGE_VMARGS` | `--vmargs` | further JVM options of an auto-started EDT, separated by spaces; pass the flag as `--vmargs=...` |
 
 The rarely touched ones (`EDT_BRIDGE_PORT_SCAN`, `EDT_BRIDGE_WINDOW_WAIT`, `EDT_BRIDGE_LANG`) and the
 plugin's own variables are in

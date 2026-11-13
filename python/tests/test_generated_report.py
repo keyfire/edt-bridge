@@ -28,6 +28,9 @@ def test_report_preflight_requires_declared_or_generated_main_form(
     platform.mkdir()
     for binary in ("1cv8", "ibcmd"):
         (platform / binary).touch()
+    # The client opens the report without the unsafe action warning in this base.
+    (platform / "conf").mkdir()
+    (platform / "conf" / "conf.cfg").write_text("DisableUnsafeActionProtection=.*base.*\n", encoding="utf-8")
     base = tmp_path / "base"
     base.mkdir()
     (base / "1Cv8.1CD").touch()
