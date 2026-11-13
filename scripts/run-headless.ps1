@@ -123,6 +123,12 @@ if ($env:EDT_BRIDGE_ALLOW_EVALUATE -and $env:EDT_BRIDGE_ALLOW_EVALUATE.Trim()) {
 # a second server on the default port - straight into the running one.
 $portLine = 'set "EDT_BRIDGE_PORT=' + $Port + '"' + "`r`n"
 Set-Content -Path $bat -Value ("@echo off`r`n" + $portLine + $tokenLine + $evalLine + $line) -Encoding ASCII
+# Without -vm in 1cedt.ini EDT takes java from PATH, and an older one stops it with a modal dialog.
+$javaBin = Resolve-EdtJava -EdtDir $EdtDir
+if ($javaBin) {
+  "Java:             $javaBin (EDT needs a newer one than PATH has)"
+  $env:PATH = $javaBin + ";" + $env:PATH
+}
 Start-Process -FilePath $bat -WorkingDirectory $EdtDir -WindowStyle Hidden
 "Launched headless EDT (1cedtcli). Waiting up to $WaitSec s for the server + model..."
 
