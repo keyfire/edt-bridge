@@ -143,7 +143,7 @@ Each step contains the required fields listed below. Use `field` for the interna
 name of a visible form element. A `click` takes either `button` with the exact visible
 title or `button_name` with the internal name of the button element. Use `button_name`
 when several buttons share a title. A selector must match exactly one element.
-Wildcards are rejected. A `click` can also include `expect_error_dialog`.
+Wildcards are rejected. A `click` can also include `expect_error_dialog` or `expect_warning`.
 
 | `action` | Other required fields | Operation |
 | --- | --- | --- |
@@ -309,6 +309,20 @@ button. A different message fails the check and leaves the dialog open for the
 screenshot. The observed text and closing result are recorded. This option does not
 handle other dialogs or replace assertions on messages and persisted values.
 
+If the command answers with a warning window (`ShowMessageBox`) instead of a message, add
+`expect_warning` with the exact text of the window:
+
+```json
+{"action": "click", "button_name": "FormWrite", "expect_warning": "Check the shipment date."}
+```
+
+The manager finds the window over the form, the `MessageBox` system form, which is numbered
+(`MessageBox85`) when an object form raises it. It compares the `Message` text, presses `OK`
+and goes on with the next step, so a warning shown in `BeforeWrite` does not stop the check
+of the written values. A different text gives `assertion_failed` with the observed text, and
+a click that shows no warning fails the step. A click expects one window: `expect_error_dialog`
+and `expect_warning` exclude each other.
+
 ## Existing single-button checks
 
 The EPF profile remains available with `--epf`, `--button`, and `--expect-message`.
@@ -339,6 +353,7 @@ when that phase runs, `reopen/screenshot.png`. A single-button run uses
 | `assertion_failed` | An observed value or message count differs from the expectation. |
 | `message_baseline_not_empty` | The message panel did not change and already held the expected text, so whether the click wrote it again is not established. |
 | `scenario_error`, `command_error` | An action, element lookup, or platform operation failed. |
+| `unexpected_dialog` | A click raised a warning or a question window over the form that the step did not expect. `dialog` holds its `kind` (`warning`, `question`), `text` and visible `buttons`; the scenario stops there and a question is left unanswered, so the caller decides whether the window is an acceptable answer. |
 | `dependency_missing`, `license_unavailable`, `access_denied`, `setup_failed` | The environment or permissions do not allow the check to run. |
 | `client_environment` | No `conf.cfg` the client reads sets `DisableUnsafeActionProtection`, so the client would stop at the security warning; see `clientEnvironment` and [Prepare the environment](#prepare-the-environment). |
 | `timeout` | The overall time limit expired. The recorded progress and available screenshot show where execution stopped. |
