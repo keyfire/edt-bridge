@@ -143,6 +143,88 @@ def windows_installs() -> list[Path]:
     return installs
 
 
+_REQUIRED_JAVA = re.compile(r"^\s*-Dosgi\.requiredJavaVersion=([0-9]+)\s*$", re.M)
+_JAVA_VERSION = re.compile(r'^JAVA_VERSION="(?:1\.)?([0-9]+)', re.M)
+
+
+def _java_major(home: Path) -> int | None:
+    """The feature version a JDK or JRE records in its `release` file: 25 for "25.0.2"."""
+    try:
+        match = _JAVA_VERSION.search((home / "release").read_text(encoding="utf-8", errors="replace"))
+    except OSError:
+        return None
+    return int(match[1]) if match else None
+
+
+def _env_key(environ, name: str) -> str:
+    """The key under which the environment keeps a variable. Windows names ignore case, and a copy
+    of os.environ there is a plain dict with upper-case keys."""
+    if os.name == "nt":
+        for key in environ:
+            if key.upper() == name.upper():
+                return key
+    return name
+
+
+def _env(environ, name: str) -> str:
+    return environ.get(_env_key(environ, name)) or ""
+
+
+def _java_launcher(home: Path) -> bool:
+    return (home / "bin" / ("javaw.exe" if os.name == "nt" else "java")).exists()
+
+
+def edt_java(edt_dir: Path, environ=None) -> Path | None:
+    """The JDK to put first on PATH for this EDT, or None when EDT will find a suitable one itself.
+
+    1cedtcli started without `-vm` takes java from PATH, and when that java is older than the
+    `-Dosgi.requiredJavaVersion` of 1cedt.ini, EDT stops with a modal "Provided Java does not
+    match the required version" dialog nobody sees on a headless start. The 1C launcher passes the
+    JDK on its own command line and leaves the ini without `-vm`, so an EDT it installed starts
+    fine from the launcher and not from here. Candidates: JAVA_HOME, then the JDK components the
+    1C installer keeps next to EDT, the required feature version first.
+    """
+    environ = os.environ if environ is None else environ
+    try:
+        ini = (Path(edt_dir) / "1cedt.ini").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    if any(line.strip() == "-vm" for line in ini.splitlines()):
+        return None
+    match = _REQUIRED_JAVA.search(ini)
+    if not match:
+        return None
+    required = int(match[1])
+    on_path = shutil.which("javaw" if os.name == "nt" else "java", path=_env(environ, "PATH"))
+    if on_path:
+        major = _java_major(Path(on_path).resolve().parent.parent)
+        if major is not None and major >= required:
+            return None
+    home = _env(environ, "JAVA_HOME").strip()
+    if home and _java_launcher(Path(home)) and (_java_major(Path(home)) or 0) >= required:
+        return Path(home)
+    programs = _env(environ, "ProgramFiles")
+    if not programs:
+        return None
+    suitable = []
+    for candidate in (Path(programs) / "1C" / "1CE" / "components").glob("*jdk*"):
+        major = _java_major(candidate)
+        if major is not None and major >= required and _java_launcher(candidate):
+            suitable.append((major != required, -major, candidate.name, candidate))
+    return min(suitable)[3] if suitable else None
+
+
+def with_edt_java(environment: dict, edt_dir: Path) -> dict:
+    """A copy of the environment with the JDK this EDT needs first on PATH, see edt_java."""
+    home = edt_java(edt_dir, environment)
+    if home is None:
+        return environment
+    changed = dict(environment)
+    key = _env_key(environment, "PATH")
+    changed[key] = str(home / "bin") + os.pathsep + _env(environment, "PATH")
+    return changed
+
+
 def plugin_version_gap(live: str | None) -> str | None:
     """A sentence for a plugin on another version than this wrapper; None when they agree.
 

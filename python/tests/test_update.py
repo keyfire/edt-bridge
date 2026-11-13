@@ -804,6 +804,116 @@ def test_windows_installs_fall_back_to_the_name_on_an_unreadable_build(monkeypat
     assert update.windows_installs() == [newer, older]
 
 
+def _jdk(home, version):
+    (home / "bin").mkdir(parents=True)
+    for name in ("java", "javaw", "java.exe", "javaw.exe"):
+        (home / "bin" / name).write_bytes(b"")
+    (home / "release").write_text(f'IMPLEMENTOR="Vendor"\nJAVA_VERSION="{version}"\n', encoding="utf-8")
+    return home
+
+
+def _ini(edt_dir, *lines):
+    edt_dir.mkdir(parents=True, exist_ok=True)
+    (edt_dir / "1cedt.ini").write_text("\n".join(["-startup", "plugins/launcher.jar", *lines]) + "\n",
+                                       encoding="utf-8")
+    return edt_dir
+
+
+def _java_roots(monkeypatch, tmp_path, path_jdk):
+    _, components = _windows_roots(monkeypatch, tmp_path)
+    monkeypatch.delenv("JAVA_HOME", raising=False)
+    monkeypatch.setenv("PATH", str(path_jdk / "bin"))
+    return components
+
+
+def test_edt_java_supplies_the_required_jdk_when_the_ini_names_none(monkeypatch, tmp_path):
+    """1cedtcli without -vm takes java from PATH; an older one stops EDT with a modal dialog."""
+    old = _jdk(tmp_path / "old-jdk", "17.0.16")
+    components = _java_roots(monkeypatch, tmp_path, old)
+    _jdk(components / "axiom-jdk-full-17.0.16+12-x86_64", "17.0.16")
+    required = _jdk(components / "axiom-jdk-full-25.0.2+12-x86_64", "25.0.2")
+    edt = _ini(tmp_path / "edt", "-vmargs", "-Dosgi.requiredJavaVersion=25")
+
+    assert update.edt_java(edt) == required
+    environment = update.with_edt_java(dict(os.environ), edt)
+    assert environment["PATH"].split(os.pathsep)[0] == str(required / "bin")
+    assert environment["PATH"].split(os.pathsep)[1] == str(old / "bin")
+
+
+def test_edt_java_leaves_an_ini_that_names_its_vm(monkeypatch, tmp_path):
+    old = _jdk(tmp_path / "old-jdk", "17.0.16")
+    components = _java_roots(monkeypatch, tmp_path, old)
+    _jdk(components / "axiom-jdk-full-25.0.2+12-x86_64", "25.0.2")
+    edt = _ini(tmp_path / "edt", "-vm", "C:/jdk/bin/javaw.exe", "-vmargs", "-Dosgi.requiredJavaVersion=25")
+
+    assert update.edt_java(edt) is None
+    assert update.with_edt_java({"PATH": "unchanged"}, edt) == {"PATH": "unchanged"}
+
+
+def test_edt_java_keeps_a_suitable_java_on_the_path(monkeypatch, tmp_path):
+    current = _jdk(tmp_path / "current-jdk", "25.0.1")
+    components = _java_roots(monkeypatch, tmp_path, current)
+    _jdk(components / "axiom-jdk-full-25.0.2+12-x86_64", "25.0.2")
+    edt = _ini(tmp_path / "edt", "-vmargs", "-Dosgi.requiredJavaVersion=25")
+
+    assert update.edt_java(edt) is None
+
+
+def test_edt_java_prefers_a_suitable_java_home(monkeypatch, tmp_path):
+    old = _jdk(tmp_path / "old-jdk", "17.0.16")
+    components = _java_roots(monkeypatch, tmp_path, old)
+    _jdk(components / "axiom-jdk-full-25.0.2+12-x86_64", "25.0.2")
+    home = _jdk(tmp_path / "java-home", "25.0.3")
+    monkeypatch.setenv("JAVA_HOME", str(home))
+    edt = _ini(tmp_path / "edt", "-vmargs", "-Dosgi.requiredJavaVersion=25")
+
+    assert update.edt_java(edt) == home
+
+
+def test_edt_java_without_a_suitable_jdk_changes_nothing(monkeypatch, tmp_path):
+    old = _jdk(tmp_path / "old-jdk", "17.0.16")
+    components = _java_roots(monkeypatch, tmp_path, old)
+    _jdk(components / "axiom-jdk-full-17.0.16+12-x86_64", "17.0.16")
+    edt = _ini(tmp_path / "edt", "-vmargs", "-Dosgi.requiredJavaVersion=25")
+
+    assert update.edt_java(edt) is None
+    assert update.with_edt_java({"PATH": "unchanged"}, edt) == {"PATH": "unchanged"}
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows launcher script")
+def test_powershell_supplies_the_required_jdk(monkeypatch, tmp_path):
+    from pathlib import Path
+    import subprocess
+
+    import shutil
+
+    system_path = os.environ["PATH"]
+    powershell = shutil.which("powershell.exe", path=system_path)
+    old = _jdk(tmp_path / "old-jdk", "17.0.16")
+    components = _java_roots(monkeypatch, tmp_path, old)
+    required = _jdk(components / "axiom-jdk-full-25.0.2+12-x86_64", "25.0.2")
+    edt = _ini(tmp_path / "edt", "-vmargs", "-Dosgi.requiredJavaVersion=25")
+    script = tmp_path / "java.ps1"
+    script.write_text(
+        "param($Common, $Programs, $Edt, $PathJdk)\n"
+        "[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)\n"
+        "$env:ProgramFiles = $Programs\n$env:JAVA_HOME = ''\n$env:PATH = $PathJdk\n"
+        ". $Common\nResolve-EdtJava -EdtDir $Edt\n",
+        encoding="ascii",
+    )
+    common = Path(__file__).resolve().parents[2] / "scripts" / "edt-common.ps1"
+
+    result = subprocess.run(
+        [powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script),
+         str(common), str(tmp_path / "programs"), str(edt), str(old / "bin")],
+        capture_output=True, text=True, encoding="utf-8", stdin=subprocess.DEVNULL, timeout=30,
+        env={**os.environ, "PATH": system_path},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert Path(result.stdout.strip()) == required / "bin"
+
+
 @pytest.mark.skipif(os.name != "nt", reason="Windows launcher script")
 def test_powershell_trusts_the_build_over_a_short_directory_name(monkeypatch, tmp_path):
     from pathlib import Path

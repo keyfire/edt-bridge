@@ -37,6 +37,52 @@ function Get-EdtRank {
   }
 }
 
+<#
+.SYNOPSIS
+  The bin folder of the JDK to put first on PATH for this EDT, or nothing when EDT finds one itself.
+.DESCRIPTION
+  An EDT without -vm in 1cedt.ini takes java from PATH, and an older one than its
+  -Dosgi.requiredJavaVersion stops the start with a modal dialog. The 1C launcher passes the JDK on
+  its own command line, so an EDT it installed has no -vm. Candidates: JAVA_HOME, then the JDK
+  components of the 1C installer, the required feature version first.
+#>
+function Resolve-EdtJava {
+  param([Parameter(Mandatory = $true)][string]$EdtDir)
+  $ini = Join-Path $EdtDir "1cedt.ini"
+  if (-not (Test-Path -LiteralPath $ini -PathType Leaf)) { return }
+  $lines = @(Get-Content -LiteralPath $ini -Encoding UTF8 | ForEach-Object { $_.Trim() })
+  if ($lines -contains '-vm') { return }
+  $required = $lines | ForEach-Object { if ($_ -match '^-Dosgi\.requiredJavaVersion=([0-9]+)$') { [int]$Matches[1] } } |
+    Select-Object -First 1
+  if (-not $required) { return }
+  $major = {
+    param([string]$JavaDir)
+    $release = Join-Path $JavaDir "release"
+    if (-not (Test-Path -LiteralPath $release -PathType Leaf)) { return $null }
+    $m = [regex]::Match((Get-Content -LiteralPath $release -Raw), '(?m)^JAVA_VERSION="(?:1\.)?([0-9]+)')
+    if ($m.Success) { [int]$m.Groups[1].Value } else { $null }
+  }
+  $onPath = Get-Command javaw.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($onPath) {
+    $current = & $major (Split-Path -Parent (Split-Path -Parent $onPath.Source))
+    if ($current -and $current -ge $required) { return }
+  }
+  if ($env:JAVA_HOME -and (Test-Path -LiteralPath (Join-Path $env:JAVA_HOME "bin\javaw.exe"))) {
+    $homeMajor = & $major $env:JAVA_HOME
+    if ($homeMajor -and $homeMajor -ge $required) { return (Join-Path $env:JAVA_HOME "bin") }
+  }
+  if (-not $env:ProgramFiles) { return }
+  $components = Join-Path $env:ProgramFiles "1C\1CE\components"
+  $found = Get-ChildItem -LiteralPath $components -Directory -Filter "*jdk*" -ErrorAction SilentlyContinue |
+    Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName "bin\javaw.exe") } |
+    ForEach-Object { [pscustomobject]@{ Dir = $_; Major = (& $major $_.FullName) } } |
+    Where-Object { $_.Major -and $_.Major -ge $required } |
+    Sort-Object @{ Expression = { $_.Major -ne $required } }, @{ Expression = { $_.Major }; Descending = $true },
+      @{ Expression = { $_.Dir.Name } } |
+    Select-Object -First 1
+  if ($found) { return (Join-Path $found.Dir.FullName "bin") }
+}
+
 function Resolve-EdtDir {
   param([string]$EdtDir, [Parameter(Mandatory = $true)][string]$RequireExe)
   if ($EdtDir) { return $EdtDir }

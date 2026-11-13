@@ -754,7 +754,12 @@ class Backend:
                        "--state", str(self._headless_state), "--output", str(self._headless_output),
                        "--", str(cli), "-data", str(ws), "-nl", "en_US",
                        "-vmargs", f"-Dedt.bridge.port={self.port}", *options]
-            environment = os.environ.copy()
+            from . import update
+
+            java = update.edt_java(cli.parent)
+            environment = update.with_edt_java(os.environ.copy(), cli.parent)
+            if java is not None:
+                log(f"EDT needs a newer Java than the one on PATH - starting it with {java}")
             if self.token:
                 environment["EDT_BRIDGE_TOKEN"] = self.token
             options = ({"creationflags": subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP}
@@ -985,19 +990,22 @@ class Backend:
         if self.workspace:
             command += ["-data", self.workspace]
         say(f"starting the GUI EDT: {' '.join(command)}")
+        from . import update
+
+        environment = update.with_edt_java(os.environ.copy(), exe.parent)
         try:
             if _WINDOWS:
                 # NOT detached: a detached process gets no foreground rights, and the workbench
                 # came up BEHIND every other window - indistinguishable from "it did not start".
                 # Its own process group only keeps a Ctrl+C in our console away from EDT.
                 subprocess.Popen(
-                    command, cwd=str(exe.parent),
+                    command, cwd=str(exe.parent), env=environment,
                     creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 )
             else:
                 subprocess.Popen(
-                    command, cwd=str(exe.parent), start_new_session=True,
+                    command, cwd=str(exe.parent), env=environment, start_new_session=True,
                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 )
         except OSError as exc:
