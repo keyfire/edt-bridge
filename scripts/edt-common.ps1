@@ -134,21 +134,14 @@ function Clear-StaleWorkspaceLock {
 
 <#
 .SYNOPSIS
-  Keep exactly one edt-bridge jar in dropins - the newest by name.
+  Print which 1C:EDT installation the launch uses and which bridge jar lies in its dropins.
 .DESCRIPTION
-  Two singletons of the same bundle make Equinox resolve an arbitrary (often older) one, so a fresh
-  build silently does not take effect.
-#>
-<#
-.SYNOPSIS
-  Печатает, ИЗ КАКОЙ установки EDT идёт запуск и какой jar моста в ней лежит.
-.DESCRIPTION
-  Установок на машине несколько, скрипт выбирает её сам, а подменённый jar кладут в dropins
-  той, которую запомнили. Правка, ушедшая в одну установку, при запуске из другой выглядела
-  как несобравшийся jar: инструмент отвечал по-старому, и опознать это удавалось только
-  списком процессов. Поэтому запуск сам говорит: установка, её dropins, имя и время jar,
-  число jar (двух там быть не должно - Equinox грузит произвольный) и предупреждение, если
-  собранный в build/ новее лежащего в dropins.
+  A machine can carry several installations, and the script picks one itself, while a replaced jar
+  goes into the dropins of the one somebody remembered. A change that went into one installation and
+  a start from another looked like a build that had not taken effect: the tool answered the old way,
+  and only the process list showed why. So the launch names the installation, its dropins, the name
+  and time of the jar, the number of jars (two make Equinox load an arbitrary one) and warns when the
+  jar built in build/ is newer than the one in dropins.
 #>
 function Write-EdtSelection {
   param(
@@ -176,14 +169,87 @@ function Write-EdtSelection {
     Sort-Object LastWriteTime -Descending | Select-Object -First 1
   if ($built -and $built.LastWriteTime -gt $newest.LastWriteTime) {
     Write-Warning ("the jar in $BuildDir is newer ($($built.Name), " +
-      "$($built.LastWriteTime.ToString('yyyy-MM-dd HH:mm'))) - this installation runs the OLD code")
+      "$($built.LastWriteTime.ToString('yyyy-MM-dd HH:mm'))) - this installation runs the OLD code; " +
+      "start with -FromBuild to install it")
   }
 }
 
+<#
+.SYNOPSIS
+  Keep exactly one edt-bridge jar in dropins - the newest by name.
+.DESCRIPTION
+  Two singletons of the same bundle make Equinox resolve an arbitrary (often older) one, so a fresh
+  build silently does not take effect.
+#>
 function Set-SingleDropinJar {
   param([Parameter(Mandatory = $true)][string]$EdtDir)
   $drop = Join-Path $EdtDir "dropins"
   Get-ChildItem $drop -Filter "io.github.keyfire.edtbridge_*.jar" -ErrorAction SilentlyContinue |
     Sort-Object Name -Descending | Select-Object -Skip 1 |
     ForEach-Object { try { Remove-Item $_.FullName -Force -ErrorAction Stop } catch {} }
+}
+
+<#
+.SYNOPSIS
+  The bundle version a bridge jar name carries, e.g. 0.42.2.202611121549; $null for another name.
+.DESCRIPTION
+  The build names the jar after Bundle-Version with its qualifier, and the bridge reports the same
+  string as bridgeBundleVersion on /status - which is what tells a fresh build from the old one.
+#>
+function Get-BridgeJarVersion {
+  param([Parameter(Mandatory = $true)][string]$Path)
+  $match = [regex]::Match((Split-Path -Leaf $Path), '^io\.github\.keyfire\.edtbridge_(\d+\.\d+\.\d+(?:\.[0-9A-Za-z_-]+)?)\.jar$')
+  if ($match.Success) { return $match.Groups[1].Value }
+  return $null
+}
+
+<#
+.SYNOPSIS
+  Make the given jar the only bridge jar in dropins; $true when that is what dropins holds afterwards.
+.DESCRIPTION
+  Call it when EDT is stopped. Windows releases a jar some time after its process exits, so a locked
+  jar is retried for -WaitSec seconds. A jar that stays locked is reported with the EDT processes of
+  this installation and nothing is copied: a copy next to it would leave two jars behind.
+#>
+function Install-DropinJar {
+  param(
+    [Parameter(Mandatory = $true)][string]$EdtDir,
+    [Parameter(Mandatory = $true)][string]$Jar,
+    [int]$WaitSec = 30
+  )
+  $drop = Join-Path $EdtDir "dropins"
+  New-Item -ItemType Directory -Force -Path $drop | Out-Null
+  $source = (Resolve-Path -LiteralPath $Jar).Path
+  $name = Split-Path -Leaf $source
+  $target = Join-Path $drop $name
+  # A jar already in dropins is kept in place and only its neighbours go.
+  $inPlace = [string]::Equals([IO.Path]::GetFullPath($source), [IO.Path]::GetFullPath($target),
+    [StringComparison]::OrdinalIgnoreCase)
+  $deadline = (Get-Date).AddSeconds($WaitSec)
+  while ($true) {
+    $left = @(
+      Get-ChildItem -LiteralPath $drop -Filter "io.github.keyfire.edtbridge_*.jar" -ErrorAction SilentlyContinue |
+        Where-Object { -not ($inPlace -and $_.Name -ieq $name) } |
+        ForEach-Object {
+          try { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction Stop } catch {}
+          if (Test-Path -LiteralPath $_.FullName) { $_.Name }
+        }
+    )
+    if ($left.Count -eq 0 -or (Get-Date) -ge $deadline) { break }
+    Start-Sleep -Seconds 2
+  }
+  if ($left.Count -gt 0) {
+    Write-Warning "cannot remove $($left -join ', ') from $drop - a process still holds it; nothing was copied."
+    $holders = @(Get-EdtProcess | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($EdtDir, [StringComparison]::OrdinalIgnoreCase) })
+    foreach ($p in $holders) { Write-Warning ("  pid {0}  {1}" -f $p.ProcessId, $p.Name) }
+    return $false
+  }
+  if (-not $inPlace) { Copy-Item -LiteralPath $source -Destination $target -Force }
+  $now = @(Get-ChildItem -LiteralPath $drop -Filter "io.github.keyfire.edtbridge_*.jar" -ErrorAction SilentlyContinue)
+  if ($now.Count -ne 1 -or $now[0].Name -ne $name) {
+    Write-Warning "dropins holds $($now.Count) bridge jars after the copy: $(($now | ForEach-Object Name) -join ', ')"
+    return $false
+  }
+  Write-Host "installed jar:    $name"
+  return $true
 }

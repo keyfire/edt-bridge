@@ -169,7 +169,13 @@ $sources = Get-ChildItem $src -Recurse -Filter *.java | ForEach-Object { $_.Full
 # --release 17 regardless of the JDK used: one jar then loads in every supported EDT, including
 # older ones that still run on Java 17. Raise it only when the oldest supported EDT does.
 "Compiling $($sources.Count) sources with --release 17 ..."
-& $javac --release 17 -encoding UTF-8 -cp $cpStr -d $bin @sources
+# The sources go to javac in an argument file: listed on the command line from a deep checkout (a git
+# worktree) they exceed the Windows limit of 32767 characters and javac does not start at all. The
+# launcher reads the file in the system code page, like a command line.
+$argFile = Join-Path $out "javac-sources.txt"
+[IO.File]::WriteAllLines($argFile, [string[]]($sources | ForEach-Object { '"' + ($_ -replace '\\', '/') + '"' }),
+  [Text.Encoding]::Default)
+& $javac --release 17 -encoding UTF-8 -cp $cpStr -d $bin "@$argFile"
 if ($LASTEXITCODE -ne 0) { throw "javac failed (exit $LASTEXITCODE)" }
 "OK: compiled."
 
