@@ -72,6 +72,7 @@ to the code and the reasoning behind it.
   takes eleven pages by subject, and installation, settings, headless EDT, wrapper plugins, the
   build and native form checks each have a page. The addresses and section anchors of the former
   pages still open. The README keeps the overview, the install commands and links to the site.
+  ([#83](https://github.com/keyfire/edt-bridge/pull/83))
 
 ### Fixed
 
@@ -125,6 +126,7 @@ to the code and the reasoning behind it.
   ([#81](https://github.com/keyfire/edt-bridge/pull/81))
 - The links between the command reference and the native form guide open their pages. They were
   relative file links and led to a 404 page on the site.
+  ([#83](https://github.com/keyfire/edt-bridge/pull/83))
 
 ## <span id="2026-11-12--0420-0421-0422"></span>2026-11-12 – 0.42.2
 
