@@ -173,3 +173,15 @@ def test_unit_tests_ask_yaxunit_for_both_reports_and_keep_them(monkeypatch, tmp_
     output = tmp_path / "result"
     assert report["reports"] == {"junit": str(output / "junit.xml"), "allure": str(output / "allure-results")}
     assert (output / "allure-results" / "a-result.json").is_file()
+
+
+def test_characters_xml_does_not_allow_are_dropped(tmp_path):
+    # A text of 1C may carry a control character; GitLab drops a JUnit file that has one.
+    report = {"ok": False, "status": "setup_failed", "form": "ExternalDataProcessor.A.Form.F", "epf": "/srv/a.epf",
+              "error": "Ошибка\x07 платформы\x1b", "timings": {"totalSeconds": 1.0, "stages": {"preparation": 1.0},
+                                                            "phases": []}}
+
+    native_reports.write_form_reports(report, tmp_path)
+
+    error = _junit(tmp_path).find("testsuite/testcase/error")
+    assert error.get("message") == "setup_failed; Ошибка платформы"

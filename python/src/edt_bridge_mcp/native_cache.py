@@ -89,7 +89,8 @@ class Entry:
     def put(self, infobase: Path, format_version: str) -> None:
         """Keep the data file of a prepared manager infobase. The entry appears whole or not at all: it is
         written aside and renamed into place; a check that stored the same key first wins."""
-        self.directory.mkdir(parents=True, exist_ok=True)
+        # Only its owner writes into the cache: an entry is the manager infobase of the next check.
+        self.directory.mkdir(mode=0o700, parents=True, exist_ok=True)
         pending = Path(tempfile.mkdtemp(prefix=self.path.name + ".", suffix=".pending", dir=self.directory))
         try:
             data = pending / DATA_FILE

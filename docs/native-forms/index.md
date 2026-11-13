@@ -76,7 +76,9 @@ for every check on one platform build. The first check of a build keeps its data
 the cache, `~/.cache/edt-bridge/test-manager` (under `$XDG_CACHE_HOME` when it is set),
 and later checks copy it instead of starting `ibcmd` and the designer for it; each check
 still works on its own copy. `EDT_BRIDGE_TEST_CACHE` names another directory, for example
-one filled while a runner image is built, or turns the cache off with `off`. An entry is
+one filled while a runner image is built, or turns the cache off with `off`. Only a trusted
+user may write to the cache directory: an entry is the manager infobase the next check runs, and
+the wrapper creates the directory readable by its owner only. An entry is
 checked against the sha256 in its manifest, and a damaged one is built again; a setup that
 fails on a cached infobase is retried with a new one. The result says what happened in
 `managerCache`: `status` is `hit`, `stored`, `rebuilt` (with `reason`), `storeFailed`

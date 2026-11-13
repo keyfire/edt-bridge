@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shutil
 import time
 import uuid
@@ -22,6 +23,8 @@ from pathlib import Path
 JUNIT = "junit.xml"
 ALLURE = "allure-results"
 FRAMEWORK = "edt-bridge test-form"
+#: Characters XML 1.0 does not allow: a text of 1C may carry them, and GitLab drops a file that has one.
+_NOT_XML = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ufffe\uffff]")
 #: Statuses that say how the solution behaved; any other status of a failed phase is the environment's.
 FAILURES = frozenset({
     "assertion_failed", "message_not_found", "message_baseline_not_empty", "scenario_error", "command_error",
@@ -210,6 +213,11 @@ def write_form_reports(report, output, *, finished=None):
         element.set("errors", str(counts["broken"]))
         element.set("skipped", str(counts["skipped"]))
         element.set("time", f"{total:.3f}")
+    for element in suites.iter():
+        if element.text:
+            element.text = _NOT_XML.sub("", element.text)
+        for key, value in element.attrib.items():
+            element.set(key, _NOT_XML.sub("", value))
     ET.indent(suites)
     ET.ElementTree(suites).write(output / JUNIT, encoding="utf-8", xml_declaration=True)
     return {"junit": str(output / JUNIT), "allure": str(allure)}
