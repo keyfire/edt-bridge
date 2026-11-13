@@ -13,11 +13,11 @@ The link goes to every entry of the TOPMOST section of both editions that carrie
 Older sections are never touched: an entry from before the pull request rule is not unfinished,
 it is history.
 
-The mirrored pages are rebuilt in the same run. They are not committed here - `docs/changelog.md`
-and `docs/changelog.ru.md` are built by `scripts/sync-docs.mjs` before the site build and are
-ignored by git - so a stale mirror cannot turn `main` red. What it can do is make
-`scripts/check_docs.py` talk about text nobody wrote: the guard reads every `docs/*.ru.md`, the
-mirror among them, and would report a word the source no longer carries.
+The mirrored pages are rebuilt in the same run. They are not committed here - the `changelog.md`
+of `docs/(project)/` and of `docs/ru/(project)/` are built by `scripts/sync-docs.mjs` before the
+site build and are ignored by git - so a stale mirror cannot turn `main` red. What it can do is
+make `scripts/check_docs.py` talk about text nobody wrote: the guard reads every page under
+`docs/ru/`, the mirror among them, and would report a word the source no longer carries.
 
 Exit code 1 when the pages could not be rebuilt, so that a rebuild that did not happen does not
 look like a finished step.
@@ -60,8 +60,8 @@ def top_section(lines: list[str]) -> tuple[int, int] | None:
     """The body of the topmost `## ` section as a half-open range of line numbers.
 
     The topmost section is the one being worked on - the day's heading, which grows entries all
-    day and takes the version numbers when a release is cut. What is below it has been linked
-    already.
+    day and takes the version number when a release is cut; a later release of the same day
+    replaces that number. What is below it has been linked already.
     """
     start = next((i for i, line in enumerate(lines) if line.startswith("## ")), None)
     if start is None:

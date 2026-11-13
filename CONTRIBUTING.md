@@ -36,7 +36,7 @@ powershell -ExecutionPolicy Bypass -File scripts/build-nomaven.ps1
 ```
 
 The jar lands in `build/`. Maven and Tycho (`mvn -f pom.xml clean verify`) are there for a full
-build; edit `edt-bridge.target` first. More detail: [README](README.md#build-from-source).
+build; edit `edt-bridge.target` first. More detail: [Build from source](https://docs.keyfire.ru/edt-bridge/build/).
 
 ## Running your build
 
@@ -48,7 +48,7 @@ headless session of that workspace, leaves the newest jar from `build/` as the o
 `bridgeBundleVersion` the bridge reports with the version in the jar name and exits with code 3 when
 they differ. The MCP server comes up on
 `http://127.0.0.1:8770/mcp`, and the page at `http://127.0.0.1:8770/` has a runner for every tool.
-See [Manual install](README.md#manual-install-without-the-wrapper).
+See [Manual install](https://docs.keyfire.ru/edt-bridge/install/#manual-install-without-the-wrapper).
 
 ## Verifying a change
 
@@ -88,10 +88,16 @@ against a running EDT, as described above.
 
 ### Documentation
 
-`python scripts/check_docs.py` compares documentation with the sources. Every tool and every
-`EDT_BRIDGE_` variable must be documented. Sections mirrored into the READMEs must match their
-source pages, and image files must be in the repository. The wrapper test suite runs the same check
-in `ci`.
+`python scripts/check_docs.py` compares documentation with the sources. Every tool must have one
+table row on one page of `docs/tools/`, and every `EDT_BRIDGE_` variable must be described on the
+settings page. The table of tool groups in the READMEs must match its source page, and image files
+must be in the repository. The wrapper test suite runs the same check in `ci`.
+
+The English pages are in `docs/`, the Russian ones in `docs/ru/` under the same paths, and the
+check reports a page that exists in one language only. A folder is a sidebar group; its `meta.ts`
+sets the group's title and order. When a section moves to another page, leave its anchor on the old
+page as `<a id="..."></a>` and add it to `MOVED_ANCHORS` in `scripts/check_docs.py`: links from
+outside the site still point at the old address.
 
 The Russian texts are checked against a transliteration dictionary from
 [docsguard](https://github.com/keyfire/docsguard). Each finding includes a suggested Russian
@@ -102,8 +108,9 @@ The same dictionary checks the Russian strings in `python/src/edt_bridge_mcp/i18
 catalog used to generate `--help`. A missing named file is reported as an error so that a renamed
 catalog cannot make the check pass without reading any text.
 
-`docs/changelog*.md` and `docs/onboarding*.md` are generated from their source documents by
-`node scripts/sync-docs.mjs`. Edit the source documents.
+The changelog, onboarding and security pages are generated from `CHANGELOG.md`, `ONBOARDING.md`
+and `SECURITY.md` by `node scripts/sync-docs.mjs`, and the command reference `docs/cli.md` by
+`python scripts/gen-cli-docs.py`. Edit the source documents and the generator.
 
 ### Starting a process
 
@@ -146,7 +153,7 @@ and `scripts`, but not tests. Tests write to temporary directories, and a fixtur
 line ending is tested separately.
 
 `newline=""` controls writing. If a file is read with carriage returns still present,
-`scripts/sync-docs.mjs` can copy them into both READMEs when inserting the tool catalogue. The
+`scripts/sync-docs.mjs` can copy them into both READMEs when inserting the table of tool groups. The
 `.gitattributes` line `* text=auto
 eol=lf` specifies line feeds for text files regardless of the machine's settings. The
 `core.autocrlf=input` setting applies only to the checkout where it is configured.
@@ -168,7 +175,8 @@ different classes can have the same name.
 - **English** for all code, comments and identifiers.
 - One tool per class under `...edtbridge.tools`, registered in `McpServer`.
 - Tool names are `edt_*` in snake_case, parameters are camelCase. Keep the names self-describing: an
-  MCP host shows every server's tools as one flat list, as the README explains.
+  MCP host shows every server's tools as one flat list, as the [tools overview](https://docs.keyfire.ru/edt-bridge/tools/)
+  explains.
 
 ## Commits and pull requests
 

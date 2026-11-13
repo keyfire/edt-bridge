@@ -2,16 +2,6 @@
 
 **English** · [Русский](docs/ru/SECURITY.ru.md)
 
-## Supported versions
-
-EDT-Bridge has not reached 1.0 yet, and fixes ship on the latest release line only. Reproduce the
-problem on the most recent release before you report it.
-
-| Version      | Supported |
-|--------------|-----------|
-| latest `0.x` | yes       |
-| older        | no        |
-
 ## Threat model
 
 The server and write tools use the following restrictions:
@@ -22,10 +12,23 @@ The server and write tools use the following restrictions:
   Debug tools require a token as well. `edt_evaluate` runs arbitrary BSL
   against a live infobase, so it needs a per-call opt-in **and** a server-side switch that is off by
   default.
-- Any local process can reach the port, so set a token on a shared machine: `EDT_BRIDGE_TOKEN` or
-  `-Dedt.bridge.token=`.
+- The **shared-secret token** restricts access by other processes on the machine. Set
+  `EDT_BRIDGE_TOKEN` or `-Dedt.bridge.token=`, then send `Authorization: Bearer <token>` or
+  `X-Edt-Bridge-Token: <token>`. The token is optional, but any local process can reach the port;
+  configure a token on a shared machine.
+- The port comes from `EDT_BRIDGE_PORT` or `-Dedt.bridge.port=`, 8770 by default, and a busy one
+  makes the server take the next free port. The rest is in
+  [Environment variables](https://docs.keyfire.ru/edt-bridge/settings/#environment-variables).
 
-The README's [Security](README.md#security) section has the full picture.
+## Supported versions
+
+EDT-Bridge has not reached 1.0 yet, and fixes ship on the latest release line only. Reproduce the
+problem on the most recent release before you report it.
+
+| Version      | Supported |
+|--------------|-----------|
+| latest `0.x` | yes       |
+| older        | no        |
 
 ## Reporting a vulnerability
 

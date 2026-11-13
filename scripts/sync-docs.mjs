@@ -1,23 +1,27 @@
-// Mirrors root documents (CHANGELOG, ONBOARDING) into site pages: the single source of
-// truth is the file at the repository root, and the mirrored docs/*.md pages are assembled
+// Mirrors root documents (CHANGELOG, ONBOARDING, SECURITY) into site pages: the single source
+// of truth is the file at the repository root, and the mirrored pages under docs/ are assembled
 // from it before the site build (npm run sync:docs, called from prebuild). Never edit the
 // mirrored pages by hand.
 //
-// The tool catalogue travels the other way. It is one long table that used to be kept by hand
-// in both the README and the site page - and it drifted: `edt_designer_agent` grew a `sweep`
-// action on the page while the README still listed three. So docs/tools*.md is the source
-// now, and the README's "Tools" section is filled from it between the marker comments.
+// The table of tool groups travels the other way. The catalogue lives on the pages of
+// docs/tools/, and the README's "Tools" section carries one section of the overview page
+// between the marker comments: the table that names each group and links its page. It is
+// injected and not kept by hand because a hand-kept copy of the catalogue had drifted from the
+// page: `edt_designer_agent` grew a `sweep` action there while the README still listed three.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
+const enNote = (from) => `Assembled from ${from} by scripts/sync-docs.mjs. Do not edit by hand.`;
+const ruNote = (from) => `Собрано из ${from} скриптом scripts/sync-docs.mjs. Не редактировать вручную.`;
+
 const PAGES = [
   {
     from: 'ONBOARDING.md',
     to: 'docs/onboarding.md',
-    note: (from) => `Assembled from ${from} by scripts/sync-docs.mjs. Do not edit by hand.`,
+    note: enNote,
     front: {
       title: 'Quick start',
       description:
@@ -33,8 +37,8 @@ const PAGES = [
   },
   {
     from: 'docs/ru/ONBOARDING.ru.md',
-    to: 'docs/onboarding.ru.md',
-    note: (from) => `Собрано из ${from} скриптом scripts/sync-docs.mjs. Не редактировать вручную.`,
+    to: 'docs/ru/onboarding.md',
+    note: ruNote,
     front: {
       title: 'Быстрый старт',
       description:
@@ -47,34 +51,64 @@ const PAGES = [
     },
   },
   {
+    from: 'SECURITY.md',
+    to: 'docs/(project)/security.md',
+    note: enNote,
+    front: {
+      title: 'Security',
+      description:
+        'How writes are gated, what the token protects, and how to report a security problem privately.',
+      label: 'Security',
+      order: 1,
+    },
+  },
+  {
+    from: 'docs/ru/SECURITY.ru.md',
+    to: 'docs/ru/(project)/security.md',
+    note: ruNote,
+    front: {
+      title: 'Безопасность',
+      description:
+        'Чем закрыта запись, что защищает токен и как сообщить о проблеме безопасности приватно.',
+      label: 'Безопасность',
+      order: 1,
+    },
+  },
+  {
     from: 'CHANGELOG.md',
-    to: 'docs/changelog.md',
-    note: (from) => `Assembled from ${from} by scripts/sync-docs.mjs. Do not edit by hand.`,
+    to: 'docs/(project)/changelog.md',
+    note: enNote,
     front: {
       title: 'Changelog',
       description: 'What changed in EDT-Bridge from release to release, grouped by day.',
       label: 'Changelog',
-      order: 7,
+      order: 2,
     },
   },
   {
     from: 'docs/ru/CHANGELOG.ru.md',
-    to: 'docs/changelog.ru.md',
-    note: (from) => `Собрано из ${from} скриптом scripts/sync-docs.mjs. Не редактировать вручную.`,
+    to: 'docs/ru/(project)/changelog.md',
+    note: ruNote,
     front: {
       title: 'История изменений',
       description: 'Что менялось в EDT-Bridge от версии к версии, с разбивкой по дням.',
       label: 'История изменений',
-      order: 7,
+      order: 2,
     },
   },
 ];
 
 // Sections injected from a site page into a repository document, the other direction. The
 // marker comments stay in the target file, so the surrounding text is edited by hand as usual.
+// `section` names the `## ` heading whose body is injected; without it the whole page goes.
 const INJECTIONS = [
-  { from: 'docs/tools.md', into: 'README.md', marker: 'tools' },
-  { from: 'docs/tools.ru.md', into: 'docs/ru/README.ru.md', marker: 'tools' },
+  { from: 'docs/tools/index.md', section: 'Tool groups', into: 'README.md', marker: 'tools' },
+  {
+    from: 'docs/ru/tools/index.md',
+    section: 'Группы инструментов',
+    into: 'docs/ru/README.ru.md',
+    marker: 'tools',
+  },
 ];
 
 // The leading heading and the language-switcher line are dropped: the site sets the
@@ -103,6 +137,18 @@ const pageBody = (text) =>
     .replace(/<!--[\s\S]*?-->\n?/g, '')
     .trim();
 
+// The body of one `## Section` of a page, up to the next heading of that level. The guard in
+// scripts/check_docs.py reads the section the same way, so the two have to agree on where a
+// section ends.
+export const sectionBody = (text, section) => {
+  const lines = text.split('\n');
+  const start = lines.indexOf(`## ${section}`);
+  if (start === -1) throw new Error(`no section "## ${section}"`);
+  const rest = lines.slice(start + 1);
+  const end = rest.findIndex((l) => l.startsWith('## '));
+  return (end === -1 ? rest : rest.slice(0, end)).join('\n').trim();
+};
+
 // The two surfaces need different files for the same diagram. A page shows the SVG, which
 // carries both palettes and follows the reader's theme; a README on GitHub follows no theme
 // and needs the PNG with a palette baked in. So the injected copy swaps the extension - the
@@ -116,6 +162,7 @@ for (const p of PAGES) {
     `---\ntitle: "${p.front.title}"\ndescription: "${p.front.description}"\n` +
     `sidebar:\n  label: ${p.front.label}\n  order: ${p.front.order}\n---\n\n` +
     `<!-- ${p.note(p.from)} -->\n\n`;
+  fs.mkdirSync(path.dirname(path.join(root, p.to)), { recursive: true });
   fs.writeFileSync(path.join(root, p.to), head + rewriteLinks(strip(src), p.links) + '\n');
   console.log(`${p.from} -> ${p.to}`);
 }
@@ -130,8 +177,9 @@ for (const inj of INJECTIONS) {
   if (from === -1 || to === -1) {
     throw new Error(`${inj.into}: markers ${open} ... ${close} not found`);
   }
-  const body = readmeImages(pageBody(fs.readFileSync(path.join(root, inj.from), 'utf8')));
+  const source = fs.readFileSync(path.join(root, inj.from), 'utf8');
+  const body = readmeImages(inj.section ? sectionBody(source, inj.section) : pageBody(source));
   const next = `${text.slice(0, from + open.length)}\n\n${body}\n\n${text.slice(to)}`;
   fs.writeFileSync(target, next);
-  console.log(`${inj.from} -> ${inj.into} (${inj.marker})`);
+  console.log(`${inj.from}${inj.section ? ` / ${inj.section}` : ''} -> ${inj.into} (${inj.marker})`);
 }
