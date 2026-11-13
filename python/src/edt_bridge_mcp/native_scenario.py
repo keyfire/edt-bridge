@@ -98,6 +98,9 @@ _VALUES = {
     "expect_error_dialog": ({"type": "string", "description": "Exact text of the native error dialog the click "
                                                               "must show; the dialog is then closed"},
                             "the exact text of the error dialog"),
+    "expect_warning": ({"type": "string", "description": "Exact text of the warning window (ShowMessageBox) the "
+                                                         "click must show; the window is then closed with OK"},
+                       "the exact text of the warning window"),
     "text": ({"type": "string", "description": "Text to type; an empty string clears the field"},
              "a string of up to 4096 characters"),
     "cell": ({"type": "string", "pattern": "^R[1-9][0-9]{0,5}C[1-9][0-9]{0,4}$",
@@ -140,13 +143,13 @@ EXAMPLE = ('[{"action": "input", "field": "Article", "text": "A-100"}, '
 def _shapes(action):
     """The key sets a step of this action takes, and its optional keys."""
     if action == "click":
-        return [{"action", "button"}, {"action", "button_name"}], {"expect_error_dialog"}
+        return [{"action", "button"}, {"action", "button_name"}], {"expect_error_dialog", "expect_warning"}
     return [_KEYS[action]], set()
 
 
 def _shape_text(action):
     if action == "click":
-        return "action and either button or button_name, optionally expect_error_dialog"
+        return "action and either button or button_name, optionally expect_error_dialog or expect_warning"
     return ", ".join(["action"] + sorted(_KEYS[action] - {"action"}))
 
 
@@ -196,8 +199,8 @@ def _step_problem(phase, action, step, has_click):
         value = step[key]
         if key in ("field", "button", "button_name"):
             valid = _text(value, selector=True) and (key == "button" or value.isidentifier())
-        elif key in ("text", "expect_error_dialog"):
-            valid = _text(value) and (key != "expect_error_dialog" or bool(value.strip()))
+        elif key in ("text", "expect_error_dialog", "expect_warning"):
+            valid = _text(value) and (key == "text" or bool(value.strip()))
         elif key == "equals":
             valid = _table(value) if action == "assert_table" else _text(value)
         elif key == "cell":
@@ -210,6 +213,8 @@ def _step_problem(phase, action, step, has_click):
             valid = _integer(value, 10000)
         if not valid:
             return f"{key} must be {_value(action, key)[1]}"
+    if {"expect_error_dialog", "expect_warning"} <= keys:
+        return "a click expects one window: expect_error_dialog or expect_warning, not both"
     if action == "assert_messages":
         if not has_click:
             return "assert_messages checks the messages of a click, and no click precedes it"
@@ -313,13 +318,16 @@ def evaluate(steps, observations):
         if action in ("input", "click"):
             if observed.get("completed") is not True:
                 raise DriverResultError("The test manager did not complete a scenario action.")
-            if "expect_error_dialog" in step:
-                actual = observed.get("errorDialog")
+            for expectation, observed_key, window in (("expect_error_dialog", "errorDialog", "error dialog"),
+                                                      ("expect_warning", "warningDialog", "warning window")):
+                if expectation not in step:
+                    continue
+                actual = observed.get(observed_key)
                 if not _text(actual) or observed.get("dialogClosed") is not True:
-                    raise DriverResultError("The test manager did not observe and close the expected error dialog.")
-                passed = actual == step["expect_error_dialog"]
-                assertions.append({"step": index + 1, "action": "expect_error_dialog",
-                                   "expected": step["expect_error_dialog"], "actual": actual, "ok": passed})
+                    raise DriverResultError(f"The test manager did not observe and close the expected {window}.")
+                passed = actual == step[expectation]
+                assertions.append({"step": index + 1, "action": expectation,
+                                   "expected": step[expectation], "actual": actual, "ok": passed})
                 if not passed:
                     status = "assertion_failed"
             continue

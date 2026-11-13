@@ -27,6 +27,11 @@ if (-not (Assert-WorkspaceFree -Workspace $Workspace)) { exit 2 }
 Clear-StaleWorkspaceLock -Workspace $Workspace
 Set-SingleDropinJar -EdtDir $EdtDir
 
+$javaBin = Resolve-EdtJava -EdtDir $EdtDir
+if ($javaBin) {
+  "Java: $javaBin (EDT needs a newer one than PATH has)"
+  $env:PATH = $javaBin + ";" + $env:PATH
+}
 Start-Process -FilePath $exe -ArgumentList '-data', $Workspace
 "Launched 1C:EDT GUI on $Workspace"
 "The bridge answers on http://127.0.0.1:$Port/mcp once the workbench and the projects have loaded."

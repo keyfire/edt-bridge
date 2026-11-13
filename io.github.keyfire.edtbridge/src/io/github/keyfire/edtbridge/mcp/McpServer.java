@@ -40,6 +40,7 @@ import org.osgi.framework.Version;
 import io.github.keyfire.edtbridge.core.ArgumentNames;
 import io.github.keyfire.edtbridge.core.FileUrlPaths;
 import io.github.keyfire.edtbridge.core.ToolSets;
+import io.github.keyfire.edtbridge.core.WriteScope;
 import io.github.keyfire.edtbridge.edt.ProjectGateway;
 import io.github.keyfire.edtbridge.tools.MoveMethodTool;
 import io.github.keyfire.edtbridge.tools.ReplaceMethodTool;
@@ -47,6 +48,10 @@ import io.github.keyfire.edtbridge.tools.ReplaceModuleFragmentTool;
 import io.github.keyfire.edtbridge.tools.MoveFormItemTool;
 import io.github.keyfire.edtbridge.tools.ModifyObjectTool;
 import io.github.keyfire.edtbridge.tools.UpdateSubsystemTool;
+import io.github.keyfire.edtbridge.tools.RoleRightsTool;
+import io.github.keyfire.edtbridge.tools.ModifyRoleRightsTool;
+import io.github.keyfire.edtbridge.tools.CommandInterfaceTool;
+import io.github.keyfire.edtbridge.tools.ModifyCommandInterfaceTool;
 import io.github.keyfire.edtbridge.tools.RegisterInfobaseTool;
 import io.github.keyfire.edtbridge.tools.ImportExternalObjectTool;
 import io.github.keyfire.edtbridge.tools.SearchQueriesTool;
@@ -294,7 +299,7 @@ function renderStatus(){var g=document.getElementById('status');g.textContent=''
 function loadStatus(){fetch('/status').then(function(r){return r.json();}).then(function(s){STATUS=s;renderStatus();if(s.tokenRequired){var bar=document.getElementById('tokbar');bar.className='panel';bar.textContent='';bar.appendChild(el('span',null,t('needtok')));var inp=el('input','tok');inp.oninput=function(){TOKEN=inp.value.trim();clearTimeout(TOKTIMER);TOKTIMER=setTimeout(loadTools,400);};bar.appendChild(inp);}}).catch(function(e){STATUS=null;document.getElementById('status').textContent='status error: '+e;});}
 function template(td){var req=(td.inputSchema&&td.inputSchema.required)||[];var o={};req.forEach(function(k){o[k]='';});return JSON.stringify(o,null,2);}
 // Keep in sync with the token-gated write tools - anything missing here is shown as a read tool.
-var WRITE_TOOLS=['edt_add_attribute','edt_replace_module_fragment','edt_add_template','edt_replace_dcs','edt_add_form','edt_add_form_attribute','edt_add_form_command','edt_add_form_item','edt_add_method','edt_add_route','edt_build_extension','edt_infobase_dump','edt_clean_project','edt_create_extension','edt_create_external_object','edt_create_infobase','edt_create_object','edt_delete_method','edt_delete_object','edt_delete_project','edt_designer_agent','edt_dump_external_object','edt_modify_attribute','edt_modify_form_attribute','edt_modify_form_command','edt_modify_form_item','edt_register_platform','edt_platform_build_readiness','edt_remove_attribute','edt_remove_form_attribute','edt_remove_form_command','edt_remove_form_item','edt_rename','edt_update_infobase'];
+var WRITE_TOOLS=['edt_add_attribute','edt_replace_module_fragment','edt_add_template','edt_replace_dcs','edt_add_form','edt_add_form_attribute','edt_add_form_command','edt_add_form_item','edt_add_method','edt_add_route','edt_build_extension','edt_infobase_dump','edt_clean_project','edt_create_extension','edt_create_external_object','edt_create_infobase','edt_create_object','edt_delete_method','edt_delete_object','edt_delete_project','edt_designer_agent','edt_dump_external_object','edt_modify_attribute','edt_modify_form_attribute','edt_modify_form_command','edt_modify_form_item','edt_register_platform','edt_platform_build_readiness','edt_remove_attribute','edt_remove_form_attribute','edt_remove_form_command','edt_remove_form_item','edt_rename','edt_update_infobase','edt_modify_role_rights','edt_modify_command_interface'];
 function groupOf(n,tl){if(n.indexOf('edt_debug_')===0||n==='edt_evaluate'){return 'debug';}if(WRITE_TOOLS.indexOf(n)>=0){return 'write';}
 // Fallback so a write tool nobody remembered to list still lands in the right group: every write
 // tool is dry-run by default, so it takes an "apply". Only edt_register_platform does not, hence the list.
@@ -318,6 +323,7 @@ applyI18n();loadStatus();loadTools();
     private final Gson gson = new GsonBuilder().disableHtmlEscaping().create();
     /** Argument names by tool, built on the first call - the descriptors do not change at run time. */
     private Map<String, Set<String>> declaredArguments;
+    private Set<String> writeTools;
     private final ProjectErrorsTool projectErrors = new ProjectErrorsTool();
     private final ProjectsTool projects = new ProjectsTool();
     private final ModuleTextTool moduleText = new ModuleTextTool();
@@ -371,6 +377,10 @@ applyI18n();loadStatus();loadTools();
     private final CreateObjectTool createObject = new CreateObjectTool();
     private final ModifyObjectTool modifyObject = new ModifyObjectTool();
     private final UpdateSubsystemTool updateSubsystem = new UpdateSubsystemTool();
+    private final RoleRightsTool roleRights = new RoleRightsTool();
+    private final ModifyRoleRightsTool modifyRoleRights = new ModifyRoleRightsTool();
+    private final CommandInterfaceTool commandInterface = new CommandInterfaceTool();
+    private final ModifyCommandInterfaceTool modifyCommandInterface = new ModifyCommandInterfaceTool();
     private final CreateExtensionTool createExtension = new CreateExtensionTool();
     private final CreateExternalObjectTool createExternalObject = new CreateExternalObjectTool();
     private final ImportExternalObjectTool importExternalObject = new ImportExternalObjectTool();
@@ -726,6 +736,7 @@ applyI18n();loadStatus();loadTools();
         o.addProperty("port", port);
         o.addProperty("tokenRequired", token() != null);
         o.add("toolset", toolsetStatus());
+        o.add("scope", scopeStatus());
         o.addProperty("serverTime", java.time.OffsetDateTime.now().toString());
         try {
             o.add("resources", gson.toJsonTree(RuntimeResources.snapshot()));
@@ -865,6 +876,10 @@ applyI18n();loadStatus();loadTools();
         tools.add(createObject.descriptor());
         tools.add(modifyObject.descriptor());
         tools.add(updateSubsystem.descriptor());
+        tools.add(roleRights.descriptor());
+        tools.add(modifyRoleRights.descriptor());
+        tools.add(commandInterface.descriptor());
+        tools.add(modifyCommandInterface.descriptor());
         tools.add(createExtension.descriptor());
         tools.add(createExternalObject.descriptor());
         tools.add(importExternalObject.descriptor());
@@ -967,6 +982,10 @@ applyI18n();loadStatus();loadTools();
         JsonObject misnamed = unknownArgumentGate(name, args);
         if (misnamed != null) {
             return misnamed;
+        }
+        JsonObject outside = scopeGate(name, args);
+        if (outside != null) {
+            return outside;
         }
         if (toolHelp.name().equals(name)) {
             return toolHelp.call(args, toolsList().getAsJsonArray("tools"), toolset);
@@ -1169,6 +1188,16 @@ applyI18n();loadStatus();loadTools();
             JsonObject denied = writeTokenGate(rename.isWrite(), name);
             return denied != null ? denied : rename.call(args);
         }
+        if (roleRights.name().equals(name)) return roleRights.call(args);
+        if (commandInterface.name().equals(name)) return commandInterface.call(args);
+        if (modifyCommandInterface.name().equals(name)) {
+            JsonObject denied = writeTokenGate(modifyCommandInterface.isWrite(), name);
+            return denied != null ? denied : modifyCommandInterface.call(args);
+        }
+        if (modifyRoleRights.name().equals(name)) {
+            JsonObject denied = writeTokenGate(modifyRoleRights.isWrite(), name);
+            return denied != null ? denied : modifyRoleRights.call(args);
+        }
         if (updateSubsystem.name().equals(name)) {
             JsonObject denied = writeTokenGate(updateSubsystem.isWrite(), name);
             return denied != null ? denied : updateSubsystem.call(args);
@@ -1309,17 +1338,78 @@ applyI18n();loadStatus();loadTools();
     private synchronized Map<String, Set<String>> declaredArguments() {
         if (declaredArguments == null) {
             Map<String, Set<String>> byTool = new HashMap<>();
+            Set<String> writing = new HashSet<>();
             for (JsonElement element : toolsList().getAsJsonArray("tools")) {
                 JsonObject tool = element.getAsJsonObject();
                 JsonObject schema = tool.has("inputSchema") ? tool.getAsJsonObject("inputSchema") : null;
                 JsonObject props = schema != null && schema.has("properties")
                         ? schema.getAsJsonObject("properties")
                         : new JsonObject();
-                byTool.put(tool.get("name").getAsString(), new HashSet<>(props.keySet()));
+                String name = tool.get("name").getAsString();
+                byTool.put(name, new HashSet<>(props.keySet()));
+                if (tool.has("description") && tool.get("description").getAsString().stripLeading().startsWith("WRITE")) {
+                    writing.add(name);
+                }
             }
+            writeTools = writing;
             declaredArguments = byTool;
         }
         return declaredArguments;
+    }
+
+    /** Tools whose description is marked WRITE: they change the project they name. */
+    private synchronized Set<String> writeTools() {
+        declaredArguments();
+        return writeTools;
+    }
+
+    /** The write scope of this server, read on every call like the tool set. */
+    private WriteScope scope() {
+        return WriteScope.parse(
+                System.getProperty(WriteScope.WRITE_PROPERTY, System.getenv(WriteScope.WRITE_ENV)),
+                System.getProperty(WriteScope.READ_PROPERTY, System.getenv(WriteScope.READ_ENV)),
+                System.getProperty(WriteScope.OUTPUT_PROPERTY, System.getenv(WriteScope.OUTPUT_ENV)));
+    }
+
+    /**
+     * Scope gate: a call outside the write scope is refused before the tool runs, naming what is
+     * allowed. Every client passes here, so going to the port directly does not get around it.
+     */
+    private JsonObject scopeGate(String name, JsonObject args) {
+        WriteScope scope = scope();
+        if (!scope.active() || !declaredArguments().containsKey(name)) {
+            return null;
+        }
+        Map<String, String> values = new HashMap<>();
+        for (Map.Entry<String, JsonElement> entry : args.entrySet()) {
+            if (entry.getValue().isJsonPrimitive()) {
+                values.put(entry.getKey(), entry.getValue().getAsString());
+            }
+        }
+        String refusal = scope.refusal(name, writeTools().contains(name), declaredArguments().get(name), values);
+        return refusal == null ? null : toolError(refusal);
+    }
+
+    /** The write scope for /status, so a client can see the boundary the server holds. */
+    private JsonObject scopeStatus() {
+        WriteScope scope = scope();
+        JsonObject o = new JsonObject();
+        o.addProperty("active", scope.active());
+        if (scope.projectsLimited()) {
+            JsonArray write = new JsonArray();
+            scope.writeProjects().forEach(write::add);
+            JsonArray read = new JsonArray();
+            scope.readProjects().forEach(read::add);
+            o.add("writeProjects", write);
+            o.add("readProjects", read);
+        }
+        if (scope.outputDir() != null) {
+            o.addProperty("outputDir", scope.outputDir().toString());
+        }
+        if (scope.problem() != null) {
+            o.addProperty("problem", scope.problem());
+        }
+        return o;
     }
 
     /**

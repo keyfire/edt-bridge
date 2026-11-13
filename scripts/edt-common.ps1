@@ -16,31 +16,90 @@
 .PARAMETER RequireExe
   Executable that must exist in the directory - '1cedt.exe' for the GUI, '1cedtcli.exe' for the CLI.
 #>
+function Get-EdtRank {
+  param([System.IO.DirectoryInfo]$Directory, [string]$EdtDir)
+  # The build EDT records wins over the name: the launcher keeps a release line in one directory
+  # and updates it in place, so "1C_EDT 2026.2" can hold 2026.2.2 next to "1C_EDT (Lite) 2026.2.0".
+  $config = Join-Path $EdtDir "configuration\config.ini"
+  $recorded = if (Test-Path -LiteralPath $config -PathType Leaf) {
+    [regex]::Match((Get-Content -LiteralPath $config -Raw -Encoding UTF8),
+      '(?m)^\s*eclipse\.buildId\s*=\s*([0-9]+(?:\.[0-9]+){2})(?:\.([0-9]+))?\s*$')
+  }
+  # Otherwise rank the version and build in the name separately. The architecture suffix is not part of either.
+  $parts = if ($recorded -and $recorded.Success) { $recorded } else {
+    [regex]::Match($Directory.Name, '(?<![0-9.])([0-9]+(?:\.[0-9]+){1,3})(?:\+([0-9]+))?(?=$|[-_\s)])')
+  }
+  [pscustomobject]@{
+    Directory = $EdtDir
+    Name = $Directory.Name
+    Version = $parts.Groups[1].Value -as [version]
+    Build = [long]($parts.Groups[2].Value -as [long])
+  }
+}
+
+<#
+.SYNOPSIS
+  The bin folder of the JDK to put first on PATH for this EDT, or nothing when EDT finds one itself.
+.DESCRIPTION
+  An EDT without -vm in 1cedt.ini takes java from PATH, and an older one than its
+  -Dosgi.requiredJavaVersion stops the start with a modal dialog. The 1C launcher passes the JDK on
+  its own command line, so an EDT it installed has no -vm. Candidates: JAVA_HOME, then the JDK
+  components of the 1C installer, the required feature version first.
+#>
+function Resolve-EdtJava {
+  param([Parameter(Mandatory = $true)][string]$EdtDir)
+  $ini = Join-Path $EdtDir "1cedt.ini"
+  if (-not (Test-Path -LiteralPath $ini -PathType Leaf)) { return }
+  $lines = @(Get-Content -LiteralPath $ini -Encoding UTF8 | ForEach-Object { $_.Trim() })
+  if ($lines -contains '-vm') { return }
+  $required = $lines | ForEach-Object { if ($_ -match '^-Dosgi\.requiredJavaVersion=([0-9]+)$') { [int]$Matches[1] } } |
+    Select-Object -First 1
+  if (-not $required) { return }
+  $major = {
+    param([string]$JavaDir)
+    $release = Join-Path $JavaDir "release"
+    if (-not (Test-Path -LiteralPath $release -PathType Leaf)) { return $null }
+    $m = [regex]::Match((Get-Content -LiteralPath $release -Raw), '(?m)^JAVA_VERSION="(?:1\.)?([0-9]+)')
+    if ($m.Success) { [int]$m.Groups[1].Value } else { $null }
+  }
+  $onPath = Get-Command javaw.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($onPath) {
+    $current = & $major (Split-Path -Parent (Split-Path -Parent $onPath.Source))
+    if ($current -and $current -ge $required) { return }
+  }
+  if ($env:JAVA_HOME -and (Test-Path -LiteralPath (Join-Path $env:JAVA_HOME "bin\javaw.exe"))) {
+    $homeMajor = & $major $env:JAVA_HOME
+    if ($homeMajor -and $homeMajor -ge $required) { return (Join-Path $env:JAVA_HOME "bin") }
+  }
+  if (-not $env:ProgramFiles) { return }
+  $components = Join-Path $env:ProgramFiles "1C\1CE\components"
+  $found = Get-ChildItem -LiteralPath $components -Directory -Filter "*jdk*" -ErrorAction SilentlyContinue |
+    Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName "bin\javaw.exe") } |
+    ForEach-Object { [pscustomobject]@{ Dir = $_; Major = (& $major $_.FullName) } } |
+    Where-Object { $_.Major -and $_.Major -ge $required } |
+    Sort-Object @{ Expression = { $_.Major -ne $required } }, @{ Expression = { $_.Major }; Descending = $true },
+      @{ Expression = { $_.Dir.Name } } |
+    Select-Object -First 1
+  if ($found) { return (Join-Path $found.Dir.FullName "bin") }
+}
+
 function Resolve-EdtDir {
   param([string]$EdtDir, [Parameter(Mandatory = $true)][string]$RequireExe)
   if ($EdtDir) { return $EdtDir }
-  # Rank the version and build separately. The architecture suffix is not part of either.
-  $rank = {
-    $parts = [regex]::Match($_.Name, '(?<![0-9.])([0-9]+(?:\.[0-9]+){1,3})(?:\+([0-9]+))?(?=$|[-_\s)])')
-    [pscustomobject]@{
-      Directory = $_.FullName
-      Name = $_.Name
-      Version = $parts.Groups[1].Value -as [version]
-      Build = [long]($parts.Groups[2].Value -as [long])
-    }
-  }
   $candidates = @(
     if ($env:LOCALAPPDATA) {
       $base = Join-Path $env:LOCALAPPDATA "1C\1cedtstart\installations"
       Get-ChildItem -LiteralPath $base -Directory -ErrorAction SilentlyContinue |
-        ForEach-Object $rank | Sort-Object Version, Build, Name -Descending |
-        ForEach-Object { Join-Path $_.Directory "1cedt" }
+        ForEach-Object { Get-EdtRank $_ (Join-Path $_.FullName "1cedt") } |
+        Sort-Object Version, Build, Name -Descending |
+        ForEach-Object { $_.Directory }
     }
     if ($env:ProgramFiles) {
       $components = Join-Path $env:ProgramFiles "1C\1CE\components"
       Get-ChildItem -LiteralPath $components -Directory -Filter "1c-edt-*" -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -match '^1c-edt-[0-9]' } |
-        ForEach-Object $rank | Sort-Object Version, Build, Name -Descending |
+        ForEach-Object { Get-EdtRank $_ $_.FullName } |
+        Sort-Object Version, Build, Name -Descending |
         ForEach-Object { $_.Directory }
     }
   )

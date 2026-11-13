@@ -346,6 +346,10 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
                 if isinstance(data.get("observedFields"), dict):
                     # A selector that missed: the fields of the open form, where the caller looks first.
                     report["observedFields"] = data["observedFields"]
+                if isinstance(data.get("dialog"), dict):
+                    # A window over the form that no step expected: what the solution showed, not a failure
+                    # of the check, so the caller can judge it.
+                    report["dialog"] = data["dialog"]
                 # The owned listener can open before the platform accepts a test connection.
                 if data["status"] != "driver_failed" or data.get("stage") != "connect":
                     break
@@ -530,6 +534,108 @@ def _require_client_environment(args, platform, base, external, report):
         f"Read: {read}.")
 
 
+def _setup_logs(root):
+    """What the platform wrote while one attempt prepared the manager infobase: the designer's own
+    log (/Out), the output of the designer process and the log of ibcmd."""
+    logs = {}
+    for key, name in (("designerLog", "designer.log"), ("designerProcessLog", "designer-process.log"),
+                      ("setupLog", "ibcmd.log")):
+        detail = _log(root / name)
+        if detail:
+            logs[key] = detail
+    return logs
+
+
+def _require_setup_exit(process, deadline, message, root):
+    """_require_exit for a step of the manager setup: a refusal carries what the platform wrote about
+    the cause, not only the exit code. A designer that fails early leaves /Out empty and says why in
+    its own output."""
+    try:
+        _require_exit(process, deadline, message)
+    except _CheckError as error:
+        if error.status != "setup_failed":
+            raise
+        logs = _setup_logs(root)
+        detail = "; ".join(f"{key}: {' '.join(logs[key].split())[:800]}" for key in
+                           ("designerLog", "designerProcessLog", "setupLog") if key in logs)
+        raise _CheckError("setup_failed", f"{error} {detail or 'The platform wrote nothing about the cause.'}") from None
+
+
+def _prepare_manager(args, external, ibcmd, client_exe, stack, manager_env, root, deadline, report):
+    """Create the manager infobase in root, load the test driver into it and, for a report, build its
+    launcher. Returns the manager infobase and the external object the client opens."""
+    report["stage"] = "manager_setup"
+    manager_base = root / "manager-infobase"
+    designer_log = root / "designer.log"
+    process_log = root / "designer-process.log"
+    create = _spawn(stack, [str(ibcmd), "infobase", "--data=" + str(root / "ibcmd-data"),
+                            "--db-path=" + str(manager_base), "create"],
+                    manager_env, root / "ibcmd.log")
+    _require_setup_exit(create, deadline, "Could not create the manager infobase", root)
+    if not (manager_base / "1Cv8.1CD").is_file():
+        raise _CheckError("setup_failed", "The platform did not create the manager infobase.")
+
+    designer = [str(client_exe), "DESIGNER", "/F" + str(manager_base), *_START_FLAGS]
+    standard_report_form = False
+    if external:
+        report["stage"] = "target_metadata"
+        metadata = root / "target.xml"
+        export = _spawn(stack, [*designer, "/DumpExternalDataProcessorOrReportToFiles",
+                                str(metadata), str(external), "/Out", str(designer_log)],
+                        manager_env, process_log)
+        _require_setup_exit(export, deadline, "Could not read the selected external object metadata", root)
+        form_key = _form_key(args.form)
+        kind, object_name, form_name = form_key
+        try:
+            properties = ET.parse(metadata).find("./{*}" + kind + "/{*}Properties")
+            default = properties.findtext("{*}DefaultForm", "").strip() if properties is not None else ""
+        except PermissionError:
+            raise
+        except (OSError, ET.ParseError) as error:
+            raise _CheckError("metadata_unavailable", "Designer did not export readable external object metadata.") from error
+        if form_name is None and properties is not None and not default:
+            standard_report_form = (
+                properties.findtext("{*}Name", "").casefold() == object_name
+                and bool(properties.findtext("{*}MainDataCompositionSchema", "").strip())
+            )
+        explicit_main_form = form_name is not None and _form_key(default) == form_key
+        if not (standard_report_form or explicit_main_form):
+            report["defaultForm"] = default
+            raise _CheckError("form_not_default", "Select the main managed form declared by this external object.")
+
+    report["stage"] = "manager_setup"
+    driver = root / "driver"
+    driver.mkdir()
+    dump = _spawn(stack, [*designer, "/DumpConfigToFiles", str(driver), "-Format", "Hierarchical",
+                          "/Out", str(designer_log)], manager_env, process_log)
+    _require_setup_exit(dump, deadline, "Could not export the empty manager configuration", root)
+    if not (driver / "Configuration.xml").is_file():
+        raise _CheckError("setup_failed", "Designer did not export the manager configuration.")
+    module = driver / "Ext/ManagedApplicationModule.bsl"
+    module.parent.mkdir(exist_ok=True)
+    shutil.copyfile(Path(__file__).with_name("native_form_manager.bsl"), module)
+    for command in (["/LoadConfigFromFiles", str(driver)], ["/UpdateDBCfg"]):
+        load = _spawn(stack, [*designer, *command, "/Out", str(designer_log)], manager_env, process_log)
+        _require_setup_exit(load, deadline, "Could not prepare the temporary manager configuration", root)
+
+    launch_external = external
+    if args.erf:
+        report["stage"] = "report_launcher_setup"
+        launcher = root / "report-loader"
+        launcher.mkdir()
+        format_version = ET.parse(driver / "Configuration.xml").getroot().attrib["version"]
+        launcher_xml = native_report.write_launcher(
+            launcher, external, "" if standard_report_form else args.form.rsplit(".", 1)[1], format_version)
+        launch_external = root / "report-loader.epf"
+        build = _spawn(stack, [*designer, "/LoadExternalDataProcessorOrReportFromFiles",
+                              str(launcher_xml), str(launch_external), "/Out", str(designer_log)],
+                       manager_env, process_log)
+        _require_setup_exit(build, deadline, "Could not build the report launcher", root)
+        if not _is_regular_file(launch_external):
+            raise _CheckError("setup_failed", "Designer did not build the report launcher.")
+    return manager_base, launch_external
+
+
 def _native_check(args, base, external, output, report):
     platform = args.platform_bin.resolve()
     client_exe, ibcmd = (platform / name for name in ("1cv8", "ibcmd"))
@@ -542,77 +648,25 @@ def _native_check(args, base, external, output, report):
     deadline = time.monotonic() + args.timeout
     with tempfile.TemporaryDirectory(prefix="edt-bridge-form-") as temporary, contextlib.ExitStack() as stack:
         root = Path(temporary)
-        manager_base = root / "manager-infobase"
-        designer_log = root / "designer.log"
+        attempt_root = root
         try:
             report["stage"] = "manager_setup"
             manager_env = _display(stack, xvfb, root / "manager-display", deadline)
-            create = _spawn(stack, [str(ibcmd), "infobase", "--data=" + str(root / "ibcmd-data"),
-                                    "--db-path=" + str(manager_base), "create"],
-                            manager_env, root / "ibcmd.log")
-            _require_exit(create, deadline, "Could not create the manager infobase")
-            if not (manager_base / "1Cv8.1CD").is_file():
-                raise _CheckError("setup_failed", "The platform did not create the manager infobase.")
-
-            designer = [str(client_exe), "DESIGNER", "/F" + str(manager_base), *_START_FLAGS]
-            standard_report_form = False
-            if external:
-                report["stage"] = "target_metadata"
-                metadata = root / "target.xml"
-                export = _spawn(stack, [*designer, "/DumpExternalDataProcessorOrReportToFiles",
-                                        str(metadata), str(external), "/Out", str(designer_log)],
-                                manager_env, root / "designer-process.log")
-                _require_exit(export, deadline, "Could not read the selected external object metadata")
-                form_key = _form_key(args.form)
-                kind, object_name, form_name = form_key
+            for attempt in (1, 2):
+                attempt_root = root / f"setup-{attempt}"
+                attempt_root.mkdir()
                 try:
-                    properties = ET.parse(metadata).find("./{*}" + kind + "/{*}Properties")
-                    default = properties.findtext("{*}DefaultForm", "").strip() if properties is not None else ""
-                except PermissionError:
-                    raise
-                except (OSError, ET.ParseError) as error:
-                    raise _CheckError("metadata_unavailable", "Designer did not export readable external object metadata.") from error
-                if form_name is None and properties is not None and not default:
-                    standard_report_form = (
-                        properties.findtext("{*}Name", "").casefold() == object_name
-                        and bool(properties.findtext("{*}MainDataCompositionSchema", "").strip())
-                    )
-                explicit_main_form = form_name is not None and _form_key(default) == form_key
-                if not (standard_report_form or explicit_main_form):
-                    report["defaultForm"] = default
-                    raise _CheckError("form_not_default", "Select the main managed form declared by this external object.")
-
-            report["stage"] = "manager_setup"
-            driver = root / "driver"
-            driver.mkdir()
-            dump = _spawn(stack, [*designer, "/DumpConfigToFiles", str(driver), "-Format", "Hierarchical",
-                                  "/Out", str(designer_log)], manager_env, root / "designer-process.log")
-            _require_exit(dump, deadline, "Could not export the empty manager configuration")
-            if not (driver / "Configuration.xml").is_file():
-                raise _CheckError("setup_failed", "Designer did not export the manager configuration.")
-            module = driver / "Ext/ManagedApplicationModule.bsl"
-            module.parent.mkdir(exist_ok=True)
-            shutil.copyfile(Path(__file__).with_name("native_form_manager.bsl"), module)
-            for command in (["/LoadConfigFromFiles", str(driver)], ["/UpdateDBCfg"]):
-                load = _spawn(stack, [*designer, *command, "/Out", str(designer_log)],
-                              manager_env, root / "designer-process.log")
-                _require_exit(load, deadline, "Could not prepare the temporary manager configuration")
-
-            launch_external = external
-            if args.erf:
-                report["stage"] = "report_launcher_setup"
-                launcher = root / "report-loader"
-                launcher.mkdir()
-                format_version = ET.parse(driver / "Configuration.xml").getroot().attrib["version"]
-                launcher_xml = native_report.write_launcher(
-                    launcher, external, "" if standard_report_form else args.form.rsplit(".", 1)[1], format_version)
-                launch_external = root / "report-loader.epf"
-                build = _spawn(stack, [*designer, "/LoadExternalDataProcessorOrReportFromFiles",
-                                      str(launcher_xml), str(launch_external), "/Out", str(designer_log)],
-                               manager_env, root / "designer-process.log")
-                _require_exit(build, deadline, "Could not build the report launcher")
-                if not _is_regular_file(launch_external):
-                    raise _CheckError("setup_failed", "Designer did not build the report launcher.")
+                    manager_base, launch_external = _prepare_manager(
+                        args, external, ibcmd, client_exe, stack, manager_env, attempt_root, deadline, report)
+                    break
+                except _CheckError as error:
+                    logs = _setup_logs(attempt_root)
+                    refused = _platform_failure_status("", " ".join(logs.values()))
+                    if attempt == 2 or error.status != "setup_failed" or refused:
+                        raise
+                    # The manager infobase is disposable and the test infobase is not touched yet, so a
+                    # designer that failed while preparing it gets one more try in a clean directory.
+                    report.setdefault("setupRetries", []).append(dict(stage=report["stage"], error=str(error), **logs))
 
             enterprise = [str(client_exe), "ENTERPRISE", "/RunModeManagedApplication", *_START_FLAGS]
             scenario = getattr(args, "_scenario", None)
@@ -641,14 +695,11 @@ def _native_check(args, base, external, output, report):
         except (_CheckError, OSError, ValueError) as error:
             _record_error(report, error, "driver_failed")
         finally:
-            for key, path in (("designerLog", designer_log), ("setupLog", root / "ibcmd.log")):
-                detail = _log(path)
-                if detail:
-                    report[key] = detail
+            report.update(_setup_logs(attempt_root))
             if not report["ok"]:
                 platform_logs = " ".join(report.get(key, "") for key in
                                          ("clientLog", "managerLog", "clientProcessLog", "managerProcessLog",
-                                          "designerLog", "setupLog"))
+                                          "designerLog", "designerProcessLog", "setupLog"))
                 failure = _platform_failure_status(report.get("interaction", {}).get("error", ""), platform_logs)
                 if failure:
                     report["status"] = failure

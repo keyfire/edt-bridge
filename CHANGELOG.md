@@ -13,10 +13,31 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
-## 2026-11-13 – 0.43.0
+## 2026-11-13 – 0.43.0, 0.44.0
 
 ### Added
 
+- A write scope bounds what an agent may change. `EDT_BRIDGE_WRITE_PROJECTS` and
+  `EDT_BRIDGE_READ_PROJECTS` name the projects the tools may change and read, and
+  `EDT_BRIDGE_OUTPUT_DIR` the directory for the files they write. The bridge checks every call
+  before the tool runs and names what is allowed; the wrapper does not forward calls to an EDT
+  that holds another scope. ([#82](https://github.com/keyfire/edt-bridge/pull/82))
+- `edt_role_rights` and `edt_modify_role_rights` read and set the rights of a role on one object
+  through the live model, in a configuration and in an extension. Setting works the way the rights
+  editor of EDT does and exports the role together with its `Rights.rights`. An unknown right is
+  refused with the rights the object has, a right with a data access restriction is never changed,
+  and a role or object of the base configuration that the extension has not adopted is refused with
+  a pointer to `edt_adopt_object`. ([#82](https://github.com/keyfire/edt-bridge/pull/82))
+- `edt_command_interface` and `edt_modify_command_interface` read and change the command interface
+  of a subsystem section: which commands it shows, in which group and order, and their visibility
+  in common and by role. Reading takes EDT's derived data, so the answer is the section the client
+  builds; writing changes `CommandInterface.cmi` and creates one for an adopted subsystem that has
+  none. ([#82](https://github.com/keyfire/edt-bridge/pull/82))
+- `edt_test_form` and `test-form` scenarios take a warning window. `expect_warning` on a `click`
+  gives the exact text of a `ShowMessageBox` window; the check closes it with OK and goes on, so
+  a solution that warns in `BeforeWrite` is still checked on the written values. A window no step
+  expected now ends the check with `unexpected_dialog`, its kind, text and buttons, instead of
+  `scenario_error`. ([#82](https://github.com/keyfire/edt-bridge/pull/82))
 - `edt_test_form` and `test-form` scenarios read the whole form. `read_form` returns the visible
   fields, form tables and spreadsheet fields with their values, `read_table` returns one of them, and
   `assert_table` now compares a form table too. Reads go to `reads` of the result; an attribute
@@ -50,6 +71,18 @@ to the code and the reasoning behind it.
 
 ### Fixed
 
+- When `test-form` and `edt_test_form` cannot prepare their manager infobase, the refusal names
+  the stage and quotes the log and the output of the designer, and the setup is tried once more
+  in a clean directory. A failed export of the empty manager configuration used to end the check
+  with an exit code alone. ([#82](https://github.com/keyfire/edt-bridge/pull/82))
+- The wrapper and the launch scripts pick the EDT installation by the build it records in
+  `configuration/config.ini`. The 1C launcher updates a release line in one directory, so
+  `1C_EDT 2026.2` held 2026.2.2 and still lost to `1C_EDT (Lite) 2026.2.0` because its name is
+  shorter. ([#82](https://github.com/keyfire/edt-bridge/pull/82))
+- An EDT installed by the 1C launcher starts from the wrapper and the launch scripts. Its ini names
+  no `-vm`, EDT took java from PATH, and a Java older than it requires stopped the start with a
+  modal dialog. The JDK from `JAVA_HOME` or from the JDK components of the 1C installer now goes
+  first on PATH of the EDT process. ([#82](https://github.com/keyfire/edt-bridge/pull/82))
 - `edt_build_extension` builds an extension with a borrowed form in a copy of the infobase named by
   `EDT_BRIDGE_DUMP_INFOBASE`. In an empty infobase ibcmd refused a borrowed form that excludes
   commands such as `Post`: they belong to the form's main attribute, which only the base
