@@ -78,6 +78,31 @@ class PersonalDataFilterTest {
         assertTrue(masked.get("isError").getAsBoolean());
     }
 
+    @Test void aNumberOfDataIsMaskedAndANumberOfTheStructureIsNot() {
+        JsonObject masked = text(PersonalDataFilter.apply(answer("{\"variables\":[{\"name\":\"ИНН\",\"value\":7707083893},"
+                + "{\"name\":\"Количество\",\"value\":3}],\"line\":7707083893}"), redact()));
+
+        assertEquals("[inn]", masked.getAsJsonArray("variables").get(0).getAsJsonObject().get("value").getAsString());
+        assertEquals(3, masked.getAsJsonArray("variables").get(1).getAsJsonObject().get("value").getAsInt());
+        assertEquals(7707083893L, masked.get("line").getAsLong());
+    }
+
+    @Test void theElementsOfAListTakeTheNameOfItsKey() {
+        JsonObject masked = text(PersonalDataFilter.apply(answer("{\"ФИО\":[\"Иванов Иван\",\"Петров Петр\"]}"), redact()));
+
+        assertEquals("[person]", masked.getAsJsonArray("ФИО").get(0).getAsString());
+        assertEquals("[person]", masked.getAsJsonArray("ФИО").get(1).getAsString());
+    }
+
+    @Test void theMaintenanceAndTheDesignerAgentAreToolsOfData() {
+        // Both answer with the sessions or the user of an infobase.
+        assertTrue(PersonalDataFilter.TOOLS.contains("edt_infobase_maintenance"));
+        assertTrue(PersonalDataFilter.TOOLS.contains("edt_designer_agent"));
+        JsonObject masked = text(PersonalDataFilter.apply(answer("{\"blockers\":[{\"session\":\"5c1f\","
+                + "\"userName\":\"Иванов И.И.\",\"host\":\"PC-IVANOV\"}]}"), redact()));
+        assertEquals("[user]", masked.getAsJsonArray("blockers").get(0).getAsJsonObject().get("userName").getAsString());
+    }
+
     @Test void onlyTheToolsOfDataAreFiltered() {
         JsonObject module = answer("{\"text\":\"// ИНН 7707083893\\nПроцедура А() КонецПроцедуры\",\"sourceHash\":\"abc\"}");
 

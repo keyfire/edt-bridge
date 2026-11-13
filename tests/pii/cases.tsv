@@ -28,6 +28,9 @@ pseudonym	-	IVANOV.II@example.com	[email#jdgpplmn]
 pseudonym	-	ИНН 7707083893	ИНН [inn#icbbphoh]
 pseudonym	ФИО	Иванов Иван Иванович	[person#mfhfgpop]
 pseudonym	ФИО	иванов  иван иванович	[person#mfhfgpop]
+pseudonym	ФИО	 Иванов Иван Иванович	[person#mfhfgpop]
+pseudonym	ФИО	Straße	[person#cemiifel]
+pseudonym	ФИО	STRAßE	[person#cemiifel]
 # Not personal data: a sum and a date that look like an INN, numbers that fail their check digits,
 # a number that is part of a fraction, an empty value.
 redact	-	Сумма 7707083893,00 руб.	Сумма 7707083893,00 руб.

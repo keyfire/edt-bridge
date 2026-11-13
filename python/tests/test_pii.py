@@ -82,3 +82,52 @@ def test_the_walk_masks_data_by_field_and_by_shape_and_leaves_the_check_alone():
     assert error["user"] == "[user]" and error["comment"] == "ошибка для [email]"
     assert error["module"] == "ОбщийМодуль.Заказы.Модуль" and error["line"] == 7
     assert flt.marker() == {"mode": "redact", "masked": 6}
+
+
+# -- the review of PR 84 -----------------------------------------------------------------------------
+
+
+def test_a_rule_of_ones_own_may_name_a_kind_for_numbers_of_another_length(tmp_path):
+    # A SNILS rule on nine digits or an INN rule on eleven used to end the run with IndexError.
+    rules = tmp_path / "rules.json"
+    rules.write_text(json.dumps({"values": [{"kind": "snils", "pattern": "[0-9]{9}"},
+                                            {"kind": "inn", "pattern": "[0-9]{11}"}]}), encoding="utf-8")
+    flt = pii.Filter.from_env({pii.ENV_MODE: "redact", pii.ENV_RULES: str(rules)})
+
+    assert flt.text("код 123456789, счет 12345678901") == "код 123456789, счет 12345678901"
+
+
+def test_a_number_of_data_is_masked_and_a_number_of_the_structure_is_not():
+    flt = pii.Filter("redact")
+
+    masked = pii.mask({"fields": [{"field": "ИНН", "value": 7707083893}, {"name": "Количество", "value": 3}],
+                       "line": 7707083893, "start": 1731489000009}, flt)
+
+    assert masked["fields"] == [{"field": "ИНН", "value": "[inn]"}, {"name": "Количество", "value": 3}]
+    assert masked["line"] == 7707083893 and masked["start"] == 1731489000009
+
+
+def test_the_elements_of_a_list_take_the_name_of_its_key():
+    masked = pii.mask({"ФИО": ["Иванов Иван", "Петров Петр"]}, pii.Filter("redact"))
+
+    assert masked == {"ФИО": ["[person]", "[person]"]}
+
+
+def test_without_a_salt_the_pseudonyms_hold_for_the_whole_process():
+    assert pii.Filter("pseudonym").text("a@b.ru") == pii.Filter("pseudonym").text("a@b.ru")
+
+
+def test_a_json_file_keeps_its_numbers_and_its_shape(tmp_path):
+    # 1731489000009 passes the Luhn check: over the raw text it turned into [card] and broke the file.
+    result = tmp_path / "a-result.json"
+    result.write_text(json.dumps({"name": "Почта", "start": 1731489000009, "stop": 1731489000009,
+                                  "statusDetails": {"message": "ожидали ivanov@example.com"}}), encoding="utf-8")
+    log = tmp_path / "yaxunit.log"
+    log.write_text("письмо ivanov@example.com", encoding="utf-8")
+
+    pii.mask_files([result, log], pii.Filter("redact"))
+
+    data = json.loads(result.read_text(encoding="utf-8"))
+    assert data["start"] == data["stop"] == 1731489000009
+    assert data["statusDetails"]["message"] == "ожидали [email]"
+    assert log.read_text(encoding="utf-8") == "письмо [email]"

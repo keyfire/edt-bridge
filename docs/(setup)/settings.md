@@ -96,8 +96,8 @@ calls until EDT is restarted with the same settings.
 
 A test infobase is easily a copy of a working one, and what a tool returns from it goes to the
 model. With `EDT_BRIDGE_PII` set to `redact` or `pseudonym`, the answers that carry infobase data
-are filtered before they leave: in the bridge `edt_debug_inspect`, `edt_evaluate` and
-`edt_infobase_sessions`, in the wrapper `edt_test_form`, `edt_unit_tests` and their commands, with
+are filtered before they leave: in the bridge `edt_debug_inspect`, `edt_evaluate`,
+`edt_infobase_sessions`, `edt_infobase_maintenance` and `edt_designer_agent`, in the wrapper `edt_test_form`, `edt_unit_tests` and their commands, with
 `result.json` and the reports for CI. Module texts, schemas and templates are never filtered: a
 model writes them back, and their `sourceHash` stays the same.
 

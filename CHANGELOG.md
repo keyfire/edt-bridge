@@ -47,12 +47,12 @@ to the code and the reasoning behind it.
   did, and in Allure the steps with their times and the screenshot; the unit tests take both
   reports from YAXUnit. ([#84](https://github.com/keyfire/edt-bridge/pull/84))
 - `EDT_BRIDGE_PII` filters personal data out of the answers that carry infobase data:
-  `edt_debug_inspect`, `edt_evaluate`, `edt_infobase_sessions`, `edt_test_form` and
-  `edt_unit_tests`. E-mails, phones, SNILS and INN with their check digits, card numbers and
-  passports are found by their shape, the values of fields such as `ФИО` by the field's name;
-  `redact` writes their kind, `pseudonym` a salted HMAC pseudonym that is the same for the same
-  value. Checks judge by the real values, screenshots are not kept, module texts are never touched.
-  ([#84](https://github.com/keyfire/edt-bridge/pull/84))
+  `edt_debug_inspect`, `edt_evaluate`, `edt_infobase_sessions`, `edt_infobase_maintenance`,
+  `edt_designer_agent`, `edt_test_form` and `edt_unit_tests`. E-mails, phones, SNILS and INN
+  with their check digits, card numbers and passports are found by their shape, the values of
+  fields such as `ФИО` by the field's name; `redact` writes their kind, `pseudonym` a salted HMAC
+  pseudonym that is the same for the same value. Checks judge by the real values, screenshots are
+  not kept, module texts are never touched. ([#84](https://github.com/keyfire/edt-bridge/pull/84))
 - A write scope bounds what an agent may change. `EDT_BRIDGE_WRITE_PROJECTS` and
   `EDT_BRIDGE_READ_PROJECTS` name the projects the tools may change and read, and
   `EDT_BRIDGE_OUTPUT_DIR` the directory for the files they write. The bridge checks every call

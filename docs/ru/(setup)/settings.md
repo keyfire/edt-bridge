@@ -96,7 +96,8 @@ sidebar:
 
 Тестовая база легко оказывается копией рабочей, а то, что инструмент из нее возвращает, уходит
 модели. Если `EDT_BRIDGE_PII` равна `redact` или `pseudonym`, ответы с данными базы фильтруются
-до отправки: в мосте – `edt_debug_inspect`, `edt_evaluate` и `edt_infobase_sessions`, в обвязке –
+до отправки: в мосте – `edt_debug_inspect`, `edt_evaluate`, `edt_infobase_sessions`,
+`edt_infobase_maintenance` и `edt_designer_agent`, в обвязке –
 `edt_test_form`, `edt_unit_tests` и их команды вместе с `result.json` и отчетами для CI. Тексты
 модулей, схем и макетов не фильтруются никогда: модель записывает их обратно, и их `sourceHash`
 не меняется.

@@ -64,6 +64,20 @@ class PersonalDataTest {
         assertTrue(refused.getMessage().contains(PersonalData.MODE_ENV));
     }
 
+    @Test void aRuleOfOnesOwnMayNameAKindForNumbersOfAnotherLength() {
+        // A SNILS rule on nine digits used to end the call with ArrayIndexOutOfBoundsException.
+        PersonalData filter = new PersonalData(PersonalData.Mode.REDACT, null,
+                List.of(new PersonalData.Rule("snils", Pattern.compile("[0-9]{9}")),
+                        new PersonalData.Rule("inn", Pattern.compile("[0-9]{11}"))),
+                List.of());
+        assertEquals("код 123456789, счет 12345678901", filter.text("код 123456789, счет 12345678901"));
+    }
+
+    @Test void withoutASaltPseudonymsHoldForTheWholeProcess() {
+        assertEquals(new PersonalData(PersonalData.Mode.PSEUDONYM, null, List.of(), List.of()).text("a@b.ru"),
+                new PersonalData(PersonalData.Mode.PSEUDONYM, null, List.of(), List.of()).text("a@b.ru"));
+    }
+
     @Test void withoutASaltPseudonymsHoldWithinOneFilter() {
         PersonalData filter = new PersonalData(PersonalData.Mode.PSEUDONYM, null, List.of(), List.of());
         assertEquals(filter.text("a@b.ru"), filter.text("A@B.RU"));

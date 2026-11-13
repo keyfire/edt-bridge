@@ -61,12 +61,14 @@ def _inn(digits):
         return sum(weight * value for weight, value in zip(weights, values)) % 11 % 10
     if len(digits) == 10:
         return check([2, 4, 10, 3, 5, 9, 4, 6, 8], digits) == digits[9]
-    return (check([7, 2, 4, 10, 3, 5, 9, 4, 6, 8], digits) == digits[10]
+    return (len(digits) == 12 and check([7, 2, 4, 10, 3, 5, 9, 4, 6, 8], digits) == digits[10]
             and check([3, 7, 2, 4, 10, 3, 5, 9, 4, 6, 8], digits) == digits[11])
 
 
 def _date_like(digits):
     """A stamp YYYYMMDDhh or YYYYMMDDhhmm: a date that looks like an INN is not one."""
+    if len(digits) not in (10, 12):
+        return False
     text = "".join(map(str, digits))
     year, month, day, hour = int(text[:4]), int(text[4:6]), int(text[6:8]), int(text[8:10])
     valid = 1900 <= year <= 2099 and 1 <= month <= 12 and 1 <= day <= 31 and hour <= 23
@@ -74,6 +76,8 @@ def _date_like(digits):
 
 
 def _snils(digits):
+    if len(digits) != 11:
+        return False
     total = sum(value * (9 - index) for index, value in enumerate(digits[:9]))
     check = total if total < 100 else 0 if total in (100, 101) else total % 101
     return (0 if check == 100 else check) == digits[9] * 10 + digits[10]
@@ -96,6 +100,10 @@ _VALID = {
 }
 
 
+#: The salt of a process without EDT_BRIDGE_PII_SALT: its pseudonyms hold until it exits.
+_PROCESS_SALT = secrets.token_hex(16)
+
+
 class RulesError(ValueError):
     pass
 
@@ -108,7 +116,7 @@ class Filter:
             raise RulesError(f"{ENV_MODE} must be one of {', '.join(MODES)}, not {mode!r}")
         self.mode = mode
         # Without a salt a pseudonym is stable for this process only.
-        self.salt = (salt or secrets.token_hex(16)).encode("utf-8")
+        self.salt = (salt or _PROCESS_SALT).encode("utf-8")
         self.values = [(kind, re.compile(pattern)) for kind, pattern in _VALUES] + list(values)
         self.names = [(kind, re.compile(pattern, re.IGNORECASE)) for kind, pattern in _NAMES] + list(names)
         self.count = 0
@@ -141,7 +149,7 @@ class Filter:
             if kind == "phone" and len(normal) == 11 and normal[0] == "8":
                 normal = "7" + normal[1:]
         else:
-            normal = " ".join(value.casefold().split())
+            normal = " ".join(value.lower().split())
         digest = hmac.new(self.salt, f"{kind}:{normal}".encode("utf-8"), hashlib.sha256).hexdigest()[:8]
         return f"[{kind}#{''.join(_LETTERS[int(char, 16)] for char in digest)}]"
 
@@ -193,14 +201,27 @@ _OWNER_KEYS = ("field", "name", "expression")
 _WHOLE = {"user": "user", "userName": "user", "computer": "computer", "host": "computer"}
 
 
-def mask(node, flt, name=None):
-    """The answer `node` with every string of data filtered; the structure and the technical keys stay."""
+def mask(node, flt, name=None, data=False):
+    """The answer `node` with every value of data filtered; the structure and the technical keys stay.
+
+    `name` is the field the node belongs to; `data` says the node is the value of a field (under
+    `value`, `actual`...), so a number there is filtered too. Elsewhere a number is a count, a line or a
+    time, and only the name of its field can make it personal data."""
     if not flt.active:
         return node
     if isinstance(node, str):
         return flt.named(name, node)
     if isinstance(node, list):
-        return [mask(item, flt, name) for item in node]
+        return [mask(item, flt, name, data) for item in node]
+    if isinstance(node, (int, float)) and not isinstance(node, bool):
+        kind = flt.kind_of(name)
+        if kind:
+            return flt._token(kind, str(node))
+        if data:
+            text = str(node)
+            masked = flt.text(text)
+            return node if masked == text else masked
+        return node
     if not isinstance(node, dict):
         return node
     owner = next((node[key] for key in _OWNER_KEYS if isinstance(node.get(key), str)), None)
@@ -213,13 +234,15 @@ def mask(node, flt, name=None):
             result[key] = flt._token(_WHOLE[key], value)
         elif key == "rows" and columns is not None and isinstance(value, list):
             names = [column.get("name") if isinstance(column, dict) else None for column in columns]
-            result[key] = [[mask(cell, flt, names[index] if index < len(names) else None)
+            result[key] = [[mask(cell, flt, names[index] if index < len(names) else None, True)
                             for index, cell in enumerate(row)] if isinstance(row, list) else mask(row, flt)
                            for row in value]
+        elif key in _VALUE_KEYS and owner in _WHOLE and isinstance(value, str) and value:
+            result[key] = flt._token(_WHOLE[owner], value)
         elif key in _VALUE_KEYS:
-            result[key] = mask(value, flt, owner)
+            result[key] = mask(value, flt, owner, True)
         else:
-            result[key] = mask(value, flt, key if isinstance(value, str) else None)
+            result[key] = mask(value, flt, key)
     return result
 
 
@@ -241,11 +264,27 @@ def withhold_screenshots(node):
 
 
 def mask_files(paths, flt):
-    """Filter text files written by another program (the reports of YAXUnit) by the shape of the data."""
+    """Filter text files written by another program (the reports of YAXUnit).
+
+    A JSON file is read and filtered value by value: the shape rules over its raw text would take a
+    number of its structure, a time in milliseconds, for a card and break the file. Other text is
+    filtered by the shape of the data."""
     for path in paths:
         path = Path(path)
-        if flt.active and path.is_file():
-            text = path.read_text(encoding="utf-8-sig", errors="replace")
-            masked = flt.text(text)
-            if masked != text:
-                path.write_text(masked, encoding="utf-8", newline="")
+        if not flt.active or not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8-sig", errors="replace")
+        if path.suffix.lower() == ".json":
+            try:
+                data = json.loads(text)
+            except ValueError:
+                data = None
+            if data is not None:
+                masked_data = mask(data, flt)
+                if masked_data != data:
+                    path.write_text(json.dumps(masked_data, ensure_ascii=False, indent=1), encoding="utf-8",
+                                    newline="")
+                continue
+        masked = flt.text(text)
+        if masked != text:
+            path.write_text(masked, encoding="utf-8", newline="")

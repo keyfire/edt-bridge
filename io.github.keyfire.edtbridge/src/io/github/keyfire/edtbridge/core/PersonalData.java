@@ -97,6 +97,9 @@ public final class PersonalData {
     public static final Map<String, String> WHOLE = Map.of(
             "user", "user", "userName", "user", "computer", "computer", "host", "computer");
 
+    /** The salt of a process without EDT_BRIDGE_PII_SALT: its pseudonyms hold until it exits. */
+    private static final String PROCESS_SALT = randomSalt();
+
     private final Mode mode;
     private final byte[] salt;
     private final List<Rule> values;
@@ -105,7 +108,7 @@ public final class PersonalData {
 
     public PersonalData(Mode mode, String salt, List<Rule> extraValues, List<Rule> extraNames) {
         this.mode = mode;
-        String key = salt == null || salt.isBlank() ? randomSalt() : salt;
+        String key = salt == null || salt.isBlank() ? PROCESS_SALT : salt;
         this.salt = key.getBytes(StandardCharsets.UTF_8);
         this.values = new ArrayList<>(VALUES);
         this.values.addAll(extraValues);
@@ -203,7 +206,15 @@ public final class PersonalData {
                 normal = "7" + normal.substring(1);
             }
         } else {
-            normal = String.join(" ", value.toLowerCase(Locale.ROOT).strip().split("(?U)\\s+"));
+            // Lower case and any Unicode white space folded, as in the wrapper: strip() keeps a
+            // no-break space, and a leading one would leave an empty first word.
+            List<String> words = new ArrayList<>();
+            for (String word : value.toLowerCase(Locale.ROOT).split("(?U)\\s+")) {
+                if (!word.isEmpty()) {
+                    words.add(word);
+                }
+            }
+            normal = String.join(" ", words);
         }
         String hex = HexFormat.of().formatHex(hmac(kind + ":" + normal)).substring(0, 8);
         StringBuilder letters = new StringBuilder();
@@ -275,6 +286,9 @@ public final class PersonalData {
 
     /** A stamp YYYYMMDDhh or YYYYMMDDhhmm: a date that looks like an INN is not one. */
     static boolean dateLike(int[] d) {
+        if (d.length != 10 && d.length != 12) {
+            return false;
+        }
         int year = d[0] * 1000 + d[1] * 100 + d[2] * 10 + d[3];
         int month = d[4] * 10 + d[5];
         int day = d[6] * 10 + d[7];
@@ -284,6 +298,9 @@ public final class PersonalData {
     }
 
     static boolean snils(int[] d) {
+        if (d.length != 11) {
+            return false;
+        }
         int total = 0;
         for (int i = 0; i < 9; i++) {
             total += d[i] * (9 - i);

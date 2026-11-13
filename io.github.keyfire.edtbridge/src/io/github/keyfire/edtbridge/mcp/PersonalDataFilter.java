@@ -46,7 +46,8 @@ import io.github.keyfire.edtbridge.core.PersonalData;
  */
 final class PersonalDataFilter {
 
-    static final Set<String> TOOLS = Set.of("edt_debug_inspect", "edt_evaluate", "edt_infobase_sessions");
+    static final Set<String> TOOLS = Set.of("edt_debug_inspect", "edt_evaluate", "edt_infobase_sessions",
+            "edt_infobase_maintenance", "edt_designer_agent");
 
     private PersonalDataFilter() {
     }
@@ -135,19 +136,42 @@ final class PersonalDataFilter {
         }
     }
 
-    /** The node with every string of data filtered; the structure and the technical keys stay. */
     static JsonElement mask(JsonElement node, PersonalData filter, String name) {
+        return mask(node, filter, name, false);
+    }
+
+    /**
+     * The node with every value of data filtered; the structure and the technical keys stay. {@code name}
+     * is the field the node belongs to; {@code data} says the node is the value of a field, so a number
+     * there is filtered too. Elsewhere a number is a count, a line or a time, and only the name of its
+     * field can make it personal data.
+     */
+    static JsonElement mask(JsonElement node, PersonalData filter, String name, boolean data) {
         if (node == null || node.isJsonNull()) {
             return node;
         }
         if (node.isJsonPrimitive()) {
             JsonPrimitive primitive = node.getAsJsonPrimitive();
-            return primitive.isString() ? new JsonPrimitive(filter.named(name, primitive.getAsString())) : primitive;
+            if (primitive.isString()) {
+                return new JsonPrimitive(filter.named(name, primitive.getAsString()));
+            }
+            if (primitive.isNumber()) {
+                String text = primitive.getAsString();
+                String kind = filter.kindOf(name);
+                if (kind != null) {
+                    return new JsonPrimitive(filter.token(kind, text));
+                }
+                if (data) {
+                    String masked = filter.text(text);
+                    return masked.equals(text) ? primitive : new JsonPrimitive(masked);
+                }
+            }
+            return primitive;
         }
         if (node.isJsonArray()) {
             JsonArray out = new JsonArray();
             for (JsonElement item : node.getAsJsonArray()) {
-                out.add(mask(item, filter, name));
+                out.add(mask(item, filter, name, data));
             }
             return out;
         }
@@ -180,15 +204,18 @@ final class PersonalDataFilter {
                     JsonArray cells = new JsonArray();
                     JsonArray source = row.getAsJsonArray();
                     for (int i = 0; i < source.size(); i++) {
-                        cells.add(mask(source.get(i), filter, columnName(columns, i)));
+                        cells.add(mask(source.get(i), filter, columnName(columns, i), true));
                     }
                     rows.add(cells);
                 }
                 out.add(key, rows);
+            } else if (PersonalData.VALUE_KEYS.contains(key) && owner != null && PersonalData.WHOLE.containsKey(owner)
+                    && string && !value.getAsString().isEmpty()) {
+                out.addProperty(key, filter.token(PersonalData.WHOLE.get(owner), value.getAsString()));
             } else if (PersonalData.VALUE_KEYS.contains(key)) {
-                out.add(key, mask(value, filter, owner));
+                out.add(key, mask(value, filter, owner, true));
             } else {
-                out.add(key, mask(value, filter, string ? key : null));
+                out.add(key, mask(value, filter, key, false));
             }
         }
         return out;
