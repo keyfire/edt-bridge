@@ -27,17 +27,17 @@ to the code and the reasoning behind it.
   editor of EDT does and exports the role together with its `Rights.rights`. An unknown right is
   refused with the rights the object has, a right with a data access restriction is never changed,
   and a role or object of the base configuration that the extension has not adopted is refused with
-  a pointer to `edt_adopt_object`.
+  a pointer to `edt_adopt_object`. ([#82](https://github.com/keyfire/edt-bridge/pull/82))
 - `edt_command_interface` and `edt_modify_command_interface` read and change the command interface
   of a subsystem section: which commands it shows, in which group and order, and their visibility
   in common and by role. Reading takes EDT's derived data, so the answer is the section the client
   builds; writing changes `CommandInterface.cmi` and creates one for an adopted subsystem that has
-  none.
+  none. ([#82](https://github.com/keyfire/edt-bridge/pull/82))
 - `edt_test_form` and `test-form` scenarios take a warning window. `expect_warning` on a `click`
   gives the exact text of a `ShowMessageBox` window; the check closes it with OK and goes on, so
   a solution that warns in `BeforeWrite` is still checked on the written values. A window no step
   expected now ends the check with `unexpected_dialog`, its kind, text and buttons, instead of
-  `scenario_error`.
+  `scenario_error`. ([#82](https://github.com/keyfire/edt-bridge/pull/82))
 - `edt_test_form` and `test-form` scenarios read the whole form. `read_form` returns the visible
   fields, form tables and spreadsheet fields with their values, `read_table` returns one of them, and
   `assert_table` now compares a form table too. Reads go to `reads` of the result; an attribute
@@ -74,11 +74,11 @@ to the code and the reasoning behind it.
 - The wrapper and the launch scripts pick the EDT installation by the build it records in
   `configuration/config.ini`. The 1C launcher updates a release line in one directory, so
   `1C_EDT 2026.2` held 2026.2.2 and still lost to `1C_EDT (Lite) 2026.2.0` because its name is
-  shorter.
+  shorter. ([#82](https://github.com/keyfire/edt-bridge/pull/82))
 - An EDT installed by the 1C launcher starts from the wrapper and the launch scripts. Its ini names
   no `-vm`, EDT took java from PATH, and a Java older than it requires stopped the start with a
   modal dialog. The JDK from `JAVA_HOME` or from the JDK components of the 1C installer now goes
-  first on PATH of the EDT process.
+  first on PATH of the EDT process. ([#82](https://github.com/keyfire/edt-bridge/pull/82))
 - `edt_build_extension` builds an extension with a borrowed form in a copy of the infobase named by
   `EDT_BRIDGE_DUMP_INFOBASE`. In an empty infobase ibcmd refused a borrowed form that excludes
   commands such as `Post`: they belong to the form's main attribute, which only the base
