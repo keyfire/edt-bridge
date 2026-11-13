@@ -24,30 +24,35 @@ to the code and the reasoning behind it.
   errors of the event log. A test module that does not compile ends the run with `yaxunit_failed`
   and the compiler's text; an infobase without YAXUnit, an extension the platform refuses and a
   name that differs from the one in the file are refused with the cause.
+  ([#84](https://github.com/keyfire/edt-bridge/pull/84))
 - The report of `test-form` and `edt_test_form` says where the time went. `timings` gives the
   seconds of each stage – the manager infobase, the target metadata, every phase, the cleanup and
   the event log, plus the copy of the test infobase for the tool – and they add up to the whole
   run. Each phase is split into the client start, the test manager, the screenshot and the
   cleanup, and the manager measures its connection, the form lookup and every scenario step itself.
+  ([#84](https://github.com/keyfire/edt-bridge/pull/84))
 - `test-form` and `edt_test_form` prepare the manager infobase once per platform build. The first
   check of a build keeps it in the cache (`~/.cache/edt-bridge/test-manager`, or
   `EDT_BRIDGE_TEST_CACHE`), and later checks copy it instead of running `ibcmd` and the designer
   twice; `managerCache` in the report says whether the run took it from the cache. A damaged entry
   is built again, and `off` turns the cache off.
+  ([#84](https://github.com/keyfire/edt-bridge/pull/84))
 - `test-form` and `edt_test_form` read the main form of an EPF or ERF with
   `ibcmd config export --file` – about a second instead of about ten in the designer. The designer
   still reads a file `ibcmd` cannot, and `targetMetadata.source` says which one did.
+  ([#84](https://github.com/keyfire/edt-bridge/pull/84))
 - `test-form` and `unit-tests` write reports for CI next to `result.json`: `junit.xml` for GitLab
   (`artifacts:reports:junit`) and `allure-results/` for Allure. A form check gives one test per
   phase with its time, a failure for what the solution did and an error for what the environment
   did, and in Allure the steps with their times and the screenshot; the unit tests take both
-  reports from YAXUnit.
+  reports from YAXUnit. ([#84](https://github.com/keyfire/edt-bridge/pull/84))
 - `EDT_BRIDGE_PII` filters personal data out of the answers that carry infobase data:
   `edt_debug_inspect`, `edt_evaluate`, `edt_infobase_sessions`, `edt_test_form` and
   `edt_unit_tests`. E-mails, phones, SNILS and INN with their check digits, card numbers and
   passports are found by their shape, the values of fields such as `ФИО` by the field's name;
   `redact` writes their kind, `pseudonym` a salted HMAC pseudonym that is the same for the same
   value. Checks judge by the real values, screenshots are not kept, module texts are never touched.
+  ([#84](https://github.com/keyfire/edt-bridge/pull/84))
 - A write scope bounds what an agent may change. `EDT_BRIDGE_WRITE_PROJECTS` and
   `EDT_BRIDGE_READ_PROJECTS` name the projects the tools may change and read, and
   `EDT_BRIDGE_OUTPUT_DIR` the directory for the files they write. The bridge checks every call
