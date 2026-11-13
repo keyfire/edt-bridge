@@ -71,6 +71,18 @@ platform's standard forms, such as the buttons of the standard report form, are 
 language, so set it, for example `SystemLanguage=RU`, when a scenario presses such a
 button by its caption.
 
+The manager infobase, an empty infobase with the test driver loaded into it, is the same
+for every check on one platform build. The first check of a build keeps its data file in
+the cache, `~/.cache/edt-bridge/test-manager` (under `$XDG_CACHE_HOME` when it is set),
+and later checks copy it instead of starting `ibcmd` and the designer for it; each check
+still works on its own copy. `EDT_BRIDGE_TEST_CACHE` names another directory, for example
+one filled while a runner image is built, or turns the cache off with `off`. An entry is
+checked against the sha256 in its manifest, and a damaged one is built again; a setup that
+fails on a cached infobase is retried with a new one. The result says what happened in
+`managerCache`: `status` is `hit`, `stored`, `rebuilt` (with `reason`), `storeFailed`
+(with `error`; the check goes on), `miss` (the setup stopped before the new infobase was
+stored; `reason` says why it was built) or `off`.
+
 ## Select a target
 
 Every run requires `--platform-bin`, `--test-infobase`, `--scope`, `--form` and

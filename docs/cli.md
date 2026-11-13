@@ -10,7 +10,7 @@ sidebar:
 
 The `edt-bridge-mcp` wrapper runs as a stdio MCP server for a client. From the command line, you can check bridge status, list tools, and call a tool without starting an agent.
 
-With no command, the wrapper runs as an MCP server. Bridge commands use the same EDT instance. `test-form` starts separate platform sessions.
+With no command, the wrapper runs as an MCP server. Bridge commands use the same EDT instance. `test-form` and `unit-tests` start separate platform sessions.
 
 For tool calls, exit code **1** means the bridge did not start or the arguments were invalid. Exit code **2** means the tool ran and returned an error.
 
@@ -50,6 +50,7 @@ usage: edt-bridge-mcp [options]           (no command: run as an MCP server)
 | `plugins` | list the wrapper's plugins and their tools |
 | `workspace` | pack, restore and compare an EDT workspace |
 | `test-form` | check a form and scenario results in a test infobase |
+| `unit-tests` | run the YAXUnit tests of extensions in a copy of a test infobase |
 | `self-update` | refresh the plugin jar and this wrapper |
 
 Run 'edt-bridge-mcp &lt;command&gt; `--help`' for a command's own options. Connection options apply to the MCP server mode and the bridge commands.
@@ -329,9 +330,39 @@ usage: edt-bridge-mcp test-form [-h] --platform-bin PLATFORM_BIN --test-infobase
 
 Run the check in an isolated Linux environment with `1cv8`, `ibcmd`, `Xvfb`, and `libX11`. Select a disposable file infobase and one target: `--epf`, `--erf`, or `--navigation-link`. For an EPF or ERF with an assigned form, specify its full name. For an ERF with a main data composition schema and no assigned form, use `ExternalReport.<Name>.Form`. A configuration object requires `--scenario`.
 
-A JSON scenario checks actual fields, spreadsheet cells, and fresh message counts. The `reopen` phase opens the same target in a new session to read its saved state. The command writes `result.json` and a screenshot of each phase when the client display is available. Unsafe action protection is configured by the test environment owner; the CLI does not change it.
+A JSON scenario checks actual fields, spreadsheet cells, and fresh message counts. The `reopen` phase opens the same target in a new session to read its saved state. The command writes `result.json`, a screenshot of each phase when the client display is available, and the CI reports `junit.xml` and `allure-results/`. Unsafe action protection is configured by the test environment owner; the CLI does not change it.
 
 In the `--button` profile, success requires `--expect-message`; without it, `command_observed` returns exit code **2**. The time limit covers setup and all phases; process cleanup has a separate short deadline. See the [native form guide](/native-forms) for preparation, the scenario format, and examples.
+
+## `edt-bridge-mcp unit-tests`
+
+Load built extensions into a copy of a file test infobase on isolated Linux and run their YAXUnit tests.
+
+```bash
+usage: edt-bridge-mcp unit-tests [-h] --platform-bin PLATFORM_BIN --test-infobase
+                                 TEST_INFOBASE --extension NAME=PATH [--module MODULE]
+                                 [--test MODULE.TEST[.CONTEXT]] [--user USER]
+                                 --output-dir OUTPUT_DIR [--timeout TIMEOUT] [--version]
+```
+
+**Options**
+
+| Option | Description |
+|---|---|
+| `-h, --help` | show this help message and exit |
+| `--platform-bin PLATFORM_BIN` | platform directory containing the 1cv8 and ibcmd executables |
+| `--test-infobase TEST_INFOBASE` | directory of the file test infobase that has the YAXUNIT extension; the infobase is not changed, the tests run in a copy |
+| `--extension NAME=PATH` | an extension to load into the copy: its name in the project and the path of its .cfe; repeatable |
+| `--module MODULE` | run only the tests of this module; repeatable |
+| `--test MODULE.TEST[.CONTEXT]` | run only this test: Module.Test or Module.Test.Context; repeatable |
+| `--user USER` | test infobase user for ibcmd and the client |
+| `--output-dir OUTPUT_DIR` | new directory for the JSON report, the jUnit report and the YAXUnit log; missing parent directories are created |
+| `--timeout TIMEOUT` | run time limit in seconds, default 300 |
+| `--version` | show the version and exit |
+
+Run the command in the same isolated Linux environment as `test-form`. The test infobase needs YAXUnit loaded beforehand (the `YAXUNIT` extension). The command copies the infobase's `1Cv8.1CD`, loads the `--extension` files into the copy and runs their tests; the infobase itself is not changed. `NAME` is the name the extension has in its project.
+
+The command writes `result.json`, the `junit.xml` and `allure-results/` reports and the `yaxunit.log` log. Success means at least one test ran and none failed; otherwise the exit code is **2**. See the [YAXUnit tests](/native-forms/unit-tests) page for preparing the infobase and the result fields.
 
 ## `edt-bridge-mcp self-update`
 

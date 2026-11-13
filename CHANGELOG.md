@@ -13,6 +13,36 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
+## Unreleased
+
+### Added
+
+- `edt_unit_tests` and `edt-bridge-mcp unit-tests` run the YAXUnit tests of built extensions in a
+  fresh copy of the test infobase. The extensions are loaded into the copy with `ibcmd`, YAXUnit
+  runs their tests, narrowed by module or test, and the answer lists every test with its status,
+  time, message, expected and actual values and the lines of the tested code it failed on, plus the
+  errors of the event log. A test module that does not compile ends the run with `yaxunit_failed`
+  and the compiler's text; an infobase without YAXUnit, an extension the platform refuses and a
+  name that differs from the one in the file are refused with the cause.
+- The report of `test-form` and `edt_test_form` says where the time went. `timings` gives the
+  seconds of each stage – the manager infobase, the target metadata, every phase, the cleanup and
+  the event log, plus the copy of the test infobase for the tool – and they add up to the whole
+  run. Each phase is split into the client start, the test manager, the screenshot and the
+  cleanup, and the manager measures its connection, the form lookup and every scenario step itself.
+- `test-form` and `edt_test_form` prepare the manager infobase once per platform build. The first
+  check of a build keeps it in the cache (`~/.cache/edt-bridge/test-manager`, or
+  `EDT_BRIDGE_TEST_CACHE`), and later checks copy it instead of running `ibcmd` and the designer
+  twice; `managerCache` in the report says whether the run took it from the cache. A damaged entry
+  is built again, and `off` turns the cache off.
+- `test-form` and `edt_test_form` read the main form of an EPF or ERF with
+  `ibcmd config export --file` – about a second instead of about ten in the designer. The designer
+  still reads a file `ibcmd` cannot, and `targetMetadata.source` says which one did.
+- `test-form` and `unit-tests` write reports for CI next to `result.json`: `junit.xml` for GitLab
+  (`artifacts:reports:junit`) and `allure-results/` for Allure. A form check gives one test per
+  phase with its time, a failure for what the solution did and an error for what the environment
+  did, and in Allure the steps with their times and the screenshot; the unit tests take both
+  reports from YAXUnit.
+
 ## <span id="2026-11-13--0430-0440"></span>2026-11-13 – 0.44.0
 
 ### Added

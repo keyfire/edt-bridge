@@ -12,6 +12,9 @@ Procedure OnStart()
     Reader.Close();
 
     Report = New Structure("status,stage", "driver_failed", "connect");
+    // The wrapper turns the marks into the seconds of each part: the connection, the form lookup,
+    // the command or each scenario step.
+    Report.Insert("timingMarks", New Array);
     If Not Request.Property("steps") Then
         Report.Insert("clickAttempted", False);
         Report.Insert("clickReturned", False);
@@ -22,6 +25,7 @@ Procedure OnStart()
         Report.Insert("error", ОбработкаОшибок.ПодробноеПредставлениеОшибки(ИнформацияОбОшибке()));
     EndTry;
 
+    MarkTime(Report, "end");
     SaveReport(Report, Request.result);
 EndProcedure
 
@@ -30,9 +34,11 @@ EndProcedure
 #Region Private
 
 Procedure RunCheck(Request, Report)
+    MarkTime(Report, "connect");
     Application = New TestedApplication("127.0.0.1", Request.port);
     Application.Connect();
 
+    MarkTime(Report, "formLookup");
     Report.stage = "form_lookup";
     FormType = Type("TestedForm");
     If IsBlankString(Request.formTitle) Then
@@ -76,6 +82,7 @@ Procedure RunCheck(Request, Report)
         Return;
     EndIf;
 
+    MarkTime(Report, "command");
     Report.stage = "button_lookup";
     Buttons = Target.FindObjects(Type("TestedFormButton"), Request.button);
     If Buttons.Count() = 0 Then
@@ -167,6 +174,7 @@ Procedure RunScenario(Application, Target, MessageWindow, Request, Report)
         Report.status = "scenario_error";
         Report.stage = Step.action;
         Report.Insert("step", Observations.Count() + 1);
+        MarkTime(Report, "step", Report.step, Step.action);
         SaveReport(Report, Request.progress);
         Observation = New Structure("action", Step.action);
         If Step.action = "click" Then
@@ -779,6 +787,16 @@ Function VisibleMessages(Window, Report, PresenceKey)
         Raise;
     EndTry;
 EndFunction
+
+// A point in time the wrapper measures the parts of the check between; a step mark names the step.
+Procedure MarkTime(Report, Name, StepNumber = Undefined, Action = Undefined)
+    Mark = New Structure("name,at", Name, CurrentUniversalDateInMilliseconds());
+    If StepNumber <> Undefined Then
+        Mark.Insert("step", StepNumber);
+        Mark.Insert("action", Action);
+    EndIf;
+    Report.timingMarks.Add(Mark);
+EndProcedure
 
 Procedure SaveReport(Report, Destination)
     Writer = New JSONWriter;

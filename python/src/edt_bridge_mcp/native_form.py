@@ -22,7 +22,7 @@ import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from . import event_log, i18n, native_report, native_scenario
+from . import event_log, i18n, native_cache, native_report, native_reports, native_scenario
 
 
 _SCOPES = ("empty", "fixture", "application")
@@ -42,12 +42,59 @@ _UNSAFE_SETTING = "DisableUnsafeActionProtection"
 _LANGUAGE_SETTING = "SystemLanguage"
 #: The directory prefix edt_test_form copies its test infobase under.
 _RUN_COPY_PREFIX = "edt-bridge-form-run-"
+#: The test driver the manager infobase runs: its module is loaded into the manager configuration.
+_DRIVER = Path(__file__).with_name("native_form_manager.bsl")
 
 
 class _CheckError(Exception):
     def __init__(self, status: str, message: str):
         super().__init__(message)
         self.status = status
+
+
+class _Timeline:
+    """The seconds of each stage of a run. The stages follow each other on one monotonic clock, so they
+    always add up to the total; a stage entered again adds to its seconds, and a failure leaves its time
+    with the stage that was running."""
+
+    def __init__(self):
+        self._started = self._mark = time.monotonic()
+        self._stage = None
+        self._seconds = {}
+
+    def enter(self, stage):
+        now = time.monotonic()
+        if self._stage is not None:
+            self._seconds[self._stage] = self._seconds.get(self._stage, 0.0) + now - self._mark
+        self._stage, self._mark = stage, now
+
+    def close(self):
+        """(total, seconds of each stage) up to now; the running stage ends here."""
+        self.enter(None)
+        return round(self._mark - self._started, 2), {stage: round(seconds, 2) for stage, seconds in self._seconds.items()}
+
+
+def _driver_timings(marks):
+    """The seconds between the marks the test manager driver records: the connection, the form lookup,
+    the command of a button check or each scenario step. A mark without a following one has no end yet
+    (a manager that did not finish) and is left out."""
+    if not isinstance(marks, list):
+        return None
+    marks = [mark for mark in marks if isinstance(mark, dict) and isinstance(mark.get("name"), str)
+             and isinstance(mark.get("at"), (int, float)) and not isinstance(mark.get("at"), bool)]
+    if len(marks) < 2:
+        return None
+    timings, steps = {}, []
+    for mark, following in zip(marks, marks[1:]):
+        seconds = (following["at"] - mark["at"]) / 1000
+        if mark["name"] == "step":
+            steps.append({"step": mark.get("step"), "action": mark.get("action"), "seconds": round(seconds, 2)})
+        elif mark["name"] != "end":
+            timings[mark["name"]] = round(timings.get(mark["name"], 0) + seconds, 2)
+    if steps:
+        timings["steps"] = steps
+    timings["total"] = round((marks[-1]["at"] - marks[0]["at"]) / 1000, 2)
+    return timings
 
 
 def _platform_failure_status(interaction_error, logs, *, connecting=False):
@@ -292,6 +339,9 @@ def _capture(stack, env, root, output):
 def _run_session(args, base, external, output, root, manager_base, manager_env, enterprise,
                  xvfb, deadline, steps, launch_external=None):
     report = {"ok": False, "stage": "client_startup"}
+    timeline = _Timeline()
+    timeline.enter("clientStart")
+    marks = None
     root.mkdir()
     progress = root / "manager-progress.json"
     client_log = root / "client-platform.log"
@@ -312,6 +362,7 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
                             client_env, client_process_log)
             _wait_for_client(client, port, deadline)
 
+            timeline.enter("manager")
             report["stage"] = "form_interaction"
             request = root / "request.json"
             result = root / "manager-result.json"
@@ -342,6 +393,7 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
                 data = json.loads(result.read_text(encoding="utf-8-sig"))
                 if not isinstance(data, dict) or not isinstance(data.get("status"), str):
                     raise _CheckError("driver_failed", "The test manager returned an invalid result.")
+                marks = data.pop("timingMarks", None)
                 report.update(interaction=data, status=data["status"])
                 if isinstance(data.get("observedFields"), dict):
                     # A selector that missed: the fields of the open form, where the caller looks first.
@@ -380,13 +432,20 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
             _record_error(report, error, "driver_failed")
             if progress.is_file():
                 with contextlib.suppress(OSError, ValueError):
-                    report["lastInteraction"] = json.loads(progress.read_text(encoding="utf-8-sig"))
+                    last = json.loads(progress.read_text(encoding="utf-8-sig"))
+                    if isinstance(last, dict):
+                        # A manager that never finished: its progress has the marks up to the running step.
+                        progress_marks = last.pop("timingMarks", None)
+                        marks = progress_marks if marks is None else marks
+                    report["lastInteraction"] = last
         finally:
             if client is not None:
+                timeline.enter("screenshot")
                 try:
                     report.update(_capture(stack, client_env, root, output))
                 except OSError as error:
                     report["screenshotError"] = str(error)
+            timeline.enter("cleanup")
             for key, process in (("clientExitCode", client), ("managerExitCode", manager)):
                 if process is not None and process.poll() is not None:
                     report[key] = process.poll()
@@ -399,6 +458,14 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
                     report[key] = detail
             if report["ok"] and "screenshot" not in report:
                 report.update(ok=False, status="screenshot_failed")
+    total, stages = timeline.close()
+    timings = {"seconds": total, **stages}
+    driver = _driver_timings(marks)
+    if driver:
+        # The manager stage outside the driver: the start of its platform and earlier connection attempts.
+        timings["managerStartup"] = round(max(0.0, stages.get("manager", 0.0) - driver["total"]), 2)
+        timings["driver"] = driver
+    report["timings"] = timings
     report["cleanupComplete"] = True
     return report
 
@@ -561,29 +628,59 @@ def _require_setup_exit(process, deadline, message, root):
         raise _CheckError("setup_failed", f"{error} {detail or 'The platform wrote nothing about the cause.'}") from None
 
 
-def _prepare_manager(args, external, ibcmd, client_exe, stack, manager_env, root, deadline, report):
+def _format_version(driver):
+    """The format version of the exported manager configuration, which the report launcher is written in."""
+    try:
+        return ET.parse(driver / "Configuration.xml").getroot().attrib.get("version")
+    except (OSError, ET.ParseError):
+        return None
+
+
+def _prepare_manager(args, external, ibcmd, client_exe, stack, manager_env, root, deadline, report, *,
+                     refresh=None):
     """Create the manager infobase in root, load the test driver into it and, for a report, build its
-    launcher. Returns the manager infobase and the external object the client opens."""
+    launcher. Returns the manager infobase and the external object the client opens.
+
+    The manager infobase is the same for every run of a platform build, so it comes from the cache when
+    the cache has it (native_cache); the target metadata and the report launcher belong to the target.
+    `refresh` names why a cached infobase must not be used: it is built again and replaces the entry."""
+    timeline = _timeline(args)
+    timeline.enter("managerInfobase")
     report["stage"] = "manager_setup"
     manager_base = root / "manager-infobase"
     designer_log = root / "designer.log"
     process_log = root / "designer-process.log"
-    create = _spawn(stack, [str(ibcmd), "infobase", "--data=" + str(root / "ibcmd-data"),
-                            "--db-path=" + str(manager_base), "create"],
-                    manager_env, root / "ibcmd.log")
-    _require_setup_exit(create, deadline, "Could not create the manager infobase", root)
-    if not (manager_base / "1Cv8.1CD").is_file():
-        raise _CheckError("setup_failed", "The platform did not create the manager infobase.")
+    cache, why = native_cache.entry(client_exe, _DRIVER)
+    manifest = None
+    if cache is None:
+        cache_report = {"status": "off", "reason": why}
+    else:
+        cache_report = {"key": cache.path.name, "path": str(cache.path)}
+        if refresh is None:
+            try:
+                manifest, why = cache.take(manager_base)
+            except OSError as error:
+                manifest, why = None, f"unreadable: {error}"
+    report["managerCache"] = cache_report
+    if manifest is not None:
+        cache_report["status"] = "hit"
+    else:
+        if cache is not None:
+            # Until the new infobase is stored: a setup that fails before then still says why it built one.
+            cache_report.update(status="miss", reason=refresh or why)
+        create = _spawn(stack, [str(ibcmd), "infobase", "--data=" + str(root / "ibcmd-data"),
+                                "--db-path=" + str(manager_base), "create"],
+                        manager_env, root / "ibcmd.log")
+        _require_setup_exit(create, deadline, "Could not create the manager infobase", root)
+        if not (manager_base / "1Cv8.1CD").is_file():
+            raise _CheckError("setup_failed", "The platform did not create the manager infobase.")
 
     designer = [str(client_exe), "DESIGNER", "/F" + str(manager_base), *_START_FLAGS]
     standard_report_form = False
     if external:
+        timeline.enter("targetMetadata")
         report["stage"] = "target_metadata"
-        metadata = root / "target.xml"
-        export = _spawn(stack, [*designer, "/DumpExternalDataProcessorOrReportToFiles",
-                                str(metadata), str(external), "/Out", str(designer_log)],
-                        manager_env, process_log)
-        _require_setup_exit(export, deadline, "Could not read the selected external object metadata", root)
+        metadata = _export_target(stack, ibcmd, designer, root, manager_base, external, manager_env, deadline, report)
         form_key = _form_key(args.form)
         kind, object_name, form_name = form_key
         try:
@@ -592,7 +689,7 @@ def _prepare_manager(args, external, ibcmd, client_exe, stack, manager_env, root
         except PermissionError:
             raise
         except (OSError, ET.ParseError) as error:
-            raise _CheckError("metadata_unavailable", "Designer did not export readable external object metadata.") from error
+            raise _CheckError("metadata_unavailable", "The platform did not export readable external object metadata.") from error
         if form_name is None and properties is not None and not default:
             standard_report_form = (
                 properties.findtext("{*}Name", "").casefold() == object_name
@@ -603,27 +700,21 @@ def _prepare_manager(args, external, ibcmd, client_exe, stack, manager_env, root
             report["defaultForm"] = default
             raise _CheckError("form_not_default", "Select the main managed form declared by this external object.")
 
-    report["stage"] = "manager_setup"
-    driver = root / "driver"
-    driver.mkdir()
-    dump = _spawn(stack, [*designer, "/DumpConfigToFiles", str(driver), "-Format", "Hierarchical",
-                          "/Out", str(designer_log)], manager_env, process_log)
-    _require_setup_exit(dump, deadline, "Could not export the empty manager configuration", root)
-    if not (driver / "Configuration.xml").is_file():
-        raise _CheckError("setup_failed", "Designer did not export the manager configuration.")
-    module = driver / "Ext/ManagedApplicationModule.bsl"
-    module.parent.mkdir(exist_ok=True)
-    shutil.copyfile(Path(__file__).with_name("native_form_manager.bsl"), module)
-    for command in (["/LoadConfigFromFiles", str(driver)], ["/UpdateDBCfg"]):
-        load = _spawn(stack, [*designer, *command, "/Out", str(designer_log)], manager_env, process_log)
-        _require_setup_exit(load, deadline, "Could not prepare the temporary manager configuration", root)
+    if manifest is None:
+        format_version = _build_manager(stack, designer, root, manager_env, deadline, timeline, report)
+        if cache is not None:
+            _store_manager(cache, manager_base, format_version, cache_report, refresh or why)
+    else:
+        format_version = manifest["formatVersion"]
 
     launch_external = external
     if args.erf:
+        timeline.enter("reportLauncher")
         report["stage"] = "report_launcher_setup"
         launcher = root / "report-loader"
         launcher.mkdir()
-        format_version = ET.parse(driver / "Configuration.xml").getroot().attrib["version"]
+        if not format_version:
+            raise _CheckError("setup_failed", "The exported manager configuration names no format version.")
         launcher_xml = native_report.write_launcher(
             launcher, external, "" if standard_report_form else args.form.rsplit(".", 1)[1], format_version)
         launch_external = root / "report-loader.epf"
@@ -636,7 +727,90 @@ def _prepare_manager(args, external, ibcmd, client_exe, stack, manager_env, root
     return manager_base, launch_external
 
 
+def _export_target(stack, ibcmd, designer, root, manager_base, external, manager_env, deadline, report):
+    """Export the metadata of the external object; returns the main XML file.
+
+    ibcmd exports an .epf or .erf the same way the designer does (<path>.xml next to a directory) in
+    about a second, the designer takes about ten: 0.9 s against 11.1 s with 8.5.1.1529 on 13.11.2026.
+    The designer stays the way when ibcmd does not manage."""
+    exported = root / "target-ibcmd"
+    export = _spawn(stack, [str(ibcmd), "config", "export", "--data=" + str(root / "ibcmd-data"),
+                            "--db-path=" + str(manager_base), "--file=" + str(external), str(exported)],
+                    manager_env, root / "ibcmd.log")
+    try:
+        _require_exit(export, deadline, "ibcmd could not export the external object")
+        if not exported.with_suffix(".xml").is_file():
+            raise _CheckError("setup_failed", "ibcmd exported no metadata file")
+    except _CheckError as error:
+        if error.status != "setup_failed":
+            raise
+        detail = " ".join(_log(root / "ibcmd.log").split())[:800]
+        ibcmd_error = f"{error} {detail}".strip()
+    else:
+        report["targetMetadata"] = {"source": "ibcmd"}
+        return exported.with_suffix(".xml")
+    metadata = root / "target.xml"
+    export = _spawn(stack, [*designer, "/DumpExternalDataProcessorOrReportToFiles",
+                            str(metadata), str(external), "/Out", str(root / "designer.log")],
+                    manager_env, root / "designer-process.log")
+    report["targetMetadata"] = {"source": "designer", "ibcmdError": ibcmd_error}
+    _require_setup_exit(export, deadline, "Could not read the selected external object metadata", root)
+    return metadata
+
+
+def _build_manager(stack, designer, root, manager_env, deadline, timeline, report):
+    """Load the test driver into the new manager infobase; returns the format version of its configuration."""
+    timeline.enter("managerInfobase")
+    report["stage"] = "manager_setup"
+    designer_log = root / "designer.log"
+    process_log = root / "designer-process.log"
+    driver = root / "driver"
+    driver.mkdir()
+    dump = _spawn(stack, [*designer, "/DumpConfigToFiles", str(driver), "-Format", "Hierarchical",
+                          "/Out", str(designer_log)], manager_env, process_log)
+    _require_setup_exit(dump, deadline, "Could not export the empty manager configuration", root)
+    if not (driver / "Configuration.xml").is_file():
+        raise _CheckError("setup_failed", "Designer did not export the manager configuration.")
+    module = driver / "Ext/ManagedApplicationModule.bsl"
+    module.parent.mkdir(exist_ok=True)
+    shutil.copyfile(_DRIVER, module)
+    for command in (["/LoadConfigFromFiles", str(driver)], ["/UpdateDBCfg"]):
+        load = _spawn(stack, [*designer, *command, "/Out", str(designer_log)], manager_env, process_log)
+        _require_setup_exit(load, deadline, "Could not prepare the temporary manager configuration", root)
+    return _format_version(driver)
+
+
+def _store_manager(cache, manager_base, format_version, cache_report, why):
+    """Keep the prepared manager infobase for the next checks. A cache that cannot be written costs the
+    next check a setup, not this one its result. `why` is why the entry was not used: missing on the
+    first check of a build, otherwise what was wrong with it."""
+    rebuilt = bool(why) and why != "missing"
+    try:
+        if not format_version:
+            raise OSError("the exported manager configuration names no format version")
+        if rebuilt:
+            cache.discard()
+        cache.put(manager_base, format_version)
+    except OSError as error:
+        cache_report.update(status="storeFailed", error=str(error))
+        return
+    if rebuilt:
+        cache_report.update(status="rebuilt", reason=why)
+    else:
+        cache_report.pop("reason", None)
+        cache_report["status"] = "stored"
+
+
+def _timeline(args):
+    """The timeline of the run: run() starts it, a check called on its own gets one of its own."""
+    timeline = getattr(args, "_timeline", None)
+    if timeline is None:
+        timeline = args._timeline = _Timeline()
+    return timeline
+
+
 def _native_check(args, base, external, output, report):
+    timeline = _timeline(args)
     platform = args.platform_bin.resolve()
     client_exe, ibcmd = (platform / name for name in ("1cv8", "ibcmd"))
     xvfb = shutil.which("Xvfb")
@@ -651,22 +825,31 @@ def _native_check(args, base, external, output, report):
         attempt_root = root
         try:
             report["stage"] = "manager_setup"
+            timeline.enter("managerDisplay")
             manager_env = _display(stack, xvfb, root / "manager-display", deadline)
+            refresh = None
             for attempt in (1, 2):
                 attempt_root = root / f"setup-{attempt}"
                 attempt_root.mkdir()
+                attempt_started = time.monotonic()
                 try:
                     manager_base, launch_external = _prepare_manager(
-                        args, external, ibcmd, client_exe, stack, manager_env, attempt_root, deadline, report)
+                        args, external, ibcmd, client_exe, stack, manager_env, attempt_root, deadline, report,
+                        refresh=refresh)
                     break
                 except _CheckError as error:
                     logs = _setup_logs(attempt_root)
                     refused = _platform_failure_status("", " ".join(logs.values()))
                     if attempt == 2 or error.status != "setup_failed" or refused:
                         raise
+                    if report.get("managerCache", {}).get("status") == "hit":
+                        # The cached infobase may be what failed: the retry builds it again and replaces it.
+                        refresh = f"the setup failed on the cached infobase: {error}"
                     # The manager infobase is disposable and the test infobase is not touched yet, so a
                     # designer that failed while preparing it gets one more try in a clean directory.
-                    report.setdefault("setupRetries", []).append(dict(stage=report["stage"], error=str(error), **logs))
+                    report.setdefault("setupRetries", []).append(dict(
+                        stage=report["stage"], error=str(error),
+                        seconds=round(time.monotonic() - attempt_started, 2), **logs))
 
             enterprise = [str(client_exe), "ENTERPRISE", "/RunModeManagedApplication", *_START_FLAGS]
             scenario = getattr(args, "_scenario", None)
@@ -676,6 +859,7 @@ def _native_check(args, base, external, output, report):
             if scenario:
                 report["phases"] = []
             previous_keys = set()
+            timeline.enter("phases")
             for name, steps in phases:
                 for key in previous_keys:
                     report.pop(key, None)
@@ -685,6 +869,10 @@ def _native_check(args, base, external, output, report):
                     phase_output.mkdir()
                 result = _run_session(args, base, external, phase_output, root / name, manager_base,
                                       manager_env, enterprise, xvfb, deadline, steps, launch_external)
+                # The phase timings go to the timings of the run, not over the fields of the report.
+                phase_timings = result.pop("timings", None)
+                if isinstance(phase_timings, dict):
+                    report.setdefault("timings", {"phases": []})["phases"].append(dict(name=name, **phase_timings))
                 latest = {key: value for key, value in result.items() if key != "cleanupComplete"}
                 report.update(latest)
                 previous_keys = set(latest)
@@ -703,6 +891,8 @@ def _native_check(args, base, external, output, report):
                 failure = _platform_failure_status(report.get("interaction", {}).get("error", ""), platform_logs)
                 if failure:
                     report["status"] = failure
+            # Stopping the processes of the run and removing its directory.
+            timeline.enter("cleanup")
     report["cleanupComplete"] = True
 
 
@@ -726,6 +916,8 @@ def _cancel_check(_signal, _frame):
 
 
 def run(args):
+    timeline = args._timeline = _Timeline()
+    timeline.enter("preparation")
     report = {"ok": False, "scope": args.scope, "scopeSource": "caller", "stage": "validation"}
     output = None
     try:
@@ -760,12 +952,21 @@ def run(args):
                 signal.signal(signal.SIGTERM, previous)
             # Read after every session is stopped: the platform writes the log as the session runs and
             # finishes it on exit, and the error of a server call is only complete there.
+            timeline.enter("eventLog")
             report["eventLog"] = _read_event_log(base, started)
     except (_CheckError, OSError, native_scenario.ScenarioError) as error:
         _record_error(report, error, "io_error")
     except KeyboardInterrupt:
         report.update(ok=False, status="cancelled", error="The native form check was cancelled.")
+    total, stages = timeline.close()
+    report["timings"] = {"totalSeconds": total, "stages": stages,
+                         "phases": report.get("timings", {}).get("phases", [])}
     if output is not None:
+        try:
+            # For CI: GitLab reads the JUnit file, Allure the results directory.
+            report["reports"] = native_reports.write_form_reports(report, output)
+        except (OSError, ValueError) as error:
+            report["reportsError"] = str(error)
         try:
             (output / "result.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n",
                                                 encoding="utf-8", newline="")

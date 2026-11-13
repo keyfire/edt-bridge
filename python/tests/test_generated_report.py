@@ -52,7 +52,17 @@ def test_report_preflight_requires_declared_or_generated_main_form(
     report_launches = []
 
     def spawn(_stack, argv, _env, _log):
-        if Path(argv[0]).name == "ibcmd":
+        if Path(argv[0]).name == "ibcmd" and "export" in argv:
+            # ibcmd exports the target the way the designer does: <path>.xml next to a directory.
+            Path(argv[-1] + ".xml").write_text(
+                "<MetaDataObject>"
+                "<ExternalReport><Properties><Name>Neutral</Name>"
+                f"<DefaultForm>{default}</DefaultForm>"
+                f"<MainDataCompositionSchema>{schema}</MainDataCompositionSchema>"
+                "</Properties></ExternalReport></MetaDataObject>",
+                encoding="utf-8",
+            )
+        elif Path(argv[0]).name == "ibcmd":
             destination = next(x for x in argv if x.startswith("--db-path="))
             manager_base = Path(destination.split("=", 1)[1])
             manager_base.mkdir()

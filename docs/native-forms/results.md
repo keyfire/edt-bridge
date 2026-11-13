@@ -44,14 +44,62 @@ When the manager infobase cannot be prepared, `setup_failed` names the stage and
 the platform wrote: the designer's log (`designerLog`), the output of the designer process
 (`designerProcessLog`) and the log of `ibcmd` (`setupLog`). The manager infobase is disposable,
 so a failed setup is tried once more in a clean directory before the check gives up;
-`setupRetries` records the stage and the error of the failed attempt. A refused license or
-access is not retried.
+`setupRetries` records the stage, the error and the `seconds` of the failed attempt. A refused
+license or access is not retried.
+
+`timings` says where the time of the run went. `totalSeconds` is the whole run and `stages` its
+parts in seconds, which add up to it: `preparation` (the input and the client environment),
+`managerDisplay`, `managerInfobase` (creating the manager infobase and loading the test driver into
+it, the same for every run of a platform build), `targetMetadata` and `reportLauncher` (what the
+target needs), `phases`, `cleanup` (stopping the processes and removing the temporary directory)
+and `eventLog`. `edt_test_form` adds `infobaseCopy`, the copy of the test infobase. Each entry of
+`timings.phases` has the phase `name`, its `seconds` and their parts: `clientStart`, `manager` (from
+the start of the test manager to its result, earlier connection attempts included), `screenshot`
+and `cleanup`. `driver` holds what the test manager measured itself: `connect`, `formLookup`, the
+`command` of a button check or `steps` with the `seconds` of each scenario step, and `total`;
+`managerStartup` is the rest of `manager`, the start of the manager's platform. A step that was
+still running when the check stopped has no time of its own. With a `managerCache` hit,
+`managerInfobase` is only the copy of the cached manager infobase.
 
 When a step's `field` matches no field or several, the result carries `observedFields`:
 the fields and form tables the test client sees on the form, each with `name`, `title`,
 `kind`, `visible` and `enabled`, the visible ones first, up to 200, and `total`. Fields
 that the form creates as it opens, such as the quick settings of a standard report form,
 are named nowhere else.
+
+The metadata of the selected EPF or ERF (its main form, name and main data composition
+schema) is read by `ibcmd config export --file`, which takes about a second where the designer
+takes about ten. When `ibcmd` cannot read the file, the designer reads it as before;
+`targetMetadata.source` says which one did, with `ibcmdError` when it was the designer.
+
+## Reports for CI
+
+Next to `result.json` the command writes `junit.xml`, a JUnit XML report that GitLab shows in a
+merge request (`artifacts:reports:junit`), and `allure-results/`, the results Allure builds its
+report from. Each phase is a test: `steps` and `reopen` of a scenario, or `click <button>` of a
+button check; a check that stopped before its first phase is one test named `setup`. A phase whose
+solution did not behave (`assertion_failed`, `scenario_error`, `unexpected_dialog` and the like) is
+a JUnit `failure` and an Allure `failed` test; a phase the check could not finish (`setup_failed`,
+`timeout`, `license_unavailable` and the like) is an `error` and `broken`; a phase that was not
+reached is `skipped`. The time of a test is the time of its phase from `timings`, and the first test
+also carries the setup. In Allure the steps of a test are the setup stages, the client start, the
+start of the test manager, the connection, the form lookup, every scenario step with its expected
+and actual values, and the screenshot, which is attached. `reports` in the result names both paths.
+
+```yaml
+form-check:
+  script:
+    - edt-bridge-mcp test-form --platform-bin /opt/1cv8/x86_64/8.5.1.1529 --test-infobase /srv/test-bases/orders
+      --scope fixture --epf build/Orders.epf --form ExternalDataProcessor.Orders.Form.Form
+      --scenario checks/orders.json --output-dir out/orders
+  artifacts:
+    when: always
+    paths: [out/]
+    reports:
+      junit: out/*/junit.xml
+```
+
+`allure generate out/*/allure-results` builds one Allure report of every check.
 
 Other diagnostic statuses, including form-selection and driver errors, are retained
 in the JSON. Exit code 0 means success, 1 means failure during input validation, and 2

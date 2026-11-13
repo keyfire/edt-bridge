@@ -171,11 +171,12 @@ CATALOG = [
 
 @pytest.mark.parametrize("toolset, expected", [
     (None, ["edt_projects", "edt_add_form", "edt_adopt_object", "edt_delete_project",
-            "edt_open_gui", "edt_test_form"]),
+            "edt_open_gui", "edt_test_form", "edt_unit_tests"]),
     ("processor", ["edt_projects", "edt_add_form", "edt_test_form"]),
     ("report", ["edt_projects", "edt_add_form", "edt_test_form"]),
-    ("extension", ["edt_projects", "edt_adopt_object"]),
-    ("extension,processor", ["edt_projects", "edt_add_form", "edt_adopt_object", "edt_test_form"]),
+    ("extension", ["edt_projects", "edt_adopt_object", "edt_unit_tests"]),
+    ("extension,processor", ["edt_projects", "edt_add_form", "edt_adopt_object", "edt_test_form",
+                             "edt_unit_tests"]),
 ])
 def test_the_list_served_while_edt_is_starting_is_narrowed(serve, monkeypatch, toolset, expected):
     srv, sent = serve(toolset)
@@ -188,7 +189,7 @@ def test_a_catalog_without_the_field_is_listed_whole(serve, monkeypatch):
     so nothing is hidden - the wrapper's own tools still follow the selection."""
     srv, sent = serve("extension")
     offline(srv, monkeypatch, [{"name": "edt_projects"}, {"name": "edt_add_form"}])
-    assert listed(srv, sent) == ["edt_projects", "edt_add_form"]
+    assert listed(srv, sent) == ["edt_projects", "edt_add_form", "edt_unit_tests"]
 
 
 def test_a_live_list_of_a_bridge_started_without_the_variable_is_narrowed(serve, monkeypatch):
@@ -321,7 +322,7 @@ def test_a_live_list_without_the_field_is_listed_whole(serve, monkeypatch):
     monkeypatch.setattr(srv.backend, "forward", lambda _payload: {
         "jsonrpc": "2.0", "id": 1, "result": {"tools": [{"name": "edt_projects"},
                                                         {"name": "edt_add_form"}]}})
-    assert listed(srv, sent) == ["edt_projects", "edt_add_form"]
+    assert listed(srv, sent) == ["edt_projects", "edt_add_form", "edt_unit_tests"]
 
 
 # -- plugin tools -------------------------------------------------------------
@@ -330,7 +331,7 @@ def test_a_live_list_without_the_field_is_listed_whole(serve, monkeypatch):
 def test_a_plugin_tool_that_declares_nothing_is_served_under_any_set(serve, monkeypatch):
     srv, sent = serve("extension", [probe()])
     offline(srv, monkeypatch, CATALOG)
-    assert listed(srv, sent) == ["edt_projects", "edt_adopt_object", "edt_probe_echo"]
+    assert listed(srv, sent) == ["edt_projects", "edt_adopt_object", "edt_unit_tests", "edt_probe_echo"]
     sent.clear()
     answer = call(srv, sent, "edt_probe_echo", {"text": "привет"})
     assert json.loads(answer["content"][0]["text"]) == {"echo": {"text": "привет"}}

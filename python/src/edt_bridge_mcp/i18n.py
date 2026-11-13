@@ -103,6 +103,42 @@ MESSAGES = {
         "ru": "предел времени проверки в секундах, по умолчанию 120",
         "en": "check time limit in seconds, default 120",
     },
+    "unit-tests.description": {
+        "ru": "В изолированном Linux загрузить собранные расширения в копию файловой тестовой базы и выполнить их тесты YAXUnit.",
+        "en": "Load built extensions into a copy of a file test infobase on isolated Linux and run their YAXUnit tests.",
+    },
+    "unit-tests.platform-bin": {
+        "ru": "каталог платформы с исполняемыми файлами 1cv8 и ibcmd",
+        "en": "platform directory containing the 1cv8 and ibcmd executables",
+    },
+    "unit-tests.test-infobase": {
+        "ru": "каталог файловой тестовой базы с расширением YAXUNIT; сама база не меняется, тесты идут в ее копии",
+        "en": "directory of the file test infobase that has the YAXUNIT extension; the infobase is not changed, the tests run in a copy",
+    },
+    "unit-tests.extension": {
+        "ru": "расширение для загрузки в копию: имя расширения в проекте и путь к .cfe; можно повторять",
+        "en": "an extension to load into the copy: its name in the project and the path of its .cfe; repeatable",
+    },
+    "unit-tests.module": {
+        "ru": "выполнить только тесты этого модуля; можно повторять",
+        "en": "run only the tests of this module; repeatable",
+    },
+    "unit-tests.test": {
+        "ru": "выполнить только этот тест: Модуль.Тест или Модуль.Тест.Контекст; можно повторять",
+        "en": "run only this test: Module.Test or Module.Test.Context; repeatable",
+    },
+    "unit-tests.user": {
+        "ru": "пользователь тестовой базы для ibcmd и клиента",
+        "en": "test infobase user for ibcmd and the client",
+    },
+    "unit-tests.output-dir": {
+        "ru": "новый каталог для отчета JSON, отчета jUnit и лога YAXUnit; недостающие родительские каталоги создаются",
+        "en": "new directory for the JSON report, the jUnit report and the YAXUnit log; missing parent directories are created",
+    },
+    "unit-tests.timeout": {
+        "ru": "предел времени запуска в секундах, по умолчанию 300",
+        "en": "run time limit in seconds, default 300",
+    },
     "server.usage": {
         "ru": "%(prog)s [опции]                   (без команды: запуск MCP-сервера)\n"
               "       %(prog)s <команда> [опции]",
@@ -130,6 +166,7 @@ MESSAGES = {
               "  plugins             перечислить плагины обвязки и их инструменты\n"
               "  workspace           упаковать, восстановить и сверить рабочую область EDT\n"
               "  test-form           проверить форму и результат сценария в тестовой базе\n"
+              "  unit-tests          выполнить тесты YAXUnit расширений в копии тестовой базы\n"
               "  self-update         обновить jar плагина и саму обвязку\n"
               "\n"
               "Опции команды: edt-bridge-mcp <команда> --help.\n"
@@ -144,6 +181,7 @@ MESSAGES = {
               "  plugins       list the wrapper's plugins and their tools\n"
               "  workspace     pack, restore and compare an EDT workspace\n"
               "  test-form     check a form and scenario results in a test infobase\n"
+              "  unit-tests    run the YAXUnit tests of extensions in a copy of a test infobase\n"
               "  self-update   refresh the plugin jar and this wrapper\n"
               "\n"
               "Run 'edt-bridge-mcp <command> --help' for a command's own options.\n"

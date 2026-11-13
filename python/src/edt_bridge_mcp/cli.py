@@ -31,7 +31,7 @@ from pathlib import Path
 from . import __version__, i18n
 
 BRIDGE_COMMANDS = ("call", "tools", "status", "wait-ready", "shutdown", "gui", "plugins")
-COMMANDS = (*BRIDGE_COMMANDS, "workspace", "test-form")
+COMMANDS = (*BRIDGE_COMMANDS, "workspace", "test-form", "unit-tests")
 
 _TOKEN_HINT = (
     "the bridge refused the request (401). Write tools - and, on a token-protected server, every "
@@ -89,6 +89,9 @@ def build_parser(command: str) -> argparse.ArgumentParser:
     if command == "test-form":
         from . import native_form
         native_form.add_arguments(parser)
+    elif command == "unit-tests":
+        from . import native_unit
+        native_unit.add_arguments(parser)
     else:
         add_connection_flags(parser)
     parser.add_argument("--version", action="version", help=i18n.t("version"),
@@ -574,9 +577,12 @@ def _run(command: str, argv: list[str]) -> int:
     if command == "plugins":
         return _plugins_report()
 
-    if command == "test-form":
-        from . import native_form
-        result = native_form.run(args)
+    if command in ("test-form", "unit-tests"):
+        if command == "test-form":
+            from . import native_form as native
+        else:
+            from . import native_unit as native
+        result = native.run(args)
         _emit(json.dumps(result, ensure_ascii=False, indent=2))
         return 0 if result["ok"] else (1 if result["stage"] == "validation" else 2)
 

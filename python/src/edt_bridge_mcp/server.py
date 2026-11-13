@@ -51,7 +51,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
 from . import __version__
-from . import cli, form_run, i18n, plugins, scope, toolsets
+from . import cli, form_run, i18n, plugins, scope, toolsets, unit_run
 
 PROTOCOL_FALLBACK = "2024-11-05"
 
@@ -1096,6 +1096,7 @@ LOCAL_TOOLS = [
         "toolsets": [],
     },
     form_run.DESCRIPTOR,
+    unit_run.DESCRIPTOR,
 ]
 LOCAL_TOOL_NAMES = {tool["name"] for tool in LOCAL_TOOLS}
 
@@ -1383,10 +1384,11 @@ class StdioServer:
         if misnamed:
             self._tool_error(req_id, misnamed)
             return
-        if name == form_run.DESCRIPTOR["name"]:
-            # The form run needs the platform, not EDT: it never touches the backend.
+        runners = {form_run.DESCRIPTOR["name"]: form_run.run_tool, unit_run.DESCRIPTOR["name"]: unit_run.run_tool}
+        if name in runners:
+            # The form run and the unit tests need the platform, not EDT: they never touch the backend.
             try:
-                report = form_run.run_tool(arguments)
+                report = runners[name](arguments)
             except Exception as exc:  # a failed run must not take the server loop down
                 self._tool_error(req_id, f"{name} failed: {exc}")
                 return
