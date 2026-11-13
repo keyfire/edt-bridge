@@ -22,6 +22,10 @@ These tools access a running infobase. They use four distinct connection methods
 
 Tools that change an infobase need the token and return a plan by default.
 
+With `EDT_BRIDGE_PII` set, `edt_infobase_sessions`, `edt_infobase_maintenance` and
+`edt_designer_agent` replace the users and computers of sessions and mask personal data in the rest
+of the answer; see [Personal data](/personal-data).
+
 | Tool | Through | What it does |
 |------|---------|--------------|
 | `edt_infobases` · `edt_platform_installations` | EDT | Lists infobases registered in EDT with their names, UUIDs, connection strings and associated open projects. Also lists the 1C:Enterprise installations EDT resolves for `.epf` or `.erf` export and infobase creation, each with a thick client, plus full installations found on disk. |

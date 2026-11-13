@@ -3,7 +3,7 @@ title: "Build from source"
 description: "What the build needs, how to build the plugin jar without Maven, and how a release is cut."
 sidebar:
   label: "Build from source"
-  order: 5
+  order: 6
 ---
 
 **To build the plugin from source.** This is for contributors; end users install through pipx.

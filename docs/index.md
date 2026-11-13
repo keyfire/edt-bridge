@@ -16,7 +16,8 @@ create and rename objects, and build and deliver them. They also support infobas
 debugging. These operations use EDT's own engine.
 
 > The server is available only on localhost. Model-changing tools require a token and return a
-> plan by default. Debug tools also require a token.
+> plan by default. Debug tools also require a token. With `EDT_BRIDGE_PII` set, the answers that
+> carry infobase data leave with [personal data](/personal-data) masked.
 
 ![An MCP client connects to edt-bridge-mcp over stdio. The wrapper checks port 8770, installs the plugin jar from GitHub Releases, and starts headless EDT when needed. The plugin in EDT provides the project model and accesses the infobase through a configurator agent, ibcmd, or rac](https://raw.githubusercontent.com/keyfire/edt-bridge/main/docs/architecture.svg)
 

@@ -3,7 +3,7 @@ title: "Headless EDT"
 description: "Автозапуск headless EDT, ожидание моделей проектов в задании CI и перенос готовой рабочей области на другую машину."
 sidebar:
   label: "Headless EDT"
-  order: 3
+  order: 4
 ---
 
 Обвязка запускает headless EDT, если EDT не запущена. На странице описаны этот запуск,
