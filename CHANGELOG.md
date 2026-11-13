@@ -13,6 +13,33 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
+## Unreleased
+
+### Added
+
+- `edt_role_rights` and `edt_modify_role_rights` read and set the rights of a role on one object
+  through the live model, in a configuration and in an extension. Setting works the way the rights
+  editor of EDT does and exports the role together with its `Rights.rights`. An unknown right is
+  refused with the rights the object has, a right with a data access restriction is never changed,
+  and a role or object of the base configuration that the extension has not adopted is refused with
+  a pointer to `edt_adopt_object`.
+- `edt_command_interface` and `edt_modify_command_interface` read and change the command interface
+  of a subsystem section: which commands it shows, in which group and order, and their visibility
+  in common and by role. Reading takes EDT's derived data, so the answer is the section the client
+  builds; writing changes `CommandInterface.cmi` and creates one for an adopted subsystem that has
+  none.
+
+### Fixed
+
+- The wrapper and the launch scripts pick the EDT installation by the build it records in
+  `configuration/config.ini`. The 1C launcher updates a release line in one directory, so
+  `1C_EDT 2026.2` held 2026.2.2 and still lost to `1C_EDT (Lite) 2026.2.0` because its name is
+  shorter.
+- An EDT installed by the 1C launcher starts from the wrapper and the launch scripts. Its ini names
+  no `-vm`, EDT took java from PATH, and a Java older than it requires stopped the start with a
+  modal dialog. The JDK from `JAVA_HOME` or from the JDK components of the 1C installer now goes
+  first on PATH of the EDT process.
+
 ## 2026-11-13 – 0.43.0
 
 ### Added

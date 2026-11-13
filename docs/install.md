@@ -65,7 +65,7 @@ flag twin, documented in [Commands](/cli).
 | `EDT_BRIDGE_PORT_SCAN` | – | `20` | how many consecutive ports from that one to scan. A busy port makes the plugin take the next free one, and the bridge is then looked for across that same window |
 | `EDT_BRIDGE_TOKEN` | – | empty | the write-tools token. It is sent as an `Authorization: Bearer` header and passed into the headless instance's JVM |
 | `EDT_BRIDGE_WORKSPACE` | `--workspace` | – | the EDT workspace to serve when starting a headless EDT |
-| `EDT_BRIDGE_EDT_DIR` | `--edt-dir` | the newest install | the EDT install directory (the folder with 1cedtcli and dropins) |
+| `EDT_BRIDGE_EDT_DIR` | `--edt-dir` | the newest install | the EDT install directory (the folder with 1cedtcli and dropins). Without it the newest install is the one with the newest `eclipse.buildId` in `configuration/config.ini`, or by the version in the directory name when the file has none. When the ini of that EDT names no `-vm` and the java on PATH is older than EDT requires, the JDK from `JAVA_HOME` or from the JDK components of the 1C installer goes first on PATH of the EDT process |
 | `EDT_BRIDGE_START_TIMEOUT` | `--start-timeout` | `360` | how many seconds to wait for a starting bridge |
 | `EDT_BRIDGE_AUTOSTART` | `--no-autostart` | on | `0` never launches anything and only forwards requests |
 | `EDT_BRIDGE_HEAP` | `--heap` | from the EDT installation | the maximum JVM heap of an auto-started headless EDT: a number with `k`, `m` or `g`, e.g. `6g`. It is passed as `-Xmx` and replaces the value from the installation's ini file |

@@ -3041,6 +3041,174 @@
       "toolsets": []
     },
     {
+      "name": "edt_role_rights",
+      "description": "Read the rights of a role on one object through the live model: every right the object has, in the order EDT shows them, with the English and Russian name and the value. value is null when the role leaves the right to the base configuration (an adopted role in an extension); explicit tells whether the role states the value itself. A right with a data access restriction carries restricted=true and its conditions. Without object, lists the objects the role has rights on and the role's flags.",
+      "descriptionRu": "Права роли на один объект по живой модели: каждое право объекта в порядке EDT, английское и русское имя и значение. value равно null, когда право решает базовая конфигурация (заимствованная роль в расширении); explicit показывает, задано ли значение в самой роли. У права с ограничением доступа к данным restricted=true и тексты условий. Без object – перечень объектов, на которые у роли есть права, и флаги роли.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name; in an extension, the extension project"
+          },
+          "role": {
+            "type": "string",
+            "description": "Role FQN, such as Role.Manager"
+          },
+          "object": {
+            "type": "string",
+            "description": "Top object FQN, such as Catalog.Products, or Configuration. Without it the answer lists the objects the role has rights on."
+          }
+        },
+        "required": [
+          "projectName",
+          "role"
+        ]
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
+    },
+    {
+      "name": "edt_modify_role_rights",
+      "description": "WRITE: set rights of a role on one object through the live model, the way the rights editor of EDT does: a value equal to the role's default for the object removes the explicit entry. An unknown right is refused with the rights the object has; a right with a data access restriction (RLS) is never changed. Dry-run by default.",
+      "descriptionRu": "ЗАПИСЬ: задать права роли на один объект через живую модель так, как это делает редактор прав EDT: значение, равное значению по умолчанию для объекта, убирает явную запись. Неизвестное право отклоняется с перечнем прав объекта; право с ограничением доступа к данным (RLS) не меняется. По умолчанию dry-run.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name; in an extension, the extension project"
+          },
+          "role": {
+            "type": "string",
+            "description": "Role FQN, such as Role.Manager. In an extension the role must be the extension's own or adopted with edt_adopt_object."
+          },
+          "object": {
+            "type": "string",
+            "description": "Top object FQN, such as Catalog.Products, or Configuration. In an extension the object must be the extension's own or adopted."
+          },
+          "rights": {
+            "type": "object",
+            "description": "Right name to true or false, such as {\"Read\": true, \"View\": true}. English or Russian names as edt_role_rights shows them; case does not matter.",
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default): show the rights before and after, write nothing. true: write them and export the role."
+          }
+        },
+        "required": [
+          "projectName",
+          "role",
+          "object",
+          "rights"
+        ]
+      },
+      "toolsets": [
+        "extension"
+      ]
+    },
+    {
+      "name": "edt_command_interface",
+      "description": "Read the command interface of a subsystem section the way EDT derives it for the client: the groups of the navigation and actions panels and, in each, the commands in the order shown, with visibility in common and by role and whether the visibility or the group was customized. Commands and groups are named as CommandInterface.cmi names them, such as Catalog.Products.StandardCommand.OpenList and NavigationPanelImportant; edt_modify_command_interface takes the same names. commandSources lists the objects the section takes commands from.",
+      "descriptionRu": "Командный интерфейс раздела подсистемы так, как EDT выводит его для клиента: группы панели навигации и панели действий, в каждой команды в порядке показа, видимость общая и по ролям, признаки ручной настройки видимости и группы. Команды и группы названы так, как в CommandInterface.cmi, например Catalog.Products.StandardCommand.OpenList и NavigationPanelImportant; edt_modify_command_interface принимает те же имена. commandSources перечисляет объекты, из которых раздел берет команды.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name; in an extension, the extension project"
+          },
+          "subsystem": {
+            "type": "string",
+            "description": "Subsystem FQN; nested form: Subsystem.Parent.Subsystem.Child"
+          }
+        },
+        "required": [
+          "projectName",
+          "subsystem"
+        ]
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
+    },
+    {
+      "name": "edt_modify_command_interface",
+      "description": "WRITE: change the command interface of a subsystem section through the live model, the way the command interface editor of EDT does: visibility of a command in common and by role, its group within its panel, the order of a group, or a return to the default. Names come from edt_command_interface; a command outside the section, an unknown group or role, and an order that leaves out or adds a command are refused. Dry-run by default.",
+      "descriptionRu": "ЗАПИСЬ: изменить командный интерфейс раздела подсистемы через живую модель так, как это делает редактор командного интерфейса EDT: видимость команды общая и по ролям, ее группа в пределах панели, порядок группы, возврат к значению по умолчанию. Имена берутся из edt_command_interface; команда не из раздела, неизвестная группа или роль и порядок, в котором команды не хватает или она лишняя, отклоняются. По умолчанию dry-run.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name; in an extension, the extension project"
+          },
+          "subsystem": {
+            "type": "string",
+            "description": "Subsystem FQN; nested form: Subsystem.Parent.Subsystem.Child. In an extension the subsystem must be the extension's own or adopted with edt_adopt_object."
+          },
+          "commands": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "command": {
+                  "type": "string",
+                  "description": "Command as edt_command_interface names it, such as Catalog.Products.StandardCommand.OpenList"
+                },
+                "visible": {
+                  "type": "object",
+                  "description": "{\"common\": bool, \"roles\": {\"Role.Manager\": bool}}. An omitted common keeps the current value; roles, when given, replaces the role list."
+                },
+                "group": {
+                  "type": "string",
+                  "description": "Target group: NavigationPanelImportant, NavigationPanelOrdinary, NavigationPanelSeeAlso, ActionsPanelCreate, ActionsPanelReports, ActionsPanelTools or CommandGroup.<name>; a command stays within its panel"
+                },
+                "reset": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "visibility",
+                      "group"
+                    ]
+                  },
+                  "description": "Return the visibility, the group or both to the command's default"
+                }
+              },
+              "required": [
+                "command"
+              ]
+            },
+            "description": "One change per command"
+          },
+          "order": {
+            "type": "object",
+            "description": "{\"group\": \"NavigationPanelOrdinary\", \"commands\": [...]}: every command of the group in the new order"
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default): show the changes, write nothing. true: write CommandInterface.cmi and export it."
+          }
+        },
+        "required": [
+          "projectName",
+          "subsystem"
+        ]
+      },
+      "toolsets": [
+        "extension"
+      ]
+    },
+    {
       "name": "edt_create_extension",
       "description": "WRITE (Phase 2): create a new configuration-EXTENSION project extending a base configuration project, via EDT's own IExtensionProjectManager (the New Configuration Extension wizard engine). The root Configuration is the base configuration ADOPTED, exactly as the wizard does it, so the project is a valid extension an infobase will load: objectBelonging=Adopted, the extension control block, the adopted default language, inherited compatibility modes, and uuid links from every object adopted later. Dry-run by default: validates and returns the plan WITHOUT creating. apply=true creates the project and reads the Configuration back into the result. Additive – no force needed – but requires a configured token.",
       "descriptionRu": "ЗАПИСЬ (Phase 2): создать новый проект РАСШИРЕНИЯ конфигурации к базовому проекту через штатный IExtensionProjectManager (движок мастера нового расширения). Корневая Configuration – ЗАИМСТВОВАННАЯ базовая, как это делает мастер, поэтому проект – полноценное расширение, которое примет информационная база: objectBelonging=Adopted, блок расширения, заимствованный язык, унаследованные режимы совместимости и uuid-связи у всех объектов, заимствованных позже. По умолчанию dry-run: проверяет и возвращает план БЕЗ создания. apply=true создаёт проект и вычитывает Configuration обратно в результат. Аддитивно – force не нужен – но требует токен.",
