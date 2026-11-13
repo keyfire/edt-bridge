@@ -1,5 +1,6 @@
 """The personal data filter (EDT-PII-01): the shared cases, the settings and the walk over an answer."""
 import json
+import pathlib
 from pathlib import Path
 
 import pytest
@@ -131,3 +132,33 @@ def test_a_json_file_keeps_its_numbers_and_its_shape(tmp_path):
     assert data["start"] == data["stop"] == 1731489000009
     assert data["statusDetails"]["message"] == "ожидали [email]"
     assert log.read_text(encoding="utf-8") == "письмо [email]"
+
+
+def test_the_service_fields_of_the_designer_agent_stay_as_they_are():
+    # The suffix of a temporary directory is a random number: 6670017245504332848 passes the Luhn check.
+    agent = {"agents": [{"infobase": "orders", "connectionString": 'File="/srv/bases/7707083893";',
+                         "baseDir": "/tmp/edtbridge-agent-6670017245504332848", "clusterSessionId": "5c1f",
+                         "infobaseUuid": "0b5a3c7e-7707-0838-9312-345678901234", "user": "Иванов И.И.", "port": 1550}]}
+
+    masked = pii.mask(agent, pii.Filter("redact"))["agents"][0]
+
+    assert masked["baseDir"] == "/tmp/edtbridge-agent-6670017245504332848"
+    assert masked["connectionString"] == 'File="/srv/bases/7707083893";'
+    assert masked["infobaseUuid"] == agent["agents"][0]["infobaseUuid"] and masked["port"] == 1550
+    assert masked["user"] == "[user]"
+
+
+def test_a_file_that_cannot_be_removed_is_named(tmp_path, monkeypatch):
+    (tmp_path / "junit.xml").write_text("<testsuites/>", encoding="utf-8")
+    original = pathlib.Path.unlink
+
+    def refuse(self, *args, **kwargs):
+        if self.name == "junit.xml":
+            raise PermissionError("busy")
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(pathlib.Path, "unlink", refuse)
+
+    answer = pii.withheld(tmp_path, RuntimeError("Иванов"))
+
+    assert answer["status"] == "pii_filter_failed" and answer["notRemoved"] == ["junit.xml"]

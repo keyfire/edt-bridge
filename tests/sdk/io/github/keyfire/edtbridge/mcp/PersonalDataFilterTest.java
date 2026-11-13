@@ -103,6 +103,19 @@ class PersonalDataFilterTest {
         assertEquals("[user]", masked.getAsJsonArray("blockers").get(0).getAsJsonObject().get("userName").getAsString());
     }
 
+    @Test void theServiceFieldsOfTheDesignerAgentStayAsTheyAre() {
+        // The suffix of a temporary directory is a random number: 6670017245504332848 passes the Luhn check.
+        JsonObject agent = text(PersonalDataFilter.apply(answer("{\"agents\":[{\"infobase\":\"orders\","
+                + "\"connectionString\":\"File=\\\"/srv/bases/7707083893\\\";\","
+                + "\"baseDir\":\"/tmp/edtbridge-agent-6670017245504332848\",\"clusterSessionId\":\"5c1f\","
+                + "\"user\":\"Иванов И.И.\",\"port\":1550}]}"), redact())).getAsJsonArray("agents").get(0).getAsJsonObject();
+
+        assertEquals("/tmp/edtbridge-agent-6670017245504332848", agent.get("baseDir").getAsString());
+        assertEquals("File=\"/srv/bases/7707083893\";", agent.get("connectionString").getAsString());
+        assertEquals("[user]", agent.get("user").getAsString());
+        assertEquals(1550, agent.get("port").getAsInt());
+    }
+
     @Test void onlyTheToolsOfDataAreFiltered() {
         JsonObject module = answer("{\"text\":\"// ИНН 7707083893\\nПроцедура А() КонецПроцедуры\",\"sourceHash\":\"abc\"}");
 

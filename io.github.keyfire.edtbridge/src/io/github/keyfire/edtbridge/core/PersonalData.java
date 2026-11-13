@@ -88,7 +88,8 @@ public final class PersonalData {
             "form", "status", "stage", "phase", "scope", "scopeSource", "action", "kind", "formName", "module",
             "extension", "context", "name", "field", "button", "button_name", "file", "path", "key", "source",
             "event", "application", "severity", "time", "type", "framework", "piiFilter", "expression",
-            "signature", "session", "infobase", "appId", "startedAt");
+            "signature", "session", "infobase", "appId", "startedAt", "baseDir", "connectionString",
+            "clusterSessionId", "infobaseUuid", "uuid", "historyId", "testCaseId");
     /** Keys whose values belong to the field a sibling {@code field}, {@code name} or {@code expression} names. */
     public static final Set<String> VALUE_KEYS = Set.of("value", "presentation", "text", "actual", "expected", "equals");
     /** The sibling keys that name the field of a value, in the order they are asked. */

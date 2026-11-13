@@ -193,7 +193,7 @@ _TECHNICAL = frozenset({
     "status", "stage", "phase", "scope", "scopeSource", "action", "kind", "formName", "module", "extension",
     "context", "name", "field", "button", "button_name", "file", "path", "key", "source", "event", "application",
     "severity", "time", "type", "framework", "piiFilter", "expression", "signature", "session", "infobase", "appId",
-    "startedAt",
+    "startedAt", "baseDir", "connectionString", "clusterSessionId", "infobaseUuid", "uuid", "historyId", "testCaseId",
 })
 #: Keys whose values belong to the field a sibling `field`, `name` or `expression` names.
 _VALUE_KEYS = frozenset({"value", "presentation", "text", "actual", "expected", "equals"})
@@ -253,15 +253,23 @@ def withheld(output, error):
     The run made `output` itself, so everything in it is the run's; the files there were written before
     the filter and may hold data unmasked. The message names the error class only: its text may quote
     the value the filter stopped on."""
+    left = []
     if output is not None:
         for child in Path(output).iterdir():
-            if child.is_dir() and not child.is_symlink():
-                shutil.rmtree(child, ignore_errors=True)
-            else:
-                child.unlink(missing_ok=True)
-    return {"ok": False, "status": "pii_filter_failed", "stage": "pii_filter",
-            "error": f"The personal data filter failed ({type(error).__name__}); the answer and the files of the "
-                     "run are withheld."}
+            try:
+                if child.is_dir() and not child.is_symlink():
+                    shutil.rmtree(child)
+                else:
+                    child.unlink(missing_ok=True)
+            except OSError:
+                left.append(child.name)
+    answer = {"ok": False, "status": "pii_filter_failed", "stage": "pii_filter",
+              "error": f"The personal data filter failed ({type(error).__name__}); the answer and the files of the "
+                       "run are withheld."}
+    if left:
+        # Said, not hidden: these may hold data unmasked, and whoever reads the directory must know.
+        answer["notRemoved"] = left
+    return answer
 
 
 def withhold_screenshots(node):
