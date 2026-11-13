@@ -19,8 +19,8 @@ to the code and the reasoning behind it.
 
 - The personal data filter has a page of its own on the site, next to the settings. It describes
   how to turn the filter on, which tools and files it covers, how it finds the data, what the two
-  modes write and how to add rules. The pages of the tools, the form check results and the YAXUnit runs
-  link to it.
+  modes write and how to add rules. The pages of the tools, the form check results and the
+  YAXUnit runs link to it. ([#85](https://github.com/keyfire/edt-bridge/pull/85))
 
 ## <span id="2026-11-13--0430-0440"></span><span id="2026-11-13--0440"></span>2026-11-13 – 0.45.0
 
