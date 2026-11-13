@@ -44,13 +44,13 @@ public final class ModuleTextTool {
                 + "modulePath is given."));
         props.add("moduleType", strProp("For object FQNs: which module – ObjectModule / ManagerModule / "
                 + "RecordSetModule / ValueManagerModule / CommandModule. Optional."));
-        props.add("method", strProp("Return only this procedure/function's source. Optional (the method "
-                + "list is still returned unless includeMethods=false)."));
+        props.add("method", strProp("Return only this procedure/function's source. Optional. The module's "
+                + "catalogue is then left out unless includeMethods=true."));
         props.add("modulePath", strProp("Workspace-relative .bsl path (e.g. src/CommonModules/X/Module.bsl) "
                 + "– an alternative to fqn. Optional."));
-        props.add("includeMethods", boolProp("true (default) = also return the module's procedure/function "
-                + "catalogue with signatures. false = skip it and return only the requested text – a targeted "
-                + "method read on a large module then avoids re-sending the whole list (147 methods on some)."));
+        props.add("includeMethods", boolProp("Also return the module's procedure/function catalogue with "
+                + "signatures. Default: true for a whole-module read, false when method is given - the catalogue "
+                + "of a large module is many times the size of one method."));
 
         JsonArray req = new JsonArray();
         req.add("projectName");
@@ -63,17 +63,17 @@ public final class ModuleTextTool {
         JsonObject t = new JsonObject();
         t.addProperty("name", name());
         t.addProperty("description",
-                "READ: BSL source of a module (or a single method) + the module's procedure/function list "
-                + "with signatures, from the live workspace. Resolve by fqn (CommonModule.X, HTTPService.X, a "
-                + "form FQN, or an object + moduleType) or by modulePath. Pass includeMethods=false to skip the "
-                + "catalogue on a targeted read. If a top object has several modules and none is chosen, "
-                + "returns the candidates in availableModules.");
+                "READ: BSL source of a module (or a single method) from the live workspace, with the module's "
+                + "procedure/function list and signatures when the whole module is read. Resolve by fqn "
+                + "(CommonModule.X, HTTPService.X, a form FQN, or an object + moduleType) or by modulePath. A "
+                + "method read leaves the list out (methodsIncluded: false) unless includeMethods=true. If a top "
+                + "object has several modules and none is chosen, returns the candidates in availableModules.");
         t.addProperty("descriptionRu",
-                "ЧТЕНИЕ: исходный BSL модуля (или одного метода) + список процедур/функций модуля с "
-                + "сигнатурами, из живой рабочей области. Адресация по fqn (CommonModule.X, HTTPService.X, FQN "
-                + "формы или объект + moduleType) либо по modulePath. includeMethods=false пропускает каталог "
-                + "при точечном чтении. Если у объекта несколько модулей и не выбран moduleType – вернёт "
-                + "варианты в availableModules.");
+                "ЧТЕНИЕ: исходный BSL модуля (или одного метода) из живой рабочей области, а при чтении модуля "
+                + "целиком еще и список процедур/функций с сигнатурами. Адресация по fqn (CommonModule.X, "
+                + "HTTPService.X, FQN формы или объект + moduleType) либо по modulePath. Чтение метода не "
+                + "возвращает список (methodsIncluded: false), если не передан includeMethods=true. Если у объекта "
+                + "несколько модулей и не выбран moduleType – вернёт варианты в availableModules.");
         t.add("inputSchema", schema);
         return t;
     }
@@ -90,8 +90,7 @@ public final class ModuleTextTool {
         if (fqn == null && modulePath == null) {
             return McpServer.toolError("provide fqn or modulePath");
         }
-        boolean includeMethods = !args.has("includeMethods") || args.get("includeMethods").isJsonNull()
-                || args.get("includeMethods").getAsBoolean();
+        boolean includeMethods = includeMethods(args, method);
         try {
             BslGateway.ModuleTextResult res =
                     gateway.moduleText(project, fqn, moduleType, method, modulePath, includeMethods);
@@ -141,6 +140,18 @@ public final class ModuleTextTool {
         } catch (Exception e) {
             return McpServer.toolError("edt_module_text failed: " + e.getMessage());
         }
+    }
+
+    /**
+     * Whether the procedure/function catalogue goes with the answer. Asked for explicitly, it does as asked.
+     * Otherwise it comes with a whole-module read only: models read one method without passing the flag, and
+     * on a large module the catalogue made each such answer many times the size of the method.
+     */
+    static boolean includeMethods(JsonObject args, String method) {
+        if (args.has("includeMethods") && !args.get("includeMethods").isJsonNull()) {
+            return args.get("includeMethods").getAsBoolean();
+        }
+        return method == null;
     }
 
     private static JsonObject strProp(String desc) {
