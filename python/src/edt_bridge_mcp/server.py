@@ -51,7 +51,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
 from . import __version__
-from . import cli, form_run, i18n, plugins, scope, toolsets, unit_run
+from . import cli, form_run, i18n, jobs, plugins, scope, toolsets, unit_run
 
 PROTOCOL_FALLBACK = "2024-11-05"
 
@@ -1319,6 +1319,10 @@ class StdioServer:
                 # Before ensure(): the answer is in the wrapper and needs no EDT.
                 self._describe_local(req_id, described, arguments)
                 return
+            if (params.get("name") in (jobs.STATUS_TOOL, jobs.CANCEL_TOOL) and isinstance(arguments, dict)
+                    and self._job_call(req_id, params.get("name"), arguments)):
+                # A job of the wrapper, the list of jobs, or a bridge job with no EDT to ask.
+                return
             local = self._local_descriptor(params.get("name"))
             if local is not None and not self._toolset.shows(local):
                 self._tool_error(req_id, self._toolset.refusal(local))
@@ -1387,6 +1391,10 @@ class StdioServer:
         runners = {form_run.DESCRIPTOR["name"]: form_run.run_tool, unit_run.DESCRIPTOR["name"]: unit_run.run_tool}
         if name in runners:
             # The form run and the unit tests need the platform, not EDT: they never touch the backend.
+            arguments = dict(arguments)
+            if arguments.pop("async", False) is True:
+                self._start_local_job(req_id, name, arguments)
+                return
             try:
                 report = runners[name](arguments)
             except Exception as exc:  # a failed run must not take the server loop down
@@ -1410,6 +1418,65 @@ class StdioServer:
         self._announced_ready = False
         self._notify_tools_changed()
         threading.Thread(target=self._announce_when_ready, daemon=True).start()
+
+    def _json_result(self, req_id, answer: dict, is_error: bool = False) -> None:
+        result = {"content": [{"type": "text", "text": json.dumps(answer, ensure_ascii=False, indent=2)}]}
+        if is_error:
+            result["isError"] = True
+        self._result(req_id, result)
+
+    def _start_local_job(self, req_id, name: str, arguments: dict) -> None:
+        """Run a wrapper tool as a job of its own process; a run that ends at once answers as itself."""
+        try:
+            job_id = jobs.start(name, arguments)
+            answer, failed = jobs.status(job_id, jobs.INLINE_SECONDS)
+        except OSError as exc:
+            self._tool_error(req_id, f"{name} could not start a background job: {exc}")
+            return
+        if answer.get("status") == "succeeded" and "result" in answer:
+            self._json_result(req_id, answer["result"])
+        elif failed:
+            self._tool_error(req_id, answer.get("error") or f"{name} failed")
+        else:
+            answer["message"] = "started as a background job"
+            self._json_result(req_id, answer)
+
+    def _job_call(self, req_id, name: str, arguments: dict) -> bool:
+        """Answer edt_job_status or edt_cancel_job here when the wrapper can; False leaves it to the bridge.
+
+        A wrapper job is answered from its directory. The list joins the jobs of the bridge and of the
+        wrapper. A bridge job with no EDT running is lost with the EDT that ran it, and asking would start
+        a new EDT only to hear that."""
+        job_id = arguments.get("jobId")
+        if name == jobs.STATUS_TOOL and not job_id:
+            answer = {"jobs": jobs.listing()}
+            if self.backend.is_up():
+                try:
+                    bridge = json.loads(self.backend.call_tool(jobs.STATUS_TOOL, {}))
+                    answer = {"run": bridge.get("run"), "jobs": (bridge.get("jobs") or []) + answer["jobs"]}
+                except (RuntimeError, ValueError) as exc:
+                    answer["bridgeJobs"] = f"the bridge did not list its jobs: {exc}"
+            else:
+                answer["bridgeJobs"] = "no EDT is running, so the bridge has no jobs"
+            self._json_result(req_id, answer)
+            return True
+        if not isinstance(job_id, str):
+            return False
+        if jobs.is_local(job_id):
+            if name == jobs.STATUS_TOOL:
+                answer, failed = jobs.status(job_id, arguments.get("waitSeconds", jobs.DEFAULT_WAIT_SECONDS))
+            else:
+                answer, failed = jobs.cancel(job_id)
+            if isinstance(answer, str):
+                self._tool_error(req_id, answer)
+            else:
+                self._json_result(req_id, answer, failed)
+            return True
+        if not self.backend.is_up():
+            self._tool_error(req_id, f"no EDT is running here, so the bridge job {job_id.strip()} ended with the "
+                             "EDT that ran it and its result is lost. Run the call again.")
+            return True
+        return False
 
     def _describe_local(self, req_id, descriptor: dict, arguments: dict) -> None:
         """Answer edt_tool_help for a tool the wrapper or a plugin serves."""

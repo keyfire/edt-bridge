@@ -301,7 +301,7 @@ public final class PlatformGateway {
             }
         };
         try {
-            IStatus st = sm.updateInfobase(p, target, callback, false, new NullProgressMonitor());
+            IStatus st = sm.updateInfobase(p, target, callback, false, JobProgressMonitor.create());
             r.status = (st == null) ? "null" : (st.isOK() ? "OK" : st.toString());
             r.applied = st != null && st.isOK();
             r.message = r.applied ? ("infobase \"" + r.infobaseName + "\" updated from " + projectName)
@@ -773,7 +773,7 @@ public final class PlatformGateway {
         Throwable edtFailure = null;
         try {
             java.nio.file.Files.createDirectories(dir);
-            op.perform(desc, new NullProgressMonitor());
+            op.perform(desc, JobProgressMonitor.create());
             if (java.nio.file.Files.exists(dir.resolve("1Cv8.1CD"))) {
                 r.applied = true;
                 r.method = "edt";
@@ -953,7 +953,7 @@ public final class PlatformGateway {
             java.nio.file.Files.createDirectories(xmlDir);
 
             IExportOperation op = exportFactory.createExportOperation(xmlDir, version, root);
-            IStatus est = op.run(new NullProgressMonitor());
+            IStatus est = op.run(JobProgressMonitor.create());
             if (est != null && est.getSeverity() == IStatus.ERROR) {
                 return "export to designer files failed: " + est.getMessage();
             }
@@ -1342,11 +1342,17 @@ public final class PlatformGateway {
             java.nio.file.Path xmlDir = tempRoot.resolve("xml");
             java.nio.file.Files.createDirectories(xmlDir);
             IExportOperation op = exportFactory.createExportOperation(xmlDir, version, found[0]);
-            IStatus est = op.run(new NullProgressMonitor());
+            IStatus est = op.run(JobProgressMonitor.create());
             if (est != null && est.getSeverity() == IStatus.ERROR) {
                 keepTemp = true;
                 r.message = "export to designer files failed: " + est.getMessage()
                         + " (kept temp: " + tempRoot + ")";
+                return r;
+            }
+            // The export runs to its end whatever the monitor says; a cancel that came meanwhile stops the
+            // build here, before the infobase copy and ibcmd.
+            if (io.github.keyfire.edtbridge.core.Jobs.cancelRequested()) {
+                r.message = "the job was cancelled during the export; no .cfe was built";
                 return r;
             }
             // An empty spreadsheet template exports as a byte order mark alone, which the import refuses.
@@ -1359,6 +1365,7 @@ public final class PlatformGateway {
             List<String> database;
             if (configured != null) {
                 // A copy keeps the configured infobase closed and unchanged, whatever ibcmd writes.
+                io.github.keyfire.edtbridge.core.Jobs.stage("copying the infobase " + configured);
                 java.nio.file.Files.createDirectories(tempDb);
                 java.nio.file.Files.copy(configured.resolve(DumpInfobase.DATA_FILE),
                         tempDb.resolve(DumpInfobase.DATA_FILE), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
@@ -1366,6 +1373,7 @@ public final class PlatformGateway {
                 err = null;
             } else {
                 database = List.of("--data=" + tempData, "--database-path=" + tempDb);
+                io.github.keyfire.edtbridge.core.Jobs.stage("ibcmd infobase create");
                 err = runPlatformCommand(ibcmd, "infobase", "create",
                         "--data=" + tempData, "--database-path=" + tempDb);
             }
@@ -1374,6 +1382,7 @@ public final class PlatformGateway {
                 args.addAll(database);
                 args.add("--extension=" + extName);
                 args.add(xmlDir.toString());
+                io.github.keyfire.edtbridge.core.Jobs.stage("ibcmd config import --extension=" + extName);
                 err = runPlatformCommand(ibcmd, args.toArray(String[]::new));
                 String hint = err == null ? null : DumpInfobase.extensionHint(err, configured == null);
                 if (hint != null) {
@@ -1392,6 +1401,7 @@ public final class PlatformGateway {
                 args.addAll(database);
                 args.add("--extension=" + extName);
                 args.add(outputPath);
+                io.github.keyfire.edtbridge.core.Jobs.stage("ibcmd config save --extension=" + extName);
                 err = runPlatformCommand(ibcmd, args.toArray(String[]::new));
             }
             if (err != null) {

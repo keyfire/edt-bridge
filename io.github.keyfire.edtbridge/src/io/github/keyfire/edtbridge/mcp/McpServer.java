@@ -39,6 +39,8 @@ import org.osgi.framework.Version;
 
 import io.github.keyfire.edtbridge.core.ArgumentNames;
 import io.github.keyfire.edtbridge.core.FileUrlPaths;
+import io.github.keyfire.edtbridge.core.JobTools;
+import io.github.keyfire.edtbridge.core.Jobs;
 import io.github.keyfire.edtbridge.core.ToolSets;
 import io.github.keyfire.edtbridge.core.WriteScope;
 import io.github.keyfire.edtbridge.edt.ProjectGateway;
@@ -135,6 +137,8 @@ import io.github.keyfire.edtbridge.tools.DebugInspectTool;
 import io.github.keyfire.edtbridge.tools.DebugControlTool;
 import io.github.keyfire.edtbridge.tools.DebugEvaluateTool;
 import io.github.keyfire.edtbridge.tools.ToolHelpTool;
+import io.github.keyfire.edtbridge.tools.JobStatusTool;
+import io.github.keyfire.edtbridge.tools.CancelJobTool;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -416,6 +420,17 @@ applyI18n();loadStatus();loadTools();
     private final DebugControlTool debugControl = new DebugControlTool();
     private final DebugEvaluateTool debugEvaluate = new DebugEvaluateTool();
     private final ToolHelpTool toolHelp = new ToolHelpTool();
+    /**
+     * Calls with async=true. Jobs run on threads of their own, so a long build no longer holds one of
+     * the two MCP workers; the threads are daemons and outlive a restart of the server inside EDT, and
+     * the run id changes only with EDT itself.
+     */
+    private final Jobs<JsonObject> jobs = new Jobs<>(Jobs.newRunId(),
+            Executors.newFixedThreadPool(2, namedDaemonThreadFactory("edt-bridge-job-")),
+            System::currentTimeMillis,
+            result -> result.has("isError") && result.get("isError").getAsBoolean());
+    private final JobStatusTool jobStatus = new JobStatusTool(jobs);
+    private final CancelJobTool cancelJob = new CancelJobTool(jobs);
     private final ProjectGateway gateway = new ProjectGateway();
     private HttpServer http;
     private ExecutorService httpWorkers;
@@ -910,7 +925,19 @@ applyI18n();loadStatus();loadTools();
         tools.add(debugInspect.descriptor());
         tools.add(debugControl.descriptor());
         tools.add(debugEvaluate.descriptor());
+        tools.add(jobStatus.descriptor());
+        tools.add(cancelJob.descriptor());
         tools.add(toolHelp.descriptor());
+        // A tool whose call may outlast a client's wait takes async=true and runs as a job.
+        for (JsonElement element : tools) {
+            JsonObject tool = element.getAsJsonObject();
+            if (JobTools.runsAsJob(tool.get("name").getAsString())) {
+                JsonObject async = new JsonObject();
+                async.addProperty("type", "boolean");
+                async.addProperty("description", JobTools.ASYNC_DESCRIPTION);
+                tool.getAsJsonObject("inputSchema").getAsJsonObject("properties").add(JobTools.ASYNC, async);
+            }
+        }
         // Each descriptor says which tool sets contain the tool. The wrapper narrows by this field
         // the lists it assembles on its own - the packaged catalog served while EDT is starting.
         for (JsonElement element : tools) {
@@ -993,6 +1020,17 @@ applyI18n();loadStatus();loadTools();
         }
         if (toolHelp.name().equals(name)) {
             return toolHelp.call(args, toolsList().getAsJsonArray("tools"), toolset);
+        }
+        if (JobTools.runsAsJob(name) && args.has(JobTools.ASYNC) && args.get(JobTools.ASYNC).isJsonPrimitive()
+                && args.get(JobTools.ASYNC).getAsBoolean()) {
+            return startJob(name, args);
+        }
+        if (jobStatus.name().equals(name)) {
+            return jobStatus.call(args);
+        }
+        if (cancelJob.name().equals(name)) {
+            JsonObject denied = writeTokenGate(cancelJob.isWrite(), name);
+            return denied != null ? denied : cancelJob.call(args);
         }
         if (projectErrors.name().equals(name)) {
             return projectErrors.call(args);
@@ -1422,6 +1460,32 @@ applyI18n();loadStatus();loadTools();
      * {@code null} when the call may proceed. When a token IS set, {@link #handle} has already
      * verified it on the request, so only the not-configured case is checked here.
      */
+    /**
+     * Run a call as a job and answer with its id. The call goes through the same dispatch without
+     * async, gates included; one that ends within {@link JobTools#INLINE_MILLIS} - a refusal, a dry-run
+     * plan - answers as itself, so a caller polls only for work that takes time.
+     */
+    private JsonObject startJob(String name, JsonObject args) {
+        JsonObject plain = args.deepCopy();
+        plain.remove(JobTools.ASYNC);
+        JsonObject params = new JsonObject();
+        params.addProperty("name", name);
+        params.add("arguments", plain);
+        Jobs.Snapshot<JsonObject> job = jobs.submit(name, () -> toolsCall(params));
+        try {
+            Jobs.Snapshot<JsonObject> now = jobs.await(job.id(), JobTools.INLINE_MILLIS);
+            if (now != null) {
+                job = now;
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        if (job.state() == Jobs.State.SUCCEEDED || job.state() == Jobs.State.FAILED) {
+            return job.result() != null ? job.result() : toolError(name + " failed: " + job.error());
+        }
+        return JobStatusTool.render(job, "started as a background job");
+    }
+
     private JsonObject writeTokenGate(boolean isWrite, String name) {
         if (isWrite && token() == null) {
             return toolError("write tool '" + name + "' requires a configured token "

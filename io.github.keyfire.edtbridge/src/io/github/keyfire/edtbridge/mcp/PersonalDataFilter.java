@@ -44,7 +44,7 @@ import io.github.keyfire.edtbridge.core.PersonalData;
  * were replaced in {@code piiFilter}. Settings that cannot be read withhold the answer instead of letting
  * it through unfiltered. Every other tool is untouched: its texts are code and model, not data.
  */
-final class PersonalDataFilter {
+public final class PersonalDataFilter {
 
     static final Set<String> TOOLS = Set.of("edt_debug_inspect", "edt_evaluate", "edt_infobase_sessions",
             "edt_infobase_maintenance", "edt_designer_agent");
@@ -85,7 +85,7 @@ final class PersonalDataFilter {
     }
 
     /** The result of {@code tool}, filtered when the tool carries data and the filter is on. */
-    static JsonObject apply(String tool, JsonObject result) {
+    public static JsonObject apply(String tool, JsonObject result) {
         if (!TOOLS.contains(tool) || result == null) {
             return result;
         }

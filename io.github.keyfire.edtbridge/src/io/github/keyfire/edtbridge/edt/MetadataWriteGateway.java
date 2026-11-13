@@ -2709,7 +2709,7 @@ public final class MetadataWriteGateway {
             if (target.getParent() != null) {
                 java.nio.file.Files.createDirectories(target.getParent());
             }
-            dumper.dump(p, found[0], target, new NullProgressMonitor());
+            dumper.dump(p, found[0], target, JobProgressMonitor.create());
             r.applied = java.nio.file.Files.exists(target);
             r.message = r.applied ? ("dumped " + fqn + " to " + target)
                     : "dumper finished but the target file is missing: " + target;

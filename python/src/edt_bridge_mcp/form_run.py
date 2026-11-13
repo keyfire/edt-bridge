@@ -19,7 +19,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from . import native_form, native_scenario
+from . import jobs, native_form, native_scenario
 
 ENV_INFOBASE = "EDT_BRIDGE_TEST_INFOBASE"
 ENV_PLATFORM = "EDT_BRIDGE_TEST_PLATFORM"
@@ -88,6 +88,7 @@ DESCRIPTOR = {
                                      "named with its unexpected and missing keys."},
             "timeoutSeconds": {"type": "integer",
                                "description": "Whole run limit, 60-900 seconds (default 300)"},
+            "async": {"type": "boolean", "description": jobs.ASYNC_DESCRIPTION},
         },
         "required": ["path", "form"],
     },

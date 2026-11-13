@@ -1588,6 +1588,7 @@ public final class DesignerAgentGateway {
                     r.generationBefore = generationId(session);
                 }
                 stage[0] = "exporting the project";
+                io.github.keyfire.edtbridge.core.Jobs.stage("exporting the project to designer XML");
                 Path exportDir = userDir.resolve(name);
                 Files.createDirectories(exportDir);
                 try {
@@ -1601,7 +1602,7 @@ public final class DesignerAgentGateway {
                             injector.getInstance(com._1c.g5.v8.dt.export.IExportOperationFactory.class);
                     org.eclipse.core.runtime.IStatus exported = factory
                             .createExportOperation(exportDir, GatewaySupport.projectVersion(p), root.object)
-                            .run(new org.eclipse.core.runtime.NullProgressMonitor());
+                            .run(JobProgressMonitor.create());
                     if (exported != null
                             && exported.getSeverity() == org.eclipse.core.runtime.IStatus.ERROR) {
                         r.message = "export to designer XML failed: " + exported.getMessage();
@@ -1612,6 +1613,14 @@ public final class DesignerAgentGateway {
                     BlankTemplates.fill(exportDir);
 
                     r.exportMillis = millisSince(exportStarted);
+                    // The export does not stop on a cancel of its own (seen on a whole UNF load: it ran to
+                    // the end, and the load after it took six minutes more). Nothing has reached the
+                    // infobase yet, so this is the last point where a cancel costs nothing.
+                    if (io.github.keyfire.edtbridge.core.Jobs.cancelRequested()) {
+                        r.message = "the job was cancelled during the export to designer XML; nothing was loaded "
+                                + "into " + agent.infobase;
+                        return ExtensionLoadOutcome.FAILED;
+                    }
 
                     // Which files to send. The export is whole every time; it is compared with the
                     // record of the last load, and LoadPlan decides when sending only the difference
@@ -1656,6 +1665,7 @@ public final class DesignerAgentGateway {
                     // matches. Deleting it up front bought nothing on top of that, and a lost
                     // connection right after the deletion made the repeated attempt find no record.
                     stage[0] = "loading";
+                    io.github.keyfire.edtbridge.core.Jobs.stage("loading into " + agent.infobase);
                     long loadStarted = System.nanoTime();
                     List<com._1c.g5.designer.ssh.client.operation.ILoadIssue> issues = null;
                     if (plan.mode == LoadPlan.Mode.PARTIAL) {
@@ -1693,6 +1703,9 @@ public final class DesignerAgentGateway {
                     }
                     r.ok = true;
                     r.applied = true;
+                    io.github.keyfire.edtbridge.core.Jobs.applied((r.extension == null
+                            ? "the configuration" : "the extension " + r.extension)
+                            + " is loaded into " + agent.infobase);
                     r.message = ("partial".equals(r.loadMode)
                                     ? "loaded " + r.changedFiles + " changed file(s) of " + r.totalFiles
                                       + " into "
@@ -1736,10 +1749,20 @@ public final class DesignerAgentGateway {
             agent.lock.unlock();
         }
 
+        if (updateDatabaseConfig && io.github.keyfire.edtbridge.core.Jobs.cancelRequested()) {
+            // A cancel between the two steps: the load stays, the database update is not started.
+            r.message = r.message + "; the job was cancelled after the load, so the DATABASE configuration "
+                    + "was NOT updated - edt_update_database_config applies it later";
+            return r;
+        }
         if (updateDatabaseConfig) {
+            io.github.keyfire.edtbridge.core.Jobs.stage("updating the database configuration of " + infobase);
             UpdateResult update = updateDatabaseConfiguration(infobase, r.extension, sessionTermination,
                     null, user, password, platformVersion, answer, true);
             r.databaseConfigUpdated = update.applied;
+            if (update.applied) {
+                io.github.keyfire.edtbridge.core.Jobs.applied("the database configuration is updated");
+            }
             r.question = update.question;
             r.questionOptions.addAll(update.questionOptions);
             r.databaseChanges.addAll(update.changes);
