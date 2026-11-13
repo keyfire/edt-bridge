@@ -62,10 +62,13 @@ plan, still answers directly.
 | `edt_cancel_job` | Stops a job. A queued job never runs. A running one stops at its next step: a platform process stops together with its children, an EDT operation at its next progress check. What the job has already done stays done and is listed in `applied`. Needs the token, like a write. |
 
 A bridge job runs inside EDT and goes on when the client disconnects. Its result is kept for an
-hour. After EDT restarts, a `jobId` of the previous run gets an answer that says so. A job of
-`edt_test_form` or `edt_unit_tests` is a process of its own: its state lies in
-`~/.cache/edt-bridge/jobs` (or under `XDG_CACHE_HOME`) for a day, and a wrapper started by a new
-client finds it there.
+hour. After EDT restarts, a `jobId` of the previous run gets an answer that says so. A job is
+`cancelled` only when it stopped on the cancel; a step with no point to stop at runs to its end,
+and the job then ends with its real result and `cancelRequested`. A job of `edt_test_form` or
+`edt_unit_tests` is a process of its own: its state lies in `~/.cache/edt-bridge/jobs` (or under
+`XDG_CACHE_HOME`) for a day, and a wrapper started by a new client finds it there. A cancelled
+check removes its clients and its copy of the infobase in a second or two; one that is still
+running a minute after the cancel is killed, and its processes and files are removed.
 
 ## Served by the wrapper
 
