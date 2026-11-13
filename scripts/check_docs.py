@@ -2,9 +2,9 @@
 """Does the documentation still cover the bridge: tools, variables, images, annotations, words.
 
 What is the bridge's own business stays here - which tools the Java side registers, which
-variables the wrapper reads, how the tools page is grouped, where the Russian pages live,
-which sources hold Russian a person reads, and which documents and folders are read for a
-sentence that explains a change by naming who asked for it.
+variables the wrapper reads, which pages hold the tool catalogue, where the Russian pages live,
+which anchors older links still point at, which sources hold Russian a person reads, and which
+documents and folders are read for a sentence that explains a change by naming who asked for it.
 Everything underneath (reading a page, the block between the injection markers, the
 annotations a repository states about itself, the gap between what the sources offer and what
 a page lists, the jargon dictionary, the runner) comes from the `docsguard` package, which
@@ -32,7 +32,6 @@ from docsguard import (
     attribution_self_check,
     coverage_problems,
     front_description,
-    headings,
     image_problems,
     injection_problems,
     jargon_problems,
@@ -57,13 +56,25 @@ LAYOUT = Layout(
     raw_prefix="https://raw.githubusercontent.com/keyfire/edt-bridge/main/",
 )
 
-#: The Russian pages, by glob, inside the documentation folder. `*.ru.md` is what the guard
-#: reads on its own and covers the site pages; this repository keeps the Russian edition of its
-#: root documents one level down, in `docs/ru/`, so that folder is named too. The changelog and
-#: the onboarding page of `docs/` are mirrors built by `scripts/sync-docs.mjs` and are absent
-#: from a fresh checkout - when they are there, they are read as copies of their source, which
-#: costs a second reading of a finding and nothing else.
-RUSSIAN_PAGES = ("*.ru.md", "ru/*.ru.md")
+#: The Russian pages, by glob, inside the documentation folder. The site keeps each language in
+#: a tree of its own: English at the root of `docs/`, Russian under `docs/ru/` by the same paths.
+#: The Russian edition of the root documents (`README.ru.md` and the others) lies in `docs/ru/`
+#: as well, so one pattern reads both. The changelog, onboarding and security pages are mirrors
+#: built by `scripts/sync-docs.mjs` and are absent from a fresh checkout - when they are there,
+#: they are read as copies of their source, which costs a second reading of a finding and
+#: nothing else.
+RUSSIAN_PAGES = ("ru/**/*.md",)
+
+#: The two trees of site pages: the language, and the folder under `docs/` that holds it.
+LOCALES = {"en": "", "ru": "ru/"}
+
+#: Files under `docs/` that are not site pages: working notes the site config leaves out.
+WORKING_NOTES = ("DESIGN.md",)
+
+#: The folder of the tool catalogue inside a language tree, and the page of that tree that
+#: describes every `EDT_BRIDGE_` variable.
+TOOLS_FOLDER = "tools/"
+SETTINGS_PAGE = "(setup)/settings.md"
 
 #: The Russian documents outside the documentation folder. The wrapper's README ships to PyPI
 #: as the package card, so it is read by more people than most pages here.
@@ -75,8 +86,8 @@ RUSSIAN_DOCUMENTS = ("python/README.ru.md",)
 #:
 #: Nothing else in the repository belongs here, and each for its own reason. The Java side
 #: writes English: what a tool says goes to an agent over the protocol, not to a reader. The
-#: Russian of `scripts/gen-cli-docs.py` is the text of `cli.ru.md`, and that page is read as a
-#: page two lines above - naming the generator as well would report one word twice, and a page
+#: Russian of `scripts/gen-cli-docs.py` is the text of `docs/ru/cli.md`, and that page is read as
+#: a page a few lines above - naming the generator as well would report one word twice, and a page
 #: that has drifted from its generator is a failure of the suite rather than of this guard. The
 #: Russian in the tests is jargon on purpose: it is what proves the guard still bites.
 RUSSIAN_SOURCES = ("python/src/edt_bridge_mcp/i18n.py",)
@@ -94,23 +105,92 @@ _ENV_READ = re.compile(r'(?:System\.getenv\(|os\.environ\.get\()"(EDT_BRIDGE_[A-
 _ENV_DECLARED = re.compile(r'"(EDT_BRIDGE_[A-Z_]+)"')
 _INLINE = re.compile(r"`(edt_[a-z_]+)`")
 _ENV_INLINE = re.compile(r"`(EDT_BRIDGE_[A-Z_]+)`")
+_TITLE = re.compile(r'^title:\s*"(.*)"\s*$', re.M)
 
-#: A group of the tools page - the English heading, the Russian one - and the word that has to
-#: stand for that group in the short annotations of its language. One word stands for a whole
-#: group on purpose: an annotation names the kind of work, not the tools. A row with no words is
-#: a group deliberately kept out of the annotations, with the reason beside it.
+#: A page of the tool catalogue - its English title, the Russian one - and the word that has to
+#: stand for that page in the short annotations of its language. One word stands for a whole
+#: page on purpose: an annotation names the kind of work, not the tools, so the five pages of
+#: write tools share one word. The overview page is not a row: it holds the table of these
+#: pages and the two tools of the wrapper, which are plumbing and not a reason to install.
 PITCH_GROUPS = (
-    PitchItem("Read", "Чтение", "metadata", "метаданн"),
-    PitchItem("Write", "Запись", "write", "запис"),
+    PitchItem("Read: diagnostics and reference", "Чтение: диагностика и справка",
+              "diagnostics", "диагностик"),
+    PitchItem("Read: metadata, code and queries", "Чтение: метаданные, код и запросы",
+              "metadata", "метаданн"),
+    # Forms and templates are metadata to an annotation: it has no word of its own for them.
+    PitchItem("Read: forms and templates", "Чтение: формы и макеты", "metadata", "метаданн"),
+    PitchItem("Write: metadata objects", "Запись: объекты метаданных", "write", "запис"),
+    PitchItem("Write: modules", "Запись: модули", "write", "запис"),
+    PitchItem("Write: forms", "Запись: формы", "write", "запис"),
+    PitchItem("Write: templates", "Запись: макеты", "write", "запис"),
+    PitchItem("Write: projects and builds", "Запись: проекты и сборка", "write", "запис"),
     PitchItem("Infobases, the cluster and the platform", "Информационные базы, кластер и платформа",
               "infobase", "информационн"),
     PitchItem("Debug", "Отладка", "debug", "отлад"),
-    PitchItem("Placement, properties and validation snapshots", "Размещение, свойства и снимки замечаний",
-              "write", "запис"),
-    # The wrapper's own tools are plumbing - a version, a self-update, the state of the bridge.
-    # The wrapper itself is named in the annotations; its tools are not a reason to install.
-    PitchItem("Served by the wrapper", "Инструменты самой обвязки", None, None),
 )
+
+#: The anchors of sections that moved to a page of their own when the long pages were divided.
+#: A link from outside - a PyPI card of an older release, a bookmark, another site - still ends
+#: in the old anchor, and a redirect cannot carry one. So the old page keeps each of them as an
+#: explicit `<a id>` on the line that links the section's new place.
+MOVED_ANCHORS = {
+    "index.md": ("settings-inside-edt",),
+    "(setup)/install.md": (
+        "environment-variables", "write-scope", "a-ready-workspace", "build-from-source",
+        "wrapper-plugins", "when-pipx-runs-on-uv-pipx--115",
+    ),
+    "tools/index.md": (
+        "read", "project-and-runtime-diagnostics", "managed-form-preview", "write",
+        "html-source-form-ids-and-validation", "replace-an-existing-bsl-method", "register-fields",
+        "infobases-the-cluster-and-the-platform", "check-platform-build-readiness",
+        "incremental-configuration-loading", "debug",
+        "placement-properties-and-validation-snapshots",
+    ),
+    "native-forms/index.md": (
+        "scenario-format", "check-an-external-report",
+        "check-an-installed-extension-and-saved-values", "results",
+    ),
+    "ru/index.md": ("настройки-в-самой-edt",),
+    "ru/(setup)/install.md": (
+        "переменные-окружения", "граница-записи", "готовая-рабочая-область",
+        "сборка-из-исходников", "плагины-обвязки", "когда-pipx-работает-поверх-uv-pipx--115",
+    ),
+    "ru/tools/index.md": (
+        "чтение", "диагностика-проекта-и-среды", "предпросмотр-управляемой-формы", "запись",
+        "html-id-формы-и-проверка-метаданных", "замена-существующего-метода-bsl", "поля-регистров",
+        "информационные-базы-кластер-и-платформа", "проверка-готовности-платформы-к-сборке",
+        "загрузка-измененных-файлов", "отладка", "размещение-свойства-и-снимки-замечаний",
+    ),
+    "ru/native-forms/index.md": (
+        "формат-сценария", "проверка-внешнего-отчета",
+        "проверка-установленного-расширения-и-сохраненных-значений", "результаты",
+    ),
+}
+
+#: The headings older links point at that are still on their page. The anchor comes from the
+#: text of the heading, so rewording one of these breaks the link the same way moving it would.
+KEPT_HEADINGS = {
+    "index.md": ("Install (recommended: pipx)", "Nearby", "The page in a browser"),
+    "(setup)/install.md": ("Manual install (without the wrapper)",),
+    "tools/index.md": ("Served by the wrapper",),
+    "native-forms/index.md": ("Prepare the environment", "Select a target",
+                              "Existing single-button checks"),
+    "ru/index.md": ("Установка (рекомендуется: pipx)", "Рядом", "Страница в браузере"),
+    "ru/(setup)/install.md": ("Установка вручную (без обвязки)",),
+    "ru/tools/index.md": ("Инструменты самой обвязки",),
+    "ru/native-forms/index.md": ("Подготовка окружения", "Выбор цели",
+                                 "Существующая проверка одной кнопки"),
+}
+
+#: The same for the two READMEs, whose sections went to the site. GitHub documents `<a name>`
+#: for a custom anchor, so that is the spelling there.
+README_ANCHORS = {
+    "README.md": ("requirements", "manual-install-without-the-wrapper", "settings-inside-edt",
+                  "build-from-source", "the-page-in-a-browser"),
+    "docs/ru/README.ru.md": ("требования", "установка-вручную-без-обвязки",
+                             "настройки-в-самой-edt", "сборка-из-исходников",
+                             "страница-в-браузере"),
+}
 
 
 def registered_tools() -> set[str]:
@@ -134,24 +214,75 @@ def env_variables() -> set[str]:
     return found
 
 
+def site_pages(locale: str) -> list[str]:
+    """The pages of one language, as paths under `docs/`.
+
+    The Russian tree shares its folder with the Russian edition of the root documents; those
+    end in `.ru.md` and are not pages, which is also how the site config tells them apart.
+    """
+    folder = LAYOUT.docs / LOCALES[locale] if LOCALES[locale] else LAYOUT.docs
+    found = []
+    for path in sorted(folder.rglob("*.md")):
+        name = path.relative_to(LAYOUT.docs).as_posix()
+        if locale == "en" and (name.startswith("ru/") or name in WORKING_NOTES):
+            continue
+        if locale == "ru" and name.endswith(".ru.md"):
+            continue
+        found.append(name)
+    return found
+
+
+def tool_pages(locale: str) -> list[str]:
+    """The pages of the tool catalogue of one language."""
+    prefix = LOCALES[locale] + TOOLS_FOLDER
+    return [name for name in site_pages(locale) if name.startswith(prefix)]
+
+
+def tool_rows(text: str) -> list[str]:
+    """The tools a page describes: every name in the first cell of a table row."""
+    found: list[str] = []
+    for line in text.splitlines():
+        if line.startswith("|"):
+            found += _INLINE.findall(line.split("|")[1])
+    return found
+
+
 def check_tools() -> list[str]:
-    """Every registered tool has a row on the tools page, and no row names a tool that is gone.
+    """Every registered tool is described on one page of the catalogue, in one row.
 
     Both directions and the empty reader come from `coverage_problems`: the set difference was
     written out by hand here, once per check, and the environment copy had already lost the
-    empty-reader guard this one had. What stays is what the sources are and where the page is.
+    empty-reader guard this one had. What stays is what the sources are and where the pages are.
+
+    The row count is this repository's own rule. The catalogue is divided over several pages,
+    and a tool described on two of them is two texts to keep in step; one of them falls behind.
+    Naming a tool in the prose of another page is not a second description, so only the first
+    cell of a table row counts.
     """
     tools = registered_tools()
     problems: list[str] = []
-    for name in ("tools.md", "tools.ru.md"):
-        problems += coverage_problems(
-            tools, set(_INLINE.findall(LAYOUT.page(name))), what="tool", where=name,
-        )
+    for locale, folder in LOCALES.items():
+        where = f"{folder}{TOOLS_FOLDER}"
+        texts = {name: LAYOUT.page(name) for name in tool_pages(locale)}
+        listed = {tool for text in texts.values() for tool in _INLINE.findall(text)}
+        problems += coverage_problems(tools, listed, what="tool", where=where)
+        rows: dict[str, list[str]] = {}
+        for name, text in texts.items():
+            for tool in tool_rows(text):
+                rows.setdefault(tool, []).append(name)
+        for tool in sorted(tools & listed):
+            owners = rows.get(tool, [])
+            if not owners:
+                problems.append(f"{where}: the tool {tool} is mentioned and has no table row")
+            elif len(owners) > 1:
+                problems.append(
+                    f"{where}: the tool {tool} has {len(owners)} table rows "
+                    f"({', '.join(owners)}) - one tool is described in one row")
     return problems
 
 
 def check_environment() -> list[str]:
-    """A variable the code reads and the installation page does not describe, and the reverse.
+    """A variable the code reads and the settings page does not describe, and the reverse.
 
     The other direction is judged here too, which it was not before: the page is the only place
     a variable is described, so a name it carries and the code has no longer got sends a reader
@@ -160,7 +291,8 @@ def check_environment() -> list[str]:
     """
     variables = env_variables()
     problems: list[str] = []
-    for name in ("install.md", "install.ru.md"):
+    for folder in LOCALES.values():
+        name = folder + SETTINGS_PAGE
         problems += coverage_problems(
             variables, set(_ENV_INLINE.findall(LAYOUT.page(name))),
             what="variable", where=name,
@@ -169,18 +301,61 @@ def check_environment() -> list[str]:
 
 
 def check_injections() -> list[str]:
-    """The tool catalogue injected into both READMEs still matches the page it comes from."""
+    """The table of tool groups in both READMEs still matches the overview page it comes from."""
     return injection_problems(LAYOUT, [
-        ("README.md", "tools", "tools.md", None),
-        ("docs/ru/README.ru.md", "tools", "tools.ru.md", None),
-    ], svg_to_png=True)
+        ("README.md", "tools", "tools/index.md", "Tool groups"),
+        ("docs/ru/README.ru.md", "tools", "ru/tools/index.md", "Группы инструментов"),
+    ])
 
 
 def check_images() -> list[str]:
-    """Every image of every page is in the repository, and a page shows the SVG."""
+    """Every image of every page is in the repository, and a page shows the SVG.
+
+    The working notes are read with the pages. The Russian edition of the root documents is
+    not: a README shows the PNG on purpose, and this check would call that a defect.
+    """
+    names = [*WORKING_NOTES, *site_pages("en"), *site_pages("ru")]
     return image_problems(
-        LAYOUT, [path.name for path in sorted(LAYOUT.docs.glob("*.md"))], prefer_svg=True
+        LAYOUT, [name for name in names if LAYOUT.page_path(name).is_file()], prefer_svg=True
     )
+
+
+def check_translations() -> list[str]:
+    """Every page exists in both languages, at the same path of its tree.
+
+    The two editions are in separate folders, so a page added to one of them is not missed by
+    looking at its neighbours. The site then serves the English text at the Russian address, or
+    offers no English page at all, and nothing about the build says so.
+    """
+    english = set(site_pages("en"))
+    russian = {name.removeprefix(LOCALES["ru"]) for name in site_pages("ru")}
+    return ([f"{name}: has no {LOCALES['ru']}{name}" for name in sorted(english - russian)]
+            + [f"{LOCALES['ru']}{name}: has no {name}" for name in sorted(russian - english)])
+
+
+def check_anchors() -> list[str]:
+    """The addresses older links point at are still on their pages.
+
+    Three shapes of the same promise: a section that moved leaves an explicit anchor behind, a
+    section that stayed keeps the heading its anchor is made from, and a README keeps the named
+    anchors of the sections it handed to the site.
+    """
+    problems: list[str] = []
+    for name, anchors in MOVED_ANCHORS.items():
+        text = LAYOUT.page(name)
+        problems += [f'{name}: the anchor "{anchor}" of a section that moved is gone - '
+                     f"older links to it land at the top of the page"
+                     for anchor in anchors if f'<a id="{anchor}"></a>' not in text]
+    for name, kept in KEPT_HEADINGS.items():
+        lines = LAYOUT.page(name).splitlines()
+        problems += [f'{name}: the heading "{heading}" is gone or reworded - '
+                     f"older links end in its anchor"
+                     for heading in kept if f"## {heading}" not in lines]
+    for name, anchors in README_ANCHORS.items():
+        text = LAYOUT.document(name)
+        problems += [f'{name}: the anchor "{anchor}" of a section that went to the site is gone'
+                     for anchor in anchors if f'<a name="{anchor}"></a>' not in text]
+    return problems
 
 
 def surfaces() -> dict[str, dict[str, str]]:
@@ -195,17 +370,28 @@ def surfaces() -> dict[str, dict[str, str]]:
             "docs/index.md": front_description(LAYOUT, "index.md"),
             "python/pyproject.toml": pyproject_description(LAYOUT),
         },
-        "ru": {"docs/index.ru.md": front_description(LAYOUT, "index.ru.md")},
+        "ru": {"docs/ru/index.md": front_description(LAYOUT, "ru/index.md")},
     }
 
 
+def tool_page_titles(locale: str) -> list[str]:
+    """The titles of the catalogue pages of one language, the overview page left out."""
+    index = LOCALES[locale] + TOOLS_FOLDER + "index.md"
+    titles = []
+    for name in tool_pages(locale):
+        found = _TITLE.search(LAYOUT.page(name))
+        if name != index and found:
+            titles.append(found.group(1))
+    return titles
+
+
 def check_pitches() -> list[str]:
-    """The gaps between the tools page, the table above and the annotations."""
+    """The gaps between the pages of the tool catalogue, the table above and the annotations."""
     return pitch_problems(
         PITCH_GROUPS,
-        {"en": headings(LAYOUT, "tools.md"), "ru": headings(LAYOUT, "tools.ru.md")},
+        {locale: tool_page_titles(locale) for locale in LOCALES},
         surfaces(),
-        pages={"en": "tools.md", "ru": "tools.ru.md"},
+        pages={locale: folder + TOOLS_FOLDER for locale, folder in LOCALES.items()},
     )
 
 
@@ -230,10 +416,10 @@ def check_jargon() -> list[str]:
     )
 
 
-#: The pages read for a sentence that credits a person: both editions. The Russian edition of
-#: the root documents lives in `docs/ru/`, the way the jargon list above says, so that folder is
-#: named here too.
-ATTRIBUTION_PAGES = ("*.md", "ru/*.md")
+#: The pages read for a sentence that credits a person: both editions, in whatever folder of
+#: `docs/` they are. The Russian edition of the root documents lies in `docs/ru/`, the way the
+#: jargon list above says, and the same pattern reads it.
+ATTRIBUTION_PAGES = ("**/*.md",)
 
 #: The documents outside the documentation folder, English edition - their Russian twins are
 #: pages of `docs/ru/` and are read by the glob above. The wrapper's two READMEs ship to PyPI as
@@ -279,8 +465,8 @@ def check_attribution() -> list[str]:
             + source_attribution_problems(LAYOUT, ATTRIBUTION_JAVA, patterns=("*.java",)))
 
 
-CHECKS = (check_tools, check_environment, check_injections, check_images, check_pitches,
-          check_jargon, check_attribution)
+CHECKS = (check_tools, check_environment, check_injections, check_images, check_translations,
+          check_anchors, check_pitches, check_jargon, check_attribution)
 
 
 def problems() -> list[str]:

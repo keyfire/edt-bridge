@@ -85,7 +85,8 @@ To run the plugin yourself, take a jar from the
 [Releases page](https://github.com/keyfire/edt-bridge/releases), put **one** into EDT's `dropins/`
 and restart EDT. The server comes up on 8770, or on the next free port. A client can connect over
 HTTP directly: `{ "edt-bridge": { "type": "http", "url": "http://127.0.0.1:8770/mcp" } }`. The
-details, and how to build from source, are in the [README](README.md).
+details are on the [Installation](https://docs.keyfire.ru/edt-bridge/install/) page, and
+[Build from source](https://docs.keyfire.ru/edt-bridge/build/) covers the build.
 
 ## Troubleshooting
 

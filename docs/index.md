@@ -58,21 +58,8 @@ python -m pipx ensurepath      # then reopen the terminal
 macOS: `brew install pipx && pipx ensurepath`. More: <https://pipx.pypa.io>.
 </details>
 
-### Settings inside EDT
-
-The plugin has a preference page of its own, **Window ▸ Preferences ▸ EDT-Bridge**. That is where the
-token comes from when the bridge runs inside a GUI EDT:
-
-| Setting | What it is |
-|---------|------------|
-| **Token for write tools** | The shared secret every write tool requires. An empty token means writes are refused, not that they are open to anyone. The client gets the same value as `EDT_BRIDGE_TOKEN`. |
-| **MCP server port** | 8770 by default. **It takes effect after EDT restarts**, so the running server keeps the old port until then. |
-| **Allow arbitrary BSL evaluation while debugging** | Off by default. It guards `edt_evaluate`, which executes code against a live infobase. Test stands only. |
-
-**Launch parameters take precedence over this page.** `-Dedt.bridge.*` system properties and `EDT_BRIDGE_*`
-environment variables given at startup take precedence over the stored values. That is how the
-wrapper drives a headless EDT, and it is also why a token set here can look ignored when one was
-passed on the command line as well.
+<a id="settings-inside-edt"></a>The token, the port and the other settings of the plugin and the
+wrapper are described in [Settings](/settings).
 
 ## Nearby
 

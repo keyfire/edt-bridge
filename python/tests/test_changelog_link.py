@@ -92,7 +92,7 @@ def test_both_editions_are_linked_and_the_mirrors_rebuilt(tmp_path, monkeypatch)
 
     def fake_run(command, **kwargs):
         calls.append((command, kwargs))
-        return type("Done", (), {"returncode": 0, "stdout": "CHANGELOG.md -> docs/changelog.md",
+        return type("Done", (), {"returncode": 0, "stdout": "CHANGELOG.md -> docs/(project)/changelog.md",
                                  "stderr": ""})()
 
     monkeypatch.setattr(changelog_link, "ROOT", tmp_path)

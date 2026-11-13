@@ -3,7 +3,7 @@ title: "Commands"
 description: "Reference of the edt-bridge-mcp wrapper commands: call a tool from a shell, list tools, report the bridge, self-update."
 sidebar:
   label: Commands
-  order: 5
+  order: 3
 ---
 
 <!-- Собрано из вывода `edt-bridge-mcp --help` скриптом scripts/gen-cli-docs.py. Не редактировать вручную. -->
@@ -143,6 +143,8 @@ usage: edt-bridge-mcp status [-h] [--all] [--ports PORTS] [--workspace WORKSPACE
 | `--heap HEAP` | maximum JVM heap of an auto-started headless EDT, e.g. 4096m or 6g |
 | `--vmargs OPTIONS` | further JVM options of an auto-started headless EDT, separated by spaces; join them to the flag with = because they start with a dash |
 | `--version` | show the version and exit |
+
+`edt-bridge-mcp status --all` checks the bridge discovery port range without starting EDT. Use `--ports 8770,8771` to select ports explicitly. Each detected bridge reports its workspace, port, bridge bundle version, EDT product version and project readiness. Unreachable ports and other HTTP services are distinguished from a running bridge.
 
 ## `edt-bridge-mcp wait-ready`
 
@@ -329,7 +331,7 @@ Run the check in an isolated Linux environment with `1cv8`, `ibcmd`, `Xvfb`, and
 
 A JSON scenario checks actual fields, spreadsheet cells, and fresh message counts. The `reopen` phase opens the same target in a new session to read its saved state. The command writes `result.json` and a screenshot of each phase when the client display is available. Unsafe action protection is configured by the test environment owner; the CLI does not change it.
 
-In the `--button` profile, success requires `--expect-message`; without it, `command_observed` returns exit code **2**. The time limit covers setup and all phases; process cleanup has a separate short deadline. See the [native form guide](native-forms.md) for preparation, the scenario format, and examples.
+In the `--button` profile, success requires `--expect-message`; without it, `command_observed` returns exit code **2**. The time limit covers setup and all phases; process cleanup has a separate short deadline. See the [native form guide](/native-forms) for preparation, the scenario format, and examples.
 
 ## `edt-bridge-mcp self-update`
 

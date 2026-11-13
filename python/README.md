@@ -93,7 +93,7 @@ edt-bridge-mcp plugins                 # what is plugged in, or why a plugin ref
 ```
 
 `EDT_BRIDGE_NO_PLUGINS=1` turns the discovery off. The declaration contract for plugin authors is on
-the [installation page](https://docs.keyfire.ru/edt-bridge/install#wrapper-plugins).
+the [Wrapper plugins](https://docs.keyfire.ru/edt-bridge/plugins/) page.
 
 The executables in `Scripts` are not replaced because a running client may hold them open on
 Windows. The stub loads the updated code from site-packages on its next start. `pipx_metadata.json` is corrected, so `pipx list` does not go on reporting
@@ -116,7 +116,7 @@ CLI flags override the environment.
 
 The rarely touched ones (`EDT_BRIDGE_PORT_SCAN`, `EDT_BRIDGE_WINDOW_WAIT`, `EDT_BRIDGE_LANG`) and the
 plugin's own variables are in
-[Environment variables](https://docs.keyfire.ru/edt-bridge/install#environment-variables).
+[Environment variables](https://docs.keyfire.ru/edt-bridge/settings/#environment-variables).
 
 ## Safety
 

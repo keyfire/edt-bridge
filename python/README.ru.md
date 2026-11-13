@@ -93,7 +93,7 @@ edt-bridge-mcp plugins               # что подключено и почем
 ```
 
 `EDT_BRIDGE_NO_PLUGINS=1` выключает поиск плагинов. Контракт объявления для авторов – на
-[странице установки](https://docs.keyfire.ru/edt-bridge/ru/install#плагины-обвязки).
+странице [Плагины обвязки](https://docs.keyfire.ru/edt-bridge/ru/plugins/).
 
 Файлы `.exe` в `Scripts` не заменяются: запущенный клиент может удерживать их на Windows.
 При следующем запуске используется обновленный код из site-packages. `pipx_metadata.json` поправляется, чтобы `pipx list` не показывал старую версию.
@@ -116,7 +116,7 @@ Editable-установку обновление не перезаписывае
 
 Редко нужные (`EDT_BRIDGE_PORT_SCAN`, `EDT_BRIDGE_WINDOW_WAIT`, `EDT_BRIDGE_LANG`) и переменные
 самого плагина собраны в разделе
-[Переменные окружения](https://docs.keyfire.ru/edt-bridge/ru/install#переменные-окружения).
+[Переменные окружения](https://docs.keyfire.ru/edt-bridge/ru/settings/#переменные-окружения).
 
 ## Безопасность
 

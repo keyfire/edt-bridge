@@ -1,4 +1,4 @@
-"""The command reference (docs/cli*.md) and its generator.
+"""The command reference (docs/cli.md, docs/ru/cli.md) and its generator.
 
 Defects that lived on the finished page at the same time and were only caught by
 proof-reading: all Russian descriptions in English (no i18n and no language passed
@@ -104,13 +104,13 @@ def page_sections(fname: str) -> set[str]:
 
 def test_pages_cover_every_command():
     expected = {f"edt-bridge-mcp {name}" for name in ALL_COMMANDS}
-    for fname in ("cli.md", "cli.ru.md"):
+    for fname in ("cli.md", "ru/cli.md"):
         missing = expected - page_sections(fname)
         assert not missing, f"{fname}: sections missing for {sorted(missing)}"
 
 
 def test_page_sections_match_between_languages():
-    assert page_sections("cli.md") == page_sections("cli.ru.md")
+    assert page_sections("cli.md") == page_sections("ru/cli.md")
 
 
 @pytest.mark.parametrize("command", [(), *((name,) for name in ALL_COMMANDS)])

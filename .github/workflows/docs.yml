@@ -12,11 +12,12 @@ on:
       - "docs/**"
       - "site/**"
       - ".github/workflows/docs.yml"
-      # Страницы истории изменений и быстрого старта – зеркала этих файлов
+      # Страницы истории изменений, быстрого старта и безопасности – зеркала этих файлов
       # (см. scripts/sync-docs.mjs; русские исходники зеркал лежат в docs/ru/
       # и уже покрыты маской docs/** выше).
       - "CHANGELOG.md"
       - "ONBOARDING.md"
+      - "SECURITY.md"
       - "scripts/sync-docs.mjs"
   workflow_dispatch:
 
@@ -46,7 +47,7 @@ jobs:
       - name: Install
         run: npm ci
         working-directory: site
-      # Зеркалим CHANGELOG в страницы сайта перед сборкой, чтобы задеплоенный сайт
+      # Зеркалим корневые документы в страницы сайта перед сборкой, чтобы задеплоенный сайт
       # всегда совпадал с актуальным файлом в корне репозитория.
       - name: Sync mirrored docs
         run: npm run sync:docs

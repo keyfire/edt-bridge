@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Generate the wrapper's command reference (docs/cli.md and docs/cli.ru.md) from the CLI.
+"""Generate the wrapper's command reference (docs/cli.md and docs/ru/cli.md) from the CLI.
 
 The source of truth is the output of `edt-bridge-mcp ... --help`, so the reference cannot
 drift from the implementation: add a flag, regenerate the page. Run it after changing the
@@ -34,7 +34,7 @@ TEXT = {
         "title": "Команды",
         "desc": "Справочник команд обвязки edt-bridge-mcp: вызов инструмента из командной строки, список инструментов, состояние моста и самообновление.",
         "label": "Команды",
-        "order": 5,
+        "order": 3,
         "intro": (
             "Обвязка `edt-bridge-mcp` работает как stdio MCP-сервер для клиента. Из командной "
             "строки можно проверить состояние моста, получить список инструментов и вызвать "
@@ -69,14 +69,20 @@ TEXT = {
             "В профиле `--button` успех требует `--expect-message`; без него результат "
             "`command_observed` возвращает код **2**. Предел времени включает подготовку и "
             "все фазы; завершение процессов имеет отдельный короткий срок. Подготовка, "
-            "формат сценария и примеры приведены в [руководстве по проверке форм](native-forms.ru.md)."
+            "формат сценария и примеры приведены в [руководстве по проверке форм](/ru/native-forms)."
+        ),
+        "note_status": (
+            "`edt-bridge-mcp status --all` опрашивает диапазон обнаружения мостов без запуска EDT. "
+            "`--ports 8770,8771` задает порты явно. Для каждого моста возвращаются workspace, порт, "
+            "версия jar, версия продукта EDT и готовность проектов. Недоступные порты и другие "
+            "HTTP-сервисы отмечаются отдельно от работающего моста."
         ),
     },
     "en": {
         "title": "Commands",
         "desc": "Reference of the edt-bridge-mcp wrapper commands: call a tool from a shell, list tools, report the bridge, self-update.",
         "label": "Commands",
-        "order": 5,
+        "order": 3,
         "intro": (
             "The `edt-bridge-mcp` wrapper runs as a stdio MCP server for a client. From the "
             "command line, you can check bridge status, list tools, and call a tool without "
@@ -111,7 +117,13 @@ TEXT = {
             "In the `--button` profile, success requires `--expect-message`; without it, "
             "`command_observed` returns exit code **2**. The time limit covers setup and all "
             "phases; process cleanup has a separate short deadline. See the "
-            "[native form guide](native-forms.md) for preparation, the scenario format, and examples."
+            "[native form guide](/native-forms) for preparation, the scenario format, and examples."
+        ),
+        "note_status": (
+            "`edt-bridge-mcp status --all` checks the bridge discovery port range without starting "
+            "EDT. Use `--ports 8770,8771` to select ports explicitly. Each detected bridge reports "
+            "its workspace, port, bridge bundle version, EDT product version and project readiness. "
+            "Unreachable ports and other HTTP services are distinguished from a running bridge."
         ),
     },
 }
@@ -321,14 +333,16 @@ def page(lang: str) -> str:
         out.write(f"## `edt-bridge-mcp {cmd}`\n\n" + render(run([cmd], lang), t))
         if cmd == "call":
             out.write(t["note_args"] + "\n\n")
+        if cmd == "status":
+            out.write(t["note_status"] + "\n\n")
         if cmd == "test-form":
             out.write(t["note_native"] + "\n\n")
     return out.getvalue().rstrip() + "\n"
 
 
 def generate() -> dict[str, str]:
-    """File name -> page text; assembly without writing to disk (tests need this)."""
-    return {fname: page(lang) for lang, fname in (("en", "cli.md"), ("ru", "cli.ru.md"))}
+    """Page path under docs/ -> page text; assembly without writing to disk (tests need this)."""
+    return {fname: page(lang) for lang, fname in (("en", "cli.md"), ("ru", "ru/cli.md"))}
 
 
 def main() -> None:

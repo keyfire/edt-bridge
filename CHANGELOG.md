@@ -2,8 +2,8 @@
 
 **English** · [Русский](docs/ru/CHANGELOG.ru.md)
 
-Notable changes to EDT-Bridge, newest first. Entries are grouped by day; the versions released
-that day are named in the heading. The format follows
+Notable changes to EDT-Bridge, newest first. Entries are grouped by day; the heading names the
+latest version released that day. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The plugin jar and the
 `edt-bridge-mcp` wrapper share one version number.
@@ -13,7 +13,7 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
-## 2026-11-13 – 0.43.0, 0.44.0
+## <span id="2026-11-13--0430-0440"></span>2026-11-13 – 0.44.0
 
 ### Added
 
@@ -68,6 +68,11 @@ to the code and the reasoning behind it.
   says `methodsIncluded: false`; `includeMethods=true` brings the list back. On one form module the
   answer shrank from 35.5 KiB to 2.1 KiB. A method that is not found is answered with similar names.
   ([#81](https://github.com/keyfire/edt-bridge/pull/81))
+- The documentation site is divided into more pages, grouped in the sidebar. The tool catalogue
+  takes eleven pages by subject, and installation, settings, headless EDT, wrapper plugins, the
+  build and native form checks each have a page. The addresses and section anchors of the former
+  pages still open. The README keeps the overview, the install commands and links to the site.
+  ([#83](https://github.com/keyfire/edt-bridge/pull/83))
 
 ### Fixed
 
@@ -119,8 +124,11 @@ to the code and the reasoning behind it.
 - `scripts/build-nomaven.ps1` builds from a git worktree. The javac command line got longer than
   Windows allows; the source list now goes in an argument file.
   ([#81](https://github.com/keyfire/edt-bridge/pull/81))
+- The links between the command reference and the native form guide open their pages. They were
+  relative file links and led to a 404 page on the site.
+  ([#83](https://github.com/keyfire/edt-bridge/pull/83))
 
-## 2026-11-12 – 0.42.0, 0.42.1, 0.42.2
+## <span id="2026-11-12--0420-0421-0422"></span>2026-11-12 – 0.42.2
 
 ### Changed
 
@@ -153,7 +161,7 @@ to the code and the reasoning behind it.
   (`editorSaved`). If that editor already holds unsaved changes, the fix is refused.
   ([#78](https://github.com/keyfire/edt-bridge/pull/78))
 
-## 2026-11-11 – 0.39.0, 0.40.0, 0.41.0
+## <span id="2026-11-11--0390-0400-0410"></span>2026-11-11 – 0.41.0
 
 ### Added
 
@@ -221,7 +229,7 @@ to the code and the reasoning behind it.
 - `edt_project_errors` says when the requested object is not in the project. It used to wait for a
   check that never started. ([#74](https://github.com/keyfire/edt-bridge/pull/74))
 
-## 2026-11-07 – 0.37.3, 0.38.0, 0.38.1, 0.38.2
+## <span id="2026-11-07--0373-0380-0381-0382"></span>2026-11-07 – 0.38.2
 
 ### Added
 
@@ -245,7 +253,7 @@ to the code and the reasoning behind it.
 - Rebuilt 0.38.0 for publication with PyPI attestations.
   ([#72](https://github.com/keyfire/edt-bridge/pull/72))
 
-## 2026-11-07 – 0.36.0, 0.37.0, 0.37.1, 0.37.2
+## <span id="2026-11-07--0360-0370-0371-0372"></span>2026-11-07 – 0.37.2
 
 ### Added
 
@@ -306,7 +314,7 @@ to the code and the reasoning behind it.
 
 <a id="2026-11-03--0340"></a>
 
-## 2026-11-03 – 0.34.0, 0.34.1
+## <span id="2026-11-03--0340-0341"></span>2026-11-03 – 0.34.1
 
 ### Added
 
@@ -328,7 +336,7 @@ to the code and the reasoning behind it.
 
 <a id="2026-11-01--0310"></a>
 
-## 2026-11-01 – 0.31.0, 0.32.0, 0.33.0
+## <span id="2026-11-01--0310-0320-0330"></span>2026-11-01 – 0.33.0
 
 ### Added
 
@@ -381,7 +389,7 @@ to the code and the reasoning behind it.
 - Auto-start reports early CLI exits with their code and a bounded output tail instead of waiting for the readiness timeout. Failed starts can be retried; the detached CLI remains independent of short-lived wrapper commands.
   ([#57](https://github.com/keyfire/edt-bridge/pull/57))
 
-## 2026-10-28 – 0.29.1, 0.29.0, 0.28.0
+## <span id="2026-10-28--0291-0290-0280"></span>2026-10-28 – 0.29.1
 
 ### Added
 
@@ -620,7 +628,7 @@ to the code and the reasoning behind it.
   again after token entry, and HTTP failures are reported separately.
   ([#5](https://github.com/keyfire/edt-bridge/pull/5))
 
-## 2026-09-09 – 0.23.0, 0.24.0, 0.25.0
+## <span id="2026-09-09--0230-0240-0250"></span>2026-09-09 – 0.25.0
 
 ### Added
 - **`status` reports the jar version in dropins alongside the running bridge version.** A headless
@@ -786,7 +794,7 @@ to the code and the reasoning behind it.
   whose first word is ВЫБРАТЬ or SELECT. Single-line captions and parts of concatenated queries
   are not recognized.
 
-## 2026-08-23 – 0.15.0, 0.16.0
+## <span id="2026-08-23--0150-0160"></span>2026-08-23 – 0.16.0
 
 ### Added
 - **`edt_add_form_handler`** registers an event handler on a form or on one of its items – the
@@ -1077,7 +1085,7 @@ to the code and the reasoning behind it.
   started a second server on 8770; and a workspace with no projects was reported as not ready
   although the server was up.
 
-## 2026-07-21 – 0.6.0, 0.7.0, 0.7.1
+## <span id="2026-07-21--060-070-071"></span>2026-07-21 – 0.7.1
 
 ### Added
 - **The configurator agent is a third transport to an infobase.** Started with `/AgentMode`, it
@@ -1144,7 +1152,7 @@ to the code and the reasoning behind it.
 - Transparent corners were removed from the diagrams. `scripts/render-diagrams.sh` now fixes the
   relevant flags, which were not previously documented.
 
-## 2026-07-19 – 0.3.0, 0.3.1, 0.4.0, 0.4.1, 0.5.0
+## <span id="2026-07-19--030-031-040-041-050"></span>2026-07-19 – 0.5.0
 
 ### Added
 - Form tools: `edt_add_form` creates a managed form with the EDT generator used by the "New form"
@@ -1213,7 +1221,7 @@ to the code and the reasoning behind it.
 - Internal: the single model gateway was split into focused per-area gateways (project, metadata read
   and write, form, platform, debug, BSL, docs). Pure refactor.
 
-## 2026-07-18 – 0.1.0, 0.1.1, 0.2.0, 0.2.1
+## <span id="2026-07-18--010-011-020-021"></span>2026-07-18 – 0.2.1
 
 ### Added
 - The full create / develop / build / deliver cycle exposed over MCP, with the write tools dry-run by

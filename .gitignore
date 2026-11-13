@@ -17,11 +17,13 @@ python/build/
 site/node_modules/
 site/dist/
 site/.blume/
-# Страницы-зеркала (CHANGELOG, ONBOARDING) собираются скриптом scripts/sync-docs.mjs перед сборкой.
-docs/changelog.md
-docs/changelog.ru.md
+# Страницы-зеркала (CHANGELOG, ONBOARDING, SECURITY) собираются скриптом scripts/sync-docs.mjs перед сборкой.
 docs/onboarding.md
-docs/onboarding.ru.md
+docs/ru/onboarding.md
+docs/(project)/changelog.md
+docs/ru/(project)/changelog.md
+docs/(project)/security.md
+docs/ru/(project)/security.md
 
 # Настройки Claude Code: разрешения и хуки принадлежат рабочему месту, а не проекту.
 .claude/
