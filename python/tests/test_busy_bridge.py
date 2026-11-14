@@ -49,7 +49,10 @@ class _Bridge:
             def log_message(self, *_args):
                 pass
 
-        self.http = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        class Listener(http.server.ThreadingHTTPServer):
+            request_queue_size = 5
+
+        self.http = Listener(("127.0.0.1", 0), Handler)
         self.http.daemon_threads = True
         self.port = self.http.server_address[1]
         threading.Thread(target=self.http.serve_forever, daemon=True).start()
@@ -66,7 +69,6 @@ def bridge(tmp_path, monkeypatch):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(server, "STATUS_TIMEOUT", 0.3)
     monkeypatch.setattr(server, "BUSY_STATUS_TIMEOUT", 2.0)
-    monkeypatch.setattr(server, "CONFIRMED_CONNECT_SECONDS", 1.0)
     fake = _Bridge(str(tmp_path))
     monkeypatch.setenv("EDT_BRIDGE_PORT", str(fake.port))
     monkeypatch.setenv("EDT_BRIDGE_PORT_SCAN", "0")
@@ -120,6 +122,8 @@ def test_a_refused_connection_to_a_bridge_heard_before_is_tried_again(bridge, mo
 
 def test_a_burst_of_calls_keeps_a_busy_bridge(bridge, monkeypatch):
     """Sixteen calls at once against a busy bridge whose port drops every other connection."""
+    # Keep the production retry window here. With a full accept queue on Linux,
+    # a real connect can time out, using up a shortened window in one attempt.
     backend = server.Backend()
     assert backend.ensure(wait=True)[0] is True
     bridge.delay = 30
@@ -170,7 +174,8 @@ def test_a_silent_port_never_heard_from_is_not_called_a_stopped_bridge(bridge, m
         backend.call_tool("edt_projects", {})
 
 
-def test_a_closed_port_is_a_stopped_bridge(bridge):
+def test_a_closed_port_is_a_stopped_bridge(bridge, monkeypatch):
+    monkeypatch.setattr(server, "CONFIRMED_CONNECT_SECONDS", 1.0)
     backend = server.Backend()
     assert backend.ensure(wait=True)[0] is True
     bridge.close()
