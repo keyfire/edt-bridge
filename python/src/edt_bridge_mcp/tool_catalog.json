@@ -83,6 +83,158 @@
       ]
     },
     {
+      "name": "edt_compare_configurations",
+      "description": "READ: compare EDT configurations using EDT's native comparison. Each side is an open configuration project, optionally at a local Git revision. Returns counts and a page of changed objects. Use comparisonId for more pages or edt_comparison_details for object details.",
+      "descriptionRu": "Сравнить конфигурации штатным механизмом EDT. Сторона задается открытым проектом конфигурации и необязательной локальной ревизией Git. Результат содержит счетчики и страницу измененных объектов. Для следующих страниц передайте comparisonId. Детали возвращает edt_comparison_details.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "offset": {
+            "type": "integer",
+            "description": "Zero-based page offset, default 0.",
+            "minimum": 0,
+            "maximum": 2147483647
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Page size, default 50.",
+            "minimum": 1,
+            "maximum": 200
+          },
+          "main": {
+            "type": "object",
+            "description": "Original side of the comparison.",
+            "properties": {
+              "projectName": {
+                "type": "string",
+                "description": "Open EDT configuration project."
+              },
+              "revision": {
+                "type": "string",
+                "description": "Local Git ref or commit. Omit to read the live project."
+              }
+            },
+            "required": [
+              "projectName"
+            ],
+            "additionalProperties": false
+          },
+          "other": {
+            "type": "object",
+            "description": "New side of the comparison.",
+            "properties": {
+              "projectName": {
+                "type": "string",
+                "description": "Open EDT configuration project."
+              },
+              "revision": {
+                "type": "string",
+                "description": "Local Git ref or commit. Omit to read the live project."
+              }
+            },
+            "required": [
+              "projectName"
+            ],
+            "additionalProperties": false
+          },
+          "ancestor": {
+            "type": "object",
+            "description": "Optional common ancestor for a three-way comparison.",
+            "properties": {
+              "projectName": {
+                "type": "string",
+                "description": "Open EDT configuration project."
+              },
+              "revision": {
+                "type": "string",
+                "description": "Local Git ref or commit. Omit to read the live project."
+              }
+            },
+            "required": [
+              "projectName"
+            ],
+            "additionalProperties": false
+          },
+          "matching": {
+            "type": "string",
+            "description": "Matching strategy, default UUID_THEN_NAME.",
+            "enum": [
+              "UUID",
+              "NAME",
+              "UUID_THEN_NAME"
+            ]
+          },
+          "waitSeconds": {
+            "type": "integer",
+            "description": "Comparison timeout, default 300.",
+            "minimum": 1,
+            "maximum": 1800
+          },
+          "comparisonId": {
+            "type": "string",
+            "description": "Use a previous result for another page. Omit the sources."
+          },
+          "async": {
+            "type": "boolean",
+            "description": "true = run the call as a background job: the answer is a jobId at once, and edt_job_status gives the state and, at the end, the same result the call returns without it. Use it when the call may outlast the time your client waits for a tool; edt_cancel_job stops the job. A call refused at once or a dry-run plan still answers directly."
+          }
+        },
+        "required": []
+      },
+      "toolsets": [
+        "extension"
+      ]
+    },
+    {
+      "name": "edt_comparison_details",
+      "description": "READ: page through changed properties and modules down to BSL methods in a configuration comparison.",
+      "descriptionRu": "Постранично прочитать различия свойств и модулей вплоть до методов BSL в результате сравнения конфигураций.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "offset": {
+            "type": "integer",
+            "description": "Zero-based page offset, default 0.",
+            "minimum": 0,
+            "maximum": 2147483647
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Page size, default 50.",
+            "minimum": 1,
+            "maximum": 200
+          },
+          "comparisonId": {
+            "type": "string",
+            "description": "Result ID from edt_compare_configurations."
+          },
+          "objectIndex": {
+            "type": "integer",
+            "description": "Index of a changed object in the comparison results.",
+            "minimum": 0,
+            "maximum": 2147483647
+          },
+          "nodeIndices": {
+            "type": "array",
+            "description": "Zero-based child indices to the parent node. Omit to list the object's children.",
+            "items": {
+              "type": "integer",
+              "description": "Child index.",
+              "minimum": 0,
+              "maximum": 2147483647
+            }
+          }
+        },
+        "required": [
+          "comparisonId",
+          "objectIndex"
+        ]
+      },
+      "toolsets": [
+        "extension"
+      ]
+    },
+    {
       "name": "edt_module_text",
       "description": "READ: BSL source of a module (or a single method) from the live workspace, with the module's procedure/function list and signatures when the whole module is read. Resolve by fqn (CommonModule.X, HTTPService.X, a form FQN, or an object + moduleType) or by modulePath. A method read leaves the list out (methodsIncluded: false) unless includeMethods=true. If a top object has several modules and none is chosen, returns the candidates in availableModules.",
       "descriptionRu": "ЧТЕНИЕ: исходный BSL модуля (или одного метода) из живой рабочей области, а при чтении модуля целиком еще и список процедур/функций с сигнатурами. Адресация по fqn (CommonModule.X, HTTPService.X, FQN формы или объект + moduleType) либо по modulePath. Чтение метода не возвращает список (methodsIncluded: false), если не передан includeMethods=true. Если у объекта несколько модулей и не выбран moduleType – вернёт варианты в availableModules.",
@@ -4197,5 +4349,5 @@
       ]
     }
   ],
-  "version": "0.46.0"
+  "version": "0.47.0"
 }

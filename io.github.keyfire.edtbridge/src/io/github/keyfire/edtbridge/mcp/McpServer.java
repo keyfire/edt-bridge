@@ -116,6 +116,8 @@ import io.github.keyfire.edtbridge.tools.ApplyFixTool;
 import io.github.keyfire.edtbridge.tools.PropertyReferenceTool;
 import io.github.keyfire.edtbridge.tools.ReadHtmlTemplateTool;
 import io.github.keyfire.edtbridge.tools.ReadDcsTool;
+import io.github.keyfire.edtbridge.tools.CompareConfigurationsTool;
+import io.github.keyfire.edtbridge.tools.ComparisonDetailsTool;
 import io.github.keyfire.edtbridge.tools.ReplaceDcsTool;
 import io.github.keyfire.edtbridge.tools.AddTemplateTool;
 import io.github.keyfire.edtbridge.tools.ReplaceHtmlTemplateTool;
@@ -348,6 +350,8 @@ applyI18n();loadStatus();loadTools();
     private final ReadHtmlTemplateTool readHtmlTemplate = new ReadHtmlTemplateTool();
     private final ReplaceHtmlTemplateTool replaceHtmlTemplate = new ReplaceHtmlTemplateTool();
     private final ReadDcsTool readDcs = new ReadDcsTool();
+    private final CompareConfigurationsTool compareConfigurations = new CompareConfigurationsTool();
+    private final ComparisonDetailsTool comparisonDetails = new ComparisonDetailsTool(compareConfigurations);
     private final ReplaceDcsTool replaceDcs = new ReplaceDcsTool();
     private final ModifyDcsTool modifyDcs = new ModifyDcsTool();
     private final ReadSpreadsheetTool readSpreadsheet = new ReadSpreadsheetTool();
@@ -869,6 +873,8 @@ applyI18n();loadStatus();loadTools();
         JsonArray tools = new JsonArray();
         tools.add(projectErrors.descriptor());
         tools.add(projects.descriptor());
+        tools.add(compareConfigurations.descriptor());
+        tools.add(comparisonDetails.descriptor());
         tools.add(moduleText.descriptor());
         tools.add(outgoingCalls.descriptor());
         tools.add(pictureExport.descriptor());
@@ -1070,6 +1076,12 @@ applyI18n();loadStatus();loadTools();
         if (cancelJob.name().equals(name)) {
             JsonObject denied = writeTokenGate(cancelJob.isWrite(), name);
             return denied != null ? denied : cancelJob.call(args);
+        }
+        if (compareConfigurations.name().equals(name)) {
+            return compareConfigurations.call(args);
+        }
+        if (comparisonDetails.name().equals(name)) {
+            return comparisonDetails.call(args);
         }
         if (projectErrors.name().equals(name)) {
             return projectErrors.call(args);

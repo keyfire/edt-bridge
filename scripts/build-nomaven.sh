@@ -160,6 +160,12 @@ need=(
   com.e1c.g5.dt.applications
   com.e1c.g5.dt.applications.infobases
   com._1c.g5.v8.dt.core
+  com._1c.g5.v8.dt.compare
+  com._1c.g5.v8.dt.compare.model
+  com._1c.g5.v8.dt.bsl.compare
+  org.eclipse.jgit
+  org.eclipse.egit.core
+  com._1c.g5.v8.dt.md.compare
   com._1c.g5.v8.dt.metadata
   com._1c.g5.v8.dt.metadata.extension
   com._1c.g5.v8.dt.md.extension

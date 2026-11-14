@@ -49,7 +49,7 @@ sidebar:
 инструмента. Эти инструменты принимают `async=true`:
 
 <!-- async-tools:start -->
-`edt_project_errors`, `edt_clean_project`, `edt_build_extension`,
+`edt_compare_configurations`, `edt_project_errors`, `edt_clean_project`, `edt_build_extension`,
 `edt_dump_external_object`, `edt_create_infobase`, `edt_update_infobase`,
 `edt_update_database_config`, `edt_infobase_dump`, `edt_test_form`, `edt_unit_tests`.
 <!-- async-tools:end -->

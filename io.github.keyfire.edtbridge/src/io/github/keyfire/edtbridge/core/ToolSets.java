@@ -119,7 +119,7 @@ public final class ToolSets {
         sets.put("extension", joined(
                 List.of("edt_create_extension", "edt_adopt_object", "edt_build_extension",
                         "edt_delete_object", "edt_modify_role_rights",
-                        "edt_modify_command_interface"),
+                        "edt_modify_command_interface", "edt_compare_configurations", "edt_comparison_details"),
                 MODULE_WRITES));
         return Collections.unmodifiableMap(sets);
     }
