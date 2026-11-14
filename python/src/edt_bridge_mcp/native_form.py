@@ -254,13 +254,45 @@ def _display(stack, xvfb, root, deadline):
                    pass_fds=(write_fd,))
         finally:
             os.close(write_fd)
-        ready, _, _ = select.select([read_fd], [], [], min(10, _seconds_left(deadline)))
-        number = os.read(read_fd, 32).strip() if ready else b""
+        # Xvfb writes the number and its newline with two writes, and dies when the second one finds the
+        # pipe closed ("Cannot write display number to fd N"). Under load the digits alone often arrive
+        # first: closing the pipe then killed the display right after the check had taken its number.
+        number = b""
+        limit = time.monotonic() + min(10, _seconds_left(deadline))
+        while not number.endswith(b"\n") and len(number) < 32:
+            ready, _, _ = select.select([read_fd], [], [], max(0.0, limit - time.monotonic()))
+            chunk = os.read(read_fd, 32) if ready else b""
+            if not chunk:
+                break
+            number += chunk
+        number = number.strip()
         if not number.isdigit():
             raise _CheckError("display_failed", "Xvfb did not allocate a private display.")
     finally:
         os.close(read_fd)
     return dict(env, DISPLAY=":" + number.decode("ascii"))
+
+
+def _display_failure(path):
+    """The fatal error a virtual display stopped with, from its log, or None while it reports none."""
+    lines = [line.strip() for line in _log(path).splitlines()]
+    if "Fatal server error:" not in lines:
+        return None
+    for line in lines[lines.index("Fatal server error:") + 1:]:
+        text = line[len("(EE)"):].strip() if line.startswith("(EE)") else line
+        if text:
+            return text
+    return "Fatal server error"
+
+
+def _startup_cause(display_log, process_log):
+    """Why a client exited before it opened its listener: its display stopped, or what it wrote itself."""
+    failure = _display_failure(display_log)
+    if failure:
+        return f"its virtual display stopped: {failure}"
+    written = next((line.strip() for line in _log(process_log).splitlines() if line.strip()), "")
+    written = written.lstrip("* ").strip()
+    return f"it wrote: {written}" if written else ""
 
 
 def _log(path):
@@ -380,8 +412,10 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
                             "/C" + str(request), "/Out", str(manager_log)]
             manager_stack = stack.enter_context(contextlib.ExitStack())
             report["connectAttempts"] = 0
+            failed_connects = {"count": 0, "seconds": 0.0, "lastError": ""}
             while True:
                 _seconds_left(deadline)
+                attempt_started = time.monotonic()
                 manager = _spawn(manager_stack, manager_args, manager_env, manager_process_log)
                 report["connectAttempts"] += 1
                 while not result.is_file():
@@ -413,6 +447,15 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
                     break
                 manager_stack.close()
                 manager = None
+                # The client listens before it accepts a test connection, and a client opening an
+                # infobase for the first time after a change can take a minute to accept one. Each
+                # attempt until then costs a whole manager start: the sum is kept apart, so it does not
+                # read as a slow start of the manager.
+                failed_connects["count"] += 1
+                failed_connects["seconds"] = round(failed_connects["seconds"]
+                                                   + time.monotonic() - attempt_started, 2)
+                failed_connects["lastError"] = str(data.get("error") or "")[:300]
+                report["failedConnects"] = failed_connects
                 time.sleep(min(1, _seconds_left(deadline)))
                 _seconds_left(deadline)
                 if client.poll() is not None or not _owns_listener(client, port):
@@ -456,14 +499,24 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
                 detail = _log(log)
                 if detail:
                     report[key] = detail
+            if report.get("status") == "startup_failed":
+                # The logs say why, and the error names it, so a reader of the error alone is not left with
+                # "exited" and nothing else.
+                cause = _startup_cause(root / "client-display/xvfb.log", client_process_log)
+                if cause:
+                    report["error"] = f"{report.get('error', '').rstrip('.')}: {cause}"
             if report["ok"] and "screenshot" not in report:
                 report.update(ok=False, status="screenshot_failed")
     total, stages = timeline.close()
     timings = {"seconds": total, **stages}
     driver = _driver_timings(marks)
+    retries = (report.get("failedConnects") or {}).get("seconds", 0)
+    if retries:
+        # The attempts whose Connect failed: the time the client took to accept a test connection.
+        timings["connectRetries"] = retries
     if driver:
-        # The manager stage outside the driver: the start of its platform and earlier connection attempts.
-        timings["managerStartup"] = round(max(0.0, stages.get("manager", 0.0) - driver["total"]), 2)
+        # The manager stage outside the driver and the failed attempts: the start of its platform.
+        timings["managerStartup"] = round(max(0.0, stages.get("manager", 0.0) - driver["total"] - retries), 2)
         timings["driver"] = driver
     report["timings"] = timings
     report["cleanupComplete"] = True
@@ -826,7 +879,8 @@ def _native_check(args, base, external, output, report):
         try:
             report["stage"] = "manager_setup"
             timeline.enter("managerDisplay")
-            manager_env = _display(stack, xvfb, root / "manager-display", deadline)
+            display_root = root / "manager-display"
+            manager_env = _display(stack, xvfb, display_root, deadline)
             refresh = None
             for attempt in (1, 2):
                 attempt_root = root / f"setup-{attempt}"
@@ -840,8 +894,17 @@ def _native_check(args, base, external, output, report):
                 except _CheckError as error:
                     logs = _setup_logs(attempt_root)
                     refused = _platform_failure_status("", " ".join(logs.values()))
+                    display_failure = _display_failure(display_root / "xvfb.log")
+                    if display_failure:
+                        logs["managerDisplayLog"] = _log(display_root / "xvfb.log")
                     if attempt == 2 or error.status != "setup_failed" or refused:
+                        if display_failure:
+                            report["managerDisplayLog"] = logs["managerDisplayLog"]
                         raise
+                    if display_failure:
+                        # A display that stopped fails every designer after it: the retry gets a new one.
+                        display_root = root / "manager-display-2"
+                        manager_env = _display(stack, xvfb, display_root, deadline)
                     if report.get("managerCache", {}).get("status") == "hit":
                         # The cached infobase may be what failed: the retry builds it again and replaces it.
                         refresh = f"the setup failed on the cached infobase: {error}"

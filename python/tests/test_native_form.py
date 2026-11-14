@@ -170,6 +170,52 @@ def test_early_client_exit_preserves_process_diagnostics(monkeypatch, tmp_path):
     assert result["clientExitCode"] == 255
     assert "Unable to initialize GTK+" in result["clientProcessLog"]
     assert result["cleanupComplete"] is True
+    # The error itself says why, not only the logs next to it.
+    assert "Unable to initialize GTK+" in result["error"]
+
+
+_DEAD_DISPLAY_LOG = """_XSERVTransSocketUNIXCreateListener: ...SocketCreateListener() failed
+_XSERVTransMakeAllCOTSServerListeners: server already running
+_XSERVTransmkdir: Owner of /tmp/.X11-unix should be set to root
+(EE)
+Fatal server error:
+(EE) Cannot write display number to fd 4
+(EE)
+"""
+
+
+def test_a_display_that_died_is_named_by_its_fatal_error(tmp_path):
+    log = tmp_path / "xvfb.log"
+    log.write_text(_DEAD_DISPLAY_LOG, encoding="utf-8")
+    assert native_form._display_failure(log) == "Cannot write display number to fd 4"
+    log.write_text("_XSERVTransmkdir: Owner of /tmp/.X11-unix should be set to root\n", encoding="utf-8")
+    assert native_form._display_failure(log) is None
+    assert native_form._display_failure(tmp_path / "missing.log") is None
+
+
+def test_a_client_whose_display_died_says_so(monkeypatch, tmp_path):
+    args = _fixture_args(tmp_path)
+    args.output_dir.mkdir()
+
+    def display(stack, xvfb, root, deadline):
+        root.mkdir(parents=True)
+        (root / "xvfb.log").write_text(_DEAD_DISPLAY_LOG, encoding="utf-8")
+        return {}
+
+    monkeypatch.setattr(native_form, "_display", display)
+    monkeypatch.setattr(native_form, "_owns_listener", lambda *args: False)
+    monkeypatch.setattr(native_form, "_capture", lambda *args: {"screenshotError": "Display unavailable."})
+
+    def spawn(_stack, argv, env, log):
+        log.write_text("Unable to initialize GTK+ or connect to the windowing system.", encoding="utf-8")
+        return SimpleNamespace(poll=lambda: 255)
+
+    monkeypatch.setattr(native_form, "_spawn", spawn)
+    result = native_form._run_session(args, args.test_infobase, args.epf, args.output_dir,
+                                      tmp_path / "session", tmp_path / "manager", {},
+                                      ["1cv8", "ENTERPRISE"], "Xvfb", time.monotonic() + 5, None)
+    assert result["status"] == "startup_failed"
+    assert "virtual display" in result["error"] and "Cannot write display number" in result["error"]
 
 
 @pytest.mark.parametrize(
@@ -229,6 +275,15 @@ def test_retries_connection_without_repeating_form_actions(
     assert report["status"] == expected_status
     assert report["ok"] is (expected_status == "command_completed")
     assert report["connectAttempts"] == attempts
+    # A failed Connect is kept apart with its seconds, so it does not read as a slow manager start.
+    retried = first_result["stage"] == "connect" and expected_status not in ("access_denied", "license_unavailable")
+    if retried:
+        assert report["failedConnects"]["count"] == 1
+        assert report["failedConnects"]["seconds"] == response_time
+        assert "matching version" in report["failedConnects"]["lastError"]
+        assert report["timings"].get("connectRetries", 0) == response_time
+    else:
+        assert "failedConnects" not in report and "connectRetries" not in report["timings"]
     if expected_status == "timeout":
         assert report["interaction"] == first_result
         assert now == 100 + timeout
@@ -248,6 +303,41 @@ def test_client_readiness_timeout_reaps_the_owned_process(tmp_path):
         assert timeout.value.status == "timeout"
         assert client.poll() is None
     assert client.poll() is not None
+
+
+_SLOW_XVFB = '''#!/usr/bin/env python3
+"""Writes its display number the way Xvfb does: the digits, then the newline in a second write."""
+import os, sys, time
+fd = int(sys.argv[sys.argv.index("-displayfd") + 1])
+os.write(fd, b"7")
+time.sleep(0.3)
+try:
+    os.write(fd, b"\\n")
+    outcome = "written"
+except OSError as error:  # Xvfb dies here: "Cannot write display number to fd N"
+    outcome = type(error).__name__
+with open(sys.argv[0] + ".partial", "w") as stream:
+    stream.write(outcome)
+os.replace(sys.argv[0] + ".partial", sys.argv[0] + ".outcome")  # the test never sees it half written
+'''
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="a display started with -displayfd on a POSIX pipe")
+def test_the_display_waits_for_the_whole_number_before_it_closes_the_pipe(tmp_path):
+    """Xvfb writes the number and the newline apart. Reading the digits and closing the pipe at once made
+    the second write fail, and Xvfb died right after the check took its number (EDT-TEST-17)."""
+    xvfb = tmp_path / "slow-xvfb"
+    xvfb.write_text(_SLOW_XVFB, encoding="utf-8")
+    xvfb.chmod(0o755)
+    with contextlib.ExitStack() as processes:
+        env = native_form._display(processes, str(xvfb), tmp_path / "display", time.monotonic() + 10)
+        assert env["DISPLAY"] == ":7"
+        outcome = Path(str(xvfb) + ".outcome")
+        for _ in range(50):
+            if outcome.exists():
+                break
+            time.sleep(0.1)
+        assert outcome.read_text() == "written"
 
 
 def _fixture_args(tmp_path):
@@ -458,6 +548,31 @@ def test_a_failed_manager_setup_is_retried_once_in_a_clean_directory(monkeypatch
     assert "exit code 255" in retry["error"] and "Unable to connect to the display" in retry["error"]
     assert retry["designerProcessLog"] == "Unable to connect to the display"
     assert managers[0].parent != managers[1].parent
+    assert sessions == [managers[1]]
+
+
+def test_a_setup_retry_after_the_display_died_gets_a_new_display(monkeypatch, tmp_path):
+    """A display that stopped fails every designer after it: the retry has to start a new one (EDT-TEST-17)."""
+    args, managers, sessions = _manager_setup(monkeypatch, tmp_path, [
+        "*** Unable to initialize GTK+ or connect to the windowing system. Is DISPLAY set properly?", None])
+    displays = []
+
+    def display(stack, xvfb, root, deadline):
+        root.mkdir(parents=True)
+        # The first display dies before the designer reaches it; the next one is healthy.
+        (root / "xvfb.log").write_text(_DEAD_DISPLAY_LOG if not displays else "", encoding="utf-8")
+        displays.append(root.name)
+        return {"DISPLAY": f":{len(displays)}"}
+
+    monkeypatch.setattr(native_form, "_display", display)
+    report = {"ok": False}
+
+    native_form._native_check(args, args.test_infobase, args.epf, args.output_dir, report)
+
+    assert report["ok"] is True
+    assert displays == ["manager-display", "manager-display-2"]
+    retry = report["setupRetries"][0]
+    assert "Cannot write display number" in retry["managerDisplayLog"]
     assert sessions == [managers[1]]
 
 

@@ -54,6 +54,10 @@
           "refresh": {
             "type": "boolean",
             "description": "true = re-read the scope from disk, run an INCREMENTAL build, and for a resolved fqn/modulePath request active checks for that exact BM top object. Waits for derived data and stable markers; unresolved or conflicting filters never become a whole-project check. Check settings are preserved. Without a narrowing only the incremental build is requested. The result reports validationRequested, validationCompleted, validationTargets and timings. A project with no build state may receive a full build from Eclipse. Default false."
+          },
+          "async": {
+            "type": "boolean",
+            "description": "true = run the call as a background job: the answer is a jobId at once, and edt_job_status gives the state and, at the end, the same result the call returns without it. Use it when the call may outlast the time your client waits for a tool; edt_cancel_job stops the job. A call refused at once or a dry-run plan still answers directly."
           }
         },
         "required": []
@@ -1298,6 +1302,10 @@
           "apply": {
             "type": "boolean",
             "description": "false (default) = dry-run: resolve ibcmd, check the destination and return the plan, write nothing. true = take the dump."
+          },
+          "async": {
+            "type": "boolean",
+            "description": "true = run the call as a background job: the answer is a jobId at once, and edt_job_status gives the state and, at the end, the same result the call returns without it. Use it when the call may outlast the time your client waits for a tool; edt_cancel_job stops the job. A call refused at once or a dry-run plan still answers directly."
           }
         },
         "required": [
@@ -1627,6 +1635,10 @@
           "apply": {
             "type": "boolean",
             "description": "false (default) reports what would be applied and applies nothing; true applies it."
+          },
+          "async": {
+            "type": "boolean",
+            "description": "true = run the call as a background job: the answer is a jobId at once, and edt_job_status gives the state and, at the end, the same result the call returns without it. Use it when the call may outlast the time your client waits for a tool; edt_cancel_job stops the job. A call refused at once or a dry-run plan still answers directly."
           }
         },
         "required": [
@@ -3365,6 +3377,10 @@
           "apply": {
             "type": "boolean",
             "description": "false (default) = dry-run: resolve the object and validate that dump generation is available (local 1C platform). true = write the file."
+          },
+          "async": {
+            "type": "boolean",
+            "description": "true = run the call as a background job: the answer is a jobId at once, and edt_job_status gives the state and, at the end, the same result the call returns without it. Use it when the call may outlast the time your client waits for a tool; edt_cancel_job stops the job. A call refused at once or a dry-run plan still answers directly."
           }
         },
         "required": [
@@ -3446,6 +3462,10 @@
           "sessionTermination": {
             "type": "string",
             "description": "agent transport: disable (default), prompt or force - what to do when applying needs an exclusive lock and sessions hold the infobase. On a lively infobase force does not settle it - BackgroundJob sessions respawn within a minute and the update loses the race; raise a maintenance window with edt_infobase_maintenance first."
+          },
+          "async": {
+            "type": "boolean",
+            "description": "true = run the call as a background job: the answer is a jobId at once, and edt_job_status gives the state and, at the end, the same result the call returns without it. Use it when the call may outlast the time your client waits for a tool; edt_cancel_job stops the job. A call refused at once or a dry-run plan still answers directly."
           }
         },
         "required": [
@@ -3532,6 +3552,10 @@
           "apply": {
             "type": "boolean",
             "description": "false (default) = dry-run: validate the request only. true = create the infobase and register it in EDT."
+          },
+          "async": {
+            "type": "boolean",
+            "description": "true = run the call as a background job: the answer is a jobId at once, and edt_job_status gives the state and, at the end, the same result the call returns without it. Use it when the call may outlast the time your client waits for a tool; edt_cancel_job stops the job. A call refused at once or a dry-run plan still answers directly."
           }
         },
         "required": [
@@ -3603,6 +3627,10 @@
           "apply": {
             "type": "boolean",
             "description": "false (default) = dry-run: resolve the project, extension name and a usable on-disk ibcmd install. true = export and build the .cfe."
+          },
+          "async": {
+            "type": "boolean",
+            "description": "true = run the call as a background job: the answer is a jobId at once, and edt_job_status gives the state and, at the end, the same result the call returns without it. Use it when the call may outlast the time your client waits for a tool; edt_cancel_job stops the job. A call refused at once or a dry-run plan still answers directly."
           }
         },
         "required": [
@@ -3834,6 +3862,10 @@
           "apply": {
             "type": "boolean",
             "description": "false (default) = dry-run: report the current problem count and whether auto-build is on, change nothing. true = clean, rebuild and wait for the problem count to settle."
+          },
+          "async": {
+            "type": "boolean",
+            "description": "true = run the call as a background job: the answer is a jobId at once, and edt_job_status gives the state and, at the end, the same result the call returns without it. Use it when the call may outlast the time your client waits for a tool; edt_cancel_job stops the job. A call refused at once or a dry-run plan still answers directly."
           }
         },
         "required": [
@@ -4097,6 +4129,52 @@
       "toolsets": []
     },
     {
+      "name": "edt_job_status",
+      "description": "The state of a background job started by a call with async=true: queued, running, succeeded, failed or cancelled, with its current step, elapsed seconds and the steps it has already applied. Once the job ends, result holds what the call returns when run directly. Waits up to waitSeconds for the end, so a loop of these calls needs no pauses of its own. A job keeps running when the client disconnects, and its result is kept for an hour. A jobId of an earlier run of EDT is refused with that reason: the job ended with that run.",
+      "descriptionRu": "Состояние фонового задания, запущенного вызовом с async=true: queued, running, succeeded, failed или cancelled, текущий шаг, прошедшие секунды и шаги, которые уже применены. Когда задание закончилось, в result лежит то же, что вернул бы прямой вызов. Ждет конца до waitSeconds, поэтому опросу пауза не нужна. Задание продолжается, если клиент отключился, а его итог хранится час. jobId прежнего запуска EDT отклоняется с этой причиной: задание закончилось вместе с тем запуском.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "description": "The jobId a call with async=true answered. Without it: the jobs of this run of EDT, the newest first."
+          },
+          "waitSeconds": {
+            "type": "integer",
+            "description": "How long to wait for the job to end before answering, 0-50. Default 30: a job that ends sooner answers sooner."
+          }
+        },
+        "required": []
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
+    },
+    {
+      "name": "edt_cancel_job",
+      "description": "Cancel a background job started by a call with async=true. A queued job never runs. A running one stops at its next step: a platform process (ibcmd, the designer) is stopped with its children, an EDT operation at its next progress check. What the job had already done stays done and is listed in applied - a configuration loaded into the infobase stays loaded. A job that does not reach its next check within 10 seconds is still running with cancelRequested; edt_job_status shows when it ends. A finished job is answered as it is.",
+      "descriptionRu": "Отменить фоновое задание, запущенное вызовом с async=true. Задание в очереди не запустится. Идущее остановится на следующем шаге: процесс платформы (ibcmd, конфигуратор) снимается вместе с дочерними, операция EDT - на следующей проверке прогресса. Сделанное заданием остается сделанным и перечислено в applied: загруженная в базу конфигурация остается загруженной. Если задание не дошло до проверки за 10 секунд, оно еще идет с cancelRequested, а конец покажет edt_job_status. Законченное задание возвращается как есть.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "description": "The jobId a call with async=true answered"
+          }
+        },
+        "required": [
+          "jobId"
+        ]
+      },
+      "toolsets": [
+        "processor",
+        "report",
+        "extension"
+      ]
+    },
+    {
       "name": "edt_tool_help",
       "description": "READ: the full description and the argument schema of one tool, by its name. The server also describes a tool outside the active tool set (EDT_BRIDGE_TOOLSET): the answer then states that a call of it is refused and lists the tool sets that contain it. The answer contains name, description, inputSchema, toolsets and available. For an unknown name the server returns a refusal with the nearest tool names.",
       "descriptionRu": "ЧТЕНИЕ: полное описание и схема аргументов одного инструмента по его имени. Сервер описывает и инструмент вне действующего набора (EDT_BRIDGE_TOOLSET): в этом случае в ответе указано, что вызов инструмента отклоняется, и перечислены наборы, в которые он входит. Ответ содержит name, description, inputSchema, toolsets и available. Для неизвестного имени сервер возвращает отказ с ближайшими именами инструментов.",
@@ -4119,5 +4197,5 @@
       ]
     }
   ],
-  "version": "0.45.0"
+  "version": "0.46.0"
 }

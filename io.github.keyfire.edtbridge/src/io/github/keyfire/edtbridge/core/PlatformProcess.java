@@ -33,7 +33,9 @@ public final class PlatformProcess {
     private static final int POLL_MILLIS = 20;
 
     public enum End {
-        EXITED, LAUNCH_FAILED, TIMED_OUT, OUTPUT_LIMIT, STOP_REQUESTED, INTERRUPTED, READ_FAILED
+        EXITED, LAUNCH_FAILED, TIMED_OUT, OUTPUT_LIMIT, STOP_REQUESTED, INTERRUPTED, READ_FAILED,
+        /** The job running the process was cancelled; the process and its children were stopped. */
+        CANCELLED
     }
 
     public record Result(End end, Integer exitCode, byte[] output) {
@@ -51,6 +53,7 @@ public final class PlatformProcess {
                 case STOP_REQUESTED -> " was stopped";
                 case INTERRUPTED -> " was interrupted";
                 case READ_FAILED -> " output could not be read";
+                case CANCELLED -> " was stopped: the job was cancelled";
             };
         }
     }
@@ -96,6 +99,9 @@ public final class PlatformProcess {
                     }
                 } else if (!process.isAlive() && input.available() == 0) {
                     return new Result(End.EXITED, process.exitValue(), output.toByteArray());
+                }
+                if (Jobs.cancelRequested()) {
+                    return new Result(End.CANCELLED, null, output.toByteArray());
                 }
                 long left = deadline - System.nanoTime();
                 if (left <= 0) {

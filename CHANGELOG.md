@@ -13,14 +13,43 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
-## Unreleased
+## 2026-11-14 – 0.46.0
+
+### Added
+
+- Long calls can run in the background. `edt_build_extension`, `edt_update_infobase`,
+  `edt_project_errors` and the other tools that may take minutes accept `async=true` and answer
+  with a `jobId` at once. `edt_job_status` gives the state and, at the end, the usual result;
+  `edt_cancel_job` stops the job and lists what it had already applied. A job goes on when the
+  client disconnects, and `edt_test_form` and `edt_unit_tests` run theirs as a process of its own.
+  ([#86](https://github.com/keyfire/edt-bridge/pull/86))
 
 ### Changed
 
+- The report of a form check keeps failed connection attempts apart. `managerStartup` used to
+  count every restart of the test manager while the client did not yet accept a connection; now
+  those seconds are in `connectRetries`, and `failedConnects` gives their count and the last
+  error. ([#86](https://github.com/keyfire/edt-bridge/pull/86))
 - The personal data filter has a page of its own on the site, next to the settings. It describes
   how to turn the filter on, which tools and files it covers, how it finds the data, what the two
   modes write and how to add rules. The pages of the tools, the form check results and the
   YAXUnit runs link to it. ([#85](https://github.com/keyfire/edt-bridge/pull/85))
+
+### Fixed
+
+- A busy bridge is no longer reported as stopped. Under several heavy calls `/status` could take
+  longer than the three seconds the wrapper waits, or a port flooded with new connections could
+  refuse one, and with autostart off the call failed with "bridge is not running". Now a bridge
+  that answered before gets the call while its port accepts connections, and a refused connection
+  is tried again for five seconds. `/status` answers within about 1.5 s and leaves out the model
+  state it cannot read in time. ([#86](https://github.com/keyfire/edt-bridge/pull/86))
+- Form checks no longer lose their virtual display when two start at once. The check closed the
+  pipe Xvfb reports its display number through before Xvfb finished writing, and Xvfb stopped;
+  under load that killed two displays in three. A client that exits before its listener now says
+  why, and a setup retry gets a new display. ([#86](https://github.com/keyfire/edt-bridge/pull/86))
+- A cancelled or failed `edt_infobase_dump` removes the unfinished `.dt` it wrote. Before, the
+  file looked like a backup, and a repeated call with the same `outputPath` refused to overwrite
+  it. ([#86](https://github.com/keyfire/edt-bridge/pull/86))
 
 ## <span id="2026-11-13--0430-0440"></span><span id="2026-11-13--0440"></span>2026-11-13 – 0.45.0
 

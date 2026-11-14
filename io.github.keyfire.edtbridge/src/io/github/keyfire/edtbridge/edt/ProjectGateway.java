@@ -734,7 +734,7 @@ public final class ProjectGateway {
         RefreshResult r = new RefreshResult();
         List<IProject> projects = selectProjects(projectName);
         String pathPrefix = locationPrefix(fqn, modulePath);
-        IProgressMonitor monitor = new NullProgressMonitor();
+        IProgressMonitor monitor = JobProgressMonitor.create();
         boolean several = projects.size() > 1;
         long started = System.currentTimeMillis();
         for (IProject p : projects) {
@@ -1096,6 +1096,11 @@ public final class ProjectGateway {
             project.build(IncrementalProjectBuilder.CLEAN_BUILD, monitor);
             result.applied = true;
             result.completedStages.add(result.stage);
+            // A job cancelled after this point leaves the project cleaned and not yet rebuilt.
+            if (io.github.keyfire.edtbridge.core.Jobs.inJob()) {
+                io.github.keyfire.edtbridge.core.Jobs.applied("the build results of " + project.getName()
+                        + " are discarded (clean)");
+            }
             if (rebuild) {
                 result.stage = "FULL_BUILD";
                 project.build(IncrementalProjectBuilder.FULL_BUILD, monitor);
@@ -1265,8 +1270,7 @@ public final class ProjectGateway {
         }
 
         long started = System.currentTimeMillis();
-        org.eclipse.core.runtime.IProgressMonitor monitor =
-                new org.eclipse.core.runtime.NullProgressMonitor();
+        org.eclipse.core.runtime.IProgressMonitor monitor = JobProgressMonitor.create();
         IJobManager jobs = Job.getJobManager();
         if (!executeCleanBuild(p, rebuild, monitor, jobs, r)) {
             r.elapsedMs = System.currentTimeMillis() - started;
@@ -1568,8 +1572,7 @@ public final class ProjectGateway {
             return r;
         }
         try {
-            org.eclipse.core.runtime.IProgressMonitor monitor =
-                    new org.eclipse.core.runtime.NullProgressMonitor();
+            org.eclipse.core.runtime.IProgressMonitor monitor = JobProgressMonitor.create();
             existing.create(description, monitor);
             existing.open(monitor);
             r.open = existing.isOpen();

@@ -1246,7 +1246,16 @@ public final class DesignerAgentGateway {
                 + " (sessionTermination=" + r.sessionTermination + ")";
 
         r.answer = (answer == null || answer.isBlank()) ? null : answer.trim();
+        // Taken here, in the thread of the call: the confirmation below may come from a thread of the
+        // SSH client, where the job of this call is not known.
+        io.github.keyfire.edtbridge.core.Jobs.Context job = io.github.keyfire.edtbridge.core.Jobs.context();
         agent.lock.lock();
+        if (apply && job.cancelRequested()) {
+            agent.lock.unlock();
+            r.message = "the job was cancelled before the database update started; nothing was changed in "
+                    + agent.infobase;
+            return r;
+        }
         agent.answer = r.answer;
         agent.question = null;
         agent.questionOptions = List.of();
@@ -1255,6 +1264,7 @@ public final class DesignerAgentGateway {
             return withSession(agent, s -> {
                 List<String> collected = new ArrayList<>();
                 boolean[] refused = {false};
+                boolean[] stopped = {false};
                 // A real apply may move the configuration generation itself. Read it on both sides,
                 // so the record of the last load can follow that move - and only that one.
                 boolean tracked = apply && (extension == null || extension.isBlank());
@@ -1270,8 +1280,11 @@ public final class DesignerAgentGateway {
                         for (IDbStructureChange c : changes) {
                             collected.add("[" + c.getType() + "] " + c.getMessage());
                         }
-                        refused[0] = !apply;
-                        return apply;
+                        // A cancel that comes before the confirmation refuses it, and a refused
+                        // confirmation leaves the infobase as it was.
+                        stopped[0] = apply && job.cancelRequested();
+                        refused[0] = !apply || stopped[0];
+                        return apply && !stopped[0];
                     }).exec(Duration.ofHours(2));
                 } catch (Exception cancelled) {
                     // A dry-run ends by refusing the confirmation, and the client reports that by
@@ -1291,7 +1304,16 @@ public final class DesignerAgentGateway {
                 r.changes.clear();  // a retried first attempt must not double the list
                 r.changes.addAll(collected);
                 r.ok = true;
-                r.applied = apply;
+                r.applied = apply && !stopped[0];
+                if (stopped[0]) {
+                    r.ok = false;
+                    r.message = "the job was cancelled at the confirmation of " + collected.size()
+                            + " structure change(s); the DATABASE configuration was NOT updated";
+                    return r;
+                }
+                if (apply) {
+                    job.applied("the database configuration of " + agent.infobase + " is updated");
+                }
                 if (!apply) {
                     r.message = collected.isEmpty()
                             ? "dry-run: nothing to apply - the database configuration is already up to date"
@@ -1588,6 +1610,7 @@ public final class DesignerAgentGateway {
                     r.generationBefore = generationId(session);
                 }
                 stage[0] = "exporting the project";
+                io.github.keyfire.edtbridge.core.Jobs.stage("exporting the project to designer XML");
                 Path exportDir = userDir.resolve(name);
                 Files.createDirectories(exportDir);
                 try {
@@ -1601,7 +1624,7 @@ public final class DesignerAgentGateway {
                             injector.getInstance(com._1c.g5.v8.dt.export.IExportOperationFactory.class);
                     org.eclipse.core.runtime.IStatus exported = factory
                             .createExportOperation(exportDir, GatewaySupport.projectVersion(p), root.object)
-                            .run(new org.eclipse.core.runtime.NullProgressMonitor());
+                            .run(JobProgressMonitor.create());
                     if (exported != null
                             && exported.getSeverity() == org.eclipse.core.runtime.IStatus.ERROR) {
                         r.message = "export to designer XML failed: " + exported.getMessage();
@@ -1612,6 +1635,14 @@ public final class DesignerAgentGateway {
                     BlankTemplates.fill(exportDir);
 
                     r.exportMillis = millisSince(exportStarted);
+                    // The export does not stop on a cancel of its own (seen on a whole UNF load: it ran to
+                    // the end, and the load after it took six minutes more). Nothing has reached the
+                    // infobase yet, so this is the last point where a cancel costs nothing.
+                    if (io.github.keyfire.edtbridge.core.Jobs.cancelRequested()) {
+                        r.message = "the job was cancelled during the export to designer XML; nothing was loaded "
+                                + "into " + agent.infobase;
+                        return ExtensionLoadOutcome.FAILED;
+                    }
 
                     // Which files to send. The export is whole every time; it is compared with the
                     // record of the last load, and LoadPlan decides when sending only the difference
@@ -1656,6 +1687,7 @@ public final class DesignerAgentGateway {
                     // matches. Deleting it up front bought nothing on top of that, and a lost
                     // connection right after the deletion made the repeated attempt find no record.
                     stage[0] = "loading";
+                    io.github.keyfire.edtbridge.core.Jobs.stage("loading into " + agent.infobase);
                     long loadStarted = System.nanoTime();
                     List<com._1c.g5.designer.ssh.client.operation.ILoadIssue> issues = null;
                     if (plan.mode == LoadPlan.Mode.PARTIAL) {
@@ -1693,6 +1725,9 @@ public final class DesignerAgentGateway {
                     }
                     r.ok = true;
                     r.applied = true;
+                    io.github.keyfire.edtbridge.core.Jobs.applied((r.extension == null
+                            ? "the configuration" : "the extension " + r.extension)
+                            + " is loaded into " + agent.infobase);
                     r.message = ("partial".equals(r.loadMode)
                                     ? "loaded " + r.changedFiles + " changed file(s) of " + r.totalFiles
                                       + " into "
@@ -1736,7 +1771,14 @@ public final class DesignerAgentGateway {
             agent.lock.unlock();
         }
 
+        if (updateDatabaseConfig && io.github.keyfire.edtbridge.core.Jobs.cancelRequested()) {
+            // A cancel between the two steps: the load stays, the database update is not started.
+            r.message = r.message + "; the job was cancelled after the load, so the DATABASE configuration "
+                    + "was NOT updated - edt_update_database_config applies it later";
+            return r;
+        }
         if (updateDatabaseConfig) {
+            io.github.keyfire.edtbridge.core.Jobs.stage("updating the database configuration of " + infobase);
             UpdateResult update = updateDatabaseConfiguration(infobase, r.extension, sessionTermination,
                     null, user, password, platformVersion, answer, true);
             r.databaseConfigUpdated = update.applied;

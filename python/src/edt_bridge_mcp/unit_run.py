@@ -16,7 +16,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from . import form_run, native_unit
+from . import form_run, jobs, native_unit
 
 DESCRIPTOR = {
     "name": "edt_unit_tests",
@@ -74,6 +74,7 @@ DESCRIPTOR = {
                                      "[\"ОМ_Заказы.СуммаЗаказа\"]"},
             "timeoutSeconds": {"type": "integer",
                                "description": "Whole run limit, 60-900 seconds (default 300)"},
+            "async": {"type": "boolean", "description": jobs.ASYNC_DESCRIPTION},
         },
         "required": ["extensions"],
     },

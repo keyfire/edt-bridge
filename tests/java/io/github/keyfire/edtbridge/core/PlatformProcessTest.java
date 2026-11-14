@@ -66,6 +66,25 @@ class PlatformProcessTest {
     }
 
     @Test
+    void stopsTheProcessWhenItsJobIsCancelled() {
+        assertTimeoutPreemptively(Duration.ofSeconds(15), () -> {
+            var threads = java.util.concurrent.Executors.newSingleThreadExecutor();
+            try {
+                var jobs = new Jobs<PlatformProcess.Result>("abc234", threads, System::currentTimeMillis, r -> false);
+                var job = jobs.submit("edt_build_extension", () -> run("silent", Duration.ofSeconds(30)));
+                Thread.sleep(500);
+                var cancelled = jobs.cancel(job.id(), 10_000);
+                assertEquals(Jobs.State.CANCELLED, cancelled.state());
+                assertEquals(PlatformProcess.End.CANCELLED, cancelled.result().end());
+                assertEquals("ibcmd config save was stopped: the job was cancelled",
+                        cancelled.result().problem(Path.of("ibcmd"), "config save", Duration.ofSeconds(1)));
+            } finally {
+                threads.shutdownNow();
+            }
+        });
+    }
+
+    @Test
     void stopsProcessWhenCapturedOutputReachesTheLimit() throws Exception {
         var result = run("flood", Duration.ofSeconds(8));
         assertEquals(PlatformProcess.End.OUTPUT_LIMIT, result.end());

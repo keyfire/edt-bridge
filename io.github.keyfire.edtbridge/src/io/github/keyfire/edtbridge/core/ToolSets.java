@@ -49,6 +49,9 @@ public final class ToolSets {
     /** Reading and checking: what every job needs whatever it builds. */
     private static final List<String> BASE = List.of(
             "edt_tool_help",
+            // A long call of any set runs as a job, so every set needs the tools that follow one.
+            "edt_job_status",
+            "edt_cancel_job",
             "edt_projects",
             "edt_project_errors",
             "edt_check_info",

@@ -103,6 +103,7 @@ public final class PlatformBuildProbe {
             case TIMED_OUT -> "timedOut";
             case LAUNCH_FAILED -> "launchFailed";
             case INTERRUPTED -> "interrupted";
+            case CANCELLED -> "cancelled";
             case EXITED -> {
                 if (run.exitCode() == 0 && artifact) {
                     yield "passed";

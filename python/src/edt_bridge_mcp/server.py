@@ -51,7 +51,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
 from . import __version__
-from . import cli, form_run, i18n, plugins, scope, toolsets, unit_run
+from . import cli, form_run, i18n, jobs, plugins, scope, toolsets, unit_run
 
 PROTOCOL_FALLBACK = "2024-11-05"
 
@@ -90,6 +90,18 @@ WINDOW_WAIT = int(os.environ.get("EDT_BRIDGE_WINDOW_WAIT", "90"))
 #: listens on. Linux and macOS refuse such a port immediately; Windows retries the SYN and reports
 #: the refusal after about two seconds, which made one scan of the default 21 ports take ~42 s.
 PROBE_CONNECT_TIMEOUT = 0.5
+#: How long /status may take on a port that accepted the connection. The bridge answers it on a pool
+#: of its own, but under several heavy calls an answer can still come later.
+STATUS_TIMEOUT = 3
+#: How long a bridge this wrapper has not talked to yet gets to answer /status once its port is
+#: open and the first probe ran out. A bridge it has talked to is not asked again: the call is
+#: forwarded and waits its turn there. A port that stays silent this long is not taken for a
+#: bridge, since the workspace check needs the answer.
+BUSY_STATUS_TIMEOUT = 20
+#: How long the port of a bridge this wrapper has talked to is retried before it counts as closed.
+#: A server whose queue of new connections is full under a burst of calls refuses them (Windows) or
+#: drops them (Linux) for a moment, while a stopped bridge refuses every one.
+CONFIRMED_CONNECT_SECONDS = 5
 
 
 def force_utf8_streams() -> None:
@@ -186,6 +198,14 @@ def request_failure(error: Exception) -> str:
     return str(error)
 
 
+def _timed_out(error: BaseException) -> bool:
+    """Whether a request ran out of time. urllib wraps a timeout while sending in URLError and
+    raises one while waiting for the answer as it is."""
+    if isinstance(error, urllib.error.URLError) and not isinstance(error, urllib.error.HTTPError):
+        error = error.reason
+    return isinstance(error, TimeoutError)
+
+
 class Backend:
     """The HTTP side: probe / start / wait for the Java bridge, and forward requests."""
 
@@ -201,6 +221,9 @@ class Backend:
         self.heap = (os.environ.get("EDT_BRIDGE_HEAP") or "").strip() or None
         self.vmargs = (os.environ.get("EDT_BRIDGE_VMARGS") or "").strip() or None
         self._active_port = self.port  # the port the live bridge was last found on
+        self._confirmed_port = None  # the port whose bridge answered this wrapper, workspace checked
+        self._other = set()  # ports whose last answer was not the bridge of this workspace
+        self._local = threading.local()  # why the last is_up() of this thread did not take a held port
         self._start_lock = threading.Lock()
         self._starting = False
         self._headless_process = None
@@ -210,7 +233,7 @@ class Backend:
 
     # -- probing ---------------------------------------------------------
 
-    def _listening(self, port: int) -> bool:
+    def _listening(self, port: int, timeout: float = PROBE_CONNECT_TIMEOUT) -> bool:
         """Whether anything accepts a connection on the port, within PROBE_CONNECT_TIMEOUT.
 
         urlopen has one timeout for connecting and reading, and a refused connection on
@@ -218,20 +241,25 @@ class Backend:
         connect with a short limit answers the common case - nothing listens - first.
         """
         try:
-            with socket.create_connection(("127.0.0.1", port), timeout=PROBE_CONNECT_TIMEOUT):
+            with socket.create_connection(("127.0.0.1", port), timeout=timeout):
                 return True
         except OSError:
             return False
 
-    def _status_on(self, port: int) -> dict | None:
+    def _status_on(self, port: int, timeout: float | None = None) -> dict | None:
+        """The /status of the port, or None. A port that answers, but not with the status of a
+        bridge, is noted in _other; one that only lets the request run out is not."""
         if not self._listening(port):
             return None
         try:
             with urllib.request.urlopen(
-                f"http://127.0.0.1:{port}/status", timeout=3
+                f"http://127.0.0.1:{port}/status", timeout=timeout or STATUS_TIMEOUT
             ) as resp:
                 return json.loads(resp.read().decode("utf-8"))
-        except (OSError, ValueError, http.client.HTTPException):
+        except (urllib.error.HTTPError, ValueError):
+            self._other.add(port)
+            return None
+        except (OSError, http.client.HTTPException):
             return None
 
     def status(self) -> dict | None:
@@ -248,6 +276,7 @@ class Backend:
         upward scan used to stop at."""
         s = self._target_status(self._active_port)
         if s is not None:
+            self._confirmed_port = self._active_port
             self._note_plugin_version(s)
             return s
         others = [port for port in range(self.port, self.port + self.scan_range + 1)
@@ -275,6 +304,7 @@ class Backend:
                 s = answer.result()
                 if s is not None:
                     self._active_port = port
+                    self._confirmed_port = port
                     self._note_plugin_version(s)
                     return s
         finally:
@@ -334,12 +364,16 @@ class Backend:
         except (OSError, ValueError):
             return {**row, "state": "unresponsive"}
 
-    def _target_status(self, port: int) -> dict | None:
-        status = self._status_on(port)
-        if status is not None and self.workspace:
-            actual = status.get("workspace")
+    def _target_status(self, port: int, timeout: float | None = None) -> dict | None:
+        status = self._status_on(port, timeout) if timeout else self._status_on(port)
+        if status is None:
+            return None
+        if self.workspace:
+            actual = status.get("workspace") if isinstance(status, dict) else None
             if not actual or self._path_key(actual) != self._path_key(self.workspace):
+                self._other.add(port)
                 return None
+        self._other.discard(port)
         return status
 
     @staticmethod
@@ -362,7 +396,49 @@ class Backend:
         return bool(s and s.get("openProjects"))
 
     def is_up(self) -> bool:
-        return self.status() is not None
+        """A bridge answered /status, or it is busy: see _busy."""
+        self._local.why = None
+        return self.status() is not None or self._busy()
+
+    def _busy(self) -> bool:
+        """Whether the bridge is there but slow to answer /status or to accept a connection.
+
+        A port whose last answer was not the bridge of this workspace never counts. The port of a
+        bridge this wrapper has talked to counts while it accepts connections, and the call waits
+        its turn there. Another port gets BUSY_STATUS_TIMEOUT to answer /status, so the workspace
+        check still applies and a program that only holds the port is not used.
+        """
+        port = self._active_port
+        if port in self._other:
+            return False
+        if port == self._confirmed_port:
+            return self._accepts(port)
+        if not self._listening(port):
+            return False
+        if self._target_status(port, BUSY_STATUS_TIMEOUT) is not None:
+            self._confirmed_port = port
+            return True
+        if port not in self._other:
+            self._local.why = (
+                f"port {port} accepts connections, but /status gave no answer in {BUSY_STATUS_TIMEOUT} s, "
+                "so it is not known to be the bridge of this workspace: EDT may be busy, or another "
+                "program holds the port. Retry the call")
+        return False
+
+    def _accepts(self, port: int) -> bool:
+        """Whether the port takes a connection within CONFIRMED_CONNECT_SECONDS, trying again after
+        a refused or dropped one."""
+        deadline = time.monotonic() + CONFIRMED_CONNECT_SECONDS
+        while True:
+            if self._listening(port, timeout=max(0.1, min(1.5, deadline - time.monotonic()))):
+                return True
+            if time.monotonic() + 0.2 >= deadline:
+                return False
+            time.sleep(0.2)
+
+    def _why_not_up(self) -> str | None:
+        """Why the last is_up() of this thread did not take a port that accepts connections."""
+        return getattr(self._local, "why", None)
 
     # -- forwarding ------------------------------------------------------
 
@@ -397,9 +473,7 @@ class Backend:
         directly keeps its usual autostart.
         """
         if not self.is_up():
-            raise RuntimeError(
-                "no EDT bridge is running. " + self.start_hint()
-            )
+            raise RuntimeError(self._why_not_up() or "no EDT bridge is running. " + self.start_hint())
         try:
             answer = self.forward({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
                                    "params": {"name": name, "arguments": arguments}})
@@ -445,7 +519,8 @@ class Backend:
         if self.is_up():
             return True, "up"
         if not self.autostart:
-            return False, "bridge is not running and autostart is disabled (EDT_BRIDGE_AUTOSTART=0)"
+            return False, (self._why_not_up()
+                           or "bridge is not running and autostart is disabled (EDT_BRIDGE_AUTOSTART=0)")
         with self._start_lock:
             if self._starting:
                 failure = self._startup_failure()
@@ -1319,6 +1394,10 @@ class StdioServer:
                 # Before ensure(): the answer is in the wrapper and needs no EDT.
                 self._describe_local(req_id, described, arguments)
                 return
+            if (params.get("name") in (jobs.STATUS_TOOL, jobs.CANCEL_TOOL) and isinstance(arguments, dict)
+                    and self._job_call(req_id, params.get("name"), arguments)):
+                # A job of the wrapper, the list of jobs, or a bridge job with no EDT to ask.
+                return
             local = self._local_descriptor(params.get("name"))
             if local is not None and not self._toolset.shows(local):
                 self._tool_error(req_id, self._toolset.refusal(local))
@@ -1371,7 +1450,12 @@ class StdioServer:
         now = time.monotonic()
         if self._scope_checked is not None and now - self._scope_checked[0] < 30:
             return self._scope_checked[1]
-        verdict = scope.mismatch(self._scope, self.backend.status())
+        status = self.backend.status()
+        if status is None:
+            # A busy bridge let /status run out. Silence says nothing of its scope: the last verdict
+            # stands, and without one the bridge applies its own scope to the call.
+            return self._scope_checked[1] if self._scope_checked is not None else None
+        verdict = scope.mismatch(self._scope, status)
         self._scope_checked = (now, verdict)
         return verdict
 
@@ -1387,6 +1471,10 @@ class StdioServer:
         runners = {form_run.DESCRIPTOR["name"]: form_run.run_tool, unit_run.DESCRIPTOR["name"]: unit_run.run_tool}
         if name in runners:
             # The form run and the unit tests need the platform, not EDT: they never touch the backend.
+            arguments = dict(arguments)
+            if arguments.pop("async", False) is True:
+                self._start_local_job(req_id, name, arguments)
+                return
             try:
                 report = runners[name](arguments)
             except Exception as exc:  # a failed run must not take the server loop down
@@ -1410,6 +1498,65 @@ class StdioServer:
         self._announced_ready = False
         self._notify_tools_changed()
         threading.Thread(target=self._announce_when_ready, daemon=True).start()
+
+    def _json_result(self, req_id, answer: dict, is_error: bool = False) -> None:
+        result = {"content": [{"type": "text", "text": json.dumps(answer, ensure_ascii=False, indent=2)}]}
+        if is_error:
+            result["isError"] = True
+        self._result(req_id, result)
+
+    def _start_local_job(self, req_id, name: str, arguments: dict) -> None:
+        """Run a wrapper tool as a job of its own process; a run that ends at once answers as itself."""
+        try:
+            job_id = jobs.start(name, arguments)
+            answer, failed = jobs.status(job_id, jobs.INLINE_SECONDS)
+        except OSError as exc:
+            self._tool_error(req_id, f"{name} could not start a background job: {exc}")
+            return
+        if answer.get("status") == "succeeded" and "result" in answer:
+            self._json_result(req_id, answer["result"])
+        elif failed:
+            self._tool_error(req_id, answer.get("error") or f"{name} failed")
+        else:
+            answer["message"] = "started as a background job"
+            self._json_result(req_id, answer)
+
+    def _job_call(self, req_id, name: str, arguments: dict) -> bool:
+        """Answer edt_job_status or edt_cancel_job here when the wrapper can; False leaves it to the bridge.
+
+        A wrapper job is answered from its directory. The list joins the jobs of the bridge and of the
+        wrapper. A bridge job with no EDT running is lost with the EDT that ran it, and asking would start
+        a new EDT only to hear that."""
+        job_id = arguments.get("jobId")
+        if name == jobs.STATUS_TOOL and not job_id:
+            answer = {"jobs": jobs.listing()}
+            if self.backend.is_up():
+                try:
+                    bridge = json.loads(self.backend.call_tool(jobs.STATUS_TOOL, {}))
+                    answer = {"run": bridge.get("run"), "jobs": (bridge.get("jobs") or []) + answer["jobs"]}
+                except (RuntimeError, ValueError) as exc:
+                    answer["bridgeJobs"] = f"the bridge did not list its jobs: {exc}"
+            else:
+                answer["bridgeJobs"] = "no EDT is running, so the bridge has no jobs"
+            self._json_result(req_id, answer)
+            return True
+        if not isinstance(job_id, str):
+            return False
+        if jobs.is_local(job_id):
+            if name == jobs.STATUS_TOOL:
+                answer, failed = jobs.status(job_id, arguments.get("waitSeconds", jobs.DEFAULT_WAIT_SECONDS))
+            else:
+                answer, failed = jobs.cancel(job_id)
+            if isinstance(answer, str):
+                self._tool_error(req_id, answer)
+            else:
+                self._json_result(req_id, answer, failed)
+            return True
+        if not self.backend.is_up():
+            self._tool_error(req_id, f"no EDT is running here, so the bridge job {job_id.strip()} ended with the "
+                             "EDT that ran it and its result is lost. Run the call again.")
+            return True
+        return False
 
     def _describe_local(self, req_id, descriptor: dict, arguments: dict) -> None:
         """Answer edt_tool_help for a tool the wrapper or a plugin serves."""

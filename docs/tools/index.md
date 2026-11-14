@@ -42,6 +42,36 @@ Write tools resolve targets through EDT. Metadata operations export the model; s
 tools write the resolved workspace file. Apply requires a configured token. `apply=false` returns
 a plan by default.
 
+## Long calls in the background
+
+A build, a load into an infobase or a check of a large project can take longer than a client
+waits for a tool. These tools accept `async=true`:
+
+<!-- async-tools:start -->
+`edt_project_errors`, `edt_clean_project`, `edt_build_extension`,
+`edt_dump_external_object`, `edt_create_infobase`, `edt_update_infobase`,
+`edt_update_database_config`, `edt_infobase_dump`, `edt_test_form`, `edt_unit_tests`.
+<!-- async-tools:end -->
+
+Such a call answers with a `jobId` at once. A call that is refused, or a dry run that returns a
+plan, still answers directly.
+
+| Job tool | What it does |
+|----------|--------------|
+| `edt_job_status` | The state of a job: `queued`, `running`, `succeeded`, `failed` or `cancelled`, with the current step and the seconds since it started. It waits up to `waitSeconds` for the job to end (30 by default, 50 at most), so a polling loop needs no pauses. When the job ends, `result` holds what the call returns without `async`. Without `jobId`, it lists the jobs. |
+| `edt_cancel_job` | Stops a job. A queued job never runs. A running one stops at its next step: a platform process stops together with its children, an EDT operation at its next progress check. What the job has already done stays done and is listed in `applied`. Needs the token, like a write. |
+
+A bridge job runs inside EDT and goes on when the client disconnects. Its result is kept for an
+hour. After EDT restarts, a `jobId` of the previous run gets an answer that says so. A job is
+`cancelled` only when it stopped on the cancel; a step with no point to stop at runs to its end,
+and the job then ends with its real result and `cancelRequested`. A job of `edt_test_form` or
+`edt_unit_tests` is a process of its own: its state lies in `~/.cache/edt-bridge/jobs` (or under
+`XDG_CACHE_HOME`) for a day, and a wrapper started by a new client finds it there. The job's
+process is known by its pid and start time; on a system without `/proc`, such as macOS, by its pid
+alone. A cancelled
+check removes its clients and its copy of the infobase in a second or two; one that is still
+running a minute after the cancel is killed, and its processes and files are removed.
+
 ## Served by the wrapper
 
 Three tools are served by `edt-bridge-mcp` itself. The wrapper lists them alongside the bridge

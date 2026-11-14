@@ -197,6 +197,16 @@ public final class IbcmdGateway {
         if (!run.ok) {
             r.ok = false;
             r.message = "dump failed: " + run.error;
+            // The file was not there before (an existing one is refused above), so whatever lies there
+            // now is this run's unfinished dump. Left in place it would pass for a backup, and the next
+            // call with the same outputPath would refuse to overwrite it.
+            try {
+                if (Files.deleteIfExists(out)) {
+                    r.message += "; the unfinished file was removed";
+                }
+            } catch (IOException | RuntimeException notRemoved) {
+                r.message += "; the unfinished file could not be removed: " + out;
+            }
             return r;
         }
         r.applied = true;
