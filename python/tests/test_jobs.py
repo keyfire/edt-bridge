@@ -226,6 +226,13 @@ def test_a_job_started_a_moment_ago_without_its_process_record_is_still_starting
     assert not failed and answer["status"] == "queued"
 
 
+def test_a_job_that_runs_before_its_process_record_is_written_is_still_running():
+    """Under load the job may write `running` before the wrapper writes process.json."""
+    folder = _job_folder(status="running")
+    answer, failed = jobs.status(folder.name, 0)
+    assert not failed and answer["status"] == "running"
+
+
 def test_a_job_that_could_not_be_started_leaves_no_arguments_behind():
     def broken(folder):
         raise OSError("no interpreter")

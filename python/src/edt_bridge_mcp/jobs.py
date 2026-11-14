@@ -306,9 +306,10 @@ def _state(folder: Path) -> dict:
     asked = _read(folder / "cancel")
     if asked:
         state["cancelRequested"] = True
-    if (state.get("status") == "queued" and _process(folder)[0] is None
+    if (_process(folder)[0] is None
             and time.time() - (state.get("submittedAt") or 0) < STARTING_SECONDS):
-        # Started a moment ago: the wrapper writes the record of the process right after the start.
+        # Started a moment ago: the wrapper writes the record of the process right after the start,
+        # and under load the job itself may already have written that it runs.
         return state
     if _running(folder):
         if asked and time.time() - (asked.get("at") or 0) > GRACE_SECONDS:
