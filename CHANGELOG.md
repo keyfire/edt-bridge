@@ -126,6 +126,10 @@ to the code and the reasoning behind it.
 
 ### Fixed
 
+- Form checks no longer lose their virtual display when two start at once. The check closed the
+  pipe Xvfb reports its display number through before Xvfb finished writing, and Xvfb stopped;
+  under load that killed two displays in three. A client that exits before its listener now says
+  why, and a setup retry gets a new display. ([#86](https://github.com/keyfire/edt-bridge/pull/86))
 - A cancelled or failed `edt_infobase_dump` removes the unfinished `.dt` it wrote. Before, the
   file looked like a backup, and a repeated call with the same `outputPath` refused to overwrite
   it. ([#86](https://github.com/keyfire/edt-bridge/pull/86))
