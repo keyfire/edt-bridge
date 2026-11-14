@@ -51,7 +51,10 @@ the platform wrote: the designer's log (`designerLog`), the output of the design
 (`designerProcessLog`) and the log of `ibcmd` (`setupLog`). The manager infobase is disposable,
 so a failed setup is tried once more in a clean directory before the check gives up;
 `setupRetries` records the stage, the error and the `seconds` of the failed attempt. A refused
-license or access is not retried.
+license or access is not retried. When the virtual display of the manager stopped, its log is in
+`managerDisplayLog` and the retry starts a new display. A client that exits before it opens its
+listener (`startup_failed`) has the cause in `error`: the fatal error of its display or the first
+line it wrote.
 
 `timings` says where the time of the run went. `totalSeconds` is the whole run and `stages` its
 parts in seconds, which add up to it: `preparation` (the input and the client environment),
