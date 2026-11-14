@@ -219,6 +219,13 @@ def test_a_cancelled_job_that_does_not_stop_in_time_is_killed_with_its_leftovers
     assert not scratch.exists()
 
 
+def test_a_job_started_a_moment_ago_without_its_process_record_is_still_starting():
+    """The wrapper writes process.json right after the start: a listing in between must not bury the job."""
+    folder = _job_folder(status="queued")
+    answer, failed = jobs.status(folder.name, 0)
+    assert not failed and answer["status"] == "queued"
+
+
 def test_a_job_that_could_not_be_started_leaves_no_arguments_behind():
     def broken(folder):
         raise OSError("no interpreter")

@@ -46,6 +46,8 @@ MAX_WAIT_SECONDS = 50
 DEFAULT_WAIT_SECONDS = 30
 #: How long a call with async=true waits before it answers with a job id: a refusal answers as itself.
 INLINE_SECONDS = 1.5
+#: How long a job just started may go without the record of its process before it counts as gone.
+STARTING_SECONDS = 30
 #: How long a cancel call waits for the job to stop before it answers that the job is stopping.
 CANCEL_WAIT_SECONDS = 10
 #: How long a cancelled job may take to remove its processes and its copy of the infobase before it is
@@ -304,6 +306,10 @@ def _state(folder: Path) -> dict:
     asked = _read(folder / "cancel")
     if asked:
         state["cancelRequested"] = True
+    if (state.get("status") == "queued" and _process(folder)[0] is None
+            and time.time() - (state.get("submittedAt") or 0) < STARTING_SECONDS):
+        # Started a moment ago: the wrapper writes the record of the process right after the start.
+        return state
     if _running(folder):
         if asked and time.time() - (asked.get("at") or 0) > GRACE_SECONDS:
             pid, _ = _process(folder)

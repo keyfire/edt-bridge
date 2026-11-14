@@ -66,7 +66,9 @@ hour. After EDT restarts, a `jobId` of the previous run gets an answer that says
 `cancelled` only when it stopped on the cancel; a step with no point to stop at runs to its end,
 and the job then ends with its real result and `cancelRequested`. A job of `edt_test_form` or
 `edt_unit_tests` is a process of its own: its state lies in `~/.cache/edt-bridge/jobs` (or under
-`XDG_CACHE_HOME`) for a day, and a wrapper started by a new client finds it there. A cancelled
+`XDG_CACHE_HOME`) for a day, and a wrapper started by a new client finds it there. The job's
+process is known by its pid and start time; on a system without `/proc`, such as macOS, by its pid
+alone. A cancelled
 check removes its clients and its copy of the infobase in a second or two; one that is still
 running a minute after the cancel is killed, and its processes and files are removed.
 
