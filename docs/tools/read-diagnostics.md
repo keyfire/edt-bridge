@@ -14,6 +14,7 @@ accepts and the platform Syntax Helper.
 |------|-----------------|
 | `edt_projects` · `edt_project_errors` | Workspace projects and validation problems from Eclipse and EDT checks. `modelReady` reports whether the BM model and derived data are ready; `complete=false` marks a partial snapshot and must not be treated as a clean result. Filter by `fqn`, `modulePath` or `severity`; `countOnly` returns counts, with the readiness diagnostics only for a partial result or with `details=true`; `brief` returns one line per problem. `modulePath` includes EDT markers traced to source files; unresolved markers are counted and reported with a hint. Form filters exclude sibling forms. `stale` identifies markers older than their source and `unsynchronized` identifies disk changes not yet read by the workspace. `refresh=true` rereads the scope and builds the project; `waitSeconds` sets the validation wait (1-600, default 120). A timeout returns current markers with `refreshed.settled=false`. Include WARNING when checking generated code: EDT reports some undefined methods as warnings. |
 | `edt_support_status` | EDT direct-edit preflight for an existing object (`projectName`, `objectFqn`). Returns `EDITABLE`, `READ_ONLY` or `UNKNOWN`; unavailable policy never grants edit permission. This check does not lock the object. |
+| `edt_compare_configurations` · `edt_comparison_details` | Compare open configuration projects or their Git revisions using EDT. Includes an optional common ancestor, counts, changed objects and details down to BSL methods. |
 | `edt_check_info` | Returns a validation check's description, non-compliant and compliant examples, and links to 1C development standards in Russian or English. It complements `edt_project_errors`, which identifies the triggered check. Search by check ID or by title. A short code such as `SU68` is resolved to its check when `projectName` names the project that reported the problem. |
 | `edt_tool_help` | The full description and parameter schema of one tool, with the tool sets it belongs to and whether the active set offers it. An unknown name is refused with the nearest names. The wrapper answers for its own and plugin tools. |
 | `edt_property_reference` | Lists the properties a write tool can set on one target - a common module, a field or a form item - with each property's type, the accepted enum values and the current value, and names the tool that takes them. A form FQN without `item` returns the form's item names. The list comes from the validation code of the write, so a property the object lacks is not listed. |
@@ -64,3 +65,29 @@ Line shifts do not turn an unchanged problem into a new one, and duplicate probl
 separate occurrences. Incomplete or truncated input is refused. Snapshots live only in this bridge
 session; restarting EDT invalidates them. The cache holds at most 16 snapshots and 200000 markers
 in total, with 100000 markers per snapshot. Saving returns the IDs it evicted.
+
+## Compare configurations
+
+Call `edt_compare_configurations` with `main` and `other`. Each side has a
+`projectName` for an open EDT configuration project and an optional `revision`
+for a local Git ref of that project. Omit `revision` to compare the live model.
+For a three-way comparison, pass `ancestor` with the same fields. To track a
+supplier update, pass the adapted project as `main`, the new supplier revision
+as `other`, and the previous supplier revision as `ancestor`.
+
+EDT runs the comparison in read-only mode. For large projects, pass `async=true`
+and poll `edt_job_status`. The result includes counts for the whole comparison
+and a page of objects. Follow `nextOffset` with a new call that supplies
+`comparisonId` and `offset`. Use `edt_comparison_details` with the object's
+`index` as `objectIndex`. To open a child with `hasDetails=true`, append its
+`index` to `nodeIndices` and request its child page. Module details include changed
+BSL methods when EDT has parsed the module structure.
+
+The summary counts metadata objects with differences in EDT. It includes order
+changes marked by EDT and changes to distribution and support options. Each
+object has one row even when several properties, modules or methods differ.
+Designer `/CompareCfg` reports differences between platform configurations
+and can yield different counts.
+
+The server keeps up to four comparison results for 30 minutes. Run the comparison
+again if its ID expires.

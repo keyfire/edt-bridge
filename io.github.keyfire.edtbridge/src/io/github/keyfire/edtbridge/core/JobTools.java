@@ -42,6 +42,7 @@ public final class JobTools {
     /** The tools whose calls may take minutes, in the order of the tool list. */
     private static final List<String> LONG = List.of(
             "edt_project_errors",
+            "edt_compare_configurations",
             "edt_infobase_dump",
             "edt_update_database_config",
             "edt_dump_external_object",
