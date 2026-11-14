@@ -13,7 +13,7 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
-## <span id="2026-11-13--0430-0440"></span><span id="2026-11-13--0440"></span><span id="2026-11-13--0450"></span>2026-11-13 – 0.46.0
+## 2026-11-14 – 0.46.0
 
 ### Added
 
@@ -23,6 +23,32 @@ to the code and the reasoning behind it.
   `edt_cancel_job` stops the job and lists what it had already applied. A job goes on when the
   client disconnects, and `edt_test_form` and `edt_unit_tests` run theirs as a process of its own.
   ([#86](https://github.com/keyfire/edt-bridge/pull/86))
+
+### Changed
+
+- The report of a form check keeps failed connection attempts apart. `managerStartup` used to
+  count every restart of the test manager while the client did not yet accept a connection; now
+  those seconds are in `connectRetries`, and `failedConnects` gives their count and the last
+  error. ([#86](https://github.com/keyfire/edt-bridge/pull/86))
+- The personal data filter has a page of its own on the site, next to the settings. It describes
+  how to turn the filter on, which tools and files it covers, how it finds the data, what the two
+  modes write and how to add rules. The pages of the tools, the form check results and the
+  YAXUnit runs link to it. ([#85](https://github.com/keyfire/edt-bridge/pull/85))
+
+### Fixed
+
+- Form checks no longer lose their virtual display when two start at once. The check closed the
+  pipe Xvfb reports its display number through before Xvfb finished writing, and Xvfb stopped;
+  under load that killed two displays in three. A client that exits before its listener now says
+  why, and a setup retry gets a new display. ([#86](https://github.com/keyfire/edt-bridge/pull/86))
+- A cancelled or failed `edt_infobase_dump` removes the unfinished `.dt` it wrote. Before, the
+  file looked like a backup, and a repeated call with the same `outputPath` refused to overwrite
+  it. ([#86](https://github.com/keyfire/edt-bridge/pull/86))
+
+## <span id="2026-11-13--0430-0440"></span><span id="2026-11-13--0440"></span>2026-11-13 – 0.45.0
+
+### Added
+
 - `edt_unit_tests` and `edt-bridge-mcp unit-tests` run the YAXUnit tests of built extensions in a
   fresh copy of the test infobase. The extensions are loaded into the copy with `ibcmd`, YAXUnit
   runs their tests, narrowed by module or test, and the answer lists every test with its status,
@@ -106,14 +132,6 @@ to the code and the reasoning behind it.
 
 ### Changed
 
-- The report of a form check keeps failed connection attempts apart. `managerStartup` used to
-  count every restart of the test manager while the client did not yet accept a connection; now
-  those seconds are in `connectRetries`, and `failedConnects` gives their count and the last
-  error. ([#86](https://github.com/keyfire/edt-bridge/pull/86))
-- The personal data filter has a page of its own on the site, next to the settings. It describes
-  how to turn the filter on, which tools and files it covers, how it finds the data, what the two
-  modes write and how to add rules. The pages of the tools, the form check results and the
-  YAXUnit runs link to it. ([#85](https://github.com/keyfire/edt-bridge/pull/85))
 - `edt_module_text` with `method` returns the method without the module's list of procedures and
   says `methodsIncluded: false`; `includeMethods=true` brings the list back. On one form module the
   answer shrank from 35.5 KiB to 2.1 KiB. A method that is not found is answered with similar names.
@@ -126,13 +144,6 @@ to the code and the reasoning behind it.
 
 ### Fixed
 
-- Form checks no longer lose their virtual display when two start at once. The check closed the
-  pipe Xvfb reports its display number through before Xvfb finished writing, and Xvfb stopped;
-  under load that killed two displays in three. A client that exits before its listener now says
-  why, and a setup retry gets a new display. ([#86](https://github.com/keyfire/edt-bridge/pull/86))
-- A cancelled or failed `edt_infobase_dump` removes the unfinished `.dt` it wrote. Before, the
-  file looked like a backup, and a repeated call with the same `outputPath` refused to overwrite
-  it. ([#86](https://github.com/keyfire/edt-bridge/pull/86))
 - When `test-form` and `edt_test_form` cannot prepare their manager infobase, the refusal names
   the stage and quotes the log and the output of the designer, and the setup is tried once more
   in a clean directory. A failed export of the empty manager configuration used to end the check
