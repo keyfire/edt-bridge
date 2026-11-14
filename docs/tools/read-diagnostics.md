@@ -42,6 +42,9 @@ time for each garbage collector. The `container` section reports the current pro
 v2 memory usage, limits, events, pressure, CPU quota and CPU counters on Linux when readable.
 The snapshot uses read-only JVM and cgroup queries. Unavailable measurements include a reason.
 `processStartedAt` records when the current process started. `previousExitCause` is `unknown`.
+Under heavy calls `/status` waits no longer than 1.5 s for the model state, the workspace jobs,
+`resources` and the tool count. If they do not come in time, the answer leaves them out, sets
+`busy=true` and lists the open projects with `modelReady=null`.
 
 ## Validation of one object
 

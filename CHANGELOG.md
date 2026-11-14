@@ -37,6 +37,12 @@ to the code and the reasoning behind it.
 
 ### Fixed
 
+- A busy bridge is no longer reported as stopped. Under several heavy calls `/status` could take
+  longer than the three seconds the wrapper waits, or a port flooded with new connections could
+  refuse one, and with autostart off the call failed with "bridge is not running". Now a bridge
+  that answered before gets the call while its port accepts connections, and a refused connection
+  is tried again for five seconds. `/status` answers within about 1.5 s and leaves out the model
+  state it cannot read in time. ([#86](https://github.com/keyfire/edt-bridge/pull/86))
 - Form checks no longer lose their virtual display when two start at once. The check closed the
   pipe Xvfb reports its display number through before Xvfb finished writing, and Xvfb stopped;
   under load that killed two displays in three. A client that exits before its listener now says

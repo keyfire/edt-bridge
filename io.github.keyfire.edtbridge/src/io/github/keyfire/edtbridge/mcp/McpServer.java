@@ -38,6 +38,7 @@ import org.osgi.framework.FrameworkUtil;
 import org.osgi.framework.Version;
 
 import io.github.keyfire.edtbridge.core.ArgumentNames;
+import io.github.keyfire.edtbridge.core.BoundedRead;
 import io.github.keyfire.edtbridge.core.FileUrlPaths;
 import io.github.keyfire.edtbridge.core.JobTools;
 import io.github.keyfire.edtbridge.core.Jobs;
@@ -750,18 +751,8 @@ applyI18n();loadStatus();loadTools();
         o.addProperty("protocolVersion", PROTOCOL_VERSION);
         o.addProperty("port", port);
         o.addProperty("tokenRequired", token() != null);
-        o.add("toolset", toolsetStatus());
         o.add("scope", scopeStatus());
         o.addProperty("serverTime", java.time.OffsetDateTime.now().toString());
-        try {
-            o.add("resources", gson.toJsonTree(RuntimeResources.snapshot()));
-        } catch (RuntimeException | LinkageError unavailable) {
-            JsonObject resources = new JsonObject();
-            resources.addProperty("available", false);
-            resources.addProperty("unavailableReason", unavailable.getClass().getSimpleName());
-            o.add("resources", resources);
-        }
-        o.add("backgroundJobs", gson.toJsonTree(gateway.backgroundJobs()));
         JsonArray projects = new JsonArray();
         try {
             for (String n : gateway.listOpenProjects()) {
@@ -772,13 +763,55 @@ applyI18n();loadStatus();loadTools();
         }
         o.add("openProjects", projects);
         o.addProperty("workspace", org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot().getLocation().toOSString());
+        JsonObject detail = statusDetail.get();
+        if (detail != null) {
+            detail.entrySet().forEach(part -> o.add(part.getKey(), part.getValue()));
+        } else {
+            // The model or the job manager did not answer in time: the bridge is busy with heavy
+            // calls. The answer still says that the bridge is up and which workspace it serves.
+            o.add("toolset", toolsetStatus(false));
+            JsonArray rows = new JsonArray();
+            for (JsonElement name : projects) {
+                JsonObject row = new JsonObject();
+                row.add("name", name);
+                row.addProperty("open", true);
+                row.add("modelReady", JsonNull.INSTANCE);
+                rows.add(row);
+            }
+            o.add("projects", rows);
+            o.addProperty("busy", true);
+            o.addProperty("modelStatusHint", "The bridge is busy: the model state did not come in "
+                    + STATUS_DETAIL_MILLIS + " ms, so readiness is unknown. Ask again later");
+        }
+        send(ex, 200, gson.toJson(o));
+    }
+
+    /** How long /status waits for the parts it reads from the model, the job manager and the JVM. */
+    private static final long STATUS_DETAIL_MILLIS = 1500;
+
+    /** Those parts, read on a thread of their own so that /status answers in time under load. */
+    private final BoundedRead<JsonObject> statusDetail =
+            new BoundedRead<>("edt-bridge-status", STATUS_DETAIL_MILLIS, this::readStatusDetail);
+
+    private JsonObject readStatusDetail() {
+        JsonObject o = new JsonObject();
+        o.add("toolset", toolsetStatus(true));
+        try {
+            o.add("resources", gson.toJsonTree(RuntimeResources.snapshot()));
+        } catch (RuntimeException | LinkageError unavailable) {
+            JsonObject resources = new JsonObject();
+            resources.addProperty("available", false);
+            resources.addProperty("unavailableReason", unavailable.getClass().getSimpleName());
+            o.add("resources", resources);
+        }
+        o.add("backgroundJobs", gson.toJsonTree(gateway.backgroundJobs()));
         try {
             o.add("projects", gson.toJsonTree(gateway.listProjectsDetailed()));
         } catch (RuntimeException unavailable) {
             o.add("projects", new JsonArray());
             o.addProperty("modelStatusHint", "Project model status is not available yet");
         }
-        send(ex, 200, gson.toJson(o));
+        return o;
     }
 
     private JsonElement dispatch(JsonObject req) {
@@ -972,21 +1005,27 @@ applyI18n();loadStatus();loadTools();
         return r;
     }
 
-    /** The selection for /status: the sets, how many tools they leave, and the problem if any. */
-    private JsonObject toolsetStatus() {
+    /**
+     * The selection for /status: the sets, how many tools they leave, and the problem if any. The
+     * count reads the tool descriptors under a lock the MCP workers share, so it is read with the
+     * model state, and an answer that comes without that state leaves the count out.
+     */
+    private JsonObject toolsetStatus(boolean countTools) {
         ToolSets.Selection toolset = toolset();
         JsonObject o = new JsonObject();
         JsonArray names = new JsonArray();
         toolset.names().forEach(names::add);
         o.add("names", names);
         try {
-            int served = 0;
-            for (String tool : declaredArguments().keySet()) {
-                if (toolset.allows(tool)) {
-                    served++;
+            if (countTools) {
+                int served = 0;
+                for (String tool : declaredArguments().keySet()) {
+                    if (toolset.allows(tool)) {
+                        served++;
+                    }
                 }
+                o.addProperty("tools", served);
             }
-            o.addProperty("tools", served);
         } catch (RuntimeException | LinkageError unavailable) {
             // The count is a convenience; the status page must answer even without it.
         }
