@@ -13,9 +13,14 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
-## 2026-11-14 – 0.46.0
+## <span id="2026-11-14--0460"></span>2026-11-14 – 0.47.0
 
 ### Added
+
+- `edt_compare_configurations` compares EDT projects or Git revisions, with an optional common
+  ancestor. `edt_comparison_details` shows which properties and BSL methods changed. Long
+  comparisons can run in the background, and the results are paginated.
+  ([#87](https://github.com/keyfire/edt-bridge/pull/87))
 
 - Long calls can run in the background. `edt_build_extension`, `edt_update_infobase`,
   `edt_project_errors` and the other tools that may take minutes accept `async=true` and answer
