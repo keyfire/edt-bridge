@@ -13,7 +13,7 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
-## <span id="2026-11-14--0470"></span>2026-11-15 – 0.47.0
+## <span id="2026-11-14--0470"></span><span id="2026-11-15--0470"></span>2026-11-15 – 0.47.1
 
 ### Added
 
@@ -25,6 +25,12 @@ to the code and the reasoning behind it.
   ancestor. `edt_comparison_details` shows which properties and BSL methods changed. Long
   comparisons can run in the background, and the results are paginated.
   ([#87](https://github.com/keyfire/edt-bridge/pull/87))
+
+### Fixed
+
+- When EDT-Bridge selects a JDK for EDT, it sets `JAVA_HOME` to that JDK and puts its
+  `bin` directory first on `PATH` for the EDT process.
+  ([#89](https://github.com/keyfire/edt-bridge/pull/89))
 
 ## 2026-11-14 – 0.46.0
 
