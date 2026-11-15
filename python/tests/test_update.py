@@ -828,18 +828,21 @@ def _java_roots(monkeypatch, tmp_path, path_jdk):
     return components
 
 
-def test_edt_java_supplies_the_required_jdk_when_the_ini_names_none(monkeypatch, tmp_path):
-    """1cedtcli without -vm takes java from PATH; an older one stops EDT with a modal dialog."""
+def test_edt_java_sets_path_and_java_home_to_the_selected_jdk(monkeypatch, tmp_path):
     old = _jdk(tmp_path / "old-jdk", "17.0.16")
     components = _java_roots(monkeypatch, tmp_path, old)
+    monkeypatch.setenv("JAVA_HOME", str(old))
     _jdk(components / "axiom-jdk-full-17.0.16+12-x86_64", "17.0.16")
     required = _jdk(components / "axiom-jdk-full-25.0.2+12-x86_64", "25.0.2")
     edt = _ini(tmp_path / "edt", "-vmargs", "-Dosgi.requiredJavaVersion=25")
 
     assert update.edt_java(edt) == required
-    environment = update.with_edt_java(dict(os.environ), edt)
+    original = dict(os.environ)
+    environment = update.with_edt_java(original, edt)
     assert environment["PATH"].split(os.pathsep)[0] == str(required / "bin")
     assert environment["PATH"].split(os.pathsep)[1] == str(old / "bin")
+    assert environment["JAVA_HOME"] == str(required)
+    assert original["JAVA_HOME"] == str(old)
 
 
 def test_edt_java_leaves_an_ini_that_names_its_vm(monkeypatch, tmp_path):

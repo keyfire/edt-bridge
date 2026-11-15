@@ -215,13 +215,14 @@ def edt_java(edt_dir: Path, environ=None) -> Path | None:
 
 
 def with_edt_java(environment: dict, edt_dir: Path) -> dict:
-    """A copy of the environment with the JDK this EDT needs first on PATH, see edt_java."""
+    """Use the replacement JDK for both PATH and JAVA_HOME in the EDT process."""
     home = edt_java(edt_dir, environment)
     if home is None:
         return environment
     changed = dict(environment)
     key = _env_key(environment, "PATH")
     changed[key] = str(home / "bin") + os.pathsep + _env(environment, "PATH")
+    changed[_env_key(environment, "JAVA_HOME")] = str(home)
     return changed
 
 
