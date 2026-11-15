@@ -13,7 +13,7 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
-## <span id="2026-11-14--0470"></span><span id="2026-11-15--0470"></span>2026-11-15 – 0.47.1
+## <span id="2026-11-14--0470"></span><span id="2026-11-15--0470"></span><span id="2026-11-15--0471"></span>2026-11-15 – 0.47.2
 
 ### Added
 
@@ -28,6 +28,12 @@ to the code and the reasoning behind it.
 
 ### Fixed
 
+- `test-form` and `edt_test_form` accept the exact expected warning from a new message
+  in the message panel or a modal window. The result names the source.
+  ([#91](https://github.com/keyfire/edt-bridge/pull/91))
+- `edt_delete_object` finds forms of external data processors and reports by their FQN
+  when previewing or applying deletion.
+  ([#90](https://github.com/keyfire/edt-bridge/pull/90))
 - When EDT-Bridge selects a JDK for EDT, it sets `JAVA_HOME` to that JDK and puts its
   `bin` directory first on `PATH` for the EDT process.
   ([#89](https://github.com/keyfire/edt-bridge/pull/89))
