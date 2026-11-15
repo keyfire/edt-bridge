@@ -79,6 +79,7 @@ import com._1c.g5.v8.dt.mcore.StringQualifiers;
 import com._1c.g5.v8.dt.mcore.TypeDescription;
 import com._1c.g5.v8.dt.mcore.TypeItem;
 import com._1c.g5.v8.dt.metadata.mdclass.BasicFeature;
+import com._1c.g5.v8.dt.metadata.mdclass.BasicForm;
 import com._1c.g5.v8.dt.metadata.mdclass.MdClassPackage;
 import com._1c.g5.v8.dt.metadata.mdclass.MdObject;
 import io.github.keyfire.edtbridge.core.Versions;
@@ -1530,6 +1531,7 @@ public final class MetadataWriteGateway {
             List<MdObject> matches = new ArrayList<>();
             for (EReference feature : current.eClass().getEAllContainments()) {
                 if (feature.isDerived() || feature.isTransient()) continue;
+                boolean formMember = "Form".equalsIgnoreCase(kind) && "forms".equals(feature.getName());
                 Object value = current.eGet(feature);
                 List<?> children = value instanceof List ? (List<?>) value
                         : value instanceof EObject ? List.of(value) : List.of();
@@ -1538,8 +1540,12 @@ public final class MetadataWriteGateway {
                     String type = candidate.eClass().getName();
                     // Generated member types use either the root or immediate-owner class prefix.
                     // Never accept suffix fragments, infrastructure ancestors or a same-name wrong kind.
-                    if (type.equalsIgnoreCase(kind) || type.equalsIgnoreCase(rootClass + kind)
-                            || type.equalsIgnoreCase(current.eClass().getName() + kind)) matches.add(candidate);
+                    // External objects reuse DataProcessorForm and ReportForm in the forms containment.
+                    if ((formMember && candidate instanceof BasicForm) || type.equalsIgnoreCase(kind)
+                            || type.equalsIgnoreCase(rootClass + kind)
+                            || type.equalsIgnoreCase(current.eClass().getName() + kind)) {
+                        matches.add(candidate);
+                    }
                 }
             }
             if (matches.size() > 1) throw new IllegalArgumentException("ambiguous delete target: " + targetFqn);
