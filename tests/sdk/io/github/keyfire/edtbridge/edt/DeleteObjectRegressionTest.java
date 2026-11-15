@@ -18,6 +18,7 @@ package io.github.keyfire.edtbridge.edt;
 
 import static org.junit.jupiter.api.Assertions.*;
 import java.lang.reflect.Proxy;
+import java.util.Map;
 import com._1c.g5.v8.bm.core.IBmTransaction;
 import com._1c.g5.v8.dt.metadata.mdclass.MdClassFactory;
 import org.junit.jupiter.api.Test;
@@ -67,5 +68,35 @@ class DeleteObjectRegressionTest {
         result.nativePreviewComplete = true;
         result.problems.add(new MetadataWriteGateway.RenameProblem());
         assertFalse(MetadataWriteGateway.deleteReady(result));
+    }
+
+    @Test void resolvesFormsOfExternalObjectsByTheirCanonicalFqn() {
+        var factory = MdClassFactory.eINSTANCE;
+        var processor = factory.createExternalDataProcessor();
+        processor.setName("Fixture");
+        var processorForm = factory.createDataProcessorForm();
+        processorForm.setName("Temporary");
+        processor.getForms().add(processorForm);
+
+        var report = factory.createExternalReport();
+        report.setName("Fixture");
+        var reportForm = factory.createReportForm();
+        reportForm.setName("Temporary");
+        report.getForms().add(reportForm);
+
+        String processorFqn = "ExternalDataProcessor.Fixture";
+        String reportFqn = "ExternalReport.Fixture";
+        var owners = Map.of(processorFqn, processor, reportFqn, report);
+        IBmTransaction transaction = (IBmTransaction) Proxy.newProxyInstance(
+                IBmTransaction.class.getClassLoader(), new Class<?>[] {IBmTransaction.class},
+                (proxy, method, args) -> method.getName().equals("getTopObjectByFqn")
+                        ? owners.get(args[0]) : null);
+
+        assertSame(processorForm, MetadataWriteGateway.resolveDeleteTarget(transaction, processorFqn + ".Form.Temporary"));
+        assertSame(reportForm, MetadataWriteGateway.resolveDeleteTarget(transaction, reportFqn + ".Form.Temporary"));
+        assertNull(MetadataWriteGateway.resolveDeleteTarget(transaction, processorFqn + ".Attribute.Temporary"));
+        assertNull(MetadataWriteGateway.resolveDeleteTarget(transaction, reportFqn + ".Form.Missing"));
+        processor.getForms().remove(processorForm);
+        assertNull(MetadataWriteGateway.resolveDeleteTarget(transaction, processorFqn + ".Form.Temporary"));
     }
 }
