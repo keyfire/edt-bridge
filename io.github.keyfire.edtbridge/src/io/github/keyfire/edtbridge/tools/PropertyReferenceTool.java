@@ -31,17 +31,17 @@ public final class PropertyReferenceTool {
         JsonObject props = new JsonObject();
         props.add("projectName", ToolJson.strProp("EDT project name"));
         props.add("fqn", ToolJson.strProp("What to describe: a common module (CommonModule.Api), a field "
-                + "(Catalog.Products.Attribute.Weight, InformationRegister.Rates.Resource.Rate) or a form "
+                + "(Catalog.Products.Attribute.Weight), an external object (ExternalReport.Summary), an extension root (Configuration) or a form "
                 + "(Catalog.Products.Form.ItemForm, ExternalDataProcessor.Check.Form.Main)"));
         props.add("item", ToolJson.strProp("Form item name, when fqn is a form. Omitted on a form lists its item names."));
         return ToolJson.descriptor(name(),
-                "READ: list the properties a write tool can set on one target - a common module, a field or a form "
-                + "item - with each property's type, the accepted enum values and the current value, and name the "
+                "READ: list editable properties of a common module, external object, extension, field or form item. "
+                + "Returns each property's type, accepted values and current value, and names the "
                 + "tool that takes them. Call it before edt_modify_object, edt_modify_attribute or "
                 + "edt_modify_form_item instead of trying spellings: the list is built by the code that validates "
                 + "the write, for this very object, so a property the object lacks is not listed.",
-                "ЧТЕНИЕ: перечислить свойства, которые инструмент записи может установить у одной цели – общего "
-                + "модуля, реквизита или элемента формы: тип каждого свойства, допустимые значения перечисления и "
+                "ЧТЕНИЕ: перечислить свойства общего модуля, внешнего объекта, расширения, реквизита или элемента формы. "
+                + "Возвращает тип каждого свойства, допустимые значения и "
                 + "текущее значение, а также имя инструмента, который их принимает. Вызывать перед edt_modify_object, "
                 + "edt_modify_attribute или edt_modify_form_item вместо перебора написаний: перечень строит код, "
                 + "который проверяет запись, для этого же объекта, поэтому отсутствующее у объекта свойство в "

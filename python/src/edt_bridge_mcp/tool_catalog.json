@@ -703,8 +703,8 @@
     },
     {
       "name": "edt_property_reference",
-      "description": "READ: list the properties a write tool can set on one target - a common module, a field or a form item - with each property's type, the accepted enum values and the current value, and name the tool that takes them. Call it before edt_modify_object, edt_modify_attribute or edt_modify_form_item instead of trying spellings: the list is built by the code that validates the write, for this very object, so a property the object lacks is not listed.",
-      "descriptionRu": "ЧТЕНИЕ: перечислить свойства, которые инструмент записи может установить у одной цели – общего модуля, реквизита или элемента формы: тип каждого свойства, допустимые значения перечисления и текущее значение, а также имя инструмента, который их принимает. Вызывать перед edt_modify_object, edt_modify_attribute или edt_modify_form_item вместо перебора написаний: перечень строит код, который проверяет запись, для этого же объекта, поэтому отсутствующее у объекта свойство в перечень не попадает.",
+      "description": "READ: list editable properties of a common module, external object, extension, field or form item. Returns each property's type, accepted values and current value, and names the tool that takes them. Call it before edt_modify_object, edt_modify_attribute or edt_modify_form_item instead of trying spellings: the list is built by the code that validates the write, for this very object, so a property the object lacks is not listed.",
+      "descriptionRu": "ЧТЕНИЕ: перечислить свойства общего модуля, внешнего объекта, расширения, реквизита или элемента формы. Возвращает тип каждого свойства, допустимые значения и текущее значение, а также имя инструмента, который их принимает. Вызывать перед edt_modify_object, edt_modify_attribute или edt_modify_form_item вместо перебора написаний: перечень строит код, который проверяет запись, для этого же объекта, поэтому отсутствующее у объекта свойство в перечень не попадает.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -714,7 +714,7 @@
           },
           "fqn": {
             "type": "string",
-            "description": "What to describe: a common module (CommonModule.Api), a field (Catalog.Products.Attribute.Weight, InformationRegister.Rates.Resource.Rate) or a form (Catalog.Products.Form.ItemForm, ExternalDataProcessor.Check.Form.Main)"
+            "description": "What to describe: a common module (CommonModule.Api), a field (Catalog.Products.Attribute.Weight), an external object (ExternalReport.Summary), an extension root (Configuration) or a form (Catalog.Products.Form.ItemForm, ExternalDataProcessor.Check.Form.Main)"
           },
           "item": {
             "type": "string",
@@ -3158,6 +3158,108 @@
         ]
       },
       "toolsets": []
+    },
+    {
+      "name": "edt_modify_external_object",
+      "description": "WRITE: edit the synonym, comment or main form of an external data processor or report. For reports, also selects settings and variant forms and the main data composition schema. Supply at least one property. Preview by default; apply=true saves.",
+      "descriptionRu": "ЗАПИСЬ: изменить синоним, комментарий или основную форму внешней обработки или отчета. Для отчетов также доступны формы настроек и варианта и основная схема компоновки данных. Передайте хотя бы одно свойство. По умолчанию предпросмотр, apply=true сохраняет изменения.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT external object project"
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Root object, e.g. ExternalDataProcessor.Check or ExternalReport.Summary"
+          },
+          "synonymRu": {
+            "type": "string",
+            "description": "Russian synonym. An empty string removes it."
+          },
+          "comment": {
+            "type": "string",
+            "description": "Developer comment. An empty string clears it."
+          },
+          "defaultForm": {
+            "type": "string",
+            "description": "Name or FQN of an existing managed form of this object."
+          },
+          "defaultSettingsForm": {
+            "type": "string",
+            "description": "Report only: owned managed settings form name or FQN."
+          },
+          "defaultVariantForm": {
+            "type": "string",
+            "description": "Report only: owned managed variant form name or FQN."
+          },
+          "mainDataCompositionSchema": {
+            "type": "string",
+            "description": "Report only: owned data composition schema template name or FQN."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default): show old and new values. true: save the changes."
+          }
+        },
+        "required": [
+          "projectName",
+          "fqn"
+        ]
+      },
+      "toolsets": [
+        "processor",
+        "report"
+      ]
+    },
+    {
+      "name": "edt_modify_extension",
+      "description": "WRITE: edit the synonym, comment, vendor, version, name prefix or purpose of an EDT configuration extension project. Preview by default; apply=true saves the project metadata.",
+      "descriptionRu": "ЗАПИСЬ: изменить синоним, комментарий, поставщика, версию, префикс имен или назначение расширения конфигурации в проекте EDT. По умолчанию предпросмотр, apply=true сохраняет изменения.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT configuration extension project"
+          },
+          "synonym": {
+            "type": "string",
+            "description": "Synonym in the extension's default language. Empty removes it."
+          },
+          "comment": {
+            "type": "string",
+            "description": "Developer comment. An empty string clears it."
+          },
+          "vendor": {
+            "type": "string",
+            "description": "Vendor stored in the extension metadata."
+          },
+          "version": {
+            "type": "string",
+            "description": "Version stored in the extension metadata."
+          },
+          "namePrefix": {
+            "type": "string",
+            "description": "Prefix for extension-owned names, a valid 1C identifier."
+          },
+          "purpose": {
+            "type": "string",
+            "description": "Customization, AddOn or Patch."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default): show old and new values. true: save the changes."
+          }
+        },
+        "required": [
+          "projectName"
+        ]
+      },
+      "toolsets": [
+        "extension"
+      ]
     },
     {
       "name": "edt_update_subsystem",

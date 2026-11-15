@@ -109,7 +109,7 @@ public final class ToolSets {
         // A print form is an external data processor with a spreadsheet template, so the
         // template tools belong to the processor set and, through it, to the report set.
         sets.put("processor", joined(
-                List.of("edt_create_external_object", "edt_dump_external_object", "edt_delete_object",
+                List.of("edt_create_external_object", "edt_modify_external_object", "edt_dump_external_object", "edt_delete_object",
                         "edt_add_template", "edt_read_spreadsheet", "edt_write_spreadsheet", "edt_spreadsheet_render"),
                 FORM_WRITES, MODULE_WRITES));
         // A report is built like a data processor, plus its data composition schema.
@@ -117,7 +117,7 @@ public final class ToolSets {
                 sets.get("processor"),
                 List.of("edt_read_dcs", "edt_replace_dcs", "edt_modify_dcs")));
         sets.put("extension", joined(
-                List.of("edt_create_extension", "edt_adopt_object", "edt_build_extension",
+                List.of("edt_create_extension", "edt_modify_extension", "edt_adopt_object", "edt_build_extension",
                         "edt_delete_object", "edt_modify_role_rights",
                         "edt_modify_command_interface", "edt_compare_configurations", "edt_comparison_details"),
                 MODULE_WRITES));
