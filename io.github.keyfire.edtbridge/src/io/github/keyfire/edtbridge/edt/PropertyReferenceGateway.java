@@ -36,6 +36,9 @@ import com._1c.g5.v8.dt.form.model.Form;
 import com._1c.g5.v8.dt.form.model.FormItem;
 import com._1c.g5.v8.dt.metadata.mdclass.BasicFeature;
 import com._1c.g5.v8.dt.metadata.mdclass.CommonModule;
+import com._1c.g5.v8.dt.metadata.mdclass.Configuration;
+import com._1c.g5.v8.dt.metadata.mdclass.ExternalDataProcessor;
+import com._1c.g5.v8.dt.metadata.mdclass.ExternalReport;
 import com._1c.g5.v8.dt.metadata.mdclass.MdObject;
 import com._1c.g5.wiring.ServiceAccess;
 
@@ -52,7 +55,7 @@ public final class PropertyReferenceGateway {
         public String project;
         public String fqn;
         public String item;
-        /** commonModule, field, formItem, form or object. */
+        /** commonModule, externalObject, field, formItem, form or object. */
         public String kind;
         public String objectType;
         /** The write tool that takes the listed properties. */
@@ -78,9 +81,10 @@ public final class PropertyReferenceGateway {
             IBmModelManager manager = ServiceAccess.get(IBmModelManager.class);
             IBmModel model = manager == null ? null : manager.getModel(project);
             if (model == null) throw new IllegalArgumentException("no BM model for project: " + projectName);
+            boolean extensionRoot = "Configuration".equals(fqn) && MetadataSettingsGateway.isExtensionProject(project);
             model.executeReadonlyTask(new AbstractBmTask<Object>("edt-bridge.propertyReference") {
                 @Override public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
-                    describe(tx, result);
+                    describe(tx, result, extensionRoot);
                     return null;
                 }
             });
@@ -94,7 +98,7 @@ public final class PropertyReferenceGateway {
         return result;
     }
 
-    private static void describe(IBmTransaction tx, Result result) {
+    private static void describe(IBmTransaction tx, Result result, boolean extension) {
         String fqn = result.fqn;
         if (result.item != null) {
             Form form = FormWriteGateway.resolveForm(tx, fqn);
@@ -131,6 +135,36 @@ public final class PropertyReferenceGateway {
             result.usage = "pass the listed names inside the properties argument; extendModule=true is a separate argument "
                     + "for the module body of an adopted common module";
             result.properties = CommonModuleSettings.reference(module);
+            return;
+        }
+        if (extension && object instanceof Configuration configuration) {
+            result.kind = "extension";
+            result.objectType = "Configuration";
+            result.tool = "edt_modify_extension";
+            result.usage = "pass the listed names as arguments next to projectName";
+            ExtensionProjectSettings.current(configuration).forEach((name, value) -> {
+                boolean purpose = "purpose".equals(name);
+                var property = entry(name, purpose ? "enum" : "string", value, null);
+                if (purpose) property.put("values", ExtensionProjectSettings.PURPOSES);
+                result.properties.add(property);
+            });
+            return;
+        }
+        if (object instanceof ExternalDataProcessor || object instanceof ExternalReport) {
+            var external = (MdObject) object;
+            result.kind = "externalObject";
+            result.objectType = external.eClass().getName();
+            result.tool = "edt_modify_external_object";
+            result.usage = "pass the listed names as arguments next to projectName and fqn";
+            result.properties.add(entry("synonymRu", "string", external.getSynonym().get("ru"),
+                    "an empty string removes the Russian synonym"));
+            result.properties.add(entry("comment", "string", external.getComment(), "developer comment"));
+            ExternalObjectSettings.referenceSlots(external).forEach((name, slot) -> {
+                var property = entry(name, "string", slot.fqn(fqn, (MdObject) external.eGet(slot.feature())),
+                        "name or FQN of a member of this object");
+                property.put("values", slot.candidates().stream().map(candidate -> slot.fqn(fqn, candidate)).toList());
+                result.properties.add(property);
+            });
             return;
         }
         Form form = FormWriteGateway.resolveForm(tx, fqn);

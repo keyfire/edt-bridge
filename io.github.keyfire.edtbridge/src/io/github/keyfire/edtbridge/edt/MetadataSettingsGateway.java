@@ -12,13 +12,18 @@ import com._1c.g5.v8.bm.core.IBmTransaction;
 import com._1c.g5.v8.bm.integration.AbstractBmTask;
 import com._1c.g5.v8.bm.integration.IBmModel;
 import com._1c.g5.v8.dt.core.platform.IBmModelManager;
+import com._1c.g5.v8.dt.core.platform.IExtensionProject;
+import com._1c.g5.v8.dt.core.platform.IV8ProjectManager;
 import com._1c.g5.v8.dt.metadata.mdclass.CommonModule;
+import com._1c.g5.v8.dt.metadata.mdclass.Configuration;
 import com._1c.g5.v8.dt.metadata.mdclass.MdObject;
 import com._1c.g5.v8.dt.metadata.mdclass.Subsystem;
 import com._1c.g5.wiring.ServiceAccess;
 
 /** Typed metadata settings and subsystem membership through live BM transactions. */
 public final class MetadataSettingsGateway {
+    public record Change(Object before, Object after) { }
+
     public static final class Result {
         public boolean ok;
         public boolean applied;
@@ -28,28 +33,37 @@ public final class MetadataSettingsGateway {
         public String plan;
         public String message;
         public String warning;
-        public Map<String, CommonModuleSettings.Change> changes = new LinkedHashMap<>();
+        public Map<String, Change> changes = new LinkedHashMap<>();
         public List<String> contentBefore = new ArrayList<>();
         public List<String> contentAfter = new ArrayList<>();
         public List<String> added = new ArrayList<>();
         public List<String> removed = new ArrayList<>();
     }
 
-    private static IBmModel model(String projectName) {
+    private static IProject project(String projectName) {
         if (projectName == null || projectName.isBlank()) throw new IllegalArgumentException("projectName is required");
         IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
         if (!project.exists() || !project.isOpen()) throw new IllegalArgumentException("Project not found or closed: " + projectName);
+        return project;
+    }
+
+    private static IBmModel model(IProject project) {
         IBmModelManager manager = ServiceAccess.get(IBmModelManager.class);
         IBmModel model = manager == null ? null : manager.getModel(project);
-        if (model == null) throw new IllegalArgumentException("No BM model for project: " + projectName);
+        if (model == null) throw new IllegalArgumentException("No BM model for project: " + project.getName());
         return model;
+    }
+
+    static boolean isExtensionProject(IProject project) {
+        var manager = ServiceAccess.get(IV8ProjectManager.class);
+        return manager != null && manager.getProject(project) instanceof IExtensionProject;
     }
 
     public Result modifyObject(String projectName, String fqn, Map<String, Object> properties,
             boolean extendModule, boolean apply) {
         Result result = new Result(); result.project = projectName; result.fqn = fqn;
         try {
-            IBmModel model = model(projectName);
+            IBmModel model = model(project(projectName));
             model.executeReadonlyTask(new AbstractBmTask<Object>("edt-bridge.metadataSettings.inspect") {
                 @Override public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
                     EObject object = tx.getTopObjectByFqn(fqn);
@@ -83,11 +97,59 @@ public final class MetadataSettingsGateway {
         return result;
     }
 
+    public Result modifyExternalObject(String projectName, String fqn, Map<String, String> values, boolean apply) {
+        return modifyProjectRoot(projectName, fqn, values, apply, false);
+    }
+
+    public Result modifyExtension(String projectName, Map<String, String> values, boolean apply) {
+        return modifyProjectRoot(projectName, "Configuration", values, apply, true);
+    }
+
+    private Result modifyProjectRoot(String projectName, String fqn, Map<String, String> values, boolean apply,
+            boolean extension) {
+        Result result = new Result();
+        result.project = projectName;
+        result.fqn = fqn;
+        try {
+            if (fqn == null || fqn.isBlank()) throw new IllegalArgumentException("fqn is required");
+            IProject project = project(projectName);
+            if (extension && !isExtensionProject(project)) {
+                throw new IllegalArgumentException("An EDT configuration extension project is required");
+            }
+            IBmModel model = model(project);
+            var task = new AbstractBmTask<Map<String, Change>>("edt-bridge.projectRootSettings") {
+                @Override public Map<String, Change> execute(IBmTransaction tx, IProgressMonitor monitor) {
+                    EObject object = tx.getTopObjectByFqn(fqn);
+                    if (extension) {
+                        if (!(object instanceof Configuration configuration)) {
+                            throw new IllegalArgumentException("Extension Configuration is not available");
+                        }
+                        return ExtensionProjectSettings.update(configuration, values, apply);
+                    }
+                    return ExternalObjectSettings.update(object instanceof MdObject md ? md : null,
+                            fqn, values, apply);
+                }
+            };
+            result.changes = apply ? model.execute(task) : model.executeReadonlyTask(task);
+            result.applied = apply && !result.changes.isEmpty();
+            if (result.applied) export(model, fqn, result);
+            result.ok = true;
+            result.plan = "Set " + result.changes.size() + " properties on " + fqn;
+            result.message = result.changes.isEmpty() ? "The requested settings already match"
+                    : apply ? "Updated properties on " + fqn : "dry-run: nothing written";
+        } catch (RuntimeException failure) {
+            result.ok = false;
+            result.message = (result.applied ? "The model changed, but export failed: " : "Nothing written: ")
+                    + GatewaySupport.describeCause(failure);
+        }
+        return result;
+    }
+
     public Result updateSubsystem(String projectName, String fqn, List<String> add, List<String> remove,
             boolean force, boolean apply) {
         Result result = new Result(); result.project = projectName; result.fqn = fqn;
         try {
-            IBmModel model = model(projectName);
+            IBmModel model = model(project(projectName));
             List<String> additions = add == null ? List.of() : List.copyOf(add);
             List<String> removals = remove == null ? List.of() : List.copyOf(remove);
             for (String name : additions) if (removals.contains(name)) {

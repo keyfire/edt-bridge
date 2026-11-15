@@ -54,6 +54,19 @@ final class ToolJson {
         return (a.has(k) && !a.get(k).isJsonNull()) ? a.get(k).getAsString() : null;
     }
 
+    static java.util.Map<String, String> stringPatch(JsonObject args, String... names) {
+        var values = new java.util.LinkedHashMap<String, String>();
+        for (String name : names) {
+            var value = args.get(name);
+            if (value == null || value.isJsonNull()) continue;
+            if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) {
+                throw new IllegalArgumentException(name + " must be a string");
+            }
+            values.put(name, value.getAsString());
+        }
+        return values;
+    }
+
     static boolean getBool(JsonObject a, String k) {
         return a.has(k) && !a.get(k).isJsonNull() && a.get(k).getAsBoolean();
     }

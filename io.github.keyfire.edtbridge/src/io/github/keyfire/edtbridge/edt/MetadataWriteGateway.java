@@ -1909,7 +1909,7 @@ public final class MetadataWriteGateway {
             return r;
         }
         r.nameValid = true;
-        if (namePrefix == null || namePrefix.isBlank() || !IDENT.matcher(namePrefix).matches()) {
+        if (namePrefix == null || namePrefix.isBlank() || !isIdentifier(namePrefix)) {
             r.message = "namePrefix is required and must be a valid identifier (e.g. \"Расш_\")";
             return r;
         }
@@ -2788,7 +2788,11 @@ public final class MetadataWriteGateway {
 
 
     /** Purpose name (EN or RU, case-insensitive) → enum; blank → CUSTOMIZATION; unknown → null. */
-    private static ConfigurationExtensionPurpose resolvePurpose(String s) {
+    static boolean isIdentifier(String name) {
+        return name != null && IDENT.matcher(name).matches();
+    }
+
+    static ConfigurationExtensionPurpose resolvePurpose(String s) {
         if (s == null || s.isBlank()) {
             return ConfigurationExtensionPurpose.CUSTOMIZATION;
         }

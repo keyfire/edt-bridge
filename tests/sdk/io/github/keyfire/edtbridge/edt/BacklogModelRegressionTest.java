@@ -66,6 +66,128 @@ class BacklogModelRegressionTest {
         assertNull(owner.getDefaultObjectForm());
     }
 
+    @Test void externalObjectPropertiesPreviewAndUpdateBothRootKinds() {
+        var factory = MdClassFactory.eINSTANCE;
+        var processor = factory.createExternalDataProcessor();
+        processor.setName("Check");
+        var processorForm = factory.createDataProcessorForm();
+        processorForm.setName("Main");
+        processorForm.setFormType(com._1c.g5.v8.dt.metadata.mdclass.FormType.MANAGED);
+        processor.getForms().add(processorForm);
+
+        var report = factory.createExternalReport();
+        report.setName("Check");
+        var first = factory.createReportForm();
+        first.setName("First");
+        first.setFormType(com._1c.g5.v8.dt.metadata.mdclass.FormType.MANAGED);
+        var second = factory.createReportForm();
+        second.setName("Second");
+        second.setFormType(com._1c.g5.v8.dt.metadata.mdclass.FormType.MANAGED);
+        report.getForms().add(first);
+        report.getForms().add(second);
+        report.setDefaultForm(first);
+
+        for (MdObject root : List.of(processor, report)) {
+            String fqn = root.eClass().getName() + "." + root.getName();
+            root.getSynonym().put("ru", "Old title");
+            root.getSynonym().put("en", "English title");
+            String chosen = fqn + (root == processor ? ".Form.Main" : ".Form.Second");
+            var preview = ExternalObjectSettings.update(root, fqn, Map.of("synonymRu", "New title", "defaultForm", chosen), false);
+            assertEquals(new MetadataSettingsGateway.Change("Old title", "New title"), preview.get("synonymRu"));
+            assertEquals(new MetadataSettingsGateway.Change(root == report ? fqn + ".Form.First" : null, chosen),
+                    preview.get("defaultForm"));
+            assertEquals("Old title", root.getSynonym().get("ru"));
+            assertEquals(preview, ExternalObjectSettings.update(root, fqn, Map.of("synonymRu", "New title", "defaultForm", chosen), true));
+            assertEquals("New title", root.getSynonym().get("ru"));
+            assertEquals("English title", root.getSynonym().get("en"));
+            assertTrue(ExternalObjectSettings.update(root, fqn, Map.of("synonymRu", "New title", "defaultForm", chosen), true).isEmpty());
+        }
+        assertSame(processorForm, processor.getDefaultForm());
+        assertSame(second, report.getDefaultForm());
+    }
+
+    @Test void invalidExternalDefaultFormLeavesTheWholePatchUnapplied() {
+        var factory = MdClassFactory.eINSTANCE;
+        var root = factory.createExternalReport();
+        root.setName("Check");
+        root.getSynonym().put("ru", "Original");
+        var form = factory.createReportForm();
+        form.setName("Ordinary");
+        form.setFormType(com._1c.g5.v8.dt.metadata.mdclass.FormType.ORDINARY);
+        root.getForms().add(form);
+        for (String invalid : List.of("", "Missing", "Ordinary", "ExternalReport.Other.Form.Ordinary")) {
+            assertThrows(IllegalArgumentException.class, () -> ExternalObjectSettings.update(
+                    root, "ExternalReport.Check", Map.of("synonymRu", "Replacement", "defaultForm", invalid), true));
+            assertEquals("Original", root.getSynonym().get("ru"));
+            assertNull(root.getDefaultForm());
+        }
+        assertThrows(IllegalArgumentException.class, () -> ExternalObjectSettings.update(
+                factory.createReport(), "Report.Check", Map.of("synonymRu", "Replacement"), true));
+    }
+
+
+    @Test void reportSettingsAndSchemaReferencesAreTypeCheckedBeforeWriting() {
+        var factory = MdClassFactory.eINSTANCE;
+        var report = factory.createExternalReport();
+        var settings = factory.createReportForm();
+        settings.setName("Settings");
+        settings.setFormType(com._1c.g5.v8.dt.metadata.mdclass.FormType.MANAGED);
+        report.getForms().add(settings);
+        var variant = factory.createReportForm();
+        variant.setName("Variant");
+        variant.setFormType(com._1c.g5.v8.dt.metadata.mdclass.FormType.MANAGED);
+        report.getForms().add(variant);
+        var schema = factory.createTemplate();
+        schema.setName("Schema");
+        schema.setTemplateType(TemplateType.DATA_COMPOSITION_SCHEMA);
+        report.getTemplates().add(schema);
+        var text = factory.createTemplate();
+        text.setName("Text");
+        text.setTemplateType(TemplateType.TEXT_DOCUMENT);
+        report.getTemplates().add(text);
+        String fqn = "ExternalReport.Summary";
+
+        assertThrows(IllegalArgumentException.class, () -> ExternalObjectSettings.update(report, fqn,
+                Map.of("defaultSettingsForm", "Settings", "mainDataCompositionSchema", "Text"), true));
+        assertNull(report.getDefaultSettingsForm());
+        assertNull(report.getMainDataCompositionSchema());
+        var changes = ExternalObjectSettings.update(report, fqn,
+                Map.of("defaultSettingsForm", "Settings", "defaultVariantForm", "Variant",
+                        "mainDataCompositionSchema", fqn + ".Template.Schema"), true);
+        assertEquals(3, changes.size());
+        assertSame(settings, report.getDefaultSettingsForm());
+        assertSame(variant, report.getDefaultVariantForm());
+        assertSame(schema, report.getMainDataCompositionSchema());
+        assertNull(report.getDefaultForm());
+    }
+
+    @Test void extensionMetadataPreviewDoesNotChangeTheRootAndInvalidPurposeIsAtomic() {
+        var factory = MdClassFactory.eINSTANCE;
+        var root = factory.createConfiguration();
+        var language = factory.createLanguage();
+        language.setLanguageCode("en");
+        root.getLanguages().add(language);
+        root.setDefaultLanguage(language);
+        root.getSynonym().put("en", "Old title");
+        root.getSynonym().put("ru", "Translation");
+        root.setNamePrefix("Before_");
+
+        var values = Map.of("synonym", "New title", "namePrefix", "After_", "purpose", "AddOn",
+                "version", "1.2.3", "vendor", "Example", "comment", "Developers");
+        var changes = ExtensionProjectSettings.update(root, values, false);
+        assertEquals(new MetadataSettingsGateway.Change("Before_", "After_"), changes.get("namePrefix"));
+        assertEquals("Old title", root.getSynonym().get("en"));
+        for (var invalid : List.of(Map.of("purpose", "Unknown", "synonym", "Bad edit"),
+                Map.of("namePrefix", "bad prefix", "synonym", "Bad edit"))) {
+            assertThrows(IllegalArgumentException.class, () -> ExtensionProjectSettings.update(root, invalid, true));
+            assertEquals("Old title", root.getSynonym().get("en"));
+        }
+        assertEquals(changes, ExtensionProjectSettings.update(root, values, true));
+        assertEquals(values, ExtensionProjectSettings.current(root));
+        assertEquals("Translation", root.getSynonym().get("ru"));
+        assertTrue(ExtensionProjectSettings.update(root, values, true).isEmpty());
+    }
+
     @Test void stringQualifiersIncludeUnlimitedAndKeepExplicitLength() throws Exception {
         for (String spec : List.of("Строка", "Строка(100)")) {
             MetadataWriteGateway gateway = new MetadataWriteGateway();

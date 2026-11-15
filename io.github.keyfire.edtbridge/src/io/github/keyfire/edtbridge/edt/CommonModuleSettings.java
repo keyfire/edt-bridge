@@ -29,12 +29,12 @@ import com._1c.g5.v8.dt.metadata.mdclass.ReturnValuesReuse;
 import com._1c.g5.v8.dt.metadata.mdclass.extension.CommonModuleExtension;
 import com._1c.g5.v8.dt.metadata.mdclass.extension.type.MdPropertyState;
 import io.github.keyfire.edtbridge.core.AllowedValues;
+import io.github.keyfire.edtbridge.edt.MetadataSettingsGateway.Change;
 
 /** Typed common-module settings, validated as one patch before any property is changed. */
 final class CommonModuleSettings {
     private static final Set<String> FLAGS = Set.of("global", "server", "externalConnection",
             "clientManagedApplication", "clientOrdinaryApplication", "serverCall", "privileged");
-    record Change(Object before, Object after) { }
     private record Assignment(EObject target, EStructuralFeature feature, Object value, String name) { }
     private CommonModuleSettings() { }
 
