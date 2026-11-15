@@ -98,9 +98,9 @@ _VALUES = {
     "expect_error_dialog": ({"type": "string", "description": "Exact text of the native error dialog the click "
                                                               "must show; the dialog is then closed"},
                             "the exact text of the error dialog"),
-    "expect_warning": ({"type": "string", "description": "Exact text of the warning window (ShowMessageBox) the "
-                                                         "click must show; the window is then closed with OK"},
-                       "the exact text of the warning window"),
+    "expect_warning": ({"type": "string", "description": "Exact warning text the click must add to the message "
+                                                         "panel or show in a warning window that the driver closes"},
+                       "the exact text of the warning"),
     "text": ({"type": "string", "description": "Text to type; an empty string clears the field"},
              "a string of up to 4096 characters"),
     "cell": ({"type": "string", "pattern": "^R[1-9][0-9]{0,5}C[1-9][0-9]{0,4}$",
@@ -214,7 +214,7 @@ def _step_problem(phase, action, step, has_click):
         if not valid:
             return f"{key} must be {_value(action, key)[1]}"
     if {"expect_error_dialog", "expect_warning"} <= keys:
-        return "a click expects one window: expect_error_dialog or expect_warning, not both"
+        return "a click takes expect_error_dialog or expect_warning, not both"
     if action == "assert_messages":
         if not has_click:
             return "assert_messages checks the messages of a click, and no click precedes it"
@@ -291,6 +291,25 @@ def _new_messages(before, after):
     return "cleared", list(after)
 
 
+def _message_list(value):
+    return isinstance(value, list) and len(value) <= 10000 and all(_text(text) for text in value)
+
+
+def _expected_warning(expected, observed):
+    if "warningPanel" in observed:
+        panel = observed["warningPanel"]
+        if ("warningDialog" in observed or observed.get("dialogClosed") is True
+                or not isinstance(panel, dict) or not _message_list(panel.get("before"))
+                or not _message_list(panel.get("actual"))):
+            raise DriverResultError("The test manager returned an invalid warning panel observation.")
+        _, added = _new_messages(panel["before"], panel["actual"])
+        return (expected if expected in added else None), "message_panel"
+    actual = observed.get("warningDialog")
+    if not _text(actual) or observed.get("dialogClosed") is not True:
+        raise DriverResultError("The test manager did not observe and close the expected warning window.")
+    return actual, "dialog"
+
+
 def evaluate(steps, observations):
     if not isinstance(observations, list) or len(observations) != len(steps):
         raise DriverResultError("The test manager did not observe every scenario step.")
@@ -318,17 +337,23 @@ def evaluate(steps, observations):
         if action in ("input", "click"):
             if observed.get("completed") is not True:
                 raise DriverResultError("The test manager did not complete a scenario action.")
-            for expectation, observed_key, window in (("expect_error_dialog", "errorDialog", "error dialog"),
-                                                      ("expect_warning", "warningDialog", "warning window")):
-                if expectation not in step:
-                    continue
-                actual = observed.get(observed_key)
+            if "expect_error_dialog" in step:
+                actual = observed.get("errorDialog")
                 if not _text(actual) or observed.get("dialogClosed") is not True:
-                    raise DriverResultError(f"The test manager did not observe and close the expected {window}.")
-                passed = actual == step[expectation]
-                assertions.append({"step": index + 1, "action": expectation,
-                                   "expected": step[expectation], "actual": actual, "ok": passed})
-                if not passed:
+                    raise DriverResultError("The test manager did not observe and close the expected error dialog.")
+                expected = step["expect_error_dialog"]
+                assertion = {"step": index + 1, "action": "expect_error_dialog",
+                             "expected": expected, "actual": actual, "ok": actual == expected}
+            elif "expect_warning" in step:
+                expected = step["expect_warning"]
+                actual, source = _expected_warning(expected, observed)
+                assertion = {"step": index + 1, "action": "expect_warning", "expected": expected,
+                             "actual": actual, "ok": actual == expected, "source": source}
+            else:
+                assertion = None
+            if assertion is not None:
+                assertions.append(assertion)
+                if not assertion["ok"]:
                     status = "assertion_failed"
             continue
         actual = observed.get("actual")
@@ -345,8 +370,7 @@ def evaluate(steps, observations):
             expected = {"rows": step["rows"], "columns": step["columns"]}
         elif action == "assert_messages":
             before = observed.get("before")
-            valid = (isinstance(actual, list) and len(actual) <= 10000 and all(_text(x) for x in actual)
-                     and isinstance(before, list) and len(before) <= 10000 and all(_text(x) for x in before))
+            valid = _message_list(actual) and _message_list(before)
             if valid:
                 baseline = before.count(step["text"])
                 panel, added = _new_messages(before, actual)
