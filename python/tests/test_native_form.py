@@ -805,14 +805,18 @@ def test_a_selector_that_missed_brings_the_fields_of_the_open_form(monkeypatch, 
     assert report["observedFields"] == observed
 
 
-def test_a_window_no_step_expected_is_reported_with_its_text(monkeypatch, tmp_path):
-    """A warning over the form stops the scenario, and the caller sees what the solution showed."""
+@pytest.mark.parametrize("expect_warning, dialog", [
+    ({}, {"kind": "warning", "formName": "MessageBox", "text": "Check the shipment date", "buttons": ["OK"]}),
+    ({"expect_warning": "Check the shipment date"},
+     {"kind": "question", "formName": "MessageBox", "text": "Check the shipment date", "buttons": ["Yes", "No"]}),
+])
+def test_an_unexpected_window_is_reported_with_its_text(monkeypatch, tmp_path, expect_warning, dialog):
+    """A window over the form stops the scenario even if its text matches the expected warning."""
     args = _fixture_args(tmp_path)
     args.output_dir.mkdir()
     monkeypatch.setattr(native_form, "_display", lambda *args: {})
     monkeypatch.setattr(native_form, "_owns_listener", lambda *args: True)
     monkeypatch.setattr(native_form, "_capture", lambda *args: {"screenshot": "screenshot.png"})
-    dialog = {"kind": "warning", "formName": "MessageBox", "text": "Check the shipment date", "buttons": ["OK"]}
 
     def spawn(_stack, argv, _env, _log):
         if "/TestManager" in argv:
@@ -823,7 +827,7 @@ def test_a_window_no_step_expected_is_reported_with_its_text(monkeypatch, tmp_pa
         return SimpleNamespace(poll=lambda: None)
 
     monkeypatch.setattr(native_form, "_spawn", spawn)
-    steps = [{"action": "click", "button": "Save"}, {"action": "read_form"}]
+    steps = [{"action": "click", "button": "Save", **expect_warning}, {"action": "read_form"}]
     report = native_form._run_session(args, args.test_infobase, args.epf, args.output_dir,
                                       tmp_path / "session", tmp_path / "manager", {},
                                       ["1cv8", "ENTERPRISE"], "Xvfb", time.monotonic() + 30, steps)

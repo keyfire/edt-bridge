@@ -191,7 +191,7 @@ Procedure RunScenario(Application, Target, MessageWindow, Request, Report)
                 Raise NStr("en = 'The selected button is unavailable.'; ru = 'Выбранная кнопка недоступна.'");
             EndIf;
             ObserveMessages = NeedsMessageObservation(Request.steps, Observations.Count());
-            If ObserveMessages Then
+            If ObserveMessages Or Step.Property("expect_warning") Then
                 BeforeMessages = VisibleMessages(MessageWindow, Report, "beforeMessagePanel");
             EndIf;
             Button.Click();
@@ -204,10 +204,13 @@ Procedure RunScenario(Application, Target, MessageWindow, Request, Report)
                 EndIf;
                 Target.Activate();
             ElsIf Step.Property("expect_warning") Then
-                If Not CloseExpectedWarning(Application, Target, Step.expect_warning, Observation, Request, Report) Then
+                If Not ObserveExpectedWarning(Application, Target, MessageWindow, BeforeMessages,
+                    Step.expect_warning, Observation, Request, Report) Then
                     Return;
                 EndIf;
-                Target.Activate();
+                If Observation.Property("warningDialog") Then
+                    Target.Activate();
+                EndIf;
             ElsIf UnexpectedDialog(Application, Target, Report) Then
                 // A window over the form stops the next step anyway; its text tells what the solution did.
                 Return;
@@ -342,12 +345,52 @@ Function CloseExpectedErrorDialog(Application, ExpectedText, Observation, Reques
     Return True;
 EndFunction
 
-Function CloseExpectedWarning(Application, Target, ExpectedText, Observation, Request, Report)
+Function ObserveExpectedWarning(Application, Target, MessageWindow, Before, ExpectedText, Observation, Request, Report)
     Report.stage = "expected_warning";
-    Dialog = WaitForDialog(Application, Target, Request);
-    If Dialog = Undefined Then
-        Raise NStr("en = 'The expected warning window was not found.'; ru = 'Ожидаемое окно предупреждения не найдено.'");
+    Report.Insert("expectedWarning", ExpectedText);
+    Deadline = CurrentUniversalDateInMilliseconds() + Request.waitSeconds * 1000;
+    While True Do
+        Dialog = RaisedDialog(Application, Target);
+        If Dialog <> Undefined Then
+            Return CloseExpectedWarning(Dialog, ExpectedText, Observation, Request, Report);
+        EndIf;
+        Messages = VisibleMessages(MessageWindow, Report, "afterMessagePanel");
+        StartIndex = NewMessageOffset(Before, Messages);
+        For Index = StartIndex To Messages.Count() - 1 Do
+            If ExactWarningText(Messages[Index], ExpectedText) Then
+                Observation.Insert("warningPanel", New Structure("before,actual", Before, Messages));
+                Return True;
+            EndIf;
+        EndDo;
+        If CurrentUniversalDateInMilliseconds() >= Deadline Then
+            Report.status = "assertion_failed";
+            Report.Insert("warningPanel", New Structure("before,actual", Before, Messages));
+            Return False;
+        EndIf;
+    EndDo;
+EndFunction
+
+// The earlier messages are either a prefix of the current panel or were cleared by the click.
+Function NewMessageOffset(Before, Messages)
+    If Before.Count() > Messages.Count() Then
+        Return 0;
     EndIf;
+    For Index = 0 To Before.Count() - 1 Do
+        If Not ExactWarningText(Messages[Index], Before[Index]) Then
+            Return 0;
+        EndIf;
+    EndDo;
+    Return Before.Count();
+EndFunction
+
+Function ExactWarningText(Actual, Expected)
+    If Actual = "" And Expected = "" Then
+        Return True;
+    EndIf;
+    Return StrLen(Actual) = StrLen(Expected) And StrFind(Actual, Expected) = 1;
+EndFunction
+
+Function CloseExpectedWarning(Dialog, ExpectedText, Observation, Request, Report)
     Described = DescribeDialog(Dialog);
     If Described.kind <> "warning" Then
         Report.status = "unexpected_dialog";
@@ -355,8 +398,7 @@ Function CloseExpectedWarning(Application, Target, ExpectedText, Observation, Re
         Return False;
     EndIf;
     Report.Insert("warningDialog", Described.text);
-    Report.Insert("expectedWarning", ExpectedText);
-    If Described.text <> ExpectedText Then
+    If Not ExactWarningText(Described.text, ExpectedText) Then
         Report.status = "assertion_failed";
         Return False;
     EndIf;
@@ -409,16 +451,6 @@ Function RaisedDialog(Application, Target)
         EndIf;
     EndDo;
     Return Dialog;
-EndFunction
-
-Function WaitForDialog(Application, Target, Request)
-    Deadline = CurrentUniversalDateInMilliseconds() + Request.waitSeconds * 1000;
-    While True Do
-        Dialog = RaisedDialog(Application, Target);
-        If Dialog <> Undefined Or CurrentUniversalDateInMilliseconds() >= Deadline Then
-            Return Dialog;
-        EndIf;
-    EndDo;
 EndFunction
 
 // A system window over the form: the error window, or MessageBox for ShowMessageBox and

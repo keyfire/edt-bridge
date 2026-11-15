@@ -107,16 +107,15 @@ button. A different message fails the check and leaves the dialog open for the
 screenshot. The observed text and closing result are recorded. This option does not
 handle other dialogs or replace assertions on messages and persisted values.
 
-If the command answers with a warning window (`ShowMessageBox`) instead of a message, add
-`expect_warning` with the exact text of the window:
+To accept a warning in either the message panel or a warning window (`ShowMessageBox`),
+add `expect_warning` with the exact text:
 
 ```json
 {"action": "click", "button_name": "FormWrite", "expect_warning": "Check the shipment date."}
 ```
 
-The manager finds the window over the form, the `MessageBox` system form, which is numbered
-(`MessageBox85`) when an object form raises it. It compares the `Message` text, presses `OK`
-and goes on with the next step, so a warning shown in `BeforeWrite` does not stop the check
-of the written values. A different text gives `assertion_failed` with the observed text, and
-a click that shows no warning fails the step. A click expects one window: `expect_error_dialog`
-and `expect_warning` exclude each other.
+The manager checks for a new message with that text. If the click opens a warning window,
+the manager checks its text and closes it with `OK` before continuing. The assertion reports
+`source: "message_panel"` or `source: "dialog"`. A missing or mismatched warning fails the step
+with `assertion_failed`. An unrelated dialog returns `unexpected_dialog` and stays open.
+Use either `expect_error_dialog` or `expect_warning` on a click.

@@ -207,7 +207,7 @@ def test_expected_warning_requires_observed_text_and_closed_window(selector):
     result = native_scenario.evaluate(steps, observations)
     assert result["ok"]
     assert result["assertions"][0] == {"step": 1, "action": "expect_warning", "expected": "Check the shipment date",
-                                       "actual": "Check the shipment date", "ok": True}
+                                       "actual": "Check the shipment date", "ok": True, "source": "dialog"}
     observations[0]["warningDialog"] = "Another text"
     assert native_scenario.evaluate(steps, observations)["status"] == "assertion_failed"
     observations[0].pop("warningDialog")
@@ -217,6 +217,37 @@ def test_expected_warning_requires_observed_text_and_closed_window(selector):
     observations[0]["dialogClosed"] = False
     with pytest.raises(native_scenario.DriverResultError):
         native_scenario.evaluate(steps, observations)
+
+
+@pytest.mark.parametrize("before, after, passed", [
+    ([], ["Check the shipment date"], True),
+    (["Check the shipment date"], ["Check the shipment date", "Check the shipment date"], True),
+    (["Old message"], ["Check the shipment date"], True),
+    (["Check the shipment date"], ["Check the shipment date", "Unrelated message"], False),
+    ([], ["Check the shipment date and try again"], False),
+    ([], ["check the shipment date"], False),
+    ([], [], False),
+])
+def test_expected_warning_in_message_panel_must_be_new_and_exact(before, after, passed):
+    steps = [{"action": "click", "button_name": "SaveButton", "expect_warning": "Check the shipment date"},
+             {"action": "assert_field", "field": "Number", "equals": "T007"}]
+    native_scenario.validate(_scenario(*steps))
+    result = native_scenario.evaluate(steps, [
+        {"action": "click", "completed": True, "warningPanel": {"before": before, "actual": after}},
+        {"action": "assert_field", "actual": "T007"},
+    ])
+    assert result["status"] == ("scenario_completed" if passed else "assertion_failed")
+    assert result["assertions"][0]["source"] == "message_panel"
+    assert result["assertions"][0]["ok"] is passed
+    assert result["assertions"][1]["ok"]
+
+
+def test_a_report_cannot_claim_warning_in_both_places():
+    step = {"action": "click", "button_name": "SaveButton", "expect_warning": "Check the shipment date"}
+    observed = {"action": "click", "completed": True, "warningDialog": step["expect_warning"],
+                "dialogClosed": True, "warningPanel": {"before": [], "actual": [step["expect_warning"]]}}
+    with pytest.raises(native_scenario.DriverResultError):
+        native_scenario.evaluate([step], [observed])
 
 
 @pytest.mark.parametrize("step, problem", [
