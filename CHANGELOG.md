@@ -23,7 +23,7 @@ to the code and the reasoning behind it.
   configuration came up without `simpleconfigurator`, and EDT opened empty. Run as administrator,
   `self-update` also says to start EDT from a console without elevation: an elevated EDT keeps a
   configuration of its own in the install directory, and the next start without elevation may
-  reset the one in `~/.eclipse`.
+  reset the one in `~/.eclipse`. ([#95](https://github.com/keyfire/edt-bridge/pull/95))
 
 ## <span id="2026-11-14--0470"></span><span id="2026-11-15--0470"></span><span id="2026-11-15--0471"></span>2026-11-15 – 0.47.2
 
