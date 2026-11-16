@@ -4,7 +4,7 @@ import threading
 
 import pytest
 
-from edt_bridge_mcp import jobs
+from edt_bridge_mcp import job_events, jobs
 from edt_bridge_mcp.server import Backend, StdioServer
 
 
@@ -20,6 +20,7 @@ class JobBackend(Backend):
         self.finished = threading.Event()
         self.waiting = threading.Event()
         self.status = "succeeded"
+        self.next_status_error = None
 
     def ensure(self, **kwargs):
         return True, ""
@@ -34,8 +35,14 @@ class JobBackend(Backend):
                       "message": "started as a background job"}
         else:
             assert name == "edt_job_status"
+            failure, self.next_status_error = self.next_status_error, None
             self.waiting.set()
             self.finished.wait(2)
+            if failure is not None:
+                raise failure
+            if self.status is None:
+                return {"result": {"isError": True, "content": [
+                    {"type": "text", "text": f"no job {JOB_ID} in this run of EDT"}]}}
             answer = {"jobId": JOB_ID, "tool": TOOL, "status": self.status,
                       "result": {"path": "local.epf"}}
         result = {"content": [{"type": "text", "text": json.dumps(answer)}]}
@@ -110,6 +117,37 @@ def test_job_completion_wakes_the_subscriber_and_keeps_result_in_job_status(monk
     assert json.loads(client.receive()["result"]["content"][0]["text"])["result"] == {"path": "local.epf"}
 
 
+@pytest.mark.parametrize("error", [OSError, TimeoutError])
+def test_subscriber_receives_completion_after_a_temporary_status_failure(monkeypatch, error):
+    monkeypatch.setattr(job_events, "POLL_SECONDS", 0.01)
+    backend = JobBackend()
+    backend.next_status_error = error("temporary status failure")
+    backend.finished.set()
+    client = Client(backend, monkeypatch)
+    client.start_job()
+    client.watch()
+
+    assert client.receive()["method"] == "notifications/events/active"
+    event = client.receive()
+    assert event["method"] == "notifications/events/event"
+    assert event["params"]["_meta"][SUBSCRIPTION_ID] == 3
+    assert event["params"]["data"] == {"jobId": JOB_ID, "status": "succeeded"}
+    assert client.receive()["id"] == 3
+
+
+def test_backend_response_for_an_unknown_job_ends_the_stream(monkeypatch):
+    backend = JobBackend()
+    backend.status = None
+    backend.finished.set()
+    client = Client(backend, monkeypatch)
+    client.start_job()
+    client.watch()
+
+    assert client.receive()["method"] == "notifications/events/active"
+    assert client.receive()["method"] == "notifications/events/terminated"
+    assert client.receive()["id"] == 3
+
+
 def test_a_second_stdio_connection_cannot_watch_an_existing_job(monkeypatch):
     backend = JobBackend()
     Client(backend, monkeypatch).start_job()
@@ -144,8 +182,11 @@ def test_late_subscription_delivers_an_already_finished_wrapper_job(monkeypatch)
     assert client.receive()["id"] == 4
 
 
-def test_cancelling_subscription_does_not_cancel_or_emit_the_job(monkeypatch):
+@pytest.mark.parametrize("read_fails", [False, True])
+def test_cancelling_subscription_does_not_cancel_or_emit_the_job(monkeypatch, read_fails):
     backend = JobBackend()
+    if read_fails:
+        backend.next_status_error = TimeoutError("temporary status failure")
     client = Client(backend, monkeypatch)
     client.start_job()
     client.watch()

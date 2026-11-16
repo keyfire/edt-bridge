@@ -1541,18 +1541,15 @@ class StdioServer:
 
     def _job_event_status(self, job_id: str) -> str | None:
         """Read a job without starting EDT or making a bridge worker wait for it."""
-        try:
-            if jobs.is_local(job_id):
-                answer, _ = jobs.status(job_id, 0)
-            else:
-                reply = self.backend.forward({
-                    "jsonrpc": "2.0", "id": 1, "method": "tools/call",
-                    "params": {"name": jobs.STATUS_TOOL, "arguments": {"jobId": job_id, "waitSeconds": 0}},
-                }, timeout=5)
-                # A failed EDT job carries its final status in an isError tool result.
-                answer = job_events.tool_payload(reply, allow_error=True)
-        except (OSError, ValueError):
-            return None
+        if jobs.is_local(job_id):
+            answer, _ = jobs.status(job_id, 0)
+        else:
+            reply = self.backend.forward({
+                "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                "params": {"name": jobs.STATUS_TOOL, "arguments": {"jobId": job_id, "waitSeconds": 0}},
+            }, timeout=5)
+            # A failed EDT job carries its final status in an isError tool result.
+            answer = job_events.tool_payload(reply, allow_error=True)
         if isinstance(answer, dict) and answer.get("jobId") == job_id:
             return answer.get("status")
         return None

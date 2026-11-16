@@ -119,16 +119,21 @@ class JobEvents:
                 return
             heartbeat_at = time.monotonic() + HEARTBEAT_SECONDS
             while not stop.is_set():
-                status = self._read_status(job_id)
-                if status in TERMINAL:
-                    self._notify(request_id, stop, "event", name=EVENT, eventId=job_id, cursor=job_id,
-                                 timestamp=datetime.now(timezone.utc).isoformat(),
-                                 data={"jobId": job_id, "status": status})
-                    return
-                if status not in PENDING:
-                    self._notify(request_id, stop, "terminated",
-                                 error={"code": -32000, "message": "Job status is unavailable"})
-                    return
+                try:
+                    status = self._read_status(job_id)
+                except (OSError, ValueError):
+                    # The status is unknown until a read succeeds. Keep the stream and retry.
+                    pass
+                else:
+                    if status in TERMINAL:
+                        self._notify(request_id, stop, "event", name=EVENT, eventId=job_id, cursor=job_id,
+                                     timestamp=datetime.now(timezone.utc).isoformat(),
+                                     data={"jobId": job_id, "status": status})
+                        return
+                    if status not in PENDING:
+                        self._notify(request_id, stop, "terminated",
+                                     error={"code": -32000, "message": "Job status is unavailable"})
+                        return
                 if time.monotonic() >= heartbeat_at:
                     self._notify(request_id, stop, "heartbeat", cursor=cursor)
                     heartbeat_at = time.monotonic() + HEARTBEAT_SECONDS
