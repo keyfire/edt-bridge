@@ -13,6 +13,18 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
+## Unreleased
+
+### Fixed
+
+- After replacing the jar, `self-update` also reads the configuration that EDT keeps in
+  `~/.eclipse` for a start without administrator rights. When that configuration still registers
+  the old jar, `self-update` says so and asks to start EDT once with `-clean`. A start with such a
+  configuration came up without `simpleconfigurator`, and EDT opened empty. Run as administrator,
+  `self-update` also says to start EDT from a console without elevation: an elevated EDT keeps a
+  configuration of its own in the install directory, and the next start without elevation may
+  reset the one in `~/.eclipse`.
+
 ## <span id="2026-11-14--0470"></span><span id="2026-11-15--0470"></span><span id="2026-11-15--0471"></span>2026-11-15 – 0.47.2
 
 ### Added
