@@ -596,6 +596,7 @@ def test_a_failed_exact_jar_replacement_keeps_the_working_sibling(tmp_path, monk
     assert update.install_latest_jar(dropins, version="0.5.0") is False
     assert (dropins / working).read_bytes() == b"working jar"
     assert (dropins / target).read_bytes() == b""
+    assert sorted(p.name for p in dropins.iterdir()) == sorted([target, working])
 
 
 # -- where EDT is installed on Windows -------------------------------------------------
@@ -984,10 +985,86 @@ def test_pinned_jar_keeps_the_installed_copy_if_staging_is_denied(monkeypatch, t
     def denied(**_kwargs):
         raise PermissionError(13, "Access is denied")
 
-    monkeypatch.setattr(update.tempfile, "TemporaryDirectory", denied)
+    monkeypatch.setattr(update.tempfile, "mkstemp", denied)
     lines = []
 
     assert update.install_latest_jar(tmp_path, emit=lines.append, version="0.34.1") is False
     assert installed.read_bytes() == b"existing jar"
     assert "cannot place the jar into dropins" in lines[-1]
     assert ("as administrator" in lines[-1]) == (os.name == "nt")
+
+
+# -- the permissions the delivered jar ends up with ------------------------------------
+
+
+def _icacls(*args):
+    import subprocess
+
+    return subprocess.run(["icacls", *map(str, args)], capture_output=True, check=True,
+                          stdin=subprocess.DEVNULL).stdout
+
+
+def _entries(path):
+    """The access entries icacls lists for ``path``: the path itself and the summary after the
+    blank line are left out."""
+    from itertools import takewhile
+
+    listing = _icacls(path).decode("oem", "replace")[len(str(path)):]
+    return list(takewhile(bool, (line.strip() for line in listing.splitlines())))
+
+
+@pytest.mark.skipif(os.name != "nt", reason="the permissions in question are Windows ACLs")
+def test_the_delivered_jar_gets_the_permissions_of_dropins(monkeypatch, tmp_path):
+    """The jar used to be staged in a `TemporaryDirectory` inside dropins. Since CVE-2024-4030,
+    `mkdtemp` gives that directory a protected DACL for SYSTEM, Administrators and the owner only.
+    The download inherited it and the rename kept it, so a jar delivered by an elevated
+    self-update could not be read by EDT started without elevation, and the bridge never loaded.
+
+    The read access of Users is granted here the way Program Files grants it to dropins: the
+    temporary directory of pytest is itself made with mode 0o700 and carries the same three
+    entries as `mkdtemp`, which would hide the difference."""
+    _latest_release(monkeypatch)
+    dropins = tmp_path / "dropins"
+    dropins.mkdir()
+    _icacls(dropins, "/grant", "*S-1-5-32-545:(OI)(CI)(RX)")
+    sibling = dropins / "written-directly.txt"
+    sibling.write_bytes(b"")
+
+    assert update.install_latest_jar(dropins, emit=lambda _msg: None) is True
+
+    jar = dropins / (update.JAR_PREFIX + "0.34.1.202611030809.jar")
+    assert sorted(dropins.iterdir()) == [jar, sibling]
+    assert _entries(jar) == _entries(sibling)
+    assert update._dacl_protected(jar) is False
+
+
+@pytest.mark.skipif(os.name != "nt", reason="the permissions in question are Windows ACLs")
+def test_a_dacl_cut_off_from_its_folder_is_recognized(tmp_path):
+    jar = tmp_path / "plugin.jar"
+    jar.write_bytes(b"jar")
+    assert update._dacl_protected(jar) is False
+
+    _icacls(jar, "/inheritance:d")
+
+    assert update._dacl_protected(jar) is True
+
+
+@pytest.mark.skipif(os.name == "nt", reason="the check reads Windows ACLs")
+def test_the_dacl_check_has_no_answer_off_windows(tmp_path):
+    assert update._dacl_protected(tmp_path) is None
+
+
+@pytest.mark.parametrize("present", [False, True])
+def test_a_jar_without_the_permissions_of_dropins_names_the_cure(monkeypatch, tmp_path, present):
+    """Also for a jar that is already there: the jar 0.47.2 left behind is the current release,
+    and a self-update run again must not call it installed."""
+    _latest_release(monkeypatch)
+    jar = tmp_path / (update.JAR_PREFIX + "0.34.1.202611030809.jar")
+    if present:
+        jar.write_bytes(b"jar")
+    monkeypatch.setattr(update, "_dacl_protected", lambda _path: True)
+    lines = []
+
+    assert update.install_latest_jar(tmp_path, emit=lines.append) is False
+    assert jar.exists()
+    assert f'icacls "{jar}" /reset' in lines[-1]
