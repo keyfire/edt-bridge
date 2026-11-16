@@ -16,6 +16,9 @@
  */
 package io.github.keyfire.edtbridge.core;
 
+import java.util.List;
+import java.util.function.Consumer;
+
 /**
  * Replace one exact fragment of a module's text: the part of a module that no method tool
  * reaches - compilation directives, module variables, regions, the preprocessor block around
@@ -73,7 +76,12 @@ public final class ModuleFragment {
      * preprocessor block opens in one place and closes in another; only the batch as a whole keeps
      * the module parseable, so the caller checks the parse once, after the last change.
      */
-    public static Edit replaceAll(String source, java.util.List<Change> changes) {
+    public static Edit replaceAll(String source, List<Change> changes) {
+        return replaceAll(source, changes, edit -> {});
+    }
+
+    /** Pass each edit to the caller while its positions still refer to that step's text. */
+    public static Edit replaceAll(String source, List<Change> changes, Consumer<Edit> onReplacement) {
         if (changes == null || changes.isEmpty()) {
             throw new IllegalArgumentException("at least one replacement is required");
         }
@@ -92,6 +100,7 @@ public final class ModuleFragment {
             if (first == null) {
                 first = edit;
             }
+            onReplacement.accept(edit);
             text = edit.result();
         }
         return new Edit(text, first.offset(), first.line(), first.oldText(), first.newText());

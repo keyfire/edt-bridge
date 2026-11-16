@@ -18,7 +18,7 @@ Changes need a token and are returned as a plan until `apply=true` is passed; se
 | `edt_add_route` | Adds a route to an `HTTPService`: a URL template plus one HTTP method. It generates the `uuid` of the template and its method. It resolves the `httpMethod` enum, and with `createHandler` it splices a `Функция <handler>(Запрос)` stub into the service module. |
 | `edt_apply_fix` | Applies EDT's own quick fix to one marker of a check (`checkId` as `edt_project_errors` reports it, narrowed by `fqn` and `line`). A dry-run lists the variants; apply runs one, validates again and returns the changed lines and `remaining`. `hasFix=false` means EDT has no quick fix for the check. A module fix needs client EDT: EDT applies it through the module editor, and a headless bridge refuses with `requiresWorkbench=true`. In client EDT the bridge saves that editor (`editorSaved`) and refuses when the editor already holds unsaved changes. |
 | `edt_replace_method` | Replaces one existing method after parsing it with EDT. Dry-run returns exact oldText/newText and the whole-module sourceHash. Apply requires that hash and force=true; stale source, unsaved editors and invalid replacements are refused. The method name and kind stay the same, and surrounding source is preserved. |
-| `edt_replace_module_fragment` | Replaces an exact fragment of a module outside methods: compilation directives, module variables, regions, a `#If` block. The fragment must occur once; `edits` applies several fragments together, so a region can open and close in one call. The result must parse. Preview returns `sourceHash`, apply needs it back as `expectedHash` and a token. |
+| `edt_replace_module_fragment` | Replaces an exact fragment of a module outside methods: compilation directives, module variables, regions, a `#If` block. The fragment must occur once; `edits` applies several fragments together, so a region can open and close in one call. The result must parse. With `edits`, dry-run and apply return `previews` in edit order. Each entry gives the line at the time of the edit and a short preview. Dry-run returns `sourceHash`. Apply needs it back as `expectedHash` and a token. |
 | `edt_move_method` | Moves a method within its module, preserving its exact text, documentation and directives. Supports nested region paths and neighboring methods, checks the intermediate and final module with the EDT parser, and requires `apply=true, force=true`. |
 
 ## Method placement
@@ -48,6 +48,7 @@ Use `edt_rename` to rename a method and update its callers.
    regions, preprocessor blocks, variables or statements at module level.
 4. Apply the same replacement with `apply=true`, `force=true` and `expectedHash` set
    to that `sourceHash`. A change anywhere in the module requires a new dry-run.
+   Apply reports the line range and hashes. The method texts are returned during dry-run.
 5. Read the saved source and run `edt_project_errors`. Parsing checks syntax; the tool
    does not rewrite callers after a parameter change or prove runtime behavior.
 

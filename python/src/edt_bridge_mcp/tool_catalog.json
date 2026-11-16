@@ -2824,8 +2824,8 @@
     },
     {
       "name": "edt_replace_module_fragment",
-      "description": "WRITE: replace one exact fragment of a module's BSL text - compilation directives, module variables, regions, a preprocessor block, the text that edt_add_method and edt_replace_method do not reach. The fragment must occur exactly once and the module must still parse after the replacement; edits applies several fragments together, for a region or a #If block that opens and closes in different places. Dry-run returns the line, a preview and sourceHash; apply needs that hash as expectedHash, so a module changed in between is refused. A form module without its form model is refused. Check the result with edt_project_errors. Requires a configured write token.",
-      "descriptionRu": "ЗАПИСЬ: заменить один точный фрагмент текста модуля - директивы компиляции, переменные модуля, области, блок препроцессора, то, до чего не достают edt_add_method и edt_replace_method. Фрагмент должен встречаться ровно один раз, модуль после замены должен разбираться; edits применяет несколько фрагментов вместе - для области или блока #Если, которые открываются и закрываются в разных местах. Dry-run возвращает строку, предпросмотр и sourceHash; для apply нужен этот хеш в expectedHash, поэтому модуль, измененный в промежутке, дает отказ. Модуль формы без модели формы дает отказ. Результат проверять edt_project_errors. Нужен токен записи.",
+      "description": "WRITE: replace one exact fragment of a module's BSL text - compilation directives, module variables, regions, a preprocessor block, the text that edt_add_method and edt_replace_method do not reach. The fragment must occur exactly once and the module must still parse after the replacement; edits applies several fragments together, for a region or a #If block that opens and closes in different places. Both dry-run and apply return a short preview and a line for each entry in edits, in previews. Dry-run also returns sourceHash; apply needs that hash as expectedHash, so a module changed in between is refused. A form module without its form model is refused. Check the result with edt_project_errors. Requires a configured write token.",
+      "descriptionRu": "ЗАПИСЬ: заменить один точный фрагмент текста модуля - директивы компиляции, переменные модуля, области, блок препроцессора, то, до чего не достают edt_add_method и edt_replace_method. Фрагмент должен встречаться ровно один раз, модуль после замены должен разбираться; edits применяет несколько фрагментов вместе - для области или блока #Если, которые открываются и закрываются в разных местах. Dry-run и apply возвращают в previews строку и короткий предпросмотр каждой замены из edits. Dry-run также возвращает sourceHash; для apply нужен этот хеш в expectedHash, поэтому модуль, измененный в промежутке, дает отказ. Модуль формы без модели формы дает отказ. Результат проверять edt_project_errors. Нужен токен записи.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2855,7 +2855,7 @@
           },
           "edits": {
             "type": "array",
-            "description": "Several replacements applied together, in order, as [{oldText, newText}]: a region or a #If block opens in one place and closes in another, and only the whole batch keeps the module parseable. Use instead of oldText/newText.",
+            "description": "Several replacements applied together, in order, as [{oldText, newText}]: a region or a #If block opens in one place and closes in another, and only the whole batch keeps the module parseable. The result includes one short preview per replacement in previews, in the order applied. Use instead of oldText/newText.",
             "items": {
               "type": "object"
             }

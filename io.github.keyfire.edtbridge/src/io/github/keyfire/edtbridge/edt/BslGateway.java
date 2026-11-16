@@ -29,6 +29,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -743,9 +744,12 @@ public final class BslGateway {
     public static final class FragmentResult {
         public boolean ok, applied, applyPending, valid;
         public String modulePath, sourceHash, resultHash, oldText, newText, preview, plan, message;
+        public List<FragmentPreview> previews;
         public int line;
         public int methodsBefore = -1, methodsAfter = -1;
     }
+
+    public record FragmentPreview(int line, String preview) {}
 
     /**
      * Replace one exact fragment of a module's text - directives, module variables, regions, the
@@ -755,12 +759,17 @@ public final class BslGateway {
     public FragmentResult replaceFragment(String projectName, String fqn, String moduleType, String modulePath,
             String oldText, String newText, String expectedHash, boolean apply) {
         return replaceFragments(projectName, fqn, moduleType, modulePath,
-                java.util.List.of(new ModuleFragment.Change(oldText, newText)), expectedHash, apply);
+                List.of(new ModuleFragment.Change(oldText, newText)), expectedHash, apply, false);
     }
 
     /** As {@link #replaceFragment}, for several fragments applied together and parsed once. */
     public FragmentResult replaceFragments(String projectName, String fqn, String moduleType, String modulePath,
-            java.util.List<ModuleFragment.Change> changes, String expectedHash, boolean apply) {
+            List<ModuleFragment.Change> changes, String expectedHash, boolean apply) {
+        return replaceFragments(projectName, fqn, moduleType, modulePath, changes, expectedHash, apply, true);
+    }
+
+    private FragmentResult replaceFragments(String projectName, String fqn, String moduleType, String modulePath,
+            List<ModuleFragment.Change> changes, String expectedHash, boolean apply, boolean batch) {
         FragmentResult r = new FragmentResult();
         IProject p = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
         if (!p.exists() || !p.isOpen()) {
@@ -787,6 +796,13 @@ public final class BslGateway {
             r.message = "module file not found: " + relPath + "; create the first method with edt_add_method";
             return r;
         }
+        return replaceFragmentsInFile(file, r, changes, expectedHash, apply, batch,
+                text -> loadBslText(projectName, r.modulePath, text));
+    }
+
+    FragmentResult replaceFragmentsInFile(IFile file, FragmentResult r, List<ModuleFragment.Change> changes,
+            String expectedHash, boolean apply, boolean batch, Function<String, BslContext> parse) {
+        String relPath = r.modulePath;
         try {
             String fullText = readText(file);
             r.sourceHash = ExactTextReplacement.hash(fullText);
@@ -794,7 +810,7 @@ public final class BslGateway {
                 r.message = "refused: the module changed since the dry-run (source hash mismatch); repeat the dry-run";
                 return r;
             }
-            BslContext before = loadBslText(projectName, relPath, fullText);
+            BslContext before = parse.apply(fullText);
             if (before.error != null || before.resource == null || !before.resource.getErrors().isEmpty()) {
                 r.message = "refused: the module does not parse cleanly now ("
                         + (before.error != null ? before.error : firstError(before.resource)) + ")";
@@ -802,11 +818,16 @@ public final class BslGateway {
             }
             Module module0 = firstModule(before.resource);
             r.methodsBefore = module0 == null ? 0 : module0.allMethods().size();
-            ModuleFragment.Edit edit = ModuleFragment.replaceAll(fullText, changes);
+            List<FragmentPreview> previews = new ArrayList<>();
+            ModuleFragment.Edit edit = ModuleFragment.replaceAll(fullText, changes, step -> {
+                int offset = step.offset();
+                String preview = previewAround(step.result(), offset, offset + step.newText().length());
+                previews.add(new FragmentPreview(step.line(), preview));
+            });
             r.line = edit.line();
             r.oldText = edit.oldText();
             r.newText = edit.newText();
-            BslContext after = loadBslText(projectName, relPath, edit.result());
+            BslContext after = parse.apply(edit.result());
             if (after.error != null || after.resource == null || !after.resource.getErrors().isEmpty()) {
                 r.message = "refused: the module would not parse after the replacement ("
                         + (after.error != null ? after.error : firstError(after.resource)) + ")";
@@ -816,9 +837,11 @@ public final class BslGateway {
             r.methodsAfter = module1 == null ? 0 : module1.allMethods().size();
             r.valid = true;
             r.resultHash = ExactTextReplacement.hash(edit.result());
-            r.preview = changes.size() == 1
-                    ? previewAround(edit.result(), edit.offset(), edit.offset() + edit.newText().length())
-                    : edit.result();
+            if (batch) {
+                r.previews = List.copyOf(previews);
+            } else {
+                r.preview = previews.get(0).preview();
+            }
             r.plan = (changes.size() == 1 ? "Replace the fragment at line " + r.line
                     : "Apply " + changes.size() + " replacements, the first at line " + r.line) + " of " + relPath
                     + (r.methodsBefore != r.methodsAfter
@@ -1491,11 +1514,7 @@ public final class BslGateway {
     private static String previewAround(String text, int from, int to) {
         int a = Math.max(0, from - 80);
         int b = Math.min(text.length(), to + 40);
-        String snip = text.substring(a, b);
-        if (snip.length() > 1200) {
-            snip = snip.substring(0, 1200) + " ...";
-        }
-        return snip;
+        return b - a > 1200 ? text.substring(a, a + 1200) + " ..." : text.substring(a, b);
     }
 
 

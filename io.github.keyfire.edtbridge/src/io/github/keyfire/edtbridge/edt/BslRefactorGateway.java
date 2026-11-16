@@ -220,6 +220,15 @@ public final class BslRefactorGateway {
         public int lineTo;
         public String plan;
         public String message;
+
+        void describeEdit(BslMethodReplacement.Plan edit, boolean apply) {
+            sourceHash = edit.sourceHash();
+            resultHash = edit.resultHash();
+            if (!apply) {
+                oldText = edit.oldText();
+                newText = edit.newText();
+            }
+        }
     }
 
     public ReplacementResult replaceMethod(String projectName, String fqn, String moduleType,
@@ -251,10 +260,7 @@ public final class BslRefactorGateway {
             int[] range = BslGateway.methodRange(method, parseText);
             range[0] += bom; range[1] += bom;
             var edit = BslMethodReplacement.plan(text, range[0], range[1], methodText, expectedHash);
-            result.sourceHash = edit.sourceHash();
-            result.resultHash = edit.resultHash();
-            result.oldText = edit.oldText();
-            result.newText = edit.newText();
+            result.describeEdit(edit, apply);
             result.lineFrom = lineAt(text, range[0]);
             result.lineTo = lineAt(text, range[1]);
             Module fragment = BslGateway.firstModule(parse(projectName, result.modulePath, edit.newText()).resource);

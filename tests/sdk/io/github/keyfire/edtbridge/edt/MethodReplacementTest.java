@@ -20,11 +20,53 @@ import static org.junit.jupiter.api.Assertions.*;
 import com._1c.g5.v8.dt.bsl.model.BslFactory;
 import com._1c.g5.v8.dt.bsl.model.Method;
 import com._1c.g5.v8.dt.bsl.model.Module;
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import io.github.keyfire.edtbridge.core.BslMethodReplacement;
+import io.github.keyfire.edtbridge.tools.ReplaceMethodTool;
 import org.eclipse.xtext.nodemodel.impl.NodeModelBuilder;
 import org.junit.jupiter.api.Test;
-import io.github.keyfire.edtbridge.tools.ReplaceMethodTool;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class MethodReplacementTest {
+    private static final String PREFIX = "\ufeff// Module header\r\n\r\n";
+    private static final String SUFFIX = "\r\n\r\n// Unrelated code\r\n";
+    private static final String OLD_METHOD = "Procedure Run() Export\r\n"
+            + "    Value = 1;\r\n".repeat(80) + "EndProcedure";
+    private static final String NEW_METHOD = "Procedure Run() Export\r\n"
+            + "    Value = 2;\r\n".repeat(80) + "EndProcedure";
+
+    @Test void dryRunReturnsExactMethodTextInModuleLineEndings() {
+        JsonObject preview = describeReplacement(NEW_METHOD, null, false);
+
+        assertEquals(OLD_METHOD, preview.get("oldText").getAsString());
+        assertEquals(NEW_METHOD, preview.get("newText").getAsString());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void applyReturnsHashesWithoutMethodText(boolean unchanged) {
+        String replacement = unchanged ? OLD_METHOD : NEW_METHOD;
+        JsonObject preview = describeReplacement(replacement, null, false);
+        String expectedHash = preview.get("sourceHash").getAsString();
+        JsonObject applied = describeReplacement(replacement, expectedHash, true);
+
+        assertEquals(preview.get("sourceHash"), applied.get("sourceHash"));
+        assertEquals(preview.get("resultHash"), applied.get("resultHash"));
+        assertEquals(unchanged, applied.get("sourceHash").equals(applied.get("resultHash")));
+        assertFalse(applied.has("oldText"), "Apply echoed the original method text");
+        assertFalse(applied.has("newText"), "Apply echoed the replacement method text");
+    }
+
+    private static JsonObject describeReplacement(String replacement, String expectedHash, boolean apply) {
+        var edit = BslMethodReplacement.plan(PREFIX + OLD_METHOD + SUFFIX, PREFIX.length(),
+                PREFIX.length() + OLD_METHOD.length(), replacement.replace("\r\n", "\n"), expectedHash);
+        var result = new BslRefactorGateway.ReplacementResult();
+        result.describeEdit(edit, apply);
+        return new Gson().toJsonTree(result).getAsJsonObject();
+    }
+
     @Test void acceptsOneMethodWithDocumentationPragmasAndItsTrailingComment() {
         String text = "// Method documentation\n&AtClient\nProcedure Run(Value) Export\nEndProcedure // tail";
         var module = module(text, "Run", false);
@@ -77,7 +119,7 @@ class MethodReplacementTest {
                 .anyMatch(value -> value.getAsString().equals("methodText")));
         assertTrue(schema.getAsJsonObject("properties").has("expectedHash"));
         assertTrue(schema.getAsJsonObject("properties").has("force"));
-        assertTrue(tool.call(new com.google.gson.JsonObject()).get("isError").getAsBoolean());
+        assertTrue(tool.call(new JsonObject()).get("isError").getAsBoolean());
     }
     private static Module module(String text, String name, boolean function) {
         var module = BslFactory.eINSTANCE.createModule();

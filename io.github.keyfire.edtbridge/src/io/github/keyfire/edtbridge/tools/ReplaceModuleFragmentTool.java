@@ -36,7 +36,8 @@ public final class ReplaceModuleFragmentTool {
         edits.addProperty("type", "array");
         edits.addProperty("description", "Several replacements applied together, in order, as "
                 + "[{oldText, newText}]: a region or a #If block opens in one place and closes in another, "
-                + "and only the whole batch keeps the module parseable. Use instead of oldText/newText.");
+                + "and only the whole batch keeps the module parseable. The result includes one short preview "
+                + "per replacement in previews, in the order applied. Use instead of oldText/newText.");
         JsonObject item = new JsonObject();
         item.addProperty("type", "object");
         edits.add("items", item);
@@ -56,7 +57,8 @@ public final class ReplaceModuleFragmentTool {
                 + "directives, module variables, regions, a preprocessor block, the text that edt_add_method and "
                 + "edt_replace_method do not reach. The fragment must occur exactly once and the module must "
                 + "still parse after the replacement; edits applies several fragments together, for a region "
-                + "or a #If block that opens and closes in different places. Dry-run returns the line, a preview and sourceHash; apply "
+                + "or a #If block that opens and closes in different places. Both dry-run and apply return a short "
+                + "preview and a line for each entry in edits, in previews. Dry-run also returns sourceHash; apply "
                 + "needs that hash as expectedHash, so a module changed in between is refused. A form module "
                 + "without its form model is refused. Check the result with edt_project_errors. Requires a "
                 + "configured write token.");
@@ -64,7 +66,8 @@ public final class ReplaceModuleFragmentTool {
                 + "компиляции, переменные модуля, области, блок препроцессора, то, до чего не достают "
                 + "edt_add_method и edt_replace_method. Фрагмент должен встречаться ровно один раз, модуль после "
                 + "замены должен разбираться; edits применяет несколько фрагментов вместе - для области или "
-                + "блока #Если, которые открываются и закрываются в разных местах. Dry-run возвращает строку, предпросмотр и sourceHash; для apply нужен "
+                + "блока #Если, которые открываются и закрываются в разных местах. Dry-run и apply возвращают в previews "
+                + "строку и короткий предпросмотр каждой замены из edits. Dry-run также возвращает sourceHash; для apply нужен "
                 + "этот хеш в expectedHash, поэтому модуль, измененный в промежутке, дает отказ. Модуль формы без "
                 + "модели формы дает отказ. Результат проверять edt_project_errors. Нужен токен записи.");
         t.add("inputSchema", schema);
@@ -74,7 +77,8 @@ public final class ReplaceModuleFragmentTool {
     public JsonObject call(JsonObject args) {
         String project = getStr(args, "projectName");
         java.util.List<ModuleFragment.Change> changes = new java.util.ArrayList<>();
-        if (args.has("edits") && args.get("edits").isJsonArray()) {
+        boolean batch = args.has("edits") && args.get("edits").isJsonArray();
+        if (batch) {
             for (var element : args.getAsJsonArray("edits")) {
                 if (!element.isJsonObject()) {
                     return McpServer.toolError("every item of edits is an object with oldText and newText");
@@ -92,8 +96,15 @@ public final class ReplaceModuleFragmentTool {
             return McpServer.toolError("pass fqn or modulePath");
         }
         try {
-            var result = gateway.replaceFragments(project, getStr(args, "fqn"), getStr(args, "moduleType"),
-                    getStr(args, "modulePath"), changes, getStr(args, "expectedHash"), getBool(args, "apply"));
+            String fqn = getStr(args, "fqn");
+            String moduleType = getStr(args, "moduleType");
+            String path = getStr(args, "modulePath");
+            String expectedHash = getStr(args, "expectedHash");
+            boolean apply = getBool(args, "apply");
+            var result = batch
+                    ? gateway.replaceFragments(project, fqn, moduleType, path, changes, expectedHash, apply)
+                    : gateway.replaceFragment(project, fqn, moduleType, path, changes.get(0).oldText(),
+                            changes.get(0).newText(), expectedHash, apply);
             return McpServer.textResult(new GsonBuilder().disableHtmlEscaping().setPrettyPrinting().create().toJson(result));
         } catch (Exception exception) {
             return McpServer.toolError("edt_replace_module_fragment failed: " + exception.getMessage());
