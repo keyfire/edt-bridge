@@ -13,6 +13,17 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
+## 2026-11-16 – 0.48.0
+
+### Added
+
+- MCP Events clients can subscribe to `job.finished` to learn when a background job ends.
+  Call `edt_job_status` to retrieve the result.
+  ([#92](https://github.com/keyfire/edt-bridge/pull/92))
+- `job.progress` reports the current state and stage for all 11 tools that accept
+  `async=true`, including EDT validation and platform tests.
+  ([#93](https://github.com/keyfire/edt-bridge/pull/93))
+
 ## <span id="2026-11-14--0470"></span><span id="2026-11-15--0470"></span><span id="2026-11-15--0471"></span>2026-11-15 – 0.47.2
 
 ### Added
