@@ -50,6 +50,7 @@ import subprocess
 import tempfile
 import urllib.error
 import urllib.request
+import uuid
 import zipfile
 from io import BytesIO
 from pathlib import Path
@@ -252,10 +253,12 @@ def _find_dropins() -> Path | None:
     return None
 
 
-def purge_stale_jars(dropins: Path | None, emit=log, *, keep: Path | None = None) -> int:
+def purge_stale_jars(dropins: Path | None, emit=log, *, keep: Path | None = None,
+                     keep_newer: bool = False) -> int:
     """Remove all edt-bridge jars except the selected one, or keep the newest by default.
 
-    Two copies of the same bundle can make Equinox load the wrong version."""
+    Two copies of the same bundle can make Equinox load the wrong version.
+    keep_newer also preserves jars delivered after the caller selected the one to keep."""
     if not dropins or not dropins.is_dir():
         return 0
     jars = sorted(dropins.glob(JAR_PREFIX + "*.jar"), key=lambda p: p.name)
@@ -265,7 +268,7 @@ def purge_stale_jars(dropins: Path | None, emit=log, *, keep: Path | None = None
         keep = jars[-1]
     removed = 0
     for old in jars:
-        if old == keep:
+        if old == keep or (keep_newer and old.name > keep.name):
             continue
         try:
             old.unlink()
@@ -339,10 +342,11 @@ def _staging_files(directory: Path):
     made: list[Path] = []
 
     def make() -> Path:
-        handle, name = tempfile.mkstemp(dir=directory, prefix=".edtbridge-", suffix=".part")
-        os.close(handle)
-        made.append(Path(name))
-        return made[-1]
+        path = directory / f".edtbridge-{uuid.uuid4().hex}.part"
+        # Use standard file creation permissions, including the process umask on POSIX.
+        with path.open("xb"):
+            made.append(path)
+        return path
 
     try:
         yield make
@@ -411,13 +415,15 @@ def install_latest_jar(dropins: Path, emit=log, *, version: str | None = None) -
 
     name = jar_asset["name"]
     target = dropins / name
-    if version is None and target.exists():
-        # Keep the newest copy on the first-run delivery and unpinned update paths.
-        purge_stale_jars(dropins, emit)
-        if _dacl_protected(target):
-            emit(_unreadable_jar(target))
+    installed = installed_jar(dropins) if version is None and target.exists() else None
+    if installed is not None:
+        # Keep the newest local copy only after checking the jar cleanup will retain.
+        _, retained = installed
+        if _dacl_protected(retained):
+            emit(_unreadable_jar(retained))
             return False
-        emit(f"release jar already present: {name}")
+        purge_stale_jars(dropins, emit, keep=retained, keep_newer=True)
+        emit(f"jar already present: {retained.name}")
         return True
 
     emit(f"downloading {name} ({jar_asset.get('size', 0)} bytes)...")
@@ -459,6 +465,11 @@ def install_latest_jar(dropins: Path, emit=log, *, version: str | None = None) -
                 return False
             emit("checksum verified")
 
+        if _dacl_protected(tmp):
+            emit(f"the downloaded {name} does not take the permissions of dropins; "
+                 "the installed jars were left in place")
+            return False
+
         try:
             tmp.replace(target)
         except OSError as exc:
@@ -466,9 +477,6 @@ def install_latest_jar(dropins: Path, emit=log, *, version: str | None = None) -
             return False
 
     purge_stale_jars(dropins, emit, keep=target)
-    if _dacl_protected(target):
-        emit(_unreadable_jar(target))
-        return False
     emit(f"installed {name} into {dropins}")
     return version is None or not any(p != target for p in dropins.glob(JAR_PREFIX + "*.jar"))
 
@@ -505,7 +513,7 @@ def _configuration_lines(path: Path, emit, encoding: str = "utf-8-sig") -> list[
         return path.read_text(encoding=encoding).splitlines()
     except FileNotFoundError:
         return []
-    except OSError as error:
+    except (OSError, UnicodeError) as error:
         emit(f"could not inspect Equinox configuration {path}: {error}")
         return []
 

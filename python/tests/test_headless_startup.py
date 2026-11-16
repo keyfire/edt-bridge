@@ -286,11 +286,54 @@ def test_a_running_session_is_waited_for_even_when_the_process_list_comes_back_e
 
     other = server.Backend()
     other.workspace = backend.workspace
-    other._headless_cli_running = lambda: False
+    other._edt_processes = lambda: []
     ok, message = other._launch_headless()
 
     assert ok and "already running" in message
     assert len(processes) == 1
+
+
+@pytest.mark.parametrize("different", ["port", "installation"])
+def test_a_locked_workspace_with_an_incompatible_owner_is_reported(launcher, tmp_path, different):
+    backend, script, processes = launcher
+    script.write_text("import sys\nsys.stdin.read()\n", encoding="utf-8")
+    assert backend.ensure(wait=False) == (False, "starting")
+
+    other = server.Backend()
+    other.workspace = backend.workspace
+    other.port = backend.port if different == "installation" else backend.port + 1
+    other.edt_dir = str(tmp_path / ("other" if different == "installation" else "install"))
+    executable = tmp_path / "install" / server.CLI_IMAGE
+    other._edt_processes = lambda: [{
+        "ExecutablePath": str(executable), "ProcessId": 123,
+        "CommandLine": f'"{executable}" -data "{backend.workspace}" -Dedt.bridge.port={backend.port}',
+    }]
+
+    ok, message = other._launch_headless()
+
+    assert not ok and "workspace" in message and "123" in message
+    assert len(processes) == 1
+
+
+def test_a_waiting_wrapper_can_start_after_the_other_supervisor_exits(launcher, monkeypatch):
+    backend, script, processes = launcher
+    script.write_text("import sys\nsys.stdin.read()\n", encoding="utf-8")
+    assert backend.ensure(wait=False) == (False, "starting")
+
+    other = server.Backend()
+    other.workspace, other.port = backend.workspace, backend.port
+    other.autostart = True
+    monkeypatch.setattr(other, "is_up", lambda: False)
+    monkeypatch.setattr(other, "_edt_processes", lambda: [])
+    monkeypatch.setattr(other, "_find_cli", lambda: Path(sys.executable))
+    monkeypatch.setattr(other, "_ensure_plugin_jar", lambda path: (True, "present"))
+    assert other.ensure(wait=False) == (False, "starting")
+    assert len(processes) == 1
+
+    processes[0].terminate()
+    processes[0].wait(timeout=10)
+    assert other.ensure(wait=False) == (False, "starting")
+    assert len(processes) == 2
 
 
 _DENIED = ("java.io.FileNotFoundException: C:\\Program Files\\1C\\1CE\\components\\"
@@ -391,6 +434,45 @@ def test_an_unreadable_jar_is_named_before_edt_is_started(tmp_path):
     assert ok is False
     assert f"cannot read the plugin jar {jar}" in message
     assert ("icacls" in message) == (os.name == "nt")
+
+
+def test_a_headless_start_keeps_the_existing_jar_when_the_newest_is_unreadable(tmp_path, monkeypatch):
+    dropins = tmp_path / "dropins"
+    dropins.mkdir()
+    old = dropins / "io.github.keyfire.edtbridge_0.47.1.202611151051.jar"
+    new = dropins / "io.github.keyfire.edtbridge_0.47.2.202611151649.jar"
+    old.write_bytes(b"working jar")
+    new.write_bytes(b"unreadable jar")
+
+    def deny_read(path, mode):
+        if path == new:
+            raise PermissionError(13, "Permission denied")
+        return open(path, mode)
+
+    monkeypatch.setattr(server, "open", deny_read, raising=False)
+
+    ok, message = server.Backend()._ensure_plugin_jar(tmp_path)
+
+    assert not ok and f"cannot read the plugin jar {new}" in message
+    assert old.read_bytes() == b"working jar"
+
+
+def test_a_headless_start_keeps_a_newer_jar_delivered_during_the_readability_check(tmp_path, monkeypatch):
+    dropins = tmp_path / "dropins"
+    dropins.mkdir()
+    old = dropins / "io.github.keyfire.edtbridge_0.47.1.202611151051.jar"
+    new = dropins / "io.github.keyfire.edtbridge_0.47.2.202611151649.jar"
+    old.write_bytes(b"working jar")
+
+    def deliver_while_reading(path, mode):
+        if path == old:
+            new.write_bytes(b"new jar")
+        return open(path, mode)
+
+    monkeypatch.setattr(server, "open", deliver_while_reading, raising=False)
+
+    assert server.Backend()._ensure_plugin_jar(tmp_path)[0]
+    assert new.read_bytes() == b"new jar"
 
 
 def test_a_running_gui_names_why_its_bridge_is_down(launcher, monkeypatch):

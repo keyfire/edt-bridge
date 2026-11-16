@@ -731,6 +731,21 @@ def test_a_user_area_in_step_with_dropins_is_quiet(monkeypatch, tmp_path):
     assert lines == []
 
 
+def test_an_invalid_user_bundles_info_does_not_hide_other_diagnostics(monkeypatch, tmp_path):
+    dropins = _edt_with_new_jar(tmp_path)
+    area = _user_area(_home(monkeypatch, tmp_path), dropins.parent)
+    info = area / "org.eclipse.equinox.simpleconfigurator" / "bundles.info"
+    info.write_bytes(b"# invalid UTF-8: \xff\n")
+    (area / "config.ini").write_text("osgi.bundles=reference:file:../dropins/" + _OLD_JAR + "\n",
+                                     encoding="utf-8")
+    lines = []
+
+    update.warn_stale_configurations(dropins, emit=lines.append)
+
+    assert any(f"could not inspect Equinox configuration {info}" in line for line in lines)
+    assert any("config.ini" in line and _OLD_JAR in line and "-clean" in line for line in lines)
+
+
 def test_the_user_area_of_another_install_is_left_out(monkeypatch, tmp_path):
     """~/.eclipse keeps an area for every EDT ever started, and an old one registers its old jar."""
     dropins = _edt_with_new_jar(tmp_path)
@@ -788,6 +803,19 @@ def _latest_release(monkeypatch):
         "assets": [{"name": jar, "size": 1, "browser_download_url": "https://example.invalid/jar"}],
     })
     monkeypatch.setattr(update, "_download", lambda _url, target: target.write_bytes(b"jar"))
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX file modes")
+def test_installed_jar_mode_respects_umask(monkeypatch, tmp_path):
+    _latest_release(monkeypatch)
+    previous = os.umask(0o027)
+    try:
+        assert update.install_latest_jar(tmp_path, emit=lambda _message: None)
+    finally:
+        os.umask(previous)
+
+    jar, = tmp_path.glob("*.jar")
+    assert jar.stat().st_mode & 0o777 == 0o640
 
 
 def test_a_denied_write_into_dropins_names_the_cure(monkeypatch, tmp_path):
@@ -1099,10 +1127,14 @@ def test_pinned_jar_keeps_the_installed_copy_if_staging_is_denied(monkeypatch, t
     installed = tmp_path / _JARS[0]
     installed.write_bytes(b"existing jar")
 
-    def denied(**_kwargs):
-        raise PermissionError(13, "Access is denied")
+    open_file = update.Path.open
 
-    monkeypatch.setattr(update.tempfile, "mkstemp", denied)
+    def denied(path, mode="r", *args, **kwargs):
+        if path.parent == tmp_path and mode == "xb":
+            raise PermissionError(13, "Access is denied")
+        return open_file(path, mode, *args, **kwargs)
+
+    monkeypatch.setattr(update.Path, "open", denied)
     lines = []
 
     assert update.install_latest_jar(tmp_path, emit=lines.append, version="0.34.1") is False
@@ -1172,16 +1204,36 @@ def test_the_dacl_check_has_no_answer_off_windows(tmp_path):
 
 
 @pytest.mark.parametrize("present", [False, True])
-def test_a_jar_without_the_permissions_of_dropins_names_the_cure(monkeypatch, tmp_path, present):
-    """Also for a jar that is already there: the jar 0.47.2 left behind is the current release,
-    and a self-update run again must not call it installed."""
+def test_an_unreadable_release_jar_leaves_the_working_jar_in_place(monkeypatch, tmp_path, present):
     _latest_release(monkeypatch)
     jar = tmp_path / (update.JAR_PREFIX + "0.34.1.202611030809.jar")
+    working = tmp_path / (update.JAR_PREFIX + "0.34.0.202611020809.jar")
+    working.write_bytes(b"working jar")
     if present:
-        jar.write_bytes(b"jar")
-    monkeypatch.setattr(update, "_dacl_protected", lambda _path: True)
+        jar.write_bytes(b"protected jar")
+    monkeypatch.setattr(update, "_dacl_protected", lambda path: path != working)
     lines = []
 
     assert update.install_latest_jar(tmp_path, emit=lines.append) is False
-    assert jar.exists()
-    assert f'icacls "{jar}" /reset' in lines[-1]
+    assert working.read_bytes() == b"working jar"
+    if present:
+        assert jar.read_bytes() == b"protected jar"
+        assert f'icacls "{jar}" /reset' in lines[-1]
+    else:
+        assert sorted(tmp_path.iterdir()) == [working]
+        assert "does not take the permissions of dropins" in lines[-1]
+
+
+def test_a_protected_newer_local_jar_keeps_the_readable_release(monkeypatch, tmp_path):
+    _latest_release(monkeypatch)
+    release = tmp_path / (update.JAR_PREFIX + "0.34.1.202611030809.jar")
+    local = tmp_path / (update.JAR_PREFIX + "0.34.1.202611030810.jar")
+    release.write_bytes(b"working release")
+    local.write_bytes(b"protected build")
+    monkeypatch.setattr(update, "_dacl_protected", lambda path: path == local)
+    lines = []
+
+    assert update.install_latest_jar(tmp_path, emit=lines.append) is False
+    assert release.read_bytes() == b"working release"
+    assert local.read_bytes() == b"protected build"
+    assert f'icacls "{local}" /reset' in lines[-1]
