@@ -160,6 +160,7 @@ MESSAGES = {
               "  call <инструмент>   вызвать один инструмент моста и напечатать ответ\n"
               "  tools               перечислить инструменты запущенного моста\n"
               "  status              состояние моста без его запуска\n"
+              "  doctor              проверить, что мешает мосту работать, без моста\n"
               "  wait-ready          дождаться загрузки моделей проектов\n"
               "  shutdown            штатно завершить EDT, обслуживающую мост\n"
               "  gui                 остановить headless и открыть клиентскую EDT\n"
@@ -175,6 +176,7 @@ MESSAGES = {
               "  call <tool>   call one bridge tool and print what it returned\n"
               "  tools         list the tools the running bridge serves\n"
               "  status        report the running bridge (never starts one)\n"
+              "  doctor        check what keeps the bridge from working, without a bridge\n"
               "  wait-ready    wait until the project models are loaded\n"
               "  shutdown      shut down the EDT behind the bridge\n"
               "  gui           stop the headless EDT and open the GUI one\n"
@@ -304,6 +306,18 @@ MESSAGES = {
         "en": "Report the running bridge and the version of the JAR in dropins. Version mismatches "
               "between the wrapper and the plugin are reported on stderr. With --all, check each "
               "bridge found.",
+    },
+    "doctor.description": {
+        "ru": "Проверить, что мешает мосту работать: jar в dropins и права на него, какие версии "
+              "моста регистрируют области конфигурации EDT, запущена ли EDT от администратора, "
+              "ошибки загрузки плагина в журнале рабочей области. Мост и EDT для этого не нужны: "
+              "команда ничего не запускает и не меняет. Найденные проблемы и способы их "
+              "исправить выводятся в stderr, код выхода 1.",
+        "en": "Check what keeps the bridge from working: the jar in dropins and its permissions, "
+              "the bridge versions the EDT configurations register, whether EDT runs as "
+              "administrator, and plugin load errors in the workspace log. Needs no bridge and no "
+              "EDT: the command starts and changes nothing. Problems and their fixes go to "
+              "stderr, with exit code 1.",
     },
     "shutdown.description": {
         "ru": "Штатно завершить EDT, обслуживающую мост, - вместо taskkill по процессам. "

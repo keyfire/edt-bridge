@@ -13,6 +13,17 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
+## Unreleased
+
+### Added
+
+- `edt-bridge-mcp doctor` checks what keeps the bridge from working, without a bridge and
+  without starting or changing anything. It reports the jar in `dropins` and whether EDT can
+  read it, the bridge version each EDT configuration registers (the install one, the workspace
+  one and the per-user one in `~/.eclipse`), EDT processes running as administrator, and a plugin
+  load error in the last session of the workspace log. Each problem goes to stderr with the step
+  that fixes it, and the exit code is 1. `status` with no bridge running points to the command.
+
 ## 2026-11-16 – 0.48.0, 0.48.1
 
 ### Added
