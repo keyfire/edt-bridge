@@ -22,15 +22,15 @@ to the code and the reasoning behind it.
   wrapper reads the workspace log: when the plugin fails to load there, the wrapper stops the EDT
   it started and names the cause, for an unreadable jar with the `icacls` command that fixes it.
   Before, EDT came up without the bridge, the wrapper waited six minutes, advised to wait longer
-  and left the EDT holding the workspace.
+  and left the EDT holding the workspace. ([#96](https://github.com/keyfire/edt-bridge/pull/96))
 - A start that times out says whether the EDT console had already answered: if it had, the plugin
   is not running and waiting will not help. The message names the supervisor process and
-  `edt-bridge-mcp shutdown --force`.
+  `edt-bridge-mcp shutdown --force`. ([#96](https://github.com/keyfire/edt-bridge/pull/96))
 - Two wrappers on one workspace no longer start two headless EDTs. The supervisor locks the
   workspace while its EDT runs, and wrappers take turns to start one. Before, a second
   `1cedtcli` went for a workspace that a first one was starting in and exited with code 202.
   On Windows the process checks come from a PowerShell query, and a query that runs past its
-  30 s reads as "no EDT".
+  30 s reads as "no EDT". ([#96](https://github.com/keyfire/edt-bridge/pull/96))
 
 ## <span id="2026-11-14--0470"></span><span id="2026-11-15--0470"></span><span id="2026-11-15--0471"></span>2026-11-15 – 0.47.2
 
