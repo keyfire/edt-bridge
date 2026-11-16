@@ -661,6 +661,123 @@ def test_dropins_and_executables_are_found_in_a_component(monkeypatch, tmp_path)
     assert server.Backend()._find_cli() == edt / "1cedtcli.exe"
 
 
+# -- the configuration EDT keeps per user ------------------------------------------------
+
+
+_NEW_JAR = update.JAR_PREFIX + "0.47.2.202611151649.jar"
+_OLD_JAR = update.JAR_PREFIX + "0.47.1.202611140000.jar"
+
+
+def test_the_install_hash_is_the_one_equinox_names_the_user_area_by():
+    """Read off a real machine: EDT 2026.2.2 from 1C:Installer keeps the configuration of a start
+    without elevation in ~/.eclipse/org.eclipse.platform_4.38.0_1110265432_win32_win32_x86_64."""
+    edt = "C:\\Program Files\\1C\\1CE\\components\\1c-edt-2026.2.2+3-x86_64"
+    assert update._java_hash(edt) == 1110265432
+
+
+def _home(monkeypatch, tmp_path):
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.delenv("EDT_BRIDGE_WORKSPACE", raising=False)
+    return home
+
+
+def _edt_with_new_jar(tmp_path):
+    dropins = tmp_path / "edt" / "dropins"
+    dropins.mkdir(parents=True)
+    (dropins / _NEW_JAR).write_bytes(b"jar")
+    return dropins
+
+
+def _user_area(home, edt):
+    """The configuration Equinox keeps for ``edt`` under ``home`` on a start without elevation."""
+    name = f"org.eclipse.platform_4.38.0_{update._java_hash(str(edt.resolve()))}_win32_win32_x86_64"
+    area = home / ".eclipse" / name / "configuration"
+    (area / "org.eclipse.equinox.simpleconfigurator").mkdir(parents=True)
+    return area
+
+
+def _registers(area, jar):
+    version = jar[len(update.JAR_PREFIX):-len(".jar")]
+    (area / "org.eclipse.equinox.simpleconfigurator" / "bundles.info").write_text(
+        f"io.github.keyfire.edtbridge,{version},dropins/{jar},4,false\n", encoding="utf-8")
+
+
+def test_a_user_area_still_registering_the_old_jar_names_the_cure(monkeypatch, tmp_path):
+    """The user area had registered the old jar when self-update replaced it. The next start of EDT
+    without elevation looked for a bundle that was gone and came up without simpleconfigurator, an
+    empty EDT. Nothing warned: only <EDT>/configuration and <workspace>/eclipsecfg were read."""
+    dropins = _edt_with_new_jar(tmp_path)
+    area = _user_area(_home(monkeypatch, tmp_path), dropins.parent)
+    _registers(area, _OLD_JAR)
+    lines = []
+
+    update.warn_stale_configurations(dropins, emit=lines.append)
+
+    assert len(lines) == 1
+    assert str(area / "org.eclipse.equinox.simpleconfigurator" / "bundles.info") in lines[0]
+    assert _OLD_JAR in lines[0] and _NEW_JAR in lines[0]
+    assert "-clean" in lines[0]
+
+
+def test_a_user_area_in_step_with_dropins_is_quiet(monkeypatch, tmp_path):
+    dropins = _edt_with_new_jar(tmp_path)
+    _registers(_user_area(_home(monkeypatch, tmp_path), dropins.parent), _NEW_JAR)
+    lines = []
+
+    update.warn_stale_configurations(dropins, emit=lines.append)
+
+    assert lines == []
+
+
+def test_the_user_area_of_another_install_is_left_out(monkeypatch, tmp_path):
+    """~/.eclipse keeps an area for every EDT ever started, and an old one registers its old jar."""
+    dropins = _edt_with_new_jar(tmp_path)
+    other = tmp_path / "other-edt"
+    other.mkdir()
+    _registers(_user_area(_home(monkeypatch, tmp_path), other), _OLD_JAR)
+    lines = []
+
+    update.warn_stale_configurations(dropins, emit=lines.append)
+
+    assert lines == []
+
+
+def test_a_start_list_naming_a_replaced_jar_is_reported(monkeypatch, tmp_path):
+    """The shape found before a broken start: osgi.bundles of the user area named the old jar."""
+    dropins = _edt_with_new_jar(tmp_path)
+    area = _user_area(_home(monkeypatch, tmp_path), dropins.parent)
+    _registers(area, _NEW_JAR)
+    (area / "config.ini").write_text(
+        "osgi.bundles=reference\\:file\\:../dropins/" + _OLD_JAR + "@4,"
+        "org.eclipse.equinox.simpleconfigurator@1\\:start\n", encoding="utf-8")
+    lines = []
+
+    update.warn_stale_configurations(dropins, emit=lines.append)
+
+    assert len(lines) == 1
+    assert str(area / "config.ini") in lines[0]
+    assert _OLD_JAR in lines[0] and "-clean" in lines[0]
+
+
+@pytest.mark.parametrize("elevated", [False, True])
+def test_an_elevated_update_says_how_to_start_edt(monkeypatch, tmp_path, capsys, elevated):
+    """An elevated EDT keeps its configuration under the install directory, and the next start
+    without elevation resets the one in ~/.eclipse: the console of an elevated self-update is
+    the wrong place to start EDT from."""
+    dropins = _edt_with_new_jar(tmp_path)
+    _home(monkeypatch, tmp_path)
+    monkeypatch.setattr(update, "_find_dropins", lambda: dropins)
+    monkeypatch.setattr(update, "install_latest_jar", lambda path, *, version: True)
+    monkeypatch.setattr(update, "running_bridge_version", lambda: None)
+    monkeypatch.setattr(update, "_elevated", lambda: elevated)
+
+    assert update.update_jar() is True
+
+    assert ("without administrator rights" in capsys.readouterr().out) == elevated
+
+
 # -- no write access to dropins ----------------------------------------------------------
 
 

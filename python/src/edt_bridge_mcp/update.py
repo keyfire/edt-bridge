@@ -473,8 +473,49 @@ def install_latest_jar(dropins: Path, emit=log, *, version: str | None = None) -
     return version is None or not any(p != target for p in dropins.glob(JAR_PREFIX + "*.jar"))
 
 
+_BRIDGE_JAR = re.compile(re.escape(JAR_PREFIX) + r"[0-9][\w.+-]*?\.jar")
+
+
+def _java_hash(text: str) -> int:
+    """Java's String.hashCode of ``text``, made positive the way Equinox does it."""
+    units = text.encode("utf-16-le")
+    code = 0
+    for i in range(0, len(units), 2):
+        code = (31 * code + int.from_bytes(units[i:i + 2], "little")) & 0xFFFFFFFF
+    return abs(code - (1 << 32) if code >= 1 << 31 else code)
+
+
+def _user_configurations(edt_dir: Path) -> list[Path]:
+    """The configurations Equinox keeps for ``edt_dir`` under ~/.eclipse.
+
+    EDT that cannot write to its install directory (under Program Files, started without
+    elevation) keeps its configuration in ``~/.eclipse/<product>_<version>_<hash>_<os>_<ws>_<arch>``,
+    where the hash is that of the canonical install path (EquinoxLocations). Matching the hash
+    leaves out the areas of other EDT installs, which register jars of their own."""
+    try:
+        install = str(edt_dir.resolve())
+        areas = Path.home() / ".eclipse"
+    except (OSError, RuntimeError):
+        return []
+    return sorted(areas.glob(f"*_{_java_hash(install)}_*/configuration"))
+
+
+def _configuration_lines(path: Path, emit, encoding: str = "utf-8-sig") -> list[str]:
+    try:
+        return path.read_text(encoding=encoding).splitlines()
+    except FileNotFoundError:
+        return []
+    except OSError as error:
+        emit(f"could not inspect Equinox configuration {path}: {error}")
+        return []
+
+
 def warn_stale_configurations(dropins: Path, emit=log) -> None:
-    """Report pinned Equinox entries in known configurations without changing a running EDT."""
+    """Report pinned Equinox entries in known configurations without changing a running EDT.
+
+    The per-user configuration of the install is read as well: a start of EDT without elevation
+    that found it still registering a replaced jar came up without simpleconfigurator, an empty
+    EDT. Its `config.ini` is read too, since in that state `osgi.bundles` named the jar itself."""
     installed = installed_jar(dropins)
     if installed is None:
         return
@@ -483,24 +524,42 @@ def warn_stale_configurations(dropins: Path, emit=log) -> None:
     workspace = (os.environ.get("EDT_BRIDGE_WORKSPACE") or "").strip()
     if workspace:
         configurations.append(Path(workspace) / "eclipsecfg")
-    for configuration in configurations:
+    user = _user_configurations(dropins.parent)
+    for configuration in configurations + user:
         info = configuration / "org.eclipse.equinox.simpleconfigurator" / "bundles.info"
-        try:
-            rows = info.read_text(encoding="utf-8-sig").splitlines()
-        except FileNotFoundError:
-            continue
-        except OSError as error:
-            emit(f"could not inspect Equinox configuration {info}: {error}")
-            continue
-        for row in rows:
+        stale = []
+        for row in _configuration_lines(info, emit):
             fields = row.split(",")
             if len(fields) < 3 or fields[0] != "io.github.keyfire.edtbridge":
                 continue
             if fields[1] != version or jar.name not in fields[2]:
-                emit(f"stale Equinox configuration: {info} pins {fields[1]} at {fields[2]}, "
+                stale.append((info, f"{fields[1]} at {fields[2]}"))
+        if configuration not in user:
+            for source, pinned in stale:
+                emit(f"stale Equinox configuration: {source} pins {pinned}, "
                      f"but dropins contains {version} ({jar}). Stop the EDT using this "
                      "configuration and reconcile its edt-bridge bundles.info entry with the "
                      "installed jar before restarting; copying a jar into dropins is insufficient.")
+            continue
+        ini = configuration / "config.ini"
+        start_list = "\n".join(_configuration_lines(ini, emit, "latin-1")).replace("\\:", ":")
+        stale += [(ini, name) for name in _BRIDGE_JAR.findall(start_list) if name != jar.name]
+        for source, pinned in stale:
+            emit(f"stale Equinox configuration: {source} still registers {pinned}, but dropins "
+                 f"contains {jar.name}. Close EDT and start it once with -clean, without "
+                 "administrator rights, so that this configuration takes up the new jar.")
+
+
+def _elevated() -> bool:
+    """Whether this process runs with an elevated administrator token on Windows."""
+    if os.name != "nt":
+        return False
+    import ctypes
+
+    try:
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except (AttributeError, OSError):
+        return False
 
 
 def update_jar(version: str | None = None) -> bool:
@@ -513,6 +572,11 @@ def update_jar(version: str | None = None) -> bool:
     if ok:
         warn_stale_configurations(dropins)
         log("a running EDT (GUI or headless) keeps the old code until restarted")
+        if _elevated():
+            log("this console runs as administrator: start EDT from a console without "
+                "administrator rights. An elevated EDT keeps its configuration in the install "
+                "directory, and the next start without elevation may reset the configuration "
+                "it keeps in ~/.eclipse")
         # Named, not just warned about: the running bridge answered 0.21.0 while 0.22.0 lay in
         # dropins, and nothing said so - the session went on believing it ran the new code.
         jar, live = installed_jar(dropins), running_bridge_version()
