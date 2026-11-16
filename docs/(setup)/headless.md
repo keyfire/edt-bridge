@@ -18,6 +18,17 @@ code and up to 16 KiB from the end of its combined stdout/stderr, decoded as UTF
 for invalid bytes. The supervisor exits with the CLI, and a later call can retry the launch.
 `--start-timeout` limits the readiness wait while the CLI is still running. A timeout leaves
 the live process running; EDT also continues running after a short-lived wrapper command exits.
+The timeout message names the supervisor process and says whether the EDT console had already
+answered. If it had, EDT itself started and the plugin did not, so waiting longer will not help.
+
+Before the start, the wrapper checks that it can read the plugin jar in `dropins`: EDT runs as
+the same user and could not read it either. While EDT starts, the wrapper reads the workspace log
+`.metadata/.log`. When the plugin cannot load there, the wrapper stops the headless EDT it started
+and reports the cause.
+
+One headless EDT serves one workspace. The supervisor holds a lock for its workspace while it
+runs. A second wrapper started on the same workspace waits for that EDT, even if the process list
+does not show it yet or the PowerShell query behind that list on Windows times out.
 
 ## Waiting for the models
 

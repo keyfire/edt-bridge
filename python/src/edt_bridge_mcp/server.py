@@ -32,7 +32,9 @@ Registration in Claude Code:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import difflib
+import hashlib
 import http.client
 import json
 import os
@@ -51,7 +53,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
 from . import __version__
-from . import cli, form_run, i18n, jobs, plugins, scope, toolsets, unit_run
+from . import cli, form_run, headless, i18n, jobs, plugins, scope, toolsets, unit_run
 
 PROTOCOL_FALLBACK = "2024-11-05"
 
@@ -206,6 +208,34 @@ def _timed_out(error: BaseException) -> bool:
     return isinstance(error, TimeoutError)
 
 
+#: What EDT writes to the workspace log when the bridge plugin cannot load. EDT itself starts all
+#: the same, so nothing exits: without reading the log, the wrapper only sees a silent port.
+_UNREADABLE_JAR = re.compile(r"FileNotFoundException: (\S[^\r\n]*?io\.github\.keyfire\.edtbridge_"
+                             r"[^\s\\/]*?\.jar) \(([^\r\n)]+)\)")
+_UNRESOLVED_PLUGIN = re.compile(r"Could not resolve module: io\.github\.keyfire\.edtbridge\b[^\r\n]*")
+_CONSOLE_PROMPT = b"1C:EDT>"
+
+
+def _jar_problem(jar: Path, reason: str) -> str:
+    message = f"EDT cannot read the plugin jar {jar} ({reason})"
+    if _WINDOWS:
+        message += f'. Run icacls "{jar}" /reset as administrator, then retry'
+    return message
+
+
+def _unreadable_jar(jar: Path) -> str | None:
+    """Why a headless EDT started by this wrapper could not read ``jar``; None when it can.
+
+    EDT runs as the user of the wrapper that starts it, so what the wrapper cannot open, EDT
+    cannot either. Checked before the start, the cause is named at once: otherwise EDT comes up
+    without the bridge and the wrapper waits out the whole start timeout on a silent port."""
+    try:
+        with open(jar, "rb"):
+            return None
+    except OSError as error:
+        return _jar_problem(jar, error.strerror or str(error))
+
+
 class Backend:
     """The HTTP side: probe / start / wait for the Java bridge, and forward requests."""
 
@@ -229,6 +259,7 @@ class Backend:
         self._headless_process = None
         self._headless_state = None
         self._headless_output = None
+        self._log_offset = None  # where the workspace log stood when this wrapper started EDT
         self._plugin_version_noted = False
 
     # -- probing ---------------------------------------------------------
@@ -538,6 +569,8 @@ class Backend:
         while True:
             with self._start_lock:
                 failure = self._startup_failure()
+                if not failure and (failure := self._plugin_failure()):
+                    failure += self._stop_launched()
                 if failure:
                     self._starting = False
                     return False, failure
@@ -548,11 +581,69 @@ class Backend:
             if remaining <= 0:
                 break
             time.sleep(min(1, remaining))
-        return False, (
-            f"headless EDT did not become ready in {self.start_timeout}s "
-            "(first model load of a big workspace can take longer – retry, or raise "
-            "EDT_BRIDGE_START_TIMEOUT)"
-        )
+        return False, self._not_ready()
+
+    def _not_ready(self) -> str:
+        """Why the start timed out, as far as can be told. The advice to wait suits only a bridge
+        that answers and is still loading its projects: a port that never opened while the EDT
+        console already answered means the plugin is not running, and waiting will not help."""
+        waited = f"headless EDT did not become ready in {self.start_timeout}s"
+        if self.is_up():
+            return (waited + " (first model load of a big workspace can take longer – retry, or "
+                    "raise EDT_BRIDGE_START_TIMEOUT)")
+        process = self._headless_process
+        kept = ""
+        if process is not None and process.poll() is None:
+            kept = (f" The headless EDT keeps running and holds the workspace (supervisor pid "
+                    f"{process.pid}): the next call waits for it again, and "
+                    "edt-bridge-mcp shutdown --force stops it.")
+        if self._console_answered():
+            log_file = Path(self.workspace) / ".metadata" / ".log"
+            return (f"{waited}: EDT itself started (its console answered), but the bridge port "
+                    f"{self.port} never opened, so the edt-bridge plugin is not running - see "
+                    f"{log_file}.{kept}")
+        return (f"{waited}: the bridge port {self.port} has not opened yet - retry, or raise "
+                f"EDT_BRIDGE_START_TIMEOUT.{kept}")
+
+    def _console_answered(self) -> bool:
+        try:
+            return _CONSOLE_PROMPT in self._headless_output.read_bytes()
+        except (AttributeError, OSError):
+            return False
+
+    def _plugin_failure(self) -> str | None:
+        """Why the bridge plugin did not load, read from the workspace log since this wrapper
+        started EDT; None while nothing says so."""
+        if self._log_offset is None or not self.workspace:
+            return None
+        log_file = Path(self.workspace) / ".metadata" / ".log"
+        try:
+            with open(log_file, "rb") as handle:
+                size = handle.seek(0, os.SEEK_END)
+                handle.seek(self._log_offset if self._log_offset <= size else 0)
+                text = handle.read().decode("utf-8", errors="replace")
+        except OSError:
+            return None
+        if match := _UNREADABLE_JAR.search(text):
+            return "the edt-bridge plugin did not load: " + _jar_problem(Path(match[1]), match[2])
+        if match := _UNRESOLVED_PLUGIN.search(text):
+            return f"the edt-bridge plugin did not load: {match[0].strip()} (see {log_file})"
+        return None
+
+    def _stop_launched(self) -> str:
+        """Stop the headless EDT this wrapper started and say so. Ending the supervisor closes
+        the stdin of 1cedtcli, and the CLI exits on its own."""
+        process = self._headless_process
+        if process is None or process.poll() is not None:
+            return ""
+        process.terminate()
+        try:
+            process.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            return (f". Stopping the headless EDT (supervisor pid {process.pid}) did not finish - "
+                    "stop it with edt-bridge-mcp shutdown --force")
+        return (". The wrapper stopped the headless EDT it had started without the bridge; the "
+                "workspace is released as that EDT exits")
 
     def startup_failure(self) -> str | None:
         """Why the headless EDT this process launched has exited, or None while it runs or if none was."""
@@ -764,6 +855,10 @@ class Backend:
 
         dropins = cli_dir / "dropins"
         if update.has_jar(dropins):
+            installed = update.installed_jar(dropins)
+            problem = installed and _unreadable_jar(installed[1])
+            if problem:
+                return False, problem
             return True, "jar present"
         log("plugin jar is missing in dropins – delivering the latest release jar")
         notes: list[str] = []
@@ -780,8 +875,47 @@ class Backend:
             + " – install it manually (see the repository README)"
         )
 
+    def _session_lock(self) -> Path:
+        """The file the supervisor of this workspace's headless EDT keeps locked while it lives.
+
+        A process list cannot tell that reliably: on Windows it comes from a PowerShell query with
+        a 30 s timeout, and a query that runs out reads as "nothing runs". A second 1cedtcli once
+        went for a workspace a first one was starting in, and exited with code 202."""
+        key = hashlib.sha256(self._path_key(self.workspace).encode("utf-8")).hexdigest()[:16]
+        return Path(tempfile.gettempdir()) / f"edtbridge-{key}.lock"
+
+    @contextlib.contextmanager
+    def _launch_turn(self, lock: Path, wait: float = 30):
+        """One wrapper at a time from the check for a running headless EDT to the moment its
+        supervisor holds the workspace lock. Yields False when another wrapper kept the turn."""
+        try:
+            handle = open(lock.with_suffix(".launch"), "a+b", buffering=0)
+        except OSError:
+            yield True  # no way to take turns: start as before
+            return
+        with handle:
+            deadline = time.monotonic() + wait
+            while not headless.lock_first_byte(handle):
+                if time.monotonic() >= deadline:
+                    yield False
+                    return
+                time.sleep(0.2)
+            try:
+                yield True
+            finally:
+                headless.unlock_first_byte(handle)
+
+    def _wait_for_session(self, lock: Path, wait: float = 15) -> None:
+        """Keep the launch turn until the new supervisor holds the workspace lock or has exited."""
+        poll, deadline = getattr(self._headless_process, "poll", None), time.monotonic() + wait
+        while (time.monotonic() < deadline and poll is not None and poll() is None
+               and not headless.lock_held(lock)):
+            time.sleep(0.1)
+
     def _launch_headless(self) -> tuple[bool, str]:
         """Start a detached supervisor that holds the CLI stdin and reports its exit."""
+        if self.workspace and headless.lock_held(self._session_lock()):
+            return True, "a headless EDT for this workspace is already running – waiting for it"
         if self._headless_cli_running():
             return True, "a headless 1cedtcli is already starting – waiting for it"
         owner = self._workspace_owner()
@@ -797,10 +931,11 @@ class Backend:
                         "headless one (workspace lock).")
             cli = self._find_cli()
             if cli is not None:
-                delivered, _ = self._ensure_plugin_jar(cli.parent)
+                delivered, why = self._ensure_plugin_jar(cli.parent)
                 if delivered:
                     return False, gui_hint + (" The plugin jar is in dropins – restart that "
                                               "EDT to activate the bridge, or close it.")
+                gui_hint += f" {why}."
             return False, gui_hint + (" Install/enable the edt-bridge plugin in that EDT, "
                                       "or close it.")
         if not self.workspace:
@@ -823,32 +958,45 @@ class Backend:
         if not jar_ok:
             return False, jar_msg
         ws = Path(self.workspace)
-        log(f"starting headless EDT: {cli} -data {ws}" + (f" with {' '.join(options)}" if options else ""))
-        try:
-            folder = Path(tempfile.mkdtemp(prefix="edtbridge-headless-"))
-            self._headless_state = folder / "state.json"
-            self._headless_output = folder / "output.log"
-            command = [sys.executable, str(Path(__file__).with_name("headless.py")),
-                       "--state", str(self._headless_state), "--output", str(self._headless_output),
-                       "--", str(cli), "-data", str(ws), "-nl", "en_US",
-                       "-vmargs", f"-Dedt.bridge.port={self.port}", *options]
-            from . import update
+        lock = self._session_lock()
+        with self._launch_turn(lock) as turn:
+            if not turn or headless.lock_held(lock):
+                return True, ("another edt-bridge-mcp is starting a headless EDT for this "
+                              "workspace – waiting for it")
+            log(f"starting headless EDT: {cli} -data {ws}"
+                + (f" with {' '.join(options)}" if options else ""))
+            try:
+                folder = Path(tempfile.mkdtemp(prefix="edtbridge-headless-"))
+                self._headless_state = folder / "state.json"
+                self._headless_output = folder / "output.log"
+                command = [sys.executable, str(Path(__file__).with_name("headless.py")),
+                           "--state", str(self._headless_state),
+                           "--output", str(self._headless_output), "--lock", str(lock),
+                           "--", str(cli), "-data", str(ws), "-nl", "en_US",
+                           "-vmargs", f"-Dedt.bridge.port={self.port}", *options]
+                from . import update
 
-            java = update.edt_java(cli.parent)
-            environment = update.with_edt_java(os.environ.copy(), cli.parent)
-            if java is not None:
-                log(f"EDT needs a newer Java than the one on PATH - starting it with {java}")
-            if self.token:
-                environment["EDT_BRIDGE_TOKEN"] = self.token
-            options = ({"creationflags": subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP}
-                       if os.name == "nt" else {"start_new_session": True})
-            self._headless_process = subprocess.Popen(
-                command, cwd=str(cli.parent), env=environment,
-                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                **options,
-            )
-        except OSError as exc:
-            return False, f"failed to launch 1cedtcli: {exc}"
+                java = update.edt_java(cli.parent)
+                environment = update.with_edt_java(os.environ.copy(), cli.parent)
+                if java is not None:
+                    log(f"EDT needs a newer Java than the one on PATH - starting it with {java}")
+                if self.token:
+                    environment["EDT_BRIDGE_TOKEN"] = self.token
+                options = ({"creationflags": subprocess.CREATE_NO_WINDOW
+                            | subprocess.CREATE_NEW_PROCESS_GROUP}
+                           if os.name == "nt" else {"start_new_session": True})
+                try:
+                    self._log_offset = (ws / ".metadata" / ".log").stat().st_size
+                except OSError:
+                    self._log_offset = 0
+                self._headless_process = subprocess.Popen(
+                    command, cwd=str(cli.parent), env=environment,
+                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    **options,
+                )
+            except OSError as exc:
+                return False, f"failed to launch 1cedtcli: {exc}"
+            self._wait_for_session(lock)
         return True, "launched"
 
     # -- handing the workspace over to the GUI ---------------------------

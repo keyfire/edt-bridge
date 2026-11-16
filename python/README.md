@@ -124,4 +124,8 @@ plugin's own variables are in
   the wrapper refuses to start a headless instance, because the GUI holds the workspace lock. It
   still delivers the jar into `dropins/` when missing, so restarting that EDT activates the bridge.
 - If a headless `1cedtcli` is already starting, the wrapper waits for it instead of spawning a
-  second one.
+  second one. This also holds for two wrappers starting at once: the supervisor locks the
+  workspace for as long as its EDT runs.
+- If the plugin jar in `dropins/` cannot be read, the wrapper says so before starting EDT. If the
+  plugin fails to load in the EDT it started, the wrapper stops that EDT and names the cause from
+  the workspace log, instead of waiting out `--start-timeout`.
