@@ -222,3 +222,186 @@ def test_transient_state_sharing_errors_do_not_replace_the_child_exit(tmp_path, 
     finally:
         signal.signal(signal.SIGTERM, previous)
     assert json.loads(state.read_text(encoding="utf-8"))["exitCode"] == 23
+
+
+# -- one headless EDT per workspace, and a start that will not serve ---------------------
+
+
+def _supervisor(tmp_path, lock, child, name="first"):
+    helper = Path(server.__file__).with_name("headless.py")
+    state, output = tmp_path / f"{name}.json", tmp_path / f"{name}.log"
+    return [sys.executable, str(helper), "--state", str(state), "--output", str(output),
+            "--lock", str(lock), "--", sys.executable, str(child)], state
+
+
+def _until(condition, seconds=10):
+    deadline = time.monotonic() + seconds
+    while not condition() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    return condition()
+
+
+def test_the_supervisor_holds_the_workspace_lock_while_it_lives(tmp_path):
+    from edt_bridge_mcp import headless
+
+    lock, child = tmp_path / "workspace.lock", tmp_path / "child.py"
+    child.write_text("import sys\nsys.stdin.read()\n", encoding="utf-8")
+    command, _ = _supervisor(tmp_path, lock, child)
+    supervisor = subprocess.Popen(command, stdin=subprocess.DEVNULL)
+    try:
+        assert _until(lambda: headless.lock_held(lock))
+    finally:
+        supervisor.terminate()
+        supervisor.wait(timeout=10)
+    assert _until(lambda: not headless.lock_held(lock))
+
+
+def test_a_second_supervisor_for_the_workspace_never_starts_its_cli(tmp_path):
+    from edt_bridge_mcp import headless
+
+    lock, child, started = tmp_path / "workspace.lock", tmp_path / "child.py", tmp_path / "started"
+    child.write_text(f"import sys\nfrom pathlib import Path\nPath({str(started)!r}).touch()\n"
+                     "sys.stdin.read()\n", encoding="utf-8")
+    first_command, _ = _supervisor(tmp_path, lock, child)
+    first = subprocess.Popen(first_command, stdin=subprocess.DEVNULL)
+    try:
+        assert _until(lambda: headless.lock_held(lock) and started.exists())
+        started.unlink()
+        second_command, state = _supervisor(tmp_path, lock, child, "second")
+        result = subprocess.run(second_command, stdin=subprocess.DEVNULL, timeout=30)
+        assert result.returncode == 1
+        assert "already running" in json.loads(state.read_text(encoding="utf-8"))["error"]
+        assert not started.exists()
+    finally:
+        first.terminate()
+        first.wait(timeout=10)
+
+
+def test_a_running_session_is_waited_for_even_when_the_process_list_comes_back_empty(launcher):
+    """The process list of Windows comes from PowerShell, and a query that runs out of its 30 s
+    reads as no EDT at all. The lock of the supervisor still says the workspace is taken."""
+    backend, script, processes = launcher
+    script.write_text("import sys\nsys.stdin.read()\n", encoding="utf-8")
+    assert backend.ensure(wait=False) == (False, "starting")
+
+    other = server.Backend()
+    other.workspace = backend.workspace
+    other._headless_cli_running = lambda: False
+    ok, message = other._launch_headless()
+
+    assert ok and "already running" in message
+    assert len(processes) == 1
+
+
+_DENIED = ("java.io.FileNotFoundException: C:\\Program Files\\1C\\1CE\\components\\"
+           "1c-edt-2026.2.2+3-x86_64\\dropins\\io.github.keyfire.edtbridge_0.47.1.202611151051.jar"
+           " (Отказано в доступе)\n")
+
+
+def test_a_plugin_that_cannot_read_its_jar_ends_the_wait_and_the_start(launcher):
+    """EDT comes up without the bridge and nothing exits; the workspace log names the cause
+    seconds after the start. The wrapper used to wait the whole start timeout and then advise
+    to wait longer, while the headless EDT went on holding the workspace."""
+    backend, script, processes = launcher
+    backend.start_timeout = 60
+    log_file = Path(backend.workspace) / ".metadata" / ".log"
+    script.write_text("import sys\nfrom pathlib import Path\n"
+                      "assert sys.stdin.readline().strip()=='version'\n"
+                      f"log=Path({str(log_file)!r})\nlog.parent.mkdir(parents=True,exist_ok=True)\n"
+                      f"log.write_text({_DENIED!r},encoding='utf-8')\nsys.stdin.read()\n",
+                      encoding="utf-8")
+    started = time.monotonic()
+
+    ok, message = backend.ensure(wait=True)
+
+    assert not ok
+    assert "cannot read the plugin jar" in message and "Отказано в доступе" in message
+    assert "io.github.keyfire.edtbridge_0.47.1.202611151051.jar" in message
+    assert ("icacls" in message) == (os.name == "nt")
+    assert "stopped the headless EDT" in message
+    assert time.monotonic() - started < 30
+    assert processes[0].wait(timeout=10) is not None
+    assert backend._starting is False
+
+
+def test_a_failure_logged_before_the_start_is_not_taken_for_this_one(launcher):
+    backend, script, processes = launcher
+    backend.start_timeout = 2
+    log_file = Path(backend.workspace) / ".metadata" / ".log"
+    log_file.parent.mkdir(parents=True)
+    log_file.write_text(_DENIED, encoding="utf-8")
+    script.write_text("import sys\nsys.stdin.read()\n", encoding="utf-8")
+
+    ok, message = backend.ensure(wait=True)
+
+    assert not ok and "cannot read" not in message and "has not opened yet" in message
+    assert processes[0].poll() is None
+
+
+def test_a_port_still_closed_after_the_console_answered_points_at_the_plugin(launcher):
+    backend, script, processes = launcher
+    backend.start_timeout = 3
+    script.write_text("import sys\nassert sys.stdin.readline().strip()=='version'\n"
+                      "print('1C:EDT> 2026.2.2.3',flush=True)\nsys.stdin.read()\n", encoding="utf-8")
+
+    ok, message = backend.ensure(wait=True)
+
+    assert not ok
+    assert "never opened" in message and "plugin is not running" in message
+    assert "first model load" not in message
+    assert f"supervisor pid {processes[0].pid}" in message and "shutdown --force" in message
+    assert processes[0].poll() is None
+
+
+def test_a_bridge_that_answers_but_still_loads_keeps_the_advice_to_wait(launcher, monkeypatch):
+    backend, script, _ = launcher
+    backend.start_timeout = 2
+    answers = iter([False])
+    monkeypatch.setattr(backend, "is_up", lambda: next(answers, True))
+    script.write_text("import sys\nsys.stdin.read()\n", encoding="utf-8")
+
+    ok, message = backend.ensure(wait=True)
+
+    assert not ok and "first model load" in message
+
+
+def _unreadable(path):
+    if os.name == "nt":
+        subprocess.run(["icacls", str(path), "/deny", "*S-1-1-0:(R)"], capture_output=True,
+                       check=True, stdin=subprocess.DEVNULL)
+    else:
+        path.chmod(0)
+
+
+@pytest.mark.skipif(os.name != "nt" and os.geteuid() == 0, reason="root reads any file")
+def test_an_unreadable_jar_is_named_before_edt_is_started(tmp_path):
+    jar = tmp_path / "dropins" / "io.github.keyfire.edtbridge_0.47.2.202611151649.jar"
+    jar.parent.mkdir()
+    jar.write_bytes(b"jar")
+    _unreadable(jar)
+    try:
+        ok, message = server.Backend()._ensure_plugin_jar(tmp_path)
+    finally:
+        if os.name == "nt":
+            subprocess.run(["icacls", str(jar), "/reset"], capture_output=True,
+                           stdin=subprocess.DEVNULL)
+        else:
+            jar.chmod(0o644)
+
+    assert ok is False
+    assert f"cannot read the plugin jar {jar}" in message
+    assert ("icacls" in message) == (os.name == "nt")
+
+
+def test_a_running_gui_names_why_its_bridge_is_down(launcher, monkeypatch):
+    """With an unreadable jar, restarting the GUI EDT - the advice it used to get - does not help."""
+    backend, _, processes = launcher
+    monkeypatch.setattr(backend, "_gui_edt_running", lambda: True)
+    monkeypatch.setattr(backend, "_ensure_plugin_jar",
+                        lambda path: (False, "EDT cannot read the plugin jar X (denied)"))
+
+    ok, message = backend._launch_headless()
+
+    assert not ok and "EDT cannot read the plugin jar X (denied)" in message
+    assert "restart that EDT" not in message
+    assert processes == []
