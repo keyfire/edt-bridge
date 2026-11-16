@@ -79,7 +79,10 @@ that started the job.
 
 - `job.progress` reports the current `queued` or `running` state and the `stage` when
   available, then reports observed changes. Short stages between status reads may be missed.
-  The stream ends when the job finishes.
+  When you resume with a `cursor`, the bridge compares the current state and stage with
+  those marked by the cursor and sends an event if either changed. Stages that came and
+  went while disconnected may be missed even when `truncated=false`. The stream ends
+  when the job finishes.
 - `job.finished` reports the final state. Call `edt_job_status` to retrieve the result.
 
 For a validation that may take some time, call `edt_project_errors` with
