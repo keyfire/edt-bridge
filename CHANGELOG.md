@@ -24,6 +24,7 @@ to the code and the reasoning behind it.
   load. The download now goes to a file of its own in `dropins` and takes the permissions of the
   folder. If a jar in `dropins` still does not inherit them, `self-update` says so and names the
   cure: `icacls "<jar>" /reset` as administrator, then one EDT start with `-clean`.
+  ([#94](https://github.com/keyfire/edt-bridge/pull/94))
 
 ## <span id="2026-11-14--0470"></span><span id="2026-11-15--0470"></span><span id="2026-11-15--0471"></span>2026-11-15 – 0.47.2
 
