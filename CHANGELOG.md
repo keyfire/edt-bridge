@@ -13,7 +13,7 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
-## 2026-11-16 – 0.48.0
+## 2026-11-16 – 0.48.0, 0.48.1
 
 ### Added
 
@@ -23,6 +23,22 @@ to the code and the reasoning behind it.
 - `job.progress` reports the current state and stage for all 11 tools that accept
   `async=true`, including EDT validation and platform tests.
   ([#93](https://github.com/keyfire/edt-bridge/pull/93))
+
+### Fixed
+
+- The `edits` list in `edt_replace_module_fragment` returns a short preview for each
+  replacement. `edt_replace_method` returns the full method texts in dry-run and
+  leaves them out of apply. ([#97](https://github.com/keyfire/edt-bridge/pull/97))
+- `self-update` stages the new JAR directly in `dropins` so it inherits the folder's
+  permissions. If the permission check fails, the working JAR stays in place.
+  ([#94](https://github.com/keyfire/edt-bridge/pull/94))
+- `self-update` checks the per-user Equinox configuration for entries that point to
+  the old JAR. When it finds one, it reports how to start EDT once with `-clean`.
+  ([#95](https://github.com/keyfire/edt-bridge/pull/95))
+- Headless auto-start reports why the plugin could not load and prevents two wrappers
+  from starting EDT in the same workspace. It can retry after a failed launch and
+  checks the chosen JAR before removing older copies.
+  ([#96](https://github.com/keyfire/edt-bridge/pull/96))
 
 ## <span id="2026-11-14--0470"></span><span id="2026-11-15--0470"></span><span id="2026-11-15--0471"></span>2026-11-15 – 0.47.2
 
