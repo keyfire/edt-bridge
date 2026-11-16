@@ -72,6 +72,12 @@ alone. A cancelled
 check removes its clients and its copy of the infobase in a second or two; one that is still
 running a minute after the cancel is killed, and its processes and files are removed.
 
+Clients that enable the experimental MCP Events extension can subscribe to `job.finished`
+over stdio. In OpenCode 2.3.0 or later, start OpenCode with `OPENCODE_FLAGS=mcp_events`.
+After a call returns a `jobId`, watch `job.finished` with that ID. The notification has
+the job ID and final status. Use `edt_job_status` to retrieve the result. The subscription
+is available only on the stdio connection that started the job.
+
 ## Served by the wrapper
 
 Three tools are served by `edt-bridge-mcp` itself. The wrapper lists them alongside the bridge

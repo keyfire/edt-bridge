@@ -51,7 +51,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
 from . import __version__
-from . import cli, form_run, i18n, jobs, plugins, scope, toolsets, unit_run
+from . import cli, form_run, i18n, job_events, jobs, plugins, scope, toolsets, unit_run
 
 PROTOCOL_FALLBACK = "2024-11-05"
 
@@ -442,7 +442,7 @@ class Backend:
 
     # -- forwarding ------------------------------------------------------
 
-    def forward(self, payload: dict) -> dict:
+    def forward(self, payload: dict, *, timeout: float | None = None) -> dict:
         """POST one JSON-RPC message to the live bridge (the port status() found)."""
         data = json.dumps(payload).encode("utf-8")
         headers = {"Content-Type": "application/json"}
@@ -451,15 +451,16 @@ class Backend:
         req = urllib.request.Request(
             f"http://127.0.0.1:{self._active_port}/mcp", data=data, headers=headers, method="POST"
         )
-        timeout = 600
-        params = payload.get("params") or {}
-        arguments = params.get("arguments") or {}
-        if (payload.get("method") == "tools/call"
-                and params.get("name") == "edt_project_errors"
-                and (arguments.get("refresh") is True or arguments.get("baseline") in ("save", "compare"))):
-            wait = arguments.get("waitSeconds", 120)
-            if type(wait) is int and 1 <= wait <= 600:
-                timeout += wait
+        if timeout is None:
+            timeout = 600
+            params = payload.get("params") or {}
+            arguments = params.get("arguments") or {}
+            if (payload.get("method") == "tools/call"
+                    and params.get("name") == "edt_project_errors"
+                    and (arguments.get("refresh") is True or arguments.get("baseline") in ("save", "compare"))):
+                wait = arguments.get("waitSeconds", 120)
+                if type(wait) is int and 1 <= wait <= 600:
+                    timeout += wait
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return json.loads(resp.read().decode("utf-8"))
 
@@ -1231,6 +1232,7 @@ class StdioServer:
     def __init__(self, backend: Backend) -> None:
         self.backend = backend
         self._out_lock = threading.Lock()
+        self._job_events = job_events.JobEvents(lambda frame: self._send(frame), self._job_event_status)
         self._announced_ready = False
         self._plugin_tools, self._plugin_error = load_plugin_tools()
         if self._plugin_error:
@@ -1353,9 +1355,11 @@ class StdioServer:
 
         if method == "initialize":
             proto = params.get("protocolVersion") or PROTOCOL_FALLBACK
+            capabilities = params.get("capabilities")
+            events = self._job_events.negotiate(capabilities if isinstance(capabilities, dict) else {})
             self._result(req_id, {
                 "protocolVersion": proto,
-                "capabilities": {"tools": {"listChanged": True}},
+                "capabilities": {"tools": {"listChanged": True}, **events},
                 "serverInfo": {"name": "edt-bridge-mcp", "version": __version__},
             })
             return
@@ -1364,6 +1368,19 @@ class StdioServer:
             return
         if method == "ping":
             self._result(req_id, {})
+            return
+        if method == "notifications/cancelled":
+            self._job_events.cancel(params.get("requestId"))
+            return
+        if isinstance(method, str) and method.startswith("events/"):
+            if type(req_id) not in (str, int):
+                return
+            if not self._job_events.enabled or method not in ("events/list", "events/stream"):
+                self._error(req_id, -32601, "Event method not available")
+            elif method == "events/list":
+                self._result(req_id, self._job_events.catalog())
+            elif error := self._job_events.subscribe(req_id, params):
+                self._error(req_id, *error)
             return
         if method == "tools/list":
             if self._toolset.problem:
@@ -1519,7 +1536,26 @@ class StdioServer:
             self._tool_error(req_id, answer.get("error") or f"{name} failed")
         else:
             answer["message"] = "started as a background job"
+            self._job_events.remember(answer)
             self._json_result(req_id, answer)
+
+    def _job_event_status(self, job_id: str) -> str | None:
+        """Read a job without starting EDT or making a bridge worker wait for it."""
+        try:
+            if jobs.is_local(job_id):
+                answer, _ = jobs.status(job_id, 0)
+            else:
+                reply = self.backend.forward({
+                    "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                    "params": {"name": jobs.STATUS_TOOL, "arguments": {"jobId": job_id, "waitSeconds": 0}},
+                }, timeout=5)
+                # A failed EDT job carries its final status in an isError tool result.
+                answer = job_events.tool_payload(reply, allow_error=True)
+        except (OSError, ValueError):
+            return None
+        if isinstance(answer, dict) and answer.get("jobId") == job_id:
+            return answer.get("status")
+        return None
 
     def _job_call(self, req_id, name: str, arguments: dict) -> bool:
         """Answer edt_job_status or edt_cancel_job here when the wrapper can; False leaves it to the bridge.
@@ -1632,6 +1668,12 @@ class StdioServer:
                 [tool["name"] for tool in self._local_descriptors()])
             toolsets.agree_with_selection(reply.get("result"), self._toolset)
         if req_id is not None:
+            arguments = params.get("arguments")
+            if (self._job_events.enabled and message.get("method") == "tools/call"
+                    and isinstance(arguments, dict) and arguments.get("async") is True):
+                answer = job_events.tool_payload(reply)
+                if answer.get("message") == "started as a background job" and answer.get("tool") == params.get("name"):
+                    self._job_events.remember(answer)
             reply.setdefault("jsonrpc", "2.0")
             reply["id"] = req_id
             self._send(reply)
@@ -1665,8 +1707,15 @@ class StdioServer:
                 except ValueError:
                     log(f"dropping a non-JSON line ({len(raw)} chars)")
                     continue
-                pool.submit(self._serve, message)
+                if not isinstance(message, dict):
+                    continue
+                # Register event streams in wire order so a following cancellation cannot race ahead.
+                if message.get("method") in ("initialize", "events/stream", "notifications/cancelled"):
+                    self._serve(message)
+                else:
+                    pool.submit(self._serve, message)
         finally:
+            self._job_events.close()
             # stdin is closed: the client is gone. What was already accepted still runs to the
             # end (the interpreter waits for the pool at exit) - a request is not dropped just
             # because it was the last one read.
