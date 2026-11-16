@@ -13,6 +13,18 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
+## Unreleased
+
+### Fixed
+
+- EDT started without elevation can read a jar that `self-update` delivered as administrator.
+  The download was staged in a temporary folder inside `dropins`, and since the fix for
+  CVE-2024-4030 Python gives such a folder access for SYSTEM, Administrators and the owner only.
+  The jar kept those permissions after the move, EDT could not open it, and the bridge did not
+  load. The download now goes to a file of its own in `dropins` and takes the permissions of the
+  folder. If a jar in `dropins` still does not inherit them, `self-update` says so and names the
+  cure: `icacls "<jar>" /reset` as administrator, then one EDT start with `-clean`.
+
 ## <span id="2026-11-14--0470"></span><span id="2026-11-15--0470"></span><span id="2026-11-15--0471"></span>2026-11-15 – 0.47.2
 
 ### Added

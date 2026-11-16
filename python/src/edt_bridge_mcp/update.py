@@ -40,6 +40,7 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -325,6 +326,65 @@ def _placement_failure(exc: OSError) -> str:
     return message
 
 
+@contextlib.contextmanager
+def _staging_files(directory: Path):
+    """Yield a maker of temporary files right in ``directory``; whatever is left goes on exit.
+
+    Files, not a temporary directory. Since CVE-2024-4030, `mkdtemp` gives its directory a
+    protected DACL for SYSTEM, Administrators and the owner only. A file made inside takes those
+    entries and keeps them through the rename, so a jar delivered by an elevated self-update could
+    not be read by EDT started without elevation. A file made in dropins itself takes the
+    permissions of dropins, like a copied jar. The `.part` suffix keeps Equinox from taking it for
+    a plugin, and the rename stays on one filesystem."""
+    made: list[Path] = []
+
+    def make() -> Path:
+        handle, name = tempfile.mkstemp(dir=directory, prefix=".edtbridge-", suffix=".part")
+        os.close(handle)
+        made.append(Path(name))
+        return made[-1]
+
+    try:
+        yield make
+    finally:
+        for path in made:
+            with contextlib.suppress(OSError):
+                path.unlink(missing_ok=True)
+
+
+def _dacl_protected(path: Path) -> bool | None:
+    """Whether the DACL of ``path`` is protected, that is, takes no entries from its folder.
+
+    None off Windows, or when Windows does not answer. A jar in dropins needs the entries of its
+    folder: under Program Files they are what lets Users read it."""
+    if os.name != "nt":
+        return None
+    import ctypes
+    from ctypes import wintypes
+
+    advapi32 = ctypes.WinDLL("advapi32")
+    descriptor, dacl = ctypes.c_void_p(), ctypes.c_void_p()
+    se_file_object, dacl_security_information, se_dacl_protected = 1, 0x4, 0x1000
+    if advapi32.GetNamedSecurityInfoW(str(path), se_file_object, dacl_security_information,
+                                      None, None, ctypes.byref(dacl), None,
+                                      ctypes.byref(descriptor)):
+        return None
+    try:
+        control, revision = wintypes.WORD(), wintypes.DWORD()
+        if not advapi32.GetSecurityDescriptorControl(descriptor, ctypes.byref(control),
+                                                     ctypes.byref(revision)):
+            return None
+        return bool(control.value & se_dacl_protected)
+    finally:
+        ctypes.WinDLL("kernel32").LocalFree(descriptor)
+
+
+def _unreadable_jar(jar: Path) -> str:
+    return (f"{jar} does not take the permissions of dropins: EDT started without administrator "
+            f'rights cannot read it, and the bridge does not load. Run icacls "{jar}" /reset as '
+            "administrator, then start EDT once with -clean")
+
+
 def install_latest_jar(dropins: Path, emit=log, *, version: str | None = None) -> bool:
     """Install a release jar in dropins. Use the latest release when no version is given."""
     url = RELEASES_LATEST if version is None else RELEASES_BY_TAG.format(version=version)
@@ -354,19 +414,19 @@ def install_latest_jar(dropins: Path, emit=log, *, version: str | None = None) -
     if version is None and target.exists():
         # Keep the newest copy on the first-run delivery and unpinned update paths.
         purge_stale_jars(dropins, emit)
+        if _dacl_protected(target):
+            emit(_unreadable_jar(target))
+            return False
         emit(f"release jar already present: {name}")
         return True
 
-    # Stage beside the target so the replacement stays on one filesystem. Use a
-    # temporary name that Equinox will not recognize as a plugin.
     emit(f"downloading {name} ({jar_asset.get('size', 0)} bytes)...")
-    try:
-        staging = tempfile.TemporaryDirectory(dir=dropins)
-    except OSError as exc:
-        emit(_placement_failure(exc))
-        return False
-    with staging as directory:
-        tmp = Path(directory) / "download"
+    with _staging_files(dropins) as stage:
+        try:
+            tmp = stage()
+        except OSError as exc:
+            emit(_placement_failure(exc))
+            return False
         try:
             _download(jar_asset["browser_download_url"], tmp)
         except OSError as exc:
@@ -376,7 +436,7 @@ def install_latest_jar(dropins: Path, emit=log, *, version: str | None = None) -
         expected = None
         if sums_asset is not None:
             try:
-                sums_tmp = Path(directory) / "SHA256SUMS.txt"
+                sums_tmp = stage()
                 _download(sums_asset["browser_download_url"], sums_tmp)
                 for line in sums_tmp.read_text(encoding="utf-8").splitlines():
                     parts = line.split()
@@ -406,6 +466,9 @@ def install_latest_jar(dropins: Path, emit=log, *, version: str | None = None) -
             return False
 
     purge_stale_jars(dropins, emit, keep=target)
+    if _dacl_protected(target):
+        emit(_unreadable_jar(target))
+        return False
     emit(f"installed {name} into {dropins}")
     return version is None or not any(p != target for p in dropins.glob(JAR_PREFIX + "*.jar"))
 
