@@ -101,7 +101,7 @@ def _refusal(status: str, message: str) -> dict:
     return {"ok": False, "status": status, "error": message}
 
 
-def run_tool(arguments: dict, *, runner=native_form.run, environ=os.environ) -> dict:
+def run_tool(arguments: dict, *, runner=native_form.run, environ=os.environ, on_stage=None) -> dict:
     """Validate the call, copy the test infobase and run the native check on the copy."""
     infobase, platform = environ.get(ENV_INFOBASE), environ.get(ENV_PLATFORM)
     if not infobase or not platform:
@@ -129,6 +129,8 @@ def run_tool(arguments: dict, *, runner=native_form.run, environ=os.environ) -> 
         root = Path(temporary)
         copy = root / "infobase"
         copy.mkdir()
+        if on_stage is not None:
+            on_stage("infobaseCopy")
         copy_started = time.monotonic()
         shutil.copyfile(source / DATA_FILE, copy / DATA_FILE)
         copy_seconds = time.monotonic() - copy_started
@@ -145,7 +147,7 @@ def run_tool(arguments: dict, *, runner=native_form.run, environ=os.environ) -> 
             form_title=None if arguments.get("formTitle") is None else str(arguments["formTitle"]),
             button=button, scenario=scenario,
             expect_message=arguments.get("expectMessage"), user=environ.get(ENV_USER),
-            output_dir=root / "output", timeout=timeout)
+            output_dir=root / "output", timeout=timeout, _on_stage=on_stage)
         report = runner(args)
     # The paths point into the copy that is gone now; the caller has no use for them.
     for key in ("testInfobase", "outputDir", "reports"):

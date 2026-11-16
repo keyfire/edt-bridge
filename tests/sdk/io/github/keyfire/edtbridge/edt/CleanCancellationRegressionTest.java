@@ -3,6 +3,8 @@ package io.github.keyfire.edtbridge.edt;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.lang.reflect.Proxy;
+import java.util.ArrayList;
+import java.util.concurrent.Executors;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IncrementalProjectBuilder;
 import org.eclipse.core.runtime.CoreException;
@@ -14,7 +16,31 @@ import org.eclipse.core.runtime.jobs.IJobManager;
 import org.eclipse.core.runtime.jobs.Job;
 import org.junit.jupiter.api.Test;
 
+import io.github.keyfire.edtbridge.core.Jobs;
+
 class CleanCancellationRegressionTest {
+    @Test
+    void theBackgroundJobReportsDistinctStagesWhileCleaningAndRebuilding() throws InterruptedException {
+        var executor = Executors.newSingleThreadExecutor();
+        try {
+            var background = new Jobs<Void>("sample", executor, System::currentTimeMillis, ignored -> false);
+            var stages = new ArrayList<String>();
+            var f = new Fixture();
+            f.onBuild = () -> stages.add(background.list().get(0).stage());
+            var job = background.submit("edt_clean_project", () -> {
+                assertTrue(f.run().applied);
+                return null;
+            });
+
+            assertEquals(Jobs.State.SUCCEEDED, background.await(job.id(), 5_000).state());
+            assertEquals(2, stages.size());
+            assertTrue(stages.stream().noneMatch(String::isBlank), stages.toString());
+            assertNotEquals(stages.get(0), stages.get(1));
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
     @Test
     void aCanceledCleanIsNotReportedAsOkAndKeepsItsStage() {
         var f = new Fixture();
@@ -132,9 +158,12 @@ class CleanCancellationRegressionTest {
         Exception failure;
         boolean interruptJoin;
         Job[] active = new Job[0];
+        Runnable onBuild = () -> {};
         final IProject project = (IProject) Proxy.newProxyInstance(IProject.class.getClassLoader(),
                 new Class<?>[] {IProject.class}, (proxy, method, args) -> {
+                    if (method.getName().equals("getName")) return "sample";
                     if (!method.getName().equals("build")) throw new AssertionError(method.getName());
+                    onBuild.run();
                     if ((Integer) args[0] == failKind && failure != null) throw failure;
                     return null;
                 });

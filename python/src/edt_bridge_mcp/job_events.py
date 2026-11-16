@@ -1,15 +1,19 @@
-"""Experimental push delivery for one terminal status per background job."""
+"""Experimental push delivery for background job status."""
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 import threading
 import time
+import uuid
 from datetime import datetime, timezone
 
 
 EXTENSION = "io.modelcontextprotocol/events"
 SUBSCRIPTION_ID = "io.modelcontextprotocol/subscriptionId"
 EVENT = "job.finished"
+PROGRESS_EVENT = "job.progress"
 PENDING = ("queued", "running")
 TERMINAL = ("succeeded", "failed", "cancelled")
 MAX_TRACKED_JOBS = 512
@@ -54,31 +58,51 @@ class JobEvents:
 
     @staticmethod
     def catalog() -> dict:
-        return {"events": [{
-            "name": EVENT,
-            "description": "Fires when a background job started on this connection finishes. "
-                           "Call edt_job_status with the jobId to get its result.",
+        common = {
             "delivery": ["push"],
             "inputSchema": {
                 "type": "object", "required": ["jobId"],
                 "properties": {"jobId": {"type": "string"}},
             },
-            "payloadSchema": {
-                "type": "object", "required": ["jobId", "status"],
-                "properties": {
-                    "jobId": {"type": "string"},
-                    "status": {"type": "string", "enum": list(TERMINAL)},
+        }
+        return {"events": [
+            {
+                **common,
+                "name": EVENT,
+                "description": "Fires when a background job started on this connection finishes. "
+                               "Call edt_job_status with the jobId to get its result.",
+                "payloadSchema": {
+                    "type": "object", "required": ["jobId", "status"],
+                    "properties": {
+                        "jobId": {"type": "string"},
+                        "status": {"type": "string", "enum": list(TERMINAL)},
+                    },
                 },
             },
-        }]}
+            {
+                **common,
+                "name": PROGRESS_EVENT,
+                "description": "Reports the current state of a queued or running job, then each "
+                               "observed change to the state or stage. Subscribe to job.finished for the outcome.",
+                "payloadSchema": {
+                    "type": "object", "required": ["jobId", "status"],
+                    "properties": {
+                        "jobId": {"type": "string"},
+                        "status": {"type": "string", "enum": list(PENDING)},
+                        "stage": {"type": "string"},
+                    },
+                },
+            },
+        ]}
 
     def subscribe(self, request_id: str | int, params: dict) -> tuple[int, str] | None:
         arguments = params.get("arguments")
         job_id = arguments.get("jobId") if isinstance(arguments, dict) else None
         cursor = params.get("cursor")
-        if params.get("name") != EVENT or not isinstance(job_id, str) or not job_id:
-            return -32602, "Expected job.finished with a jobId"
-        if cursor is not None and cursor != job_id:
+        event = params.get("name")
+        if event not in (EVENT, PROGRESS_EVENT) or not isinstance(job_id, str) or not job_id:
+            return -32602, "Expected job.finished or job.progress with a jobId"
+        if cursor is not None and not self._valid_cursor(event, job_id, cursor):
             return -32602, "The cursor does not belong to this job"
         with self._lock:
             if job_id not in self._jobs:
@@ -89,9 +113,17 @@ class JobEvents:
                 return -32000, "Too many active event streams"
             stop = threading.Event()
             self._streams[request_id] = stop
-        threading.Thread(target=self._watch, args=(request_id, stop, job_id, cursor),
+        threading.Thread(target=self._watch, args=(request_id, stop, event, job_id, cursor),
                          daemon=True, name="edt-job-events").start()
         return None
+
+    @staticmethod
+    def _valid_cursor(event: str, job_id: str, cursor) -> bool:
+        if event == EVENT:
+            return cursor == job_id
+        prefix = job_id + ":"
+        return (isinstance(cursor, str) and cursor.startswith(prefix)
+                and re.fullmatch(r"[0-9a-f]{64}", cursor[len(prefix):]) is not None)
 
     def cancel(self, request_id) -> None:
         if type(request_id) in (str, int):
@@ -111,29 +143,48 @@ class JobEvents:
                 params["_meta"] = {SUBSCRIPTION_ID: request_id}
                 self._send({"jsonrpc": "2.0", "method": f"notifications/events/{method}", "params": params})
 
-    def _watch(self, request_id: str | int, stop: threading.Event, job_id: str, cursor: str | None) -> None:
+    def _emit(self, request_id, stop, event, event_id, cursor, data) -> None:
+        self._notify(request_id, stop, "event", name=event, eventId=event_id, cursor=cursor,
+                     timestamp=datetime.now(timezone.utc).isoformat(), data=data)
+
+    def _progress(self, request_id, stop, job_id, status, snapshot, cursor) -> str:
+        data = {"jobId": job_id, "status": status}
+        stage = snapshot.get("stage")
+        if isinstance(stage, str) and stage:
+            data["stage"] = stage
+        digest = hashlib.sha256(json.dumps(data, sort_keys=True).encode("utf-8")).hexdigest()
+        observed = f"{job_id}:{digest}"
+        if observed != cursor:
+            self._emit(request_id, stop, PROGRESS_EVENT, uuid.uuid4().hex, observed, data)
+        return observed
+
+    def _watch(self, request_id: str | int, stop: threading.Event, event: str,
+               job_id: str, cursor: str | None) -> None:
         try:
             self._notify(request_id, stop, "active", cursor=cursor, truncated=False)
             # A job has one terminal event. Its ID also serves as its replay cursor.
-            if cursor == job_id:
+            if event == EVENT and cursor == job_id:
                 return
             heartbeat_at = time.monotonic() + HEARTBEAT_SECONDS
             while not stop.is_set():
                 try:
-                    status = self._read_status(job_id)
+                    snapshot = self._read_status(job_id)
                 except (OSError, ValueError):
                     # The status is unknown until a read succeeds. Keep the stream and retry.
                     pass
                 else:
+                    status = snapshot.get("status") if snapshot is not None else None
                     if status in TERMINAL:
-                        self._notify(request_id, stop, "event", name=EVENT, eventId=job_id, cursor=job_id,
-                                     timestamp=datetime.now(timezone.utc).isoformat(),
-                                     data={"jobId": job_id, "status": status})
+                        if event == EVENT:
+                            self._emit(request_id, stop, event, job_id, job_id,
+                                       {"jobId": job_id, "status": status})
                         return
                     if status not in PENDING:
                         self._notify(request_id, stop, "terminated",
                                      error={"code": -32000, "message": "Job status is unavailable"})
                         return
+                    if event == PROGRESS_EVENT:
+                        cursor = self._progress(request_id, stop, job_id, status, snapshot, cursor)
                 if time.monotonic() >= heartbeat_at:
                     self._notify(request_id, stop, "heartbeat", cursor=cursor)
                     heartbeat_at = time.monotonic() + HEARTBEAT_SECONDS

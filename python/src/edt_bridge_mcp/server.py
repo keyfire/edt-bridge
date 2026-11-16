@@ -1539,7 +1539,7 @@ class StdioServer:
             self._job_events.remember(answer)
             self._json_result(req_id, answer)
 
-    def _job_event_status(self, job_id: str) -> str | None:
+    def _job_event_status(self, job_id: str) -> dict | None:
         """Read a job without starting EDT or making a bridge worker wait for it."""
         if jobs.is_local(job_id):
             answer, _ = jobs.status(job_id, 0)
@@ -1551,7 +1551,7 @@ class StdioServer:
             # A failed EDT job carries its final status in an isError tool result.
             answer = job_events.tool_payload(reply, allow_error=True)
         if isinstance(answer, dict) and answer.get("jobId") == job_id:
-            return answer.get("status")
+            return answer
         return None
 
     def _job_call(self, req_id, name: str, arguments: dict) -> bool:

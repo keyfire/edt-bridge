@@ -8,7 +8,11 @@ import time
 
 import pytest
 
-from edt_bridge_mcp import form_run, jobs, server
+from edt_bridge_mcp import form_run, jobs, native_form, native_unit, server
+from test_native_form import _fixture_args as _form_args
+from test_native_form import _substitute_metadata_export
+from test_native_unit import _args as _unit_args
+from test_native_unit import platform
 
 
 @pytest.fixture(autouse=True)
@@ -77,6 +81,54 @@ def test_a_running_job_says_so_and_how_to_follow_it():
     finally:
         release.set()
     assert jobs.status(job_id, 10)[0]["status"] == "succeeded"
+
+
+def _run_recording_platform_stages(monkeypatch, tool, arguments, native):
+    stages = []
+    spawn_platform = native._spawn
+
+    def spawn_job(folder):
+        def observe(*args, **kwargs):
+            answer, failed = jobs.status(folder.name, 0)
+            assert not failed and answer["status"] == "running"
+            stages.append(answer.get("stage"))
+            return spawn_platform(*args, **kwargs)
+
+        monkeypatch.setattr(native, "_spawn", observe)
+        jobs.run(folder)
+        return _Process(os.getpid())
+
+    job_id = jobs.start(tool, arguments, spawn=spawn_job)
+    answer, failed = jobs.status(job_id, 0)
+    assert not failed and answer["status"] == "succeeded", answer
+    return answer["result"], stages
+
+
+def test_a_form_job_exposes_its_stage_while_native_tools_are_running(monkeypatch, tmp_path):
+    args = _form_args(tmp_path)
+    _substitute_metadata_export(monkeypatch)
+    monkeypatch.setenv(form_run.ENV_INFOBASE, str(args.test_infobase))
+    monkeypatch.setenv(form_run.ENV_PLATFORM, str(args.platform_bin))
+
+    result, stages = _run_recording_platform_stages(
+        monkeypatch, "edt_test_form", {"path": str(args.epf), "form": args.form, "button": args.button},
+        native_form)
+
+    assert result["status"] == "form_not_default"
+    assert stages[0] == "managerInfobase" and stages[-1] == "targetMetadata"
+
+
+def test_a_unit_job_exposes_its_stage_while_native_tools_are_running(monkeypatch, tmp_path, platform):
+    args = _unit_args(tmp_path)
+    monkeypatch.setenv(form_run.ENV_INFOBASE, str(args.test_infobase))
+    monkeypatch.setenv(form_run.ENV_PLATFORM, str(args.platform_bin))
+    name, path = args.extension[0].split("=", 1)
+
+    result, stages = _run_recording_platform_stages(
+        monkeypatch, "edt_unit_tests", {"extensions": [{"name": name, "path": path}]}, native_unit)
+
+    assert result["summary"]["tests"] == 3
+    assert stages[0] == "extensions" and stages[-1] == "tests"
 
 
 def _dead_pid():

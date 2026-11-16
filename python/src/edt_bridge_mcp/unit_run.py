@@ -87,7 +87,7 @@ def _refusal(status: str, message: str) -> dict:
     return {"ok": False, "status": status, "error": message}
 
 
-def run_tool(arguments: dict, *, runner=native_unit.run, environ=os.environ) -> dict:
+def run_tool(arguments: dict, *, runner=native_unit.run, environ=os.environ, on_stage=None) -> dict:
     """Validate the call and run the tests; the run copies the test infobase itself."""
     infobase, platform = environ.get(form_run.ENV_INFOBASE), environ.get(form_run.ENV_PLATFORM)
     if not infobase or not platform:
@@ -121,7 +121,8 @@ def run_tool(arguments: dict, *, runner=native_unit.run, environ=os.environ) -> 
         root = Path(temporary)
         args = argparse.Namespace(
             platform_bin=Path(platform), test_infobase=Path(infobase), extension=specs,
-            module=list(arguments.get("modules") or []), test=list(arguments.get("tests") or []), user=environ.get(form_run.ENV_USER), output_dir=root / "output", timeout=timeout)
+            module=list(arguments.get("modules") or []), test=list(arguments.get("tests") or []),
+            user=environ.get(form_run.ENV_USER), output_dir=root / "output", timeout=timeout, _on_stage=on_stage)
         report = runner(args)
     # A path into the directory that is gone now is of no use to the caller.
     return {key: value for key, value in report.items()

@@ -140,6 +140,7 @@ public final class ConfigurationComparisonGateway {
         manager.addStatusListener(listener);
         try {
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(waitSeconds);
+            Jobs.stage("comparing configurations");
             manager.startComparison(batch);
             while (!finished.await(200, TimeUnit.MILLISECONDS)) {
                 if (Jobs.cancelRequested()) throw new org.eclipse.core.runtime.OperationCanceledException();
@@ -154,6 +155,7 @@ public final class ConfigurationComparisonGateway {
             if (session == null || session.getStatus() != ComparisonProcessStatus.COMPARISON_PROCESS_FINISHED) {
                 throw new IllegalStateException("EDT did not produce a completed comparison session");
             }
+            Jobs.stage("reading configuration differences");
             return session.runComparisonTreeReadonlyTask(new IBmTask<ConfigurationComparison>() {
                 @Override public String getName() { return "Read configuration comparison"; }
                 @Override public Object getId() { return this; }

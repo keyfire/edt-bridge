@@ -72,11 +72,19 @@ alone. A cancelled
 check removes its clients and its copy of the infobase in a second or two; one that is still
 running a minute after the cancel is killed, and its processes and files are removed.
 
-Clients that enable the experimental MCP Events extension can subscribe to `job.finished`
-over stdio. In OpenCode 2.3.0 or later, start OpenCode with `OPENCODE_FLAGS=mcp_events`.
-After a call returns a `jobId`, watch `job.finished` with that ID. The notification has
-the job ID and final status. Use `edt_job_status` to retrieve the result. The subscription
-is available only on the stdio connection that started the job.
+Clients that enable the experimental MCP Events extension can watch background jobs over
+stdio. In OpenCode 2.3.0 or later, start OpenCode with `OPENCODE_FLAGS=mcp_events`.
+Subscribe with the `jobId` returned by any of the tools above, using the stdio connection
+that started the job.
+
+- `job.progress` reports the current `queued` or `running` state and the `stage` when
+  available, then reports observed changes. Short stages between status reads may be missed.
+  The stream ends when the job finishes.
+- `job.finished` reports the final state. Call `edt_job_status` to retrieve the result.
+
+For a validation that may take some time, call `edt_project_errors` with
+`refresh=true` and `async=true`. Watch `job.finished` to wait for the result,
+and `job.progress` if you also need the current validation stage.
 
 ## Served by the wrapper
 

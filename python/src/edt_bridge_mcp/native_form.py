@@ -57,16 +57,19 @@ class _Timeline:
     always add up to the total; a stage entered again adds to its seconds, and a failure leaves its time
     with the stage that was running."""
 
-    def __init__(self):
+    def __init__(self, on_stage=None):
         self._started = self._mark = time.monotonic()
         self._stage = None
         self._seconds = {}
+        self._on_stage = on_stage
 
     def enter(self, stage):
         now = time.monotonic()
         if self._stage is not None:
             self._seconds[self._stage] = self._seconds.get(self._stage, 0.0) + now - self._mark
         self._stage, self._mark = stage, now
+        if stage is not None and self._on_stage is not None:
+            self._on_stage(stage)
 
     def close(self):
         """(total, seconds of each stage) up to now; the running stage ends here."""
@@ -371,7 +374,7 @@ def _capture(stack, env, root, output):
 def _run_session(args, base, external, output, root, manager_base, manager_env, enterprise,
                  xvfb, deadline, steps, launch_external=None):
     report = {"ok": False, "stage": "client_startup"}
-    timeline = _Timeline()
+    timeline = _Timeline(getattr(args, "_on_stage", None))
     timeline.enter("clientStart")
     marks = None
     root.mkdir()
@@ -979,7 +982,7 @@ def _cancel_check(_signal, _frame):
 
 
 def run(args):
-    timeline = args._timeline = _Timeline()
+    timeline = args._timeline = _Timeline(getattr(args, "_on_stage", None))
     timeline.enter("preparation")
     report = {"ok": False, "scope": args.scope, "scopeSource": "caller", "stage": "validation"}
     output = None

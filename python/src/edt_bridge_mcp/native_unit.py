@@ -300,6 +300,13 @@ def _judge(report, files, filter_):
 
 
 def _unit_run(args, base, extensions, output, report):
+    on_stage = getattr(args, "_on_stage", None)
+
+    def enter(stage):
+        report["stage"] = stage
+        if on_stage is not None:
+            on_stage(stage)
+
     platform = args.platform_bin.resolve()
     client_exe, ibcmd = platform / "1cv8", platform / "ibcmd"
     xvfb = shutil.which("Xvfb")
@@ -315,16 +322,16 @@ def _unit_run(args, base, extensions, output, report):
                  "client": root / "client-platform.log", "process": root / "client-process.log"}
         started = None
         try:
-            report["stage"] = "copy"
+            enter("copy")
             shutil.copyfile(base / DATA_FILE, copy / DATA_FILE)
             with contextlib.ExitStack() as stack:
-                report["stage"] = "display"
+                enter("display")
                 env = _display(stack, xvfb, root / "display", deadline)
-                report["stage"] = "extensions"
+                enter("extensions")
                 report["filter"]["extensions"] = _load(
                     _Infobase(stack, ibcmd, env, root, copy, args.user, deadline), extensions)
 
-                report["stage"] = "tests"
+                enter("tests")
                 config = root / "yaxunit.json"
                 config.write_text(json.dumps({
                     "filter": report["filter"], "reportFormat": "jUnit", "reportPath": str(files["report"]),

@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.Set;
 
 import io.github.keyfire.edtbridge.core.IbcmdArgs;
+import io.github.keyfire.edtbridge.core.Jobs;
 import io.github.keyfire.edtbridge.core.PlatformProcess;
 import io.github.keyfire.edtbridge.core.PlatformSelection;
 import io.github.keyfire.edtbridge.core.TreeRemoval;
@@ -186,6 +187,7 @@ public final class IbcmdGateway {
                     "--data=" + Files.createDirectories(work.resolve("data"))));
             dump.addAll(target.args);
             dump.add(out.toString());
+            Jobs.stage("dumping the infobase with ibcmd");
             run = run(tool.exe, dump);
         } catch (IOException ex) {
             r.ok = false;

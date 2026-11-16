@@ -19,6 +19,7 @@ package io.github.keyfire.edtbridge.edt;
 import java.util.ArrayList;
 import java.util.List;
 
+import io.github.keyfire.edtbridge.core.Jobs;
 import io.github.keyfire.edtbridge.core.MarkerFreshness;
 import io.github.keyfire.edtbridge.core.MetadataPaths;
 import io.github.keyfire.edtbridge.core.ProblemFilter;
@@ -220,6 +221,7 @@ public final class ProjectGateway {
     public ProblemReport reportProblems(String projectName, String fqn, String modulePath,
             String severity, boolean countOnly, int limit, RefreshResult refreshed)
             throws CoreException {
+        Jobs.stage("reading validation problems");
         boolean modelReadyAtStart = modelsReady(projectName);
         List<Problem> all = getProjectErrors(projectName);
         List<IProject> projects = selectProjects(projectName);
@@ -675,6 +677,7 @@ public final class ProjectGateway {
                         + "validation settings were preserved.";
                 return result;
             }
+            Jobs.stage("scheduling object validation");
             model.executeReadonlyTask(new AbstractBmTask<Void>("edt-bridge.refresh.validateObject") {
                 @Override
                 public Void execute(IBmTransaction transaction, IProgressMonitor taskMonitor) {
@@ -698,6 +701,7 @@ public final class ProjectGateway {
                 }
             });
             if (result.validationRequested) {
+                Jobs.stage("waiting for object validation");
                 result.validationCompleted = timeoutMs > 0 && derived.waitAllComputations(timeoutMs)
                         && derived.isAllComputed();
                 result.sawValidation = result.validationCompleted;
@@ -737,6 +741,7 @@ public final class ProjectGateway {
         IProgressMonitor monitor = JobProgressMonitor.create();
         boolean several = projects.size() > 1;
         long started = System.currentTimeMillis();
+        Jobs.stage("refreshing project resources");
         for (IProject p : projects) {
             IResource scope = scopeResource(p, pathPrefix);
             if (scope == p) {
@@ -756,6 +761,7 @@ public final class ProjectGateway {
         r.refreshMs = System.currentTimeMillis() - started;
         long building = System.currentTimeMillis();
         try {
+            Jobs.stage("running the incremental build");
             for (IProject p : projects) {
                 p.build(IncrementalProjectBuilder.INCREMENTAL_BUILD, monitor);
             }
@@ -796,6 +802,7 @@ public final class ProjectGateway {
                         r.validationTargets.addAll(validation.validationTargets);
                         if (validation.warning != null) r.warning = appendHint(r.warning, validation.warning);
                     } else {
+                        Jobs.stage("waiting for background validation");
                         long remaining = deadline - System.currentTimeMillis();
                         r.validationCompleted &= derived != null && remaining > 0
                                 && derived.waitAllComputations(remaining) && derived.isAllComputed();
@@ -831,6 +838,7 @@ public final class ProjectGateway {
      */
     private boolean awaitSettle(String projectName, ValidationSettle settle, long limitMs,
             long pollMs, boolean validationCompleted) {
+        Jobs.stage("waiting for the problem count to stabilize");
         long started = System.currentTimeMillis();
         while (System.currentTimeMillis() - started < limitMs) {
             boolean idle = Job.getJobManager().isIdle() && modelsReady(projectName);
@@ -1092,21 +1100,23 @@ public final class ProjectGateway {
         result.attempted = true;
         try {
             result.stage = "CLEAN_BUILD";
+            Jobs.stage("cleaning the project");
             result.stateMayHaveChanged = true;
             project.build(IncrementalProjectBuilder.CLEAN_BUILD, monitor);
             result.applied = true;
             result.completedStages.add(result.stage);
             // A job cancelled after this point leaves the project cleaned and not yet rebuilt.
-            if (io.github.keyfire.edtbridge.core.Jobs.inJob()) {
-                io.github.keyfire.edtbridge.core.Jobs.applied("the build results of " + project.getName()
-                        + " are discarded (clean)");
+            if (Jobs.inJob()) {
+                Jobs.applied("the build results of " + project.getName() + " are discarded (clean)");
             }
             if (rebuild) {
                 result.stage = "FULL_BUILD";
+                Jobs.stage("rebuilding the project");
                 project.build(IncrementalProjectBuilder.FULL_BUILD, monitor);
                 result.completedStages.add(result.stage);
             }
             result.stage = "JOIN_MANUAL_BUILD";
+            Jobs.stage("waiting for build jobs");
             jobs.join(ResourcesPlugin.FAMILY_MANUAL_BUILD, monitor);
             result.completedStages.add(result.stage);
             result.stage = "JOIN_AUTO_BUILD";
@@ -1284,6 +1294,7 @@ public final class ProjectGateway {
         long limit = (waitSeconds > 0 ? waitSeconds : 120) * 1000L;
         long deadline = System.currentTimeMillis() + limit;
         r.stage = "VALIDATION_WAIT";
+        Jobs.stage("waiting for background validation");
         ValidationSettle settle = new ValidationSettle();
         try {
             IDerivedDataManagerProvider provider =

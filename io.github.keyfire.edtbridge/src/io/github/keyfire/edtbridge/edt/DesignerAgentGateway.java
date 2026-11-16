@@ -1276,6 +1276,7 @@ public final class DesignerAgentGateway {
                 step = step.onInfobaseLockError(termination(r.sessionTermination));
                 List<IDbStructureChange> result = null;
                 try {
+                    job.stage(apply ? "updating the database configuration" : "planning the database configuration update");
                     result = step.onConfirm(changes -> {
                         for (IDbStructureChange c : changes) {
                             collected.add("[" + c.getType() + "] " + c.getMessage());

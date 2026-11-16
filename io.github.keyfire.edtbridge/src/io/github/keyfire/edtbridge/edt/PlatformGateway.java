@@ -51,6 +51,7 @@ import io.github.keyfire.edtbridge.core.ArtifactBuild;
 import io.github.keyfire.edtbridge.core.BlankTemplates;
 import io.github.keyfire.edtbridge.core.DumpInfobase;
 import io.github.keyfire.edtbridge.core.IbcmdArgs;
+import io.github.keyfire.edtbridge.core.Jobs;
 import io.github.keyfire.edtbridge.core.PlatformBuildProbe;
 import io.github.keyfire.edtbridge.core.PlatformInstallations;
 import io.github.keyfire.edtbridge.core.PlatformProcess;
@@ -844,6 +845,7 @@ public final class PlatformGateway {
             if (exe == null) {
                 continue;
             }
+            Jobs.stage("creating the file infobase with the installed platform");
             String err = runCreateInfobase(exe, dir);
             if (err == null && java.nio.file.Files.exists(dir.resolve("1Cv8.1CD"))) {
                 r.applied = true;

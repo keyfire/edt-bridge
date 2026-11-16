@@ -35,6 +35,7 @@ import sys
 import tempfile
 import threading
 import time
+from functools import partial
 from pathlib import Path
 
 PREFIX = "wjob-"
@@ -157,10 +158,11 @@ def _running(folder: Path) -> bool:
     return pid is not None and started is not None and _started(pid) == started
 
 
-def _runners() -> dict:
+def _runners(on_stage) -> dict:
     from . import form_run, unit_run
 
-    return {form_run.DESCRIPTOR["name"]: form_run.run_tool, unit_run.DESCRIPTOR["name"]: unit_run.run_tool}
+    return {module.DESCRIPTOR["name"]: partial(module.run_tool, on_stage=on_stage)
+            for module in (form_run, unit_run)}
 
 
 def _spawn(folder: Path):
@@ -217,6 +219,13 @@ def run(folder: Path, *, runners=None) -> int:
     def stop(signum, frame):
         raise _Cancelled()
 
+    def report_stage(stage: str) -> None:
+        # Only the worker writes this file. Status and cancellation can also write state.json.
+        try:
+            _write(folder / "stage.json", stage)
+        except OSError:
+            pass  # Progress is optional. Keep running if it cannot be recorded.
+
     # Every temporary file of the job goes under one directory of its own, still inside the temporary
     # directory the job inherited: a stand allows the infobase copies a check opens by that location.
     scratch = Path(tempfile.gettempdir()) / f"edt-bridge-{folder.name}"
@@ -235,7 +244,7 @@ def run(folder: Path, *, runners=None) -> int:
     in_main_thread = threading.current_thread() is threading.main_thread()
     previous = signal.signal(signal.SIGTERM, stop) if os.name != "nt" and in_main_thread else None
     tool = request.get("tool")
-    runner = (runners or _runners()).get(tool)
+    runner = (runners or _runners(report_stage)).get(tool)
     try:
         if runner is None:
             raise ValueError(f"no background run for {tool!r}")
@@ -350,6 +359,9 @@ def _render(folder: Path, state: dict, message: str | None = None) -> dict:
         if state.get("error"):
             answer["error"] = state["error"]
     else:
+        stage = _read(folder / "stage.json") if state.get("status") == "running" else None
+        if isinstance(stage, str) and stage:
+            answer["stage"] = stage
         answer["next"] = "call edt_job_status with this jobId for the state and the result; edt_cancel_job stops the job"
     return answer
 
