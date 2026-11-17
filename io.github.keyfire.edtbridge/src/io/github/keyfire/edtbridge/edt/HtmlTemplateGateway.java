@@ -217,14 +217,17 @@ public final class HtmlTemplateGateway {
                 // The schema is checked as the build and EDT will read it, before anything is written: a text EDT
                 // cannot read leaves the template on its previous schema, its previous problems and its previous
                 // build, and nothing says so until the report runs.
-                result.problems = schemaProblems(target, plan.newText());
+                var inspection = DcsCheck.inspect(plan.newText());
+                result.problems = new ArrayList<>(inspection.problems());
+                DcsCheck.Problem blocking;
+                if (inspection.schemaXml()) {
+                    blocking = access.unreadableSchema(target, plan.newText());
+                    if (blocking != null) result.problems.add(0, blocking);
+                } else {
+                    blocking = result.problems.get(0);
+                }
                 result.valid = result.problems.stream().noneMatch(DcsCheck.Problem::error);
-                unreadable = result.problems.stream().filter(DcsCheck.Problem::error)
-                        .filter(problem -> problem.message().startsWith("EDT cannot read")
-                                || problem.message().startsWith("not well-formed")
-                                || problem.message().startsWith("the root is")
-                                || problem.message().startsWith("the schema text is empty"))
-                        .map(HtmlTemplateGateway::located).findFirst().orElse(null);
+                unreadable = blocking == null ? null : located(blocking);
             }
             if (!apply || plan.unchanged()) {
                 result.ok = true;
@@ -293,16 +296,6 @@ public final class HtmlTemplateGateway {
 
     /** How long a schema write waits for EDT to take the new file into its model and check it. */
     static final long SCHEMA_TAKE_WAIT_MS = 30_000L;
-
-    /** The findings about a schema text: its structure, then whether EDT reads it. */
-    private List<DcsCheck.Problem> schemaProblems(Target target, String text) {
-        List<DcsCheck.Problem> problems = new ArrayList<>(DcsCheck.check(text));
-        if (problems.stream().noneMatch(DcsCheck.Problem::error)) {
-            DcsCheck.Problem unreadable = access.unreadableSchema(target, text);
-            if (unreadable != null) problems.add(0, unreadable);
-        }
-        return problems;
-    }
 
     static String located(DcsCheck.Problem problem) {
         return problem.message() + (problem.line() > 0 ? " (line " + problem.line()

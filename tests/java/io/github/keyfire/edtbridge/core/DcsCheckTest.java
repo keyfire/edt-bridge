@@ -31,6 +31,10 @@ class DcsCheckTest {
         assertEquals(List.of(), DcsCheck.check(GOOD));
     }
 
+    @Test void aUtf8BomDoesNotMakeASchemaUnreadable() {
+        assertEquals(List.of(), DcsCheck.check("\uFEFF" + GOOD));
+    }
+
     /** Seen in a model session: forming the report stopped with "the data source of the data set is not set". */
     @Test void aDataSetWithoutADataSourceIsAnErrorOnItsLine() {
         String text = GOOD.replace("\t\t<dataSource>ИсточникДанных1</dataSource>\n", "");

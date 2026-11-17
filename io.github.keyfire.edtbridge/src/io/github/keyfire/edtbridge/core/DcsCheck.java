@@ -49,14 +49,21 @@ public final class DcsCheck {
         public boolean error() { return "error".equals(severity); }
     }
 
+    /** The findings and whether the text is well-formed XML with the schema root. */
+    public record Inspection(List<Problem> problems, boolean schemaXml) { }
+
     private DcsCheck() { }
 
     /** The findings about a schema text, errors first in the order they occur; empty for a schema with none. */
     public static List<Problem> check(String text) {
+        return inspect(text).problems();
+    }
+
+    public static Inspection inspect(String text) {
         List<Problem> problems = new ArrayList<>();
         if (text == null || text.isBlank()) {
             problems.add(new Problem("error", "the schema text is empty", 0, 0));
-            return problems;
+            return new Inspection(problems, false);
         }
         Document document;
         try {
@@ -66,20 +73,20 @@ public final class DcsCheck {
             factory.setExpandEntityReferences(false);
             var builder = factory.newDocumentBuilder();
             builder.setErrorHandler(null);
-            document = builder.parse(new InputSource(new StringReader(text)));
+            document = builder.parse(xmlInput(text));
         } catch (SAXParseException malformed) {
             problems.add(new Problem("error", "not well-formed XML: " + malformed.getMessage(),
                     Math.max(0, malformed.getLineNumber()), Math.max(0, malformed.getColumnNumber())));
-            return problems;
+            return new Inspection(problems, false);
         } catch (Exception unreadable) {
             problems.add(new Problem("error", "the text cannot be read as XML: " + unreadable.getMessage(), 0, 0));
-            return problems;
+            return new Inspection(problems, false);
         }
         Element root = document.getDocumentElement();
         if (!"DataCompositionSchema".equals(root.getLocalName()) || !SCHEMA_NS.equals(root.getNamespaceURI())) {
             problems.add(new Problem("error", "the root is " + root.getNodeName() + " in "
                     + root.getNamespaceURI() + ", not DataCompositionSchema in " + SCHEMA_NS, 2, 1));
-            return problems;
+            return new Inspection(problems, false);
         }
         Set<String> sources = new LinkedHashSet<>();
         for (Element source : children(root, SCHEMA_NS, "dataSource")) {
@@ -94,7 +101,12 @@ public final class DcsCheck {
             checkVariant(text, variant, warnings);
         }
         problems.addAll(warnings);
-        return problems;
+        return new Inspection(problems, true);
+    }
+
+    static InputSource xmlInput(String text) {
+        // The character reader expects the XML after the BOM. The text used for the edit and hash keeps it.
+        return new InputSource(new StringReader(text.startsWith("\uFEFF") ? text.substring(1) : text));
     }
 
     /** A query or object data set, and the sets inside a union, each need a declared data source. */

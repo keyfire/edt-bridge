@@ -9,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.lang.reflect.Proxy;
+import java.nio.charset.StandardCharsets;
 import com._1c.g5.v8.bm.core.IBmTransaction;
 import com._1c.g5.v8.dt.core.operations.model.IEditingContext;
 import com._1c.g5.v8.dt.htmldocument.model.HtmlDocumentFactory;
@@ -473,7 +474,9 @@ class HtmlTemplateRegressionTest {
                 if (!swallowExclusiveFailure) throw failure;
             }
         }
+        byte[] lastWrite;
         public void write(HtmlTemplateGateway.Target target, byte[] bytes) {
+            lastWrite = bytes;
             writes++; text = corruptWrite ? "unexpected writer content" : ExactTextReplacement.decode(bytes); stamp++;
         }
         /** What EDT's own reader says about a schema text; null reads it. */
@@ -516,6 +519,68 @@ class HtmlTemplateRegressionTest {
         assertEquals(0, access.writes);
         assertTrue(write.message.contains("would keep the previous one"), write.message);
         assertTrue(write.message.contains("(line 14, column 19)"), write.message);
+    }
+
+    @Test void xdtoRefusalStillPreventsWritingASchemaWithASemanticError() {
+        var access = new MemoryAccess(); var gateway = new HtmlTemplateGateway(access);
+        access.unreadable = new io.github.keyfire.edtbridge.core.DcsCheck.Problem("error",
+                "EDT cannot read the schema: Wrong element: {schema}unknownElement", 14, 19);
+        String rejected = NO_SOURCE.replace("</DataCompositionSchema>", "\t<unknownElement/>\n</DataCompositionSchema>");
+        var preview = gateway.replaceSchema("Demo", "ExternalReport.Demo.Template.Main", rejected, null, false, false);
+        assertTrue(preview.ok, preview.message);
+        assertFalse(preview.valid);
+        assertEquals(2, preview.problems.size(), preview.problems.toString());
+        assertTrue(preview.problems.get(0).message().contains("Wrong element"), preview.problems.toString());
+        assertTrue(preview.problems.get(1).message().contains("has no dataSource"), preview.problems.toString());
+
+        var write = gateway.replaceSchema("Demo", "ExternalReport.Demo.Template.Main", rejected,
+                preview.sourceHash, true, true);
+        assertFalse(write.ok, write.message);
+        assertFalse(write.writeAttempted);
+        assertTrue(write.message.contains("(line 14, column 19)"), write.message);
+        assertEquals(0, access.writes);
+        assertEquals("old\r\n", access.text);
+    }
+
+    @Test void malformedXmlAndWrongRootsAreRejectedBeforeTheXDtoReader() {
+        var access = new MemoryAccess(); var gateway = new HtmlTemplateGateway(access);
+        access.unreadable = new io.github.keyfire.edtbridge.core.DcsCheck.Problem("error",
+                "EDT cannot read the schema: the reader should not have been called", 14, 19);
+        for (String rejected : List.of(READABLE.replace("</dataSet>", "</other>"), "<Schema/>")) {
+            var result = gateway.replaceSchema("Demo", "ExternalReport.Demo.Template.Main", rejected,
+                    ExactTextReplacement.hash(access.text), true, true);
+            assertFalse(result.ok, result.message);
+            assertEquals(1, result.problems.size(), result.problems.toString());
+            assertFalse(result.problems.contains(access.unreadable), result.problems.toString());
+        }
+        assertEquals(0, access.writes);
+    }
+
+    @Test void aSchemaWithABomKeepsItsExactSourceAndHashThroughReadAndReplace() {
+        var access = new MemoryAccess(); var gateway = new HtmlTemplateGateway(access);
+        String fqn = "ExternalReport.Demo.Template.Main";
+        String original = "\uFEFF" + READABLE.replace("\n", "\r\n");
+        access.text = original;
+        var read = gateway.readSchema("Demo", fqn);
+        assertTrue(read.ok, read.message);
+        assertEquals(original, read.text);
+        assertEquals(ExactTextReplacement.hash(original), read.sourceHash);
+        assertNotEquals(ExactTextReplacement.hash(original.substring(1)), read.sourceHash);
+
+        String updated = original.replace("SELECT 1", "SELECT 2");
+        var preview = gateway.replaceSchema("Demo", fqn, updated, read.sourceHash, false, false);
+        assertTrue(preview.valid, preview.message);
+        assertEquals(updated, preview.newText);
+        assertEquals(read.sourceHash, preview.sourceHash);
+        assertEquals(0, access.writes);
+
+        var write = gateway.replaceSchema("Demo", fqn, updated, preview.sourceHash, true, true);
+        assertTrue(write.ok, write.message);
+        assertTrue(write.verified);
+        assertArrayEquals(updated.getBytes(StandardCharsets.UTF_8), access.lastWrite);
+        var reread = gateway.readSchema("Demo", fqn);
+        assertEquals(updated, reread.text);
+        assertEquals(preview.resultHash, reread.sourceHash);
     }
 
     @Test void aWrittenSchemaWaitsUntilEdtHasTakenIt() {

@@ -16,7 +16,6 @@
  */
 package io.github.keyfire.edtbridge.core;
 
-import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -26,7 +25,6 @@ import javax.xml.parsers.DocumentBuilderFactory;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
-import org.xml.sax.InputSource;
 
 /**
  * Changes of the designer XML of a data composition schema, made as text edits: a field of a data
@@ -213,10 +211,16 @@ public final class DcsEdit {
     /** The Russian title of a field: its ru item changed, a ru item added to the title, or a title added. */
     private static String fieldTitle(String text, int[] block, String value, String nl) {
         String inside = text.substring(block[0], block[1]);
-        Matcher titleElement = Pattern.compile("(?s)\\r?\\n\\t\\t\\t<title\\b[^>]*>.*?\\r?\\n\\t\\t\\t</title>").matcher(inside);
+        Matcher titleElement = Pattern.compile("(?s)\\r?\\n\\t\\t\\t<title(?=[\\s/>])[^>]*?"
+                + "(?:/>|>.*?\\r?\\n\\t\\t\\t</title>)").matcher(inside);
         if (titleElement.find()) {
             String titleText = titleElement.group();
-            Matcher ru = Pattern.compile("<v8:lang>ru</v8:lang>\\r?\\n\\t*<v8:content>(.*?)</v8:content>").matcher(titleText);
+            if (titleText.endsWith("/>")) {
+                return splice(text, block[0] + titleElement.end() - 2, 2,
+                        ">" + nl + item("\t\t\t\t", value, nl) + nl + "\t\t\t</title>");
+            }
+            Matcher ru = Pattern.compile("(?s)<v8:lang>\\s*ru\\s*</v8:lang>\\s*<v8:content>(.*?)</v8:content>")
+                    .matcher(titleText);
             String changed = ru.find()
                     ? titleText.substring(0, ru.start(1)) + escape(value) + titleText.substring(ru.end(1))
                     : insertBeforeLine(titleText, "\t\t\t</title>", nl + item("\t\t\t\t", value, nl));
@@ -461,7 +465,7 @@ public final class DcsEdit {
             factory.setNamespaceAware(true);
             factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
             factory.setExpandEntityReferences(false);
-            Document document = factory.newDocumentBuilder().parse(new InputSource(new StringReader(text)));
+            Document document = factory.newDocumentBuilder().parse(DcsCheck.xmlInput(text));
             Element root = document.getDocumentElement();
             if (!ROOT.equals(root.getLocalName()) || !SCHEMA_NS.equals(root.getNamespaceURI())) {
                 throw new IllegalArgumentException("the template is not a data composition schema: root " + root.getNodeName());

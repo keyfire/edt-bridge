@@ -183,6 +183,36 @@ class DcsEditTest {
         assertTrue(text.indexOf("<v8:content>Сумма</v8:content>") < text.indexOf("</title>"));
     }
 
+    @Test void setFieldReplacesMultilineRussianContentWithoutChangingAnotherTitle() {
+        String title = "\t\t\t<title xsi:type=\"v8:LocalStringType\">\r\n"
+                + "\t\t\t\t<v8:item>\r\n\t\t\t\t\t<v8:lang>en</v8:lang>\r\n"
+                + "\t\t\t\t\t<v8:content>Amount\r\n(including tax)</v8:content>\r\n\t\t\t\t</v8:item>\r\n"
+                + "\t\t\t\t<v8:item>\r\n\t\t\t\t\t<v8:lang>ru</v8:lang>\r\n"
+                + "\t\t\t\t\t<v8:content>Старая\r\nсумма</v8:content>\r\n\t\t\t\t</v8:item>\r\n"
+                + "\t\t\t</title>\r\n";
+        String schema = SCHEMA.replace("\t\t\t<field>Amount</field>\r\n", "\t\t\t<field>Amount</field>\r\n" + title);
+        var edit = new DcsEdit.Operation("setField", "Sales", "Amount", null, null, "Сумма & налог", null);
+        assertEquals(schema.replace("Старая\r\nсумма", "Сумма &amp; налог"), DcsEdit.apply(schema, List.of(edit)).text());
+    }
+
+    @Test void setFieldFillsTheExistingSelfClosingTitle() {
+        String empty = "\t\t\t<title xsi:type=\"v8:LocalStringType\"/>\r\n";
+        String filled = "\t\t\t<title xsi:type=\"v8:LocalStringType\">\r\n"
+                + "\t\t\t\t<v8:item>\r\n\t\t\t\t\t<v8:lang>ru</v8:lang>\r\n"
+                + "\t\t\t\t\t<v8:content>Сумма</v8:content>\r\n\t\t\t\t</v8:item>\r\n\t\t\t</title>\r\n";
+        String schema = SCHEMA.replace("\t\t\t<field>Amount</field>\r\n", "\t\t\t<field>Amount</field>\r\n" + empty);
+        var edit = new DcsEdit.Operation("setField", "Sales", "Amount", null, null, "Сумма", null);
+        assertEquals(schema.replace(empty, filled), DcsEdit.apply(schema, List.of(edit)).text());
+    }
+
+    @Test void editingASchemaWithABomKeepsItAndTheOriginalLineEndings() {
+        String schema = "\uFEFF" + SCHEMA;
+        var edit = new DcsEdit.Operation("setQuery", "Sales", null, null, null, null, null,
+                "SELECT 2 AS Amount", null, null, null);
+        assertEquals(schema.replace("SELECT 1 AS Amount, &amp;Period AS Period", "SELECT 2 AS Amount"),
+                DcsEdit.apply(schema, List.of(edit)).text());
+    }
+
     @Test void setFieldNeedsATitleOrAFormatAndAnExistingField() {
         assertThrows(IllegalArgumentException.class, () -> DcsEdit.apply(FULL, List.of(edit("setField", "Sales", "Amount"))));
         var missing = assertThrows(IllegalArgumentException.class, () -> DcsEdit.apply(FULL, List.of(
