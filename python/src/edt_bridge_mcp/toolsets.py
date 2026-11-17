@@ -35,8 +35,25 @@ _SUGGESTIONS = 5
 
 _TOOL_NAME = re.compile(r"(?<![A-Za-z0-9_])edt_[a-z0-9_]+(?![A-Za-z0-9_])")
 _ADVICE_MARK = re.compile(r" \(outside the active tool sets? [^\n]+?: a call of it is refused\)")
-_ADVISORY_FIELDS = {"edt_project_errors": "hint", "edt_clean_project": "nextStep"}
+_PROJECT_ERRORS = "edt_project_errors"
+_ADVISORY_FIELDS = {_PROJECT_ERRORS: "hint", "edt_clean_project": "nextStep"}
 _JOB_RESULTS = frozenset(("edt_job_status", "edt_cancel_job"))
+
+# ProjectErrorsTool writes the service hint before the diagnostics. Match that slot only.
+# Other refresh warnings can include exception text and continuation lines.
+_BASELINE_REFUSAL = ("A baseline requires a complete validation snapshot. "
+                     "Refresh and wait for modelReady=true, synchronized sources and settled validation; "
+                     "narrow fqn or modulePath if the marker limit is exceeded. ")
+_REFRESH_TIMING = re.compile(r"\(build [0-9]+ ms, validation (?:NOT )?settled after [0-9]+ ms"
+                             r"(?:, never seen running)?\)")
+_BRIEF_PROJECT_HINT = re.compile(
+    r"\A[^\r\n]+: [0-9]+ problem\(s\) \(ERROR [0-9]+, WARNING [0-9]+, INFO [0-9]+; "
+    r"eclipse [0-9]+, edt-check [0-9]+\)[^\r\n]*\n"
+    r"modelReady: (?:true|false)(?:; PARTIAL validation snapshot)?\n"
+    r"(?P<refresh>refreshed: [^()\r\n]* " + _REFRESH_TIMING.pattern
+    + r"(?: - Validation completion or a stable problem count was not established; re-read without refresh\.)?\n)?"
+    r"hint: (?P<hint>[^\r\n]+)(?=\n)"
+)
 
 
 def _quoted(names) -> str:
@@ -263,6 +280,24 @@ def _text_payload(content):
     return None
 
 
+def _annotate_project_text(text: str, selection: Selection, unavailable: set[str]) -> str:
+    if text.startswith(_BASELINE_REFUSAL):
+        start, end = len(_BASELINE_REFUSAL), len(text)
+        if any(char in text[start:] for char in "\r\n"):
+            return text
+    else:
+        report = _BRIEF_PROJECT_HINT.match(text)
+        # Filter strings and resource names precede this slot. A duplicate service header
+        # or timing can be part of such a value rather than the formatter's own line.
+        if (report is None or text.count("\nmodelReady: ") != 1
+                or (report["refresh"] and len(_REFRESH_TIMING.findall(text)) != 1)):
+            return text
+        start, end = report.span("hint")
+    advice = text[start:end]
+    marked = _annotate(advice, selection, unavailable)
+    return text if marked == advice else text[:start] + marked + text[end:]
+
+
 def annotate_advisory(tool, result, selection: Selection, unavailable: set[str]) -> None:
     """Annotate only the known advisory field of a forwarded tool response."""
     if not (unavailable and isinstance(result, dict) and isinstance(result.get("content"), list)):
@@ -270,10 +305,22 @@ def annotate_advisory(tool, result, selection: Selection, unavailable: set[str])
     for content in result["content"]:
         payload = _text_payload(content)
         if not isinstance(payload, dict):
+            if tool == _PROJECT_ERRORS and isinstance(content, dict) and content.get("type") == "text":
+                text = content.get("text")
+                if isinstance(text, str):
+                    marked = _annotate_project_text(text, selection, unavailable)
+                    if marked != text:
+                        content["text"] = marked
             continue
         body, source = payload, tool
         if tool in _JOB_RESULTS:
             body, source = payload.get("result"), payload.get("tool")
+            if source == _PROJECT_ERRORS and isinstance(body, str):
+                marked = _annotate_project_text(body, selection, unavailable)
+                if marked != body:
+                    payload["result"] = marked
+                    content["text"] = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+                continue
         field = _ADVISORY_FIELDS.get(source) if isinstance(source, str) else None
         if not (field and isinstance(body, dict) and isinstance(body.get(field), str)):
             continue

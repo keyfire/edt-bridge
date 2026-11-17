@@ -242,6 +242,49 @@ def test_wrapper_preserves_unmarked_payload_bytes(serve, monkeypatch, name, text
     assert call(srv, sent, name, {})["content"][0]["text"] == text
 
 
+@pytest.mark.parametrize("envelope, args, mark_hint", [
+    ("Demo: 1 problem(s) (ERROR 1, WARNING 0, INFO 0; eclipse 1, edt-check 0)\n"
+     "modelReady: true\nrefreshed: Demo (build 5 ms, validation settled after 7 ms)\nhint: ",
+     {"brief": True}, True),
+    ("A baseline requires a complete validation snapshot. "
+     "Refresh and wait for modelReady=true, synchronized sources and settled validation; "
+     "narrow fqn or modulePath if the marker limit is exceeded. ", {"baseline": "save"}, True),
+    ("Demo: 1 problem(s) (ERROR 1, WARNING 0, INFO 0; eclipse 1, edt-check 0)\n"
+     "modelReady: true\nrefreshed: Demo (build 5 ms, validation NOT settled after 7 ms)"
+     " - build failed: Exception\nhint: ", {"brief": True}, False),
+    ("Demo: 1 problem(s) (ERROR 1, WARNING 0, INFO 0; eclipse 1, edt-check 0)\n"
+     "modelReady: true\nERROR  Module.bsl:1  \nhint: ", {"brief": True}, False),
+    ("hint: ", {"brief": True}, False),
+])
+def test_plain_project_report_only_marks_its_generated_hint(serve, monkeypatch, envelope, args, mark_hint):
+    srv, sent = serve("report")
+    offline(srv, monkeypatch, [{"name": "edt_clean_project", "toolsets": []}])
+    monkeypatch.setattr(srv.backend, "ensure", lambda **_kw: (True, "up"))
+    hint = "1 problem(s) predate the last change of their file even after the refresh – edt_clean_project"
+    suffix = " rebuilds the project from scratch"
+    if "brief" in args:
+        suffix += "\nERROR  Module.bsl:1  Rewrite edt_clean_project\n"
+    monkeypatch.setattr(srv.backend, "forward", lambda _: {
+        "result": {"isError": "baseline" in args, "content": [
+            {"type": "text", "text": envelope + hint + suffix}]}})
+    mark = " (outside the active tool set 'report': a call of it is refused)" if mark_hint else ""
+    answer = call(srv, sent, "edt_project_errors", args)
+    assert answer["content"][0]["text"] == envelope + hint + mark + suffix
+
+
+@pytest.mark.parametrize("before, after", [
+    ("; filter: fqn=Unknown\nmodelReady: true\n", "modelReady: true\n"),
+    ("\nmodelReady: true\nrefreshed: Demo (build 2 ms, validation settled after 3 ms)\n",
+     "Other path (build 4 ms, validation settled after 5 ms)\n"),
+])
+def test_project_hint_with_a_duplicate_header_or_timing_is_ambiguous(before, after):
+    summary = "Demo: 0 problem(s) (ERROR 0, WARNING 0, INFO 0; eclipse 0, edt-check 0)"
+    raw = summary + before + "hint: Try edt_clean_project\n" + after
+    answer = {"content": [{"type": "text", "text": raw}]}
+    toolsets.annotate_advisory("edt_project_errors", answer, toolsets.parse("report"), {"edt_clean_project"})
+    assert answer["content"][0]["text"] == raw
+
+
 def test_forwarded_help_descriptions_mark_known_references(serve, monkeypatch):
     srv, sent = serve("report")
     offline(srv, monkeypatch, [{"name": "edt_clean_project", "toolsets": []}])
