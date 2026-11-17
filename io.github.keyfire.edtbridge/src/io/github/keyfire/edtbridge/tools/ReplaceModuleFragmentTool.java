@@ -42,7 +42,7 @@ public final class ReplaceModuleFragmentTool {
         item.addProperty("type", "object");
         edits.add("items", item);
         props.add("edits", edits);
-        props.add("expectedHash", strProp("sourceHash from the dry-run. Required for apply."));
+        props.add("expectedHash", strProp("sourceHash from edt_module_text or a dry-run. Required for apply."));
         props.add("apply", boolProp("false (default) = dry-run: find the fragment, check that the result "
                 + "parses and return the hashes. true = write."));
         JsonArray required = new JsonArray();
@@ -58,8 +58,7 @@ public final class ReplaceModuleFragmentTool {
                 + "edt_replace_method do not reach. The fragment must occur exactly once and the module must "
                 + "still parse after the replacement; edits applies several fragments together, for a region "
                 + "or a #If block that opens and closes in different places. Both dry-run and apply return a short "
-                + "preview and a line for each entry in edits, in previews. Dry-run also returns sourceHash; apply "
-                + "needs that hash as expectedHash, so a module changed in between is refused. A form module "
+                + "preview and a line for each entry in edits, in previews. For apply, pass sourceHash from edt_module_text or a dry-run as expectedHash. A changed module is refused. A form module "
                 + "without its form model is refused. Check the result with edt_project_errors. Requires a "
                 + "configured write token.");
         t.addProperty("descriptionRu", "ЗАПИСЬ: заменить один точный фрагмент текста модуля - директивы "
@@ -67,8 +66,8 @@ public final class ReplaceModuleFragmentTool {
                 + "edt_add_method и edt_replace_method. Фрагмент должен встречаться ровно один раз, модуль после "
                 + "замены должен разбираться; edits применяет несколько фрагментов вместе - для области или "
                 + "блока #Если, которые открываются и закрываются в разных местах. Dry-run и apply возвращают в previews "
-                + "строку и короткий предпросмотр каждой замены из edits. Dry-run также возвращает sourceHash; для apply нужен "
-                + "этот хеш в expectedHash, поэтому модуль, измененный в промежутке, дает отказ. Модуль формы без "
+                + "строку и короткий предпросмотр каждой замены из edits. Для apply передайте sourceHash из edt_module_text "
+                + "или dry-run в expectedHash. Изменившийся модуль дает отказ. Модуль формы без "
                 + "модели формы дает отказ. Результат проверять edt_project_errors. Нужен токен записи.");
         t.add("inputSchema", schema);
         return t;

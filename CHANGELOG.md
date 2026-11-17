@@ -32,6 +32,8 @@ to the code and the reasoning behind it.
   schemas of a project: quick access, formats, filters, settings. A hit names the template, the
   line and `fragment`, the lines around it. A sample of a setting no longer takes reading every
   schema of the configuration one call at a time.
+- `edt_module_text` accepts a line range and a character cap, and returns the whole module's
+  `sourceHash` for writes.
 
 ### Fixed
 

@@ -236,8 +236,8 @@
     },
     {
       "name": "edt_module_text",
-      "description": "READ: BSL source of a module (or a single method) from the live workspace, with the module's procedure/function list and signatures when the whole module is read. Resolve by fqn (CommonModule.X, HTTPService.X, a form FQN, or an object + moduleType) or by modulePath. A method read leaves the list out (methodsIncluded: false) unless includeMethods=true. If a top object has several modules and none is chosen, returns the candidates in availableModules.",
-      "descriptionRu": "ЧТЕНИЕ: исходный BSL модуля (или одного метода) из живой рабочей области, а при чтении модуля целиком еще и список процедур/функций с сигнатурами. Адресация по fqn (CommonModule.X, HTTPService.X, FQN формы или объект + moduleType) либо по modulePath. Чтение метода не возвращает список (methodsIncluded: false), если не передан includeMethods=true. Если у объекта несколько модулей и не выбран moduleType – вернёт варианты в availableModules.",
+      "description": "READ: BSL source of a module (or a single method) from the live workspace, with the module's procedure/function list and signatures when the whole module is read. Resolve by fqn (CommonModule.X, HTTPService.X, a form FQN, or an object + moduleType) or by modulePath. A method read leaves the list out (methodsIncluded: false) unless includeMethods=true. If a top object has several modules and none is chosen, returns the candidates in availableModules. Use startLine/endLine for a range and maxChars to cap the text. totalLines counts module lines. sourceHash covers the whole saved module and can be passed as expectedHash when writing.",
+      "descriptionRu": "ЧТЕНИЕ: исходный BSL модуля (или одного метода) из живой рабочей области, а при чтении модуля целиком еще и список процедур/функций с сигнатурами. Адресация по fqn (CommonModule.X, HTTPService.X, FQN формы или объект + moduleType) либо по modulePath. Чтение метода не возвращает список (methodsIncluded: false), если не передан includeMethods=true. Если у объекта несколько модулей и не выбран moduleType – вернет варианты в availableModules. startLine/endLine задают диапазон, maxChars ограничивает объем текста, totalLines содержит число строк модуля. sourceHash вычисляется по всему сохраненному модулю и подходит для expectedHash при записи.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -263,7 +263,19 @@
           },
           "includeMethods": {
             "type": "boolean",
-            "description": "Also return the module's procedure/function catalogue with signatures. Default: true for a whole-module read, false when method is given - the catalogue of a large module is many times the size of one method."
+            "description": "Also return the module's procedure/function catalogue with signatures. Default: true for a whole-module read, false when method is given or a line range is requested."
+          },
+          "startLine": {
+            "type": "integer",
+            "description": "First module line to return, starting at 1. Default 1. Omit when reading a method."
+          },
+          "endLine": {
+            "type": "integer",
+            "description": "Last module line to return, inclusive. Default: end of the module. Omit when reading a method."
+          },
+          "maxChars": {
+            "type": "integer",
+            "description": "Maximum source text length, in UTF-16 code units. Default and maximum: 200000."
           }
         },
         "required": [
@@ -2788,8 +2800,8 @@
     },
     {
       "name": "edt_replace_method",
-      "description": "WRITE: replace one existing BSL method using EDT's parsed method range. Dry-run returns exact oldText/newText, sourceHash and resultHash. apply requires force=true and expectedHash from a current dry-run. Keeps the method name and kind; attached comments and pragmas are part of methodText and are removed if omitted. Refuses extra methods, module-level code, wrappers, parse errors, dirty editors and stale sources. Preserves surrounding source and its BOM, normalizing only the replacement's line endings. Does not refactor callers; check references and run edt_project_errors after changing a signature. Requires a configured write token and caller verification of edt_support_status=EDITABLE.",
-      "descriptionRu": "ЗАПИСЬ: заменить один существующий метод BSL по диапазону из модели EDT. По умолчанию dry-run: точные oldText/newText, sourceHash и resultHash без записи. Для apply нужны force=true и expectedHash из актуального dry-run. Имя и вид метода сохраняются; прилегающие комментарии и директивы входят в methodText и удаляются, если их не передать. Второй метод, код уровня модуля, обертки областей/препроцессора, ошибки разбора, несохраненный редактор и устаревший источник дают отказ. Окружающий код и BOM сохраняются, окончания строк нормализуются только в новом фрагменте. Вызовы не меняются: после изменения сигнатуры проверьте ссылки и edt_project_errors. Нужны токен записи и предварительная проверка вызывающим edt_support_status=EDITABLE.",
+      "description": "WRITE: replace one existing BSL method using EDT's parsed method range. Dry-run returns exact oldText/newText, sourceHash and resultHash. apply requires force=true and expectedHash from edt_module_text or a dry-run. Keeps the method name and kind; attached comments and pragmas are part of methodText and are removed if omitted. Refuses extra methods, module-level code, wrappers, parse errors, dirty editors and stale sources. Preserves surrounding source and its BOM, normalizing only the replacement's line endings. Does not refactor callers; check references and run edt_project_errors after changing a signature. Requires a configured write token and caller verification of edt_support_status=EDITABLE.",
+      "descriptionRu": "ЗАПИСЬ: заменить один существующий метод BSL по диапазону из модели EDT. По умолчанию dry-run: точные oldText/newText, sourceHash и resultHash без записи. Для apply нужны force=true и expectedHash из edt_module_text или dry-run. Имя и вид метода сохраняются; прилегающие комментарии и директивы входят в methodText и удаляются, если их не передать. Второй метод, код уровня модуля, обертки областей/препроцессора, ошибки разбора, несохраненный редактор и устаревший источник дают отказ. Окружающий код и BOM сохраняются, окончания строк нормализуются только в новом фрагменте. Вызовы не меняются: после изменения сигнатуры проверьте ссылки и edt_project_errors. Нужны токен записи и предварительная проверка вызывающим edt_support_status=EDITABLE.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2819,7 +2831,7 @@
           },
           "expectedHash": {
             "type": "string",
-            "description": "sourceHash from a current dry-run: SHA-256 of the entire UTF-8 module, including any BOM. Required for apply; a changed source is refused."
+            "description": "sourceHash from edt_module_text or a dry-run. It covers the entire UTF-8 module, including any BOM. Required for apply."
           },
           "apply": {
             "type": "boolean",
@@ -2844,8 +2856,8 @@
     },
     {
       "name": "edt_replace_module_fragment",
-      "description": "WRITE: replace one exact fragment of a module's BSL text - compilation directives, module variables, regions, a preprocessor block, the text that edt_add_method and edt_replace_method do not reach. The fragment must occur exactly once and the module must still parse after the replacement; edits applies several fragments together, for a region or a #If block that opens and closes in different places. Both dry-run and apply return a short preview and a line for each entry in edits, in previews. Dry-run also returns sourceHash; apply needs that hash as expectedHash, so a module changed in between is refused. A form module without its form model is refused. Check the result with edt_project_errors. Requires a configured write token.",
-      "descriptionRu": "ЗАПИСЬ: заменить один точный фрагмент текста модуля - директивы компиляции, переменные модуля, области, блок препроцессора, то, до чего не достают edt_add_method и edt_replace_method. Фрагмент должен встречаться ровно один раз, модуль после замены должен разбираться; edits применяет несколько фрагментов вместе - для области или блока #Если, которые открываются и закрываются в разных местах. Dry-run и apply возвращают в previews строку и короткий предпросмотр каждой замены из edits. Dry-run также возвращает sourceHash; для apply нужен этот хеш в expectedHash, поэтому модуль, измененный в промежутке, дает отказ. Модуль формы без модели формы дает отказ. Результат проверять edt_project_errors. Нужен токен записи.",
+      "description": "WRITE: replace one exact fragment of a module's BSL text - compilation directives, module variables, regions, a preprocessor block, the text that edt_add_method and edt_replace_method do not reach. The fragment must occur exactly once and the module must still parse after the replacement; edits applies several fragments together, for a region or a #If block that opens and closes in different places. Both dry-run and apply return a short preview and a line for each entry in edits, in previews. For apply, pass sourceHash from edt_module_text or a dry-run as expectedHash. A changed module is refused. A form module without its form model is refused. Check the result with edt_project_errors. Requires a configured write token.",
+      "descriptionRu": "ЗАПИСЬ: заменить один точный фрагмент текста модуля - директивы компиляции, переменные модуля, области, блок препроцессора, то, до чего не достают edt_add_method и edt_replace_method. Фрагмент должен встречаться ровно один раз, модуль после замены должен разбираться; edits применяет несколько фрагментов вместе - для области или блока #Если, которые открываются и закрываются в разных местах. Dry-run и apply возвращают в previews строку и короткий предпросмотр каждой замены из edits. Для apply передайте sourceHash из edt_module_text или dry-run в expectedHash. Изменившийся модуль дает отказ. Модуль формы без модели формы дает отказ. Результат проверять edt_project_errors. Нужен токен записи.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2882,7 +2894,7 @@
           },
           "expectedHash": {
             "type": "string",
-            "description": "sourceHash from the dry-run. Required for apply."
+            "description": "sourceHash from edt_module_text or a dry-run. Required for apply."
           },
           "apply": {
             "type": "boolean",
