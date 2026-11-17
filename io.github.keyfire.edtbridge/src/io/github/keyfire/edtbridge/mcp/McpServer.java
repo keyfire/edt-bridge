@@ -840,7 +840,13 @@ applyI18n();loadStatus();loadTools();
                 JsonObject params = req.has("params") ? req.getAsJsonObject("params") : new JsonObject();
                 String tool = params.has("name") ? params.get("name").getAsString() : "";
                 // The tools that return infobase data leave only through the personal data filter.
-                return result(id, PersonalDataFilter.apply(tool, toolsCall(params)));
+                JsonObject answer = PersonalDataFilter.apply(tool, toolsCall(params));
+                // A hint or a refusal that names a tool outside the active set says so where it names it. The help
+                // of a tool marks its descriptions itself and keeps the names its answer is about.
+                if (!toolHelp.name().equals(tool)) {
+                    annotateTexts(answer, toolset());
+                }
+                return result(id, answer);
             }
             case "ping":
                 return result(id, new JsonObject());
@@ -1009,12 +1015,58 @@ applyI18n();loadStatus();loadTools();
         JsonArray served = new JsonArray();
         for (JsonElement element : all.getAsJsonArray("tools")) {
             if (toolset.allows(element.getAsJsonObject().get("name").getAsString())) {
-                served.add(element);
+                served.add(annotatedDescriptor(element.getAsJsonObject(), toolset));
             }
         }
         JsonObject r = new JsonObject();
         r.add("tools", served);
         return r;
+    }
+
+    /**
+     * A descriptor whose descriptions mark the tools the selection does not serve. The descriptor of the full list
+     * stays as it is: the argument gate and the packaged catalog read it.
+     */
+    private static JsonObject annotatedDescriptor(JsonObject descriptor, ToolSets.Selection toolset) {
+        if (!toolset.limits()) {
+            return descriptor;
+        }
+        JsonObject copy = descriptor.deepCopy();
+        annotateDescriptions(copy, toolset);
+        return copy;
+    }
+
+    private static void annotateDescriptions(JsonElement element, ToolSets.Selection toolset) {
+        if (element == null || element.isJsonNull() || element.isJsonPrimitive()) {
+            return;
+        }
+        if (element.isJsonArray()) {
+            for (JsonElement item : element.getAsJsonArray()) annotateDescriptions(item, toolset);
+            return;
+        }
+        JsonObject object = element.getAsJsonObject();
+        for (String key : new java.util.ArrayList<>(object.keySet())) {
+            JsonElement value = object.get(key);
+            if (("description".equals(key) || "descriptionRu".equals(key)) && value.isJsonPrimitive()) {
+                object.addProperty(key, toolset.annotate(value.getAsString()));
+            } else {
+                annotateDescriptions(value, toolset);
+            }
+        }
+    }
+
+    /** The text content of a tool answer with the tools outside the selection marked. */
+    static void annotateTexts(JsonObject answer, ToolSets.Selection toolset) {
+        if (answer == null || !toolset.limits() || !answer.has("content") || !answer.get("content").isJsonArray()) {
+            return;
+        }
+        for (JsonElement item : answer.getAsJsonArray("content")) {
+            if (item.isJsonObject() && item.getAsJsonObject().has("text")
+                    && item.getAsJsonObject().get("text").isJsonPrimitive()) {
+                JsonObject content = item.getAsJsonObject();
+                content.addProperty("text", toolset.annotate(content.get("text").getAsString()));
+            }
+        }
     }
 
     /**
@@ -1070,7 +1122,11 @@ applyI18n();loadStatus();loadTools();
             return outside;
         }
         if (toolHelp.name().equals(name)) {
-            return toolHelp.call(args, toolsList().getAsJsonArray("tools"), toolset);
+            JsonArray described = new JsonArray();
+            for (JsonElement element : toolsList().getAsJsonArray("tools")) {
+                described.add(element.isJsonObject() ? annotatedDescriptor(element.getAsJsonObject(), toolset) : element);
+            }
+            return toolHelp.call(args, described, toolset);
         }
         if (JobTools.runsAsJob(name) && args.has(JobTools.ASYNC) && args.get(JobTools.ASYNC).isJsonPrimitive()
                 && args.get(JobTools.ASYNC).getAsBoolean()) {

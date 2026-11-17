@@ -53,6 +53,12 @@ to the code and the reasoning behind it.
 - `edt_form_structure` returns the caption of a form command in `title` and its tooltip in
   `toolTip`. The tooltip used to stand in `title`, so a title written by `edt_modify_form_command`
   read back unchanged.
+- With `EDT_BRIDGE_TOOLSET` set, a description, a hint or a refusal of the bridge that names a tool
+  outside the active sets marks it at its first mention: `(outside the active tool set 'report':
+  a call of it is refused)`. A model no longer calls a tool a hint named only to be refused, as it
+  did with `edt_extension_properties` after `edt_build_extension` and `edt_clean_project` after
+  `edt_project_errors`. The registration warning of `edt_build_extension` says where safe mode is
+  cleared: where the extension is registered in the infobase.
 
 ### Changed
 
