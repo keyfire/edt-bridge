@@ -29,6 +29,16 @@ to the code and the reasoning behind it.
   a field. A change of a query or a condition no longer sends the whole schema. Apply takes the
   `sourceHash` of `edt_read_dcs`, without a dry-run.
 
+### Changed
+
+- `edt_test_form` answers with what the caller judges by: the verdict, the assertions, the reads,
+  the messages, the window over the form and the logged errors. The stages, the client
+  environment, the platform logs and the echo of the scenario come with `details=true` or when the
+  run did not reach a verdict; a passed two-step scenario answers in about 300 characters instead
+  of 4,500. `test-form` and its `result.json` keep the whole report.
+- `edt_dump_external_object` leaves out what EDT's own dumper said when the on-disk build
+  succeeded, about 1,400 characters a call; a failed build keeps it in `nativeError`.
+
 ## 2026-11-16 – 0.48.0, 0.48.1
 
 ### Added

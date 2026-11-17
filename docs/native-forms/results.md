@@ -11,6 +11,13 @@ remaining `--timeout` while the same client owns the port. Retries stop when the
 manager connects or the platform reports an access or license error.
 `connectAttempts` records the number of attempts for the phase.
 
+`edt_test_form` answers shorter than the command. A run that reached its verdict, passed or not,
+returns `ok`, `status`, `assertions`, `reads`, the messages, the window over the form, `observedFields`,
+the logged errors of `eventLog` and, for a failed scenario, its `interaction`. The stages, the client
+environment, the platform logs and the echo of the scenario come with `details=true`, or by
+themselves when the run did not reach a verdict: setup, license, timeout and the like. `omitted`
+says what was left out. `test-form` and its `result.json` keep the whole report.
+
 The command prints JSON and writes `result.json` when it has created the output
 directory. A scenario result contains `phases`, observations under each phase's
 `interaction`, and `assertions` with `expected`, `actual`, and `ok`. Message assertions

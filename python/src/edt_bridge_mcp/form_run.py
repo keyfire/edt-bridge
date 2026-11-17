@@ -19,7 +19,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from . import jobs, native_form, native_scenario
+from . import jobs, native_form, native_reports, native_scenario
 
 ENV_INFOBASE = "EDT_BRIDGE_TEST_INFOBASE"
 ENV_PLATFORM = "EDT_BRIDGE_TEST_PLATFORM"
@@ -112,6 +112,10 @@ DESCRIPTOR = {
                                          "each and summary"},
             "timeoutSeconds": {"type": "integer",
                                "description": "Whole run limit, 60-900 seconds (default 300)"},
+            "details": {"type": "boolean",
+                        "description": "Add the diagnostics of the run: the seconds of each stage, the client "
+                                       "environment, the platform logs and the echo of the scenario. Without it "
+                                       "they come only when the run did not reach a verdict (default false)"},
             "async": {"type": "boolean", "description": jobs.ASYNC_DESCRIPTION},
         },
         "required": ["path", "form"],
@@ -121,8 +125,44 @@ DESCRIPTOR = {
 }
 
 
+#: The statuses of a run that reached its verdict: the form ran, and the solution passed or did not.
+#: Any other status is the run's own failure, and its answer keeps the diagnostics.
+VERDICTS = frozenset({"scenario_completed", "command_completed"}) | native_reports.FAILURES
+#: What the answer keeps of a run that reached its verdict: what the caller judges the solution by.
+_ANSWER_KEYS = ("ok", "status", "error", "stage", "step", "assertions", "reads", "messages", "dialog",
+                "observedFields", "observedForms", "observedTitles", "defaultForm", "scenarios", "summary",
+                "piiFilter")
+
+
 def _refusal(status: str, message: str) -> dict:
     return {"ok": False, "status": status, "error": message}
+
+
+def answer(report: dict, details: bool = False) -> dict:
+    """The answer of the tool. A run that reached its verdict answers with the verdict, the assertions, the
+    reads, the messages, the window and the errors the platform logged; the stages, the client environment,
+    the logs and the echo of the scenario come with details or when the run itself failed."""
+    if details or report.get("status") not in VERDICTS:
+        return report
+    short = {key: report[key] for key in _ANSWER_KEYS if key in report}
+    if report.get("ok"):
+        short.pop("stage", None)
+    interaction = report.get("interaction")
+    if isinstance(interaction, dict):
+        if "messages" not in short and isinstance(interaction.get("messages"), list):
+            # A button check: the messages the click left on the panel.
+            short["messages"] = interaction["messages"]
+        if not report.get("ok"):
+            # What the client said: the exception of a failed command, the observations up to a failed step.
+            kept = {key: value for key, value in interaction.items()
+                    if key not in ("observedForm", "observedTitle", "timingMarks", "scenarios")}
+            if kept:
+                short["interaction"] = kept
+    log = report.get("eventLog")
+    if isinstance(log, dict) and (log.get("errors") or log.get("read") is False):
+        short["eventLog"] = log
+    short["omitted"] = "the stages, the client environment and the logs: pass details=true"
+    return short
 
 
 def run_tool(arguments: dict, *, runner=native_form.run, environ=os.environ, on_stage=None) -> dict:
@@ -176,9 +216,11 @@ def run_tool(arguments: dict, *, runner=native_form.run, environ=os.environ, on_
     # The paths point into the copy that is gone now; the caller has no use for them.
     for key in ("testInfobase", "outputDir", "reports"):
         report.pop(key, None)
+    # The screenshot lay in the output of the run, which is gone with the copy as well.
+    report.pop("screenshot", None)
     timings = report.get("timings")
     if isinstance(timings, dict) and isinstance(timings.get("stages"), dict):
         # The copy of a large infobase is part of the run the caller waits for.
         timings["stages"] = {"infobaseCopy": round(copy_seconds, 2), **timings["stages"]}
         timings["totalSeconds"] = round(timings.get("totalSeconds", 0) + copy_seconds, 2)
-    return report
+    return answer(report, arguments.get("details") is True)
