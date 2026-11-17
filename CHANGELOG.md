@@ -13,74 +13,66 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
-## Unreleased
+## 2026-11-17 – 0.49.0
 
 ### Added
 
-- `edt_test_form` takes `scenarios`, and a `test-form` scenario file may hold them: several named
-  scenarios played in one start of the client, which takes about a minute of each run while the
-  steps take seconds. The form is opened again before each next scenario by a launcher data
-  processor behind it. The answer carries the result of each scenario and a `summary`, and a
-  scenario that fails does not stop the next one. The scenarios of one run share one copy of the
-  infobase. The CI reports have one test per scenario.
-- `edt_modify_dcs` changes more than additions: `setQuery` sets the query of a data set,
-  `replaceFragment` replaces an exact piece of the schema text and is refused when it matches no
-  place or several, `setField` sets the title or the format of a field, and `removeField` removes
-  a field. A change of a query or a condition no longer sends the whole schema. Apply takes the
-  `sourceHash` of `edt_read_dcs`, without a dry-run.
-- `edt_search_queries` with `kind=dcsText` searches the whole text of the data composition
-  schemas of a project: quick access, formats, filters, settings. A hit names the template, the
-  line and `fragment`, the lines around it. A sample of a setting no longer takes reading every
-  schema of the configuration one call at a time.
-- `edt_module_text` accepts a line range and a character cap, and returns the whole module's
-  `sourceHash` for writes.
-- `edt_tool_help` lists the active tools or returns one tool's compact signature.
-- BSL, query and platform documentation searches accept `pattern` and `maxResults` as well
-  as `query` and `limit`. Related tools accept compatible names for object and check selectors.
-- The form check can use Apache and Playwright to run a form in a browser with `EDT_BRIDGE_PII` enabled. It saves the masked screenshot in the run
-  and in Allure, and returns it as an MCP image. The browser can open an EPF, ERF, or a
-  stored document or catalog item by navigation link.
+- `test-form` and `edt_test_form` run named scenarios in one client session. The form
+  reopens for each scenario. JUnit and Allure report each scenario and show a separate
+  session failure if the client cannot finish the run.
+  ([#101](https://github.com/keyfire/edt-bridge/pull/101))
+- `edt_modify_dcs` supports `setQuery`, `replaceFragment`, `setField` and `removeField`.
+  Pass the `sourceHash` from `edt_read_dcs` to save a targeted change.
+  ([#101](https://github.com/keyfire/edt-bridge/pull/101))
+- `edt_search_queries` with `kind=dcsText` searches entire data composition schemas.
+  Each match includes the template, line number and nearby text.
+  ([#101](https://github.com/keyfire/edt-bridge/pull/101))
+- `edt_module_text` reads a line range with a character limit. It returns the full
+  saved module's `sourceHash` for a subsequent write.
+  ([#101](https://github.com/keyfire/edt-bridge/pull/101))
+- `edt_tool_help` lists active tools or returns a compact signature for one tool.
+  ([#101](https://github.com/keyfire/edt-bridge/pull/101))
+- BSL, query and platform documentation searches accept both `pattern`/`maxResults`
+  and `query`/`limit`. Related tools accept aliases for object and check selectors.
+  ([#101](https://github.com/keyfire/edt-bridge/pull/101))
+- Form tests can use Apache and Playwright to capture masked screenshots when
+  `EDT_BRIDGE_PII` is enabled. The web client opens EPF and ERF files or stored forms
+  by navigation link. Allure attaches the screenshot, and MCP returns it as an image.
+  ([#101](https://github.com/keyfire/edt-bridge/pull/101))
+- The form testing guide explains how to open and close a new test infobase before
+  the first run and measure client startup with `timings`.
+  ([#101](https://github.com/keyfire/edt-bridge/pull/101))
 
 ### Fixed
 
-- `assert_table_size` takes a form table, as `read_table` and `assert_table` do: it compares the
-  rows and the visible columns. A table that `read_table` found used to fail the size check with
-  `scenario_error`.
-- A button caption that matches several buttons lists them in `matchedButtons` with name and title,
-  in a button check (`ambiguous_button`) and in a scenario, so the next run presses one by
-  `button_name`. A caption that matches none lists the buttons of the form in `observedButtons`, and
-  a field name that matches several fields lists them in `matchedFields`.
-- `edt_test_form` checks the steps before it copies the infobase and starts the client, so a
-  refused step costs no run.
-- `edt_replace_dcs` and `edt_modify_dcs` check a schema before they write it. A text EDT cannot
-  read is refused with the line and column where its reader stops: EDT used to keep the previous
-  schema with its problems and build that one, while the write answered `valid: true`. `problems`
-  names a data set without a data source and a settings variant without structure, which used to
-  show only when the report ran. After the write, `revalidated` says whether EDT has taken the
-  schema and checked it.
-- `edt_project_errors` no longer stays incomplete over a marker that EDT keeps after a data
-  composition schema has lost the problem, as it does with the join check of a query: such a
-  marker is reported as `leftover`. A stale marker on a schema names `edt_replace_dcs` and
-  `edt_modify_dcs` instead of a full clean.
-- `edt_form_structure` returns the caption of a form command in `title` and its tooltip in
-  `toolTip`. The tooltip used to stand in `title`, so a title written by `edt_modify_form_command`
-  read back unchanged.
-- With `EDT_BRIDGE_TOOLSET` set, a description, a hint or a refusal of the bridge that names a tool
-  outside the active sets marks it at its first mention: `(outside the active tool set 'report':
-  a call of it is refused)`. A model no longer calls a tool a hint named only to be refused, as it
-  did with `edt_extension_properties` after `edt_build_extension` and `edt_clean_project` after
-  `edt_project_errors`. The registration warning of `edt_build_extension` says where safe mode is
-  cleared: where the extension is registered in the infobase.
+- `assert_table_size` checks form tables, including row and visible column counts.
+  ([#101](https://github.com/keyfire/edt-bridge/pull/101))
+- A form test lists candidate buttons or fields on missing or ambiguous matches.
+  `edt_test_form` rejects invalid steps before it copies the infobase or starts the client.
+  ([#101](https://github.com/keyfire/edt-bridge/pull/101))
+- `edt_replace_dcs` and `edt_modify_dcs` reject schemas the EDT reader cannot load.
+  The result reports semantic problems separately. After a write, `revalidated`
+  indicates whether EDT checked the new schema.
+  ([#101](https://github.com/keyfire/edt-bridge/pull/101))
+- `edt_project_errors` marks validation markers left behind after a schema fix as
+  `leftover`. For stale markers it suggests a targeted edit to the schema.
+  ([#101](https://github.com/keyfire/edt-bridge/pull/101))
+- `edt_form_structure` returns a form command's caption in `title` and its tooltip in
+  `toolTip`.
+  ([#101](https://github.com/keyfire/edt-bridge/pull/101))
+- With `EDT_BRIDGE_TOOLSET` set, descriptions and validation hints identify tools
+  outside the active sets, including when the wrapper connects to a running EDT.
+  The annotation leaves module text and schemas intact.
+  ([#101](https://github.com/keyfire/edt-bridge/pull/101))
 
 ### Changed
 
-- `edt_test_form` answers with what the caller judges by: the verdict, the assertions, the reads,
-  the messages, the window over the form and the logged errors. The stages, the client
-  environment, the platform logs and the echo of the scenario come with `details=true` or when the
-  run did not reach a verdict; a passed two-step scenario answers in about 300 characters instead
-  of 4,500. `test-form` and its `result.json` keep the whole report.
-- `edt_dump_external_object` leaves out what EDT's own dumper said when the on-disk build
-  succeeded, about 1,400 characters a call; a failed build keeps it in `nativeError`.
+- `edt_test_form` returns a compact verdict by default. Set `details=true` for the full
+  diagnostic report after a completed check. The CLI and `result.json` keep the full report.
+  ([#101](https://github.com/keyfire/edt-bridge/pull/101))
+- `edt_dump_external_object` omits the EDT dumper output after a successful on-disk build.
+  A failed build still includes it in `nativeError`.
+  ([#101](https://github.com/keyfire/edt-bridge/pull/101))
 
 ## 2026-11-16 – 0.48.0, 0.48.1
 
