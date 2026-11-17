@@ -34,6 +34,8 @@ to the code and the reasoning behind it.
   schema of the configuration one call at a time.
 - `edt_module_text` accepts a line range and a character cap, and returns the whole module's
   `sourceHash` for writes.
+- BSL, query and platform documentation searches accept `pattern` and `maxResults` as well
+  as `query` and `limit`. Related tools accept compatible names for object and check selectors.
 
 ### Fixed
 

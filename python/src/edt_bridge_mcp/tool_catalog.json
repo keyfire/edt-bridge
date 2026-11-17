@@ -32,8 +32,15 @@
             "description": "Snapshot id returned by baseline=save; required for baseline=compare."
           },
           "severity": {
-            "type": "string",
-            "description": "Keep these severities: ERROR, WARNING or INFO, one or several separated by commas (\"ERROR,WARNING\"), case-insensitive. A generated-code check wants both: EDT reports a call to a method nobody declares as a WARNING, so ERROR alone reads clean over broken code. Optional - omit for every severity."
+            "type": [
+              "string",
+              "array"
+            ],
+            "description": "Keep these severities: ERROR, WARNING or INFO, one or several separated by commas (\"ERROR,WARNING\"), case-insensitive. A generated-code check wants both: EDT reports a call to a method nobody declares as a WARNING, so ERROR alone reads clean over broken code. Optional - omit for every severity.",
+            "items": {
+              "type": "string",
+              "description": "Severity name"
+            }
           },
           "countOnly": {
             "type": "boolean",
@@ -58,6 +65,28 @@
           "async": {
             "type": "boolean",
             "description": "true = run the call as a background job: the answer is a jobId at once, and edt_job_status gives the state and, at the end, the same result the call returns without it. Use it when the call may outlast the time your client waits for a tool; edt_cancel_job stops the job. A call refused at once or a dry-run plan still answers directly."
+          },
+          "severities": {
+            "type": [
+              "string",
+              "array"
+            ],
+            "description": "Alias for severity. Pass only one name.",
+            "items": {
+              "type": "string",
+              "description": "Severity name"
+            }
+          },
+          "levels": {
+            "type": [
+              "string",
+              "array"
+            ],
+            "description": "Alias for severity. Pass only one name.",
+            "items": {
+              "type": "string",
+              "description": "Severity name"
+            }
           }
         },
         "required": []
@@ -276,6 +305,14 @@
           "maxChars": {
             "type": "integer",
             "description": "Maximum source text length, in UTF-16 code units. Default and maximum: 200000."
+          },
+          "moduleFqn": {
+            "type": "string",
+            "description": "Alias for fqn. Pass only one name."
+          },
+          "objectFqn": {
+            "type": "string",
+            "description": "Alias for fqn. Pass only one name."
           }
         },
         "required": [
@@ -515,6 +552,10 @@
           "method": {
             "type": "string",
             "description": "validate only the query literals inside this procedure/function"
+          },
+          "query": {
+            "type": "string",
+            "description": "Alias for queryText. Pass only one name."
           }
         },
         "required": [
@@ -657,11 +698,30 @@
           "apply": {
             "type": "boolean",
             "description": "false (default): audit or preview without allocating IDs. true: repair selected duplicate occurrences and request Form.form export; requires a configured token."
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Alias for formFqn. Pass only one name."
           }
         },
         "required": [
-          "projectName",
-          "formFqn"
+          "projectName"
+        ],
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "required": [
+                  "formFqn"
+                ]
+              },
+              {
+                "required": [
+                  "fqn"
+                ]
+              }
+            ]
+          }
         ]
       },
       "toolsets": [
@@ -731,11 +791,30 @@
           "item": {
             "type": "string",
             "description": "Form item name, when fqn is a form. Omitted on a form lists its item names."
+          },
+          "formFqn": {
+            "type": "string",
+            "description": "Alias for fqn. Pass only one name."
           }
         },
         "required": [
-          "projectName",
-          "fqn"
+          "projectName"
+        ],
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "required": [
+                  "fqn"
+                ]
+              },
+              {
+                "required": [
+                  "formFqn"
+                ]
+              }
+            ]
+          }
         ]
       },
       "toolsets": [
@@ -1196,7 +1275,7 @@
           },
           "fqn": {
             "type": "string",
-            "description": "The old name of formFqn. Still accepted, so calls written before the form tools agreed on one name keep working; write formFqn in new ones."
+            "description": "Alias for formFqn. Pass only one name."
           },
           "limit": {
             "type": "integer",
@@ -1208,8 +1287,23 @@
           }
         },
         "required": [
-          "projectName",
-          "formFqn"
+          "projectName"
+        ],
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "required": [
+                  "formFqn"
+                ]
+              },
+              {
+                "required": [
+                  "fqn"
+                ]
+              }
+            ]
+          }
         ]
       },
       "toolsets": [
@@ -1235,7 +1329,7 @@
           },
           "fqn": {
             "type": "string",
-            "description": "The old name of formFqn. Still accepted, so calls written before the form tools agreed on one name keep working; write formFqn in new ones."
+            "description": "Alias for formFqn. Pass only one name."
           },
           "variant": {
             "type": "string",
@@ -1271,8 +1365,23 @@
           }
         },
         "required": [
-          "projectName",
-          "formFqn"
+          "projectName"
+        ],
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "required": [
+                  "formFqn"
+                ]
+              },
+              {
+                "required": [
+                  "fqn"
+                ]
+              }
+            ]
+          }
         ]
       },
       "toolsets": [
@@ -1563,6 +1672,10 @@
           "limit": {
             "type": "integer",
             "description": "Cap on listed checks (default 50)."
+          },
+          "checkId": {
+            "type": "string",
+            "description": "Alias for check. Pass only one name."
           }
         },
         "required": []
@@ -1916,13 +2029,32 @@
           "apply": {
             "type": "boolean",
             "description": "false (default) = dry-run: validate (form resolves, name free, type parses) and return the plan, write nothing. true = add the attribute and serialize Form.form."
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Alias for formFqn. Pass only one name."
           }
         },
         "required": [
           "projectName",
-          "formFqn",
           "name",
           "type"
+        ],
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "required": [
+                  "formFqn"
+                ]
+              },
+              {
+                "required": [
+                  "fqn"
+                ]
+              }
+            ]
+          }
         ]
       },
       "toolsets": [
@@ -1968,12 +2100,31 @@
           "apply": {
             "type": "boolean",
             "description": "false (default) = dry-run: validate and return the plan, write nothing. true = apply the change and serialize Form.form."
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Alias for formFqn. Pass only one name."
           }
         },
         "required": [
           "projectName",
-          "formFqn",
           "name"
+        ],
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "required": [
+                  "formFqn"
+                ]
+              },
+              {
+                "required": [
+                  "fqn"
+                ]
+              }
+            ]
+          }
         ]
       },
       "toolsets": [
@@ -2011,12 +2162,31 @@
           "apply": {
             "type": "boolean",
             "description": "false (default) = dry-run: report the attribute and the items bound to it, remove nothing. true = remove it (force must also be true)."
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Alias for formFqn. Pass only one name."
           }
         },
         "required": [
           "projectName",
-          "formFqn",
           "name"
+        ],
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "required": [
+                  "formFqn"
+                ]
+              },
+              {
+                "required": [
+                  "fqn"
+                ]
+              }
+            ]
+          }
         ]
       },
       "toolsets": [
@@ -2062,12 +2232,31 @@
           "apply": {
             "type": "boolean",
             "description": "false (default) = dry-run: validate and return the plan, write nothing. true = add the command and serialize Form.form."
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Alias for formFqn. Pass only one name."
           }
         },
         "required": [
           "projectName",
-          "formFqn",
           "name"
+        ],
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "required": [
+                  "formFqn"
+                ]
+              },
+              {
+                "required": [
+                  "fqn"
+                ]
+              }
+            ]
+          }
         ]
       },
       "toolsets": [
@@ -2109,12 +2298,31 @@
           "apply": {
             "type": "boolean",
             "description": "false (default) = dry-run: validate (form, item, event, and that the event is not handled already) and return the plan, write nothing. true = register the handler and serialize Form.form."
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Alias for formFqn. Pass only one name."
           }
         },
         "required": [
           "projectName",
-          "formFqn",
           "event"
+        ],
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "required": [
+                  "formFqn"
+                ]
+              },
+              {
+                "required": [
+                  "fqn"
+                ]
+              }
+            ]
+          }
         ]
       },
       "toolsets": [
@@ -2156,12 +2364,31 @@
           "apply": {
             "type": "boolean",
             "description": "false (default) = dry-run: validate and return the plan, write nothing. true = apply the change and serialize Form.form."
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Alias for formFqn. Pass only one name."
           }
         },
         "required": [
           "projectName",
-          "formFqn",
           "name"
+        ],
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "required": [
+                  "formFqn"
+                ]
+              },
+              {
+                "required": [
+                  "fqn"
+                ]
+              }
+            ]
+          }
         ]
       },
       "toolsets": [
@@ -2195,12 +2422,31 @@
           "apply": {
             "type": "boolean",
             "description": "false (default) = dry-run: report the command and the buttons using it, remove nothing. true = remove it (force must also be true)."
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Alias for formFqn. Pass only one name."
           }
         },
         "required": [
           "projectName",
-          "formFqn",
           "name"
+        ],
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "required": [
+                  "formFqn"
+                ]
+              },
+              {
+                "required": [
+                  "fqn"
+                ]
+              }
+            ]
+          }
         ]
       },
       "toolsets": [
@@ -2398,12 +2644,31 @@
           "apply": {
             "type": "boolean",
             "description": "false (default) = dry-run: validate (form resolves, parent exists, name free, data path and command resolve) and return the plan, add nothing. true = add the item and serialize Form.form."
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Alias for formFqn. Pass only one name."
           }
         },
         "required": [
           "projectName",
-          "formFqn",
           "kind"
+        ],
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "required": [
+                  "formFqn"
+                ]
+              },
+              {
+                "required": [
+                  "fqn"
+                ]
+              }
+            ]
+          }
         ]
       },
       "toolsets": [
@@ -2572,12 +2837,31 @@
           "apply": {
             "type": "boolean",
             "description": "false (default) = dry-run: validate and return the plan, write nothing. true = apply the change and serialize Form.form."
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Alias for formFqn. Pass only one name."
           }
         },
         "required": [
           "projectName",
-          "formFqn",
           "name"
+        ],
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "required": [
+                  "formFqn"
+                ]
+              },
+              {
+                "required": [
+                  "fqn"
+                ]
+              }
+            ]
+          }
         ]
       },
       "toolsets": [
@@ -2624,12 +2908,31 @@
           "apply": {
             "type": "boolean",
             "description": "false (default) validates and returns the destination without writing. true moves the existing item and serializes Form.form."
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Alias for formFqn. Pass only one name."
           }
         },
         "required": [
           "projectName",
-          "formFqn",
           "name"
+        ],
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "required": [
+                  "formFqn"
+                ]
+              },
+              {
+                "required": [
+                  "fqn"
+                ]
+              }
+            ]
+          }
         ]
       },
       "toolsets": [
@@ -2663,12 +2966,31 @@
           "apply": {
             "type": "boolean",
             "description": "false (default) = dry-run: report the item and what is nested inside it, remove nothing. true = remove it (force must also be true)."
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Alias for formFqn. Pass only one name."
           }
         },
         "required": [
           "projectName",
-          "formFqn",
           "name"
+        ],
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "required": [
+                  "formFqn"
+                ]
+              },
+              {
+                "required": [
+                  "fqn"
+                ]
+              }
+            ]
+          }
         ]
       },
       "toolsets": [
@@ -4190,10 +4512,32 @@
           "maxResults": {
             "type": "integer",
             "description": "Cap on hits returned (default 200). The result says whether it truncated."
+          },
+          "query": {
+            "type": "string",
+            "description": "Alias for pattern. Pass only one name."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Alias for maxResults. Pass only one name."
           }
         },
-        "required": [
-          "pattern"
+        "required": [],
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "required": [
+                  "pattern"
+                ]
+              },
+              {
+                "required": [
+                  "query"
+                ]
+              }
+            ]
+          }
         ]
       },
       "toolsets": [
@@ -4236,10 +4580,32 @@
           "maxResults": {
             "type": "integer",
             "description": "Maximum matching lines, default 200, at most 10000"
+          },
+          "query": {
+            "type": "string",
+            "description": "Alias for pattern. Pass only one name."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Alias for maxResults. Pass only one name."
           }
         },
-        "required": [
-          "pattern"
+        "required": [],
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "required": [
+                  "pattern"
+                ]
+              },
+              {
+                "required": [
+                  "query"
+                ]
+              }
+            ]
+          }
         ]
       },
       "toolsets": [

@@ -22,6 +22,8 @@ query text.
 | `edt_search_queries` | Searches the query fields of dynamic lists in `Form.form` and datasets in `Template.dcs`, by text or Unicode regular expression. Returns the path, form/attribute or template/dataset, query line and XML field line. `kind=dcsText` searches every line of the `Template.dcs` files instead, for a sample of a setting such as `QuickAccess`, `<format` or `ДФ=`, and returns the template, the line and `fragment`, the lines around it. Parse errors and truncation set `complete=false`. |
 | `edt_validate_query` | Checks a 1C query against the project's live metadata: syntax and semantics, so unknown tables and fields and type errors come back with positions. Takes the query text, or a module address (`modulePath`, optionally one `method`). Given a module, the bridge pulls the `\|`-framed query literals out of the live module itself and checks each one. The batch is followed as a whole too, which EDT does not do. A query that reads a temporary table no earlier query puts there (`ПОМЕСТИТЬ`), or one an earlier query has dropped, makes the text invalid. For a module literal that is an `INFO` note instead, because the table may come from a shared temporary table manager or from another literal. |
 
+The search tools use `pattern` and `maxResults`. They also accept `query` and `limit` as aliases. Pass one name per argument.
+
 Dynamic-list queries are first parsed with the EDT Ql language. A syntax error triggers a second
 parse with QlDcs, which supports data-composition extensions such as `{WHERE ...}` and
 `{LEFT JOIN ...}`. If parsing still fails, `queryFailures` reports the failure and

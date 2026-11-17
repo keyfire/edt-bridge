@@ -142,6 +142,7 @@ import io.github.keyfire.edtbridge.tools.DebugInspectTool;
 import io.github.keyfire.edtbridge.tools.DebugControlTool;
 import io.github.keyfire.edtbridge.tools.DebugEvaluateTool;
 import io.github.keyfire.edtbridge.tools.ToolHelpTool;
+import io.github.keyfire.edtbridge.tools.ToolArguments;
 import io.github.keyfire.edtbridge.tools.JobStatusTool;
 import io.github.keyfire.edtbridge.tools.CancelJobTool;
 import com.google.gson.Gson;
@@ -996,6 +997,7 @@ applyI18n();loadStatus();loadTools();
             JsonArray sets = new JsonArray();
             ToolSets.containing(tool.get("name").getAsString()).forEach(sets::add);
             tool.add("toolsets", sets);
+            ToolArguments.describe(tool);
         }
         JsonObject r = new JsonObject();
         r.add("tools", tools);
@@ -1116,6 +1118,14 @@ applyI18n();loadStatus();loadTools();
         JsonObject misnamed = unknownArgumentGate(name, args);
         if (misnamed != null) {
             return misnamed;
+        }
+        Set<String> declared = declaredArguments().get(name);
+        if (declared != null) {
+            try {
+                ToolArguments.normalize(name, args);
+            } catch (IllegalArgumentException invalid) {
+                return toolError(name + ": " + invalid.getMessage());
+            }
         }
         JsonObject outside = scopeGate(name, args);
         if (outside != null) {

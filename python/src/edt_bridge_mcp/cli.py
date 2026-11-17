@@ -252,6 +252,7 @@ def _call_plugin_tool(tool, args: argparse.Namespace, backend) -> int:
         print(misnamed, file=sys.stderr)
         return 2
     try:
+        arguments = tool.normalize_arguments(arguments)
         if plugins.wants_bridge(tool.handler):
             answer = tool.handler(arguments, bridge=backend.call_tool)
         else:

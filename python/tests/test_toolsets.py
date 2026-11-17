@@ -384,6 +384,25 @@ def test_a_plugin_naming_an_unknown_set_refuses_at_validation(declared, message)
 # -- edt_tool_help ------------------------------------------------------------
 
 
+def test_reference_plugin_tools_accept_compatible_argument_names(serve):
+    doc = plugins.Tool("edt_platform_doc_grep", "Find matching documentation lines.", lambda args: args,
+                       {"properties": {"pattern": {"type": "string"}, "limit": {"type": "integer"}},
+                        "required": ["pattern"]})
+    standard = plugins.Tool("edt_standards_page", "Read a standard.", lambda args: args,
+                            {"properties": {"standard": {"type": "integer"}}, "required": ["standard"]})
+    srv, sent = serve(None, [doc, standard])
+    answer = call(srv, sent, doc.name, {"query": "TestClient", "maxResults": 2})
+    assert json.loads(answer["content"][0]["text"]) == {"pattern": "TestClient", "limit": 2}
+    for alias in ("number", "id"):
+        sent.clear()
+        answer = call(srv, sent, standard.name, {alias: 456})
+        assert json.loads(answer["content"][0]["text"]) == {"standard": 456}
+    sent.clear()
+    answer = call(srv, sent, doc.name, {"pattern": "one", "query": "two"})
+    assert answer["isError"]
+    assert "pass only one" in answer["content"][0]["text"]
+
+
 def test_help_for_a_wrapper_tool_is_answered_without_a_bridge(serve, monkeypatch):
     srv, sent = serve(None)
     monkeypatch.setattr(srv.backend, "ensure", untouched)

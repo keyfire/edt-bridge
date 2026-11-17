@@ -1772,6 +1772,7 @@ class StdioServer:
             self._tool_error(req_id, misnamed)
             return
         try:
+            arguments = tool.normalize_arguments(arguments)
             if plugins.wants_bridge(tool.handler):
                 answer = tool.handler(arguments, bridge=self.backend.call_tool)
             else:

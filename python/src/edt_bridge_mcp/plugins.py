@@ -120,11 +120,46 @@ class Tool:
     source: str = ""  # the entry point the tool arrived through; filled by discovery
     toolsets: list[str] | tuple[str, ...] | None = None
 
+    def _aliases(self) -> dict[str, str]:
+        candidates = {
+            "edt_platform_doc_grep": {"query": "pattern", "maxResults": "limit"},
+            "edt_standards_page": {"number": "standard", "id": "standard"},
+        }.get(self.name, {})
+        props = self.input_schema.get("properties", {})
+        return {new: old for new, old in candidates.items() if old in props and new not in props}
+
+    def normalize_arguments(self, arguments: dict) -> dict:
+        normalized = dict(arguments)
+        for alias, param in self._aliases().items():
+            if alias in normalized:
+                if param in normalized:
+                    raise ValueError(f"pass only one of '{param}' and '{alias}'")
+                normalized[param] = normalized.pop(alias)
+        return normalized
+
     def descriptor(self) -> dict:
         """The MCP tool descriptor, shaped like the wrapper's own LOCAL_TOOLS."""
         schema = dict(self.input_schema) if self.input_schema else {}
         schema.setdefault("type", "object")
         schema.setdefault("properties", {})
+        aliases = self._aliases()
+        if aliases:
+            props = schema["properties"] = dict(schema["properties"])
+            required = list(schema.get("required", ()))
+            groups = list(schema.get("allOf", ()))
+            for param in dict.fromkeys(aliases.values()):
+                names = [alias for alias, original in aliases.items() if param == original]
+                for name in names:
+                    props[name] = {**props[param], "description": f"Alias for {param}. Pass only one name."}
+                if param in required:
+                    required.remove(param)
+                    groups.append({"anyOf": [{"required": [name]} for name in [param, *names]]})
+            if "maxResults" in aliases:
+                props["maxResults"] = props["limit"]
+                props["limit"] = {**props["limit"], "description": "Alias for maxResults. Pass only one name."}
+            schema["required"] = required
+            if groups:
+                schema["allOf"] = groups
         out = {"name": self.name, "description": self.description, "inputSchema": schema}
         if self.description_ru:
             out["descriptionRu"] = self.description_ru
