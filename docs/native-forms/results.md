@@ -137,6 +137,9 @@ takes about ten. When `ibcmd` cannot read the file, the designer reads it as bef
 
 ## Reports for CI
 
+When a shared session fails and no named scenario contains that failure, JUnit and Allure
+record it under `scenario session`. Scenarios that did not run remain skipped.
+
 Next to `result.json` the command writes `junit.xml`, a JUnit XML report that GitLab shows in a
 merge request (`artifacts:reports:junit`), and `allure-results/`, the results Allure builds its
 report from. Each phase is a test: `steps` and `reopen` of a scenario, every named scenario under its

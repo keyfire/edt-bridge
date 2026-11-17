@@ -3,6 +3,8 @@ import json
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+import pytest
+
 from edt_bridge_mcp import native_form, native_reports, native_unit
 
 from test_form_timings import _manager_setup  # noqa: F401  (the same fake setup the timings use)
@@ -187,18 +189,20 @@ def test_characters_xml_does_not_allow_are_dropped(tmp_path):
     assert error.get("message") == "setup_failed; Ошибка платформы"
 
 
-def test_named_scenarios_give_one_test_each(tmp_path):
+@pytest.mark.parametrize("first_name", ["Empty period", "setup"])
+def test_named_scenarios_give_one_test_each(tmp_path, first_name):
     """EDT-TEST-20: the scenarios of one session are reported as tests of their own, in their order."""
-    scenario = {"version": 1, "scenarios": [{"name": "Empty period", "steps": [{"action": "read_form"}]},
+    scenario = {"version": 1, "scenarios": [{"name": first_name, "steps": [{"action": "assert_field"}]},
                                             {"name": "Two companies", "steps": [{"action": "assert_field"}]},
                                             {"name": "Last", "steps": [{"action": "read_form"}]}]}
-    results = [{"name": "Empty period", "ok": True, "status": "scenario_completed", "assertions": []},
+    results = [{"name": first_name, "ok": True, "status": "scenario_completed",
+                "assertions": [{"step": 1, "action": "assert_field", "expected": "Empty", "actual": "Empty", "ok": True}]},
                {"name": "Two companies", "ok": False, "status": "assertion_failed",
                 "assertions": [{"step": 1, "action": "assert_field", "expected": "Two", "actual": "One", "ok": False}]},
                {"name": "Last", "ok": False, "status": "not_run", "error": "The run ended before this scenario."}]
     timing = {"name": "scenarios", "seconds": 20.0, "clientStart": 9.0, "managerStartup": 5.0, "screenshot": 0.2,
               "driver": {"connect": 0.1, "formLookup": 0.4,
-                         "steps": [{"scenario": 1, "step": 1, "action": "read_form", "seconds": 1.5},
+                         "steps": [{"scenario": 1, "step": 1, "action": "assert_field", "seconds": 1.5},
                                    {"scenario": 2, "step": 1, "action": "assert_field", "seconds": 0.5}],
                          "reopens": [{"scenario": 2, "seconds": 2.0}], "total": 4.5}}
     report = {"ok": False, "status": "assertion_failed", "form": "ExternalReport.Sales.Form", "erf": "Sales.erf",
@@ -211,11 +215,47 @@ def test_named_scenarios_give_one_test_each(tmp_path):
     junit = _junit(tmp_path)
     assert (junit.get("tests"), junit.get("failures"), junit.get("skipped")) == ("3", "1", "1")
     first, second, last = junit.find("testsuite").findall("testcase")
-    assert [case.get("name") for case in (first, second, last)] == ["Empty period", "Two companies", "Last"]
+    assert [case.get("name") for case in (first, second, last)] == [first_name, "Two companies", "Last"]
     assert second.find("failure").get("type") == "assertion_failed"
     assert last.find("skipped").get("message") == "The run ended before this scenario."
     allure = _allure(tmp_path)
     assert [step["name"] for step in allure[0]["steps"]] == [
-        "setup", "client start", "test manager start", "connect", "form lookup", "step 1: read_form"]
+        "setup", "client start", "test manager start", "connect", "form lookup", "step 1: assert_field"]
+    assert allure[0]["steps"][-1]["parameters"] == [{"name": "expected", "value": '"Empty"'},
+                                                    {"name": "actual", "value": '"Empty"'}]
     assert [step["name"] for step in allure[1]["steps"]] == ["reopen the form", "step 1: assert_field"]
-    assert float(second.get("time")) == 2.5
+    assert [float(case.get("time")) for case in (first, second)] == [16.1, 2.5]
+
+
+@pytest.mark.parametrize(("status", "error", "statuses", "outcome"), [
+    ("setup_failed", "Could not create the manager infobase.", None, "broken"),
+    ("form_not_found", "The launcher form did not open.", ("not_run", "not_run"), "failed"),
+    ("timeout", "The native form check reached its time limit.", ("scenario_completed", "not_run"), "broken"),
+], ids=["setup", "launch", "between-scenarios"])
+def test_shared_failure_is_reported_when_no_named_scenario_records_it(tmp_path, status, error, statuses, outcome):
+    names = ("Empty period", "Two companies")
+    scenario = {"version": 1, "scenarios": [{"name": name, "steps": [{"action": "read_form"}]} for name in names]}
+    report = {"ok": False, "status": status, "error": error, "scenario": scenario}
+    if statuses is not None:
+        report["phase"] = "scenarios"
+        report["scenarios"] = [
+            {"name": name, "status": current, "ok": current == "scenario_completed"}
+            for name, current in zip(names, statuses)
+        ]
+
+    native_reports.write_form_reports(report, tmp_path)
+
+    junit = _junit(tmp_path)
+    assert junit.get("tests") == "3"
+    issue_tag = "error" if outcome == "broken" else "failure"
+    issue = junit.find(f"testsuite/testcase/{issue_tag}")
+    assert issue.get("type") == status and error in issue.get("message")
+    cases = {case.get("name"): case for case in junit.findall("testsuite/testcase")}
+    assert cases[names[1]].find("skipped") is not None
+    assert (cases[names[0]].find("skipped") is None) == (status == "timeout")
+
+    results = {result["name"]: result for result in _allure(tmp_path)}
+    assert results[names[0]]["status"] == ("passed" if status == "timeout" else "skipped")
+    assert results[names[1]]["status"] == "skipped"
+    session = next(result for name, result in results.items() if name not in names)
+    assert session["status"] == outcome and error in session["statusDetails"]["message"]

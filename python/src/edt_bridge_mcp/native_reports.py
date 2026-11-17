@@ -84,7 +84,7 @@ def _scenario_timing(phase_timing, number, first):
 
 
 def _cases(report):
-    """(name, outcome, phase entry of the report, its timings) of each test."""
+    """(name, outcome, phase entry, timings) of each test. The setup-only case has no phase timings."""
     timings = _dict(report.get("timings"))
     phase_timings = {item.get("name"): item for item in timings.get("phases") or [] if isinstance(item, dict)}
     scenario = report.get("scenario")
@@ -98,11 +98,24 @@ def _cases(report):
             result = results.get(name, {"status": "not_run"})
             outcome = "skipped" if result.get("status") == "not_run" else _outcome(result)
             timing = _scenario_timing(phase_timing, number, number == 1) if outcome != "skipped" else {}
-            if number == len(scenario["scenarios"]) and isinstance(phase_timing.get("screenshot"), (int, float)):
-                timing["screenshot"] = phase_timing["screenshot"]
-            if report.get("screenshot") and number == len(scenario["scenarios"]):
-                result = dict(result, screenshot=report["screenshot"])
             cases.append((name, outcome, result, timing))
+        if report.get("ok") is False and all(case[1] in ("passed", "skipped") for case in cases):
+            # Keep the shared failure visible even when no individual scenario failed.
+            name = "scenario session"
+            names = {case[0] for case in cases}
+            while name in names:
+                name += " (shared)"
+            if any(case[1] == "passed" for case in cases):
+                cases.append((name, _outcome(report), report, {}))
+            else:
+                cases.insert(0, (name, _outcome(report), report, phase_timing))
+        elif cases:
+            name, outcome, result, timing = cases[-1]
+            if isinstance(phase_timing.get("screenshot"), (int, float)):
+                timing["screenshot"] = phase_timing["screenshot"]
+            if report.get("screenshot"):
+                result = dict(result, screenshot=report["screenshot"])
+            cases[-1] = (name, outcome, result, timing)
         return cases
     if isinstance(scenario, dict):
         phases = {item.get("name"): item for item in report.get("phases") or [] if isinstance(item, dict)}
@@ -117,7 +130,7 @@ def _cases(report):
     elif report.get("phase") == "legacy":
         return [(f"click {report.get('button')}", _outcome(report), report, _dict(phase_timings.get("legacy")))]
     # The check stopped before a phase: its setup is the one result there is.
-    return [("setup", "passed" if report.get("ok") else "broken", report, {})]
+    return [("setup", "passed" if report.get("ok") else "broken", report, None)]
 
 
 def _phase_steps(phase, timing, outcome):
@@ -202,14 +215,14 @@ def write_form_reports(report, output, *, finished=None):
     counts = {"failed": 0, "broken": 0, "skipped": 0}
     moment = started
     for index, (name, outcome, phase, timing) in enumerate(cases):
-        if name == "setup":
+        if timing is None:
             steps, seconds = [], total
         else:
             steps, seconds = _phase_steps(phase, timing, outcome), float(timing.get("seconds") or 0.0)
         if index == 0 and setup:
             # The first test carries the setup the whole check paid for.
             steps = [("setup", sum(item[1] for item in setup), "passed", [], setup), *steps]
-            if name != "setup":
+            if timing is not None:
                 seconds += steps[0][1]
         counts[outcome] = counts.get(outcome, 0) + 1
         details = _details(phase, steps)
