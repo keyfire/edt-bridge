@@ -921,8 +921,8 @@
     },
     {
       "name": "edt_modify_dcs",
-      "description": "WRITE: add fields to a data set and parameters to an existing DATA_COMPOSITION_SCHEMA template without sending the whole schema XML. The additions are inserted into the saved designer XML, the rest of the file keeps its bytes, and the dry-run shows the changed region. EDT validation does not check the schema XML: build the report or data processor with edt_dump_external_object to check the result. Dry-run by default.",
-      "descriptionRu": "ЗАПИСЬ: добавить поля набора данных и параметры в существующий макет DATA_COMPOSITION_SCHEMA, не передавая XML схемы целиком. Добавления вставляются в сохраненный XML конфигуратора, остальная часть файла не меняется, предпросмотр показывает измененный участок. Проверка EDT не сверяет XML схемы с форматом платформы: результат проверяет сборка отчета или обработки (edt_dump_external_object). По умолчанию предпросмотр.",
+      "description": "WRITE: change a part of an existing DATA_COMPOSITION_SCHEMA template without sending the whole schema XML: add a field to a data set or a parameter, set the query of a data set, replace an exact fragment, set the title or the format of a field, remove a field. The changes are made in the saved designer XML, the rest of the file keeps its bytes, and the answer names the changed lines and resultHash, not the schema text. Apply directly with expectedHash = sourceHash of edt_read_dcs, no dry-run needed. EDT validation does not check the schema XML: build the report or data processor with edt_dump_external_object to check the result. Dry-run by default.",
+      "descriptionRu": "ЗАПИСЬ: изменить часть существующего макета DATA_COMPOSITION_SCHEMA, не передавая XML схемы целиком: добавить поле набора данных или параметр, задать запрос набора, заменить точный фрагмент, задать заголовок или формат поля, удалить поле. Изменения вносятся в сохраненный XML конфигуратора, остальная часть файла не меняется, ответ называет измененные строки и resultHash без текста схемы. Запись сразу: expectedHash = sourceHash из edt_read_dcs, предпросмотр не обязателен. Проверка EDT не сверяет XML схемы с форматом платформы: результат проверяет сборка отчета или обработки (edt_dump_external_object). По умолчанию предпросмотр.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -936,16 +936,20 @@
           },
           "edits": {
             "type": "array",
-            "description": "Additions, applied in order. addField: dataSet, dataPath, optional field (defaults to dataPath) and titleRu - adds a field to a data set. addParameter: name, optional titleRu and type - String(N), Number(D,F), Date, DateTime, Boolean or StandardPeriod (Russian names accepted; default String). A duplicate field or parameter is refused.",
+            "description": "Changes, applied in order. addField: dataSet, dataPath, optional field (defaults to dataPath) and titleRu - adds a field to a data set. addParameter: name, optional titleRu and type - String(N), Number(D,F), Date, DateTime, Boolean or StandardPeriod (Russian names accepted; default String). setQuery: dataSet, query - the whole new query text of a query data set. replaceFragment: fragment, replacement - an exact piece of the schema text, as edt_read_dcs returns it, replaced; refused when it matches no place or several. setField: dataSet, dataPath, titleRu and/or format (a format string such as ЧДЦ=2 or ДФ=dd.MM.yyyy) - sets the title or the format of a field. removeField: dataSet, dataPath. A duplicate field or parameter is refused.",
             "items": {
               "type": "object",
               "properties": {
                 "action": {
                   "type": "string",
-                  "description": "addField or addParameter",
+                  "description": "addField, addParameter, setQuery, replaceFragment, setField, removeField",
                   "enum": [
                     "addField",
-                    "addParameter"
+                    "addParameter",
+                    "setQuery",
+                    "replaceFragment",
+                    "setField",
+                    "removeField"
                   ]
                 },
                 "dataSet": {
@@ -971,6 +975,22 @@
                 "type": {
                   "type": "string",
                   "description": "type"
+                },
+                "query": {
+                  "type": "string",
+                  "description": "query"
+                },
+                "fragment": {
+                  "type": "string",
+                  "description": "fragment"
+                },
+                "replacement": {
+                  "type": "string",
+                  "description": "replacement"
+                },
+                "format": {
+                  "type": "string",
+                  "description": "format"
                 }
               },
               "required": [
@@ -980,11 +1000,11 @@
           },
           "expectedHash": {
             "type": "string",
-            "description": "sourceHash from the dry-run. Required for apply."
+            "description": "sourceHash of edt_read_dcs or of the dry-run: the schema the changes are made to. Required for apply."
           },
           "apply": {
             "type": "boolean",
-            "description": "false (default): return the plan, the added lines and sourceHash without writing. true: write; requires expectedHash and a configured token."
+            "description": "false (default): return the plan, the changed lines and sourceHash without writing. true: write; requires expectedHash and a configured token."
           }
         },
         "required": [

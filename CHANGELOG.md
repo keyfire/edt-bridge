@@ -23,6 +23,11 @@ to the code and the reasoning behind it.
   processor behind it. The answer carries the result of each scenario and a `summary`, and a
   scenario that fails does not stop the next one. The scenarios of one run share one copy of the
   infobase. The CI reports have one test per scenario.
+- `edt_modify_dcs` changes more than additions: `setQuery` sets the query of a data set,
+  `replaceFragment` replaces an exact piece of the schema text and is refused when it matches no
+  place or several, `setField` sets the title or the format of a field, and `removeField` removes
+  a field. A change of a query or a condition no longer sends the whole schema. Apply takes the
+  `sourceHash` of `edt_read_dcs`, without a dry-run.
 
 ## 2026-11-16 – 0.48.0, 0.48.1
 
