@@ -35,6 +35,7 @@ import java.util.regex.Pattern;
 
 import io.github.keyfire.edtbridge.core.ModuleFragment;
 import io.github.keyfire.edtbridge.core.ExactTextReplacement;
+import io.github.keyfire.edtbridge.core.SourceLines;
 import io.github.keyfire.edtbridge.core.ModuleOwnerFiles;
 import io.github.keyfire.edtbridge.core.MetadataPaths;
 import io.github.keyfire.edtbridge.core.BslPlacement;
@@ -416,12 +417,14 @@ public final class BslGateway {
         public List<String> availableModules = new ArrayList<>(); // when ambiguous: candidate .bsl in the folder
         public List<BslMethod> methods = new ArrayList<>();
         public String text;                       // whole module, or one method's text when 'method' is given
+        public String sourceHash;
+        public int totalLines;
         public boolean textTruncated;
         public boolean includeMethods = true;     // echo: false = the procedure/function catalogue was skipped
         public String message;
     }
 
-    private static final int MODULE_TEXT_CAP = 200_000;
+    public static final int MODULE_TEXT_CAP = 200_000;
 
     /**
      * BSL source of a module/method from the live workspace. Resolve the module either by
@@ -433,6 +436,12 @@ public final class BslGateway {
      */
     public ModuleTextResult moduleText(String projectName, String fqn, String moduleType,
             String method, String modulePath, boolean includeMethods) {
+        return moduleText(projectName, fqn, moduleType, method, modulePath, includeMethods,
+                1, Integer.MAX_VALUE, MODULE_TEXT_CAP);
+    }
+
+    public ModuleTextResult moduleText(String projectName, String fqn, String moduleType,
+            String method, String modulePath, boolean includeMethods, int startLine, int endLine, int maxChars) {
         ModuleTextResult r = new ModuleTextResult();
         r.fqn = fqn;
         r.includeMethods = includeMethods;
@@ -456,11 +465,23 @@ public final class BslGateway {
         r.modulePath = relPath;
         try {
             String fullText = readText(file);
+            r.sourceHash = ExactTextReplacement.hash(fullText);
+            var source = SourceLines.read(fullText, startLine, endLine, maxChars);
+            r.totalLines = source.totalLines();
+            r.found = true;
+            if (method == null) {
+                r.text = source.text();
+                r.textTruncated = source.truncated();
+                if (!includeMethods) {
+                    return r;
+                }
+            }
             BslContext ctx = loadBsl(projectName, relPath, -1, -1, 0);
             if (ctx.error != null || ctx.resource == null) {
                 // Still return the raw text even if parsing failed.
                 r.found = true;
-                r.text = cap(fullText, r);
+                r.text = source.text();
+                r.textTruncated = source.truncated();
                 r.message = "parsed methods unavailable (" + ctx.error + "); returning raw text";
                 return r;
             }
@@ -505,9 +526,10 @@ public final class BslGateway {
                     return r;
                 }
                 ICompositeNode node = NodeModelUtils.getNode(methodEObj);
-                r.text = cap(node != null ? node.getText().strip() : fullText, r);
-            } else {
-                r.text = cap(fullText, r);
+                var methodSource = SourceLines.read(node != null ? node.getText().strip() : fullText,
+                        1, Integer.MAX_VALUE, maxChars);
+                r.text = methodSource.text();
+                r.textTruncated = methodSource.truncated();
             }
         } catch (Exception ex) {
             r.message = "module text failed: " + ex.getClass().getSimpleName()
@@ -528,17 +550,6 @@ public final class BslGateway {
         }
         return similar.isEmpty() ? "; the module has " + names.size() + " methods, pass includeMethods=true for the list"
                 : "; similar names: " + String.join(", ", similar);
-    }
-
-    private String cap(String s, ModuleTextResult r) {
-        if (s == null) {
-            return null;
-        }
-        if (s.length() > MODULE_TEXT_CAP) {
-            r.textTruncated = true;
-            return s.substring(0, MODULE_TEXT_CAP);
-        }
-        return s;
     }
 
     public static final class AddMethodResult {
@@ -807,7 +818,7 @@ public final class BslGateway {
             String fullText = readText(file);
             r.sourceHash = ExactTextReplacement.hash(fullText);
             if (expectedHash != null && !expectedHash.isBlank() && !r.sourceHash.equalsIgnoreCase(expectedHash)) {
-                r.message = "refused: the module changed since the dry-run (source hash mismatch); repeat the dry-run";
+                r.message = "refused: source hash mismatch. Read the module or repeat the dry-run";
                 return r;
             }
             BslContext before = parse.apply(fullText);
@@ -854,7 +865,7 @@ public final class BslGateway {
                 return r;
             }
             if (expectedHash == null || expectedHash.isBlank()) {
-                r.message = "apply requires expectedHash: the sourceHash of a dry-run";
+                r.message = "apply requires expectedHash: sourceHash from edt_module_text or a dry-run";
                 return r;
             }
             file.setContents(new ByteArrayInputStream(edit.result().getBytes(StandardCharsets.UTF_8)),

@@ -53,4 +53,16 @@ class ModuleTextToolTest {
         assertTrue(includeMethods.contains("false when method is given"), includeMethods);
         assertTrue(descriptor.get("description").getAsString().contains("methodsIncluded: false"));
     }
+
+    @Test
+    void rangeAndLimitAreAdvertisedAndRangeOmitsTheCatalogue() {
+        var properties = new ModuleTextTool().descriptor().getAsJsonObject("inputSchema")
+                .getAsJsonObject("properties");
+        assertTrue(properties.has("startLine"));
+        assertTrue(properties.has("endLine"));
+        assertTrue(properties.has("maxChars"));
+        var range = new JsonObject();
+        range.addProperty("endLine", 12);
+        assertFalse(ModuleTextTool.includeMethods(range, null));
+    }
 }

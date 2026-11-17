@@ -44,6 +44,8 @@ import com._1c.g5.v8.dt.core.operations.ProjectPipelineJob;
 import com._1c.g5.v8.dt.core.operations.model.IEditingContext;
 import com._1c.g5.v8.dt.core.platform.IBmModelManager;
 import com._1c.g5.v8.dt.core.platform.IResourceLookup;
+import com._1c.g5.v8.dt.core.platform.IDerivedDataManagerProvider;
+import com._1c.g5.v8.derived.IDerivedDataManager;
 import com._1c.g5.v8.dt.htmldocument.model.HtmlDocument;
 import com._1c.g5.v8.dt.htmldocument.model.HtmlDocumentPage;
 import com._1c.g5.v8.dt.metadata.mdclass.BasicTemplate;
@@ -51,6 +53,7 @@ import com._1c.g5.v8.dt.metadata.mdclass.TemplateType;
 import com._1c.g5.v8.dt.ui.editor.IDtEditor;
 import com._1c.g5.v8.dt.ui.editor.IDtGranularEditorEmbeddedEditorPage;
 import com._1c.g5.wiring.ServiceAccess;
+import io.github.keyfire.edtbridge.core.DcsCheck;
 import io.github.keyfire.edtbridge.core.ExactTextReplacement;
 
 /** Resolve one existing HTML locale through EDT and replace only its exact UTF-8 source. */
@@ -135,6 +138,13 @@ public final class HtmlTemplateGateway {
         void write(Target target, byte[] bytes) throws Exception;
         /** Make a content file that is already on disk visible to the workspace; {@code file} may be null. */
         default void refresh(IFile file) throws Exception {}
+        /**
+         * Why EDT would not read this schema text into its model, with the place; null when it reads it. EDT
+         * keeps the previous schema of a file it cannot read, with the previous problems, and builds that one.
+         */
+        default DcsCheck.Problem unreadableSchema(Target target, String text) { return null; }
+        /** Wait until EDT has taken a written content file into its model and checked it; true when it has. */
+        default boolean awaitTaken(Target target, long timeoutMs) { return true; }
     }
 
     public static final class Result {
@@ -143,6 +153,10 @@ public final class HtmlTemplateGateway {
         public String hashPolicy = "sha256-utf8-exact";
         public String text, oldText, newText, sourceHash, resultHash, message;
         public List<String> availableLanguages = new ArrayList<>();
+        /** What a data composition schema gets wrong: errors the build or the run would meet, and warnings. */
+        public List<DcsCheck.Problem> problems;
+        /** After a schema write: whether EDT has taken the new schema and checked it within the wait. */
+        public Boolean revalidated;
     }
 
     private final Access access;
@@ -198,12 +212,34 @@ public final class HtmlTemplateGateway {
             result.oldText = plan.oldText(); result.newText = plan.newText();
             result.sourceHash = plan.sourceHash(); result.resultHash = plan.resultHash();
             result.unchanged = plan.unchanged(); result.valid = true;
+            String unreadable = null;
+            if (SCHEMA.equals(language)) {
+                // The schema is checked as the build and EDT will read it, before anything is written: a text EDT
+                // cannot read leaves the template on its previous schema, its previous problems and its previous
+                // build, and nothing says so until the report runs.
+                var inspection = DcsCheck.inspect(plan.newText());
+                result.problems = new ArrayList<>(inspection.problems());
+                DcsCheck.Problem blocking;
+                if (inspection.schemaXml()) {
+                    blocking = access.unreadableSchema(target, plan.newText());
+                    if (blocking != null) result.problems.add(0, blocking);
+                } else {
+                    blocking = result.problems.get(0);
+                }
+                result.valid = result.problems.stream().noneMatch(DcsCheck.Problem::error);
+                unreadable = blocking == null ? null : located(blocking);
+            }
             if (!apply || plan.unchanged()) {
                 result.ok = true;
                 result.applyPending = !apply && !plan.unchanged();
                 result.message = plan.unchanged() ? kind(language) + " source is unchanged; nothing written"
-                        : "dry-run: exact " + kind(language) + " replacement validated; apply requires expectedHash and force=true";
+                        : "dry-run: exact " + kind(language) + " replacement validated; apply requires expectedHash and force=true"
+                        + problemSummary(result.problems);
                 return result;
+            }
+            if (unreadable != null) {
+                throw new IllegalArgumentException("EDT would not read this schema and would keep the previous one: "
+                        + unreadable + "; nothing was written");
             }
             Exception[] callbackFailure = {null};
             access.exclusive(target, () -> {
@@ -232,8 +268,19 @@ public final class HtmlTemplateGateway {
                 throw new IllegalStateException("exclusive " + kind(language) + " replacement did not complete and verify");
             }
             result.ok = true;
+            if (SCHEMA.equals(language)) {
+                // EDT takes the file into its model and checks it again in the background: a report of problems
+                // asked for right after the write sees the new schema only once that is done.
+                result.revalidated = access.awaitTaken(target, SCHEMA_TAKE_WAIT_MS);
+                if (Boolean.TRUE.equals(result.revalidated)) {
+                    // A marker older than this write that the check just finished did not renew is a leftover.
+                    CheckedFiles.record(target.projectName(), target.path(), System.currentTimeMillis());
+                }
+            }
             result.message = SCHEMA.equals(language)
-                    ? "exact schema source replaced and reread; EDT reloads the schema from the file, template metadata was not written"
+                    ? "exact schema source replaced and reread; " + (Boolean.TRUE.equals(result.revalidated)
+                            ? "EDT has taken the new schema and checked it" : "EDT takes the new schema in the background")
+                            + ", template metadata was not written" + problemSummary(result.problems)
                     : SPREADSHEET.equals(language)
                     ? "exact spreadsheet source replaced and reread; EDT reloads the template from the file, template metadata was not written"
                     : "exact HTML locale source replaced and reread; other locales and metadata were not written";
@@ -245,6 +292,26 @@ public final class HtmlTemplateGateway {
                     : kind(language) + " template replacement refused or failed: ") + cause(exception);
         }
         return result;
+    }
+
+    /** How long a schema write waits for EDT to take the new file into its model and check it. */
+    static final long SCHEMA_TAKE_WAIT_MS = 30_000L;
+
+    static String located(DcsCheck.Problem problem) {
+        return problem.message() + (problem.line() > 0 ? " (line " + problem.line()
+                + (problem.column() > 0 ? ", column " + problem.column() : "") + ")" : "");
+    }
+
+    /** "; the schema has N error(s): ...", or "" when it has none and no warning. */
+    static String problemSummary(List<DcsCheck.Problem> problems) {
+        if (problems == null || problems.isEmpty()) return "";
+        List<String> errors = new ArrayList<>(), warnings = new ArrayList<>();
+        for (DcsCheck.Problem problem : problems) (problem.error() ? errors : warnings).add(located(problem));
+        StringBuilder sb = new StringBuilder();
+        if (!errors.isEmpty()) sb.append("; the schema has ").append(errors.size()).append(" error(s): ")
+                .append(String.join("; ", errors));
+        if (!warnings.isEmpty()) sb.append("; warning(s): ").append(String.join("; ", warnings));
+        return sb.toString();
     }
 
     /** The schema calls: the same exact read and replacement, addressed to the one schema file. */
@@ -292,9 +359,10 @@ public final class HtmlTemplateGateway {
             edit.ok = replaced.ok;
             edit.message = !replaced.ok ? replaced.message
                     : apply ? "schema written: " + String.join("; ", edit.plan)
-                            + ". EDT validation does not check the schema XML; build the report or data processor "
-                            + "(edt_dump_external_object) to check it"
-                    : "dry-run: " + String.join("; ", edit.plan) + "; apply with expectedHash=" + replaced.sourceHash;
+                            + (Boolean.TRUE.equals(replaced.revalidated) ? "; EDT has taken it and checked it" : "")
+                            + problemSummary(replaced.problems)
+                    : "dry-run: " + String.join("; ", edit.plan) + "; apply with expectedHash=" + replaced.sourceHash
+                            + problemSummary(replaced.problems);
         } catch (IllegalArgumentException refusal) {
             edit.message = "nothing written: " + refusal.getMessage();
         }
@@ -580,6 +648,72 @@ public final class HtmlTemplateGateway {
         public void write(Target target, byte[] bytes) throws Exception {
             // As in BSL method replacement: workspace API preserves exact source and refreshes clean editors.
             target.file().setContents(new ByteArrayInputStream(bytes), false, true, new NullProgressMonitor());
+        }
+
+        @Override
+        public DcsCheck.Problem unreadableSchema(Target target, String text) {
+            IFile file = target.file();
+            com._1c.g5.v8.dt.core.platform.IDtProjectManager projects =
+                    FormWriteGateway.coreService(com._1c.g5.v8.dt.core.platform.IDtProjectManager.class);
+            IResourceLookup lookup = FormWriteGateway.coreService(IResourceLookup.class);
+            var dtProject = file == null || projects == null ? null : projects.getDtProject(file.getProject());
+            if (dtProject == null || lookup == null) return null;
+            // The resource EDT loads a .dcs file with, on the text instead of the file: the same reader, the same
+            // refusal, the same place in the text.
+            var resource = new com._1c.g5.v8.dt.dcs.resource.DcsResource(
+                    org.eclipse.emf.common.util.URI.createPlatformResourceURI(file.getFullPath().toString(), true),
+                    dtProject, lookup);
+            try {
+                resource.load(new ByteArrayInputStream(text.getBytes(java.nio.charset.StandardCharsets.UTF_8)), Map.of());
+                return null;
+            } catch (Exception | LinkageError failure) {
+                for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+                    if (cause instanceof javax.xml.stream.XMLStreamException stream) {
+                        var location = stream.getLocation();
+                        int line = location == null ? 0 : Math.max(0, location.getLineNumber());
+                        int column = location == null ? 0 : Math.max(0, location.getColumnNumber());
+                        if (line == 0) {
+                            // EDT's reader puts the place into its message and leaves the location empty.
+                            line = DcsCheck.numberAfter(String.valueOf(stream.getMessage()), "Line number = ");
+                            column = DcsCheck.numberAfter(String.valueOf(stream.getMessage()), "Column number = ");
+                        }
+                        return new DcsCheck.Problem("error", "EDT cannot read the schema: " + readerMessage(stream),
+                                line, column);
+                    }
+                    if ("ExportException".equals(cause.getClass().getSimpleName())) {
+                        return new DcsCheck.Problem("error", "EDT cannot read the schema: " + cause.getMessage(), 0, 0);
+                    }
+                }
+                // Not a refusal of the reader: the check itself could not run, which says nothing of the text.
+                return null;
+            } finally {
+                resource.unload();
+            }
+        }
+
+        /** The reader's own words without the location it appends to them. */
+        private static String readerMessage(javax.xml.stream.XMLStreamException stream) {
+            String message = String.valueOf(stream.getMessage());
+            int cut = message.indexOf(", Line number");
+            if (cut < 0) cut = message.indexOf('\n');
+            return (cut < 0 ? message : message.substring(0, cut)).trim();
+        }
+
+        @Override
+        public boolean awaitTaken(Target target, long timeoutMs) {
+            try {
+                IDerivedDataManagerProvider provider = FormWriteGateway.coreService(IDerivedDataManagerProvider.class);
+                IDerivedDataManager derived = provider == null ? null : provider.get(target.file().getProject());
+                if (derived == null) return false;
+                // The workspace delta of the write reaches EDT as the write ends; give its import a moment to queue.
+                Thread.sleep(300L);
+                return derived.waitAllComputations(timeoutMs) && derived.isAllComputed();
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                return false;
+            } catch (RuntimeException | LinkageError failure) {
+                return false;
+            }
         }
 
         private static List<IFile> files(Target target) {

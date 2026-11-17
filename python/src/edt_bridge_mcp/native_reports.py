@@ -59,11 +59,64 @@ def _message(phase, report):
     return "; ".join(part for part in parts if part)[:2000]
 
 
+def _scenario_timing(phase_timing, number, first):
+    """The timings of named scenario `number` inside the timings of their common phase: its steps, and the
+    reopening of the form before it. The first scenario also carries the start of the session."""
+    driver = _dict(phase_timing.get("driver"))
+    steps = [item for item in driver.get("steps") or [] if isinstance(item, dict) and item.get("scenario") == number]
+    reopen = sum(float(item.get("seconds") or 0) for item in driver.get("reopens") or []
+                 if isinstance(item, dict) and item.get("scenario") == number)
+    timing = {"driver": {"steps": steps}}
+    if reopen:
+        timing["driver"]["reopen"] = round(reopen, 2)
+    if first:
+        for key in ("clientStart", "managerStartup", "connectRetries"):
+            if key in phase_timing:
+                timing[key] = phase_timing[key]
+        for key in ("connect", "formLookup"):
+            if key in driver:
+                timing["driver"][key] = driver[key]
+    parts = [timing.get(key) for key in ("clientStart", "managerStartup", "connectRetries")]
+    parts += [timing["driver"].get(key) for key in ("connect", "formLookup", "reopen")]
+    parts += [item.get("seconds") for item in steps]
+    timing["seconds"] = round(sum(float(value) for value in parts if isinstance(value, (int, float))), 2)
+    return timing
+
+
 def _cases(report):
-    """(name, outcome, phase entry of the report, its timings) of each test."""
+    """(name, outcome, phase entry, timings) of each test. The setup-only case has no phase timings."""
     timings = _dict(report.get("timings"))
     phase_timings = {item.get("name"): item for item in timings.get("phases") or [] if isinstance(item, dict)}
     scenario = report.get("scenario")
+    if isinstance(scenario, dict) and isinstance(scenario.get("scenarios"), list):
+        # Named scenarios: one test each, in the order they ran in their common session.
+        results = {item.get("name"): item for item in report.get("scenarios") or [] if isinstance(item, dict)}
+        phase_timing = _dict(phase_timings.get("scenarios"))
+        cases = []
+        for number, named in enumerate(scenario["scenarios"], 1):
+            name = str(_dict(named).get("name"))
+            result = results.get(name, {"status": "not_run"})
+            outcome = "skipped" if result.get("status") == "not_run" else _outcome(result)
+            timing = _scenario_timing(phase_timing, number, number == 1) if outcome != "skipped" else {}
+            cases.append((name, outcome, result, timing))
+        if report.get("ok") is False and all(case[1] in ("passed", "skipped") for case in cases):
+            # Keep the shared failure visible even when no individual scenario failed.
+            name = "scenario session"
+            names = {case[0] for case in cases}
+            while name in names:
+                name += " (shared)"
+            if any(case[1] == "passed" for case in cases):
+                cases.append((name, _outcome(report), report, {}))
+            else:
+                cases.insert(0, (name, _outcome(report), report, phase_timing))
+        elif cases:
+            name, outcome, result, timing = cases[-1]
+            if isinstance(phase_timing.get("screenshot"), (int, float)):
+                timing["screenshot"] = phase_timing["screenshot"]
+            if report.get("screenshot"):
+                result = dict(result, screenshot=report["screenshot"])
+            cases[-1] = (name, outcome, result, timing)
+        return cases
     if isinstance(scenario, dict):
         phases = {item.get("name"): item for item in report.get("phases") or [] if isinstance(item, dict)}
         if phases:
@@ -77,7 +130,7 @@ def _cases(report):
     elif report.get("phase") == "legacy":
         return [(f"click {report.get('button')}", _outcome(report), report, _dict(phase_timings.get("legacy")))]
     # The check stopped before a phase: its setup is the one result there is.
-    return [("setup", "passed" if report.get("ok") else "broken", report, {})]
+    return [("setup", "passed" if report.get("ok") else "broken", report, None)]
 
 
 def _phase_steps(phase, timing, outcome):
@@ -87,7 +140,8 @@ def _phase_steps(phase, timing, outcome):
     parts = [("client start", timing.get("clientStart"))]
     if driver:
         parts += [("test manager start", timing.get("managerStartup")), ("connect", driver.get("connect")),
-                  ("form lookup", driver.get("formLookup")), ("command", driver.get("command"))]
+                  ("form lookup", driver.get("formLookup")), ("command", driver.get("command")),
+                  ("reopen the form", driver.get("reopen"))]
     else:
         parts.append(("test manager", timing.get("manager")))
     steps = [(name, float(seconds), "passed", []) for name, seconds in parts if isinstance(seconds, (int, float))]
@@ -161,14 +215,14 @@ def write_form_reports(report, output, *, finished=None):
     counts = {"failed": 0, "broken": 0, "skipped": 0}
     moment = started
     for index, (name, outcome, phase, timing) in enumerate(cases):
-        if name == "setup":
+        if timing is None:
             steps, seconds = [], total
         else:
             steps, seconds = _phase_steps(phase, timing, outcome), float(timing.get("seconds") or 0.0)
         if index == 0 and setup:
             # The first test carries the setup the whole check paid for.
             steps = [("setup", sum(item[1] for item in setup), "passed", [], setup), *steps]
-            if name != "setup":
+            if timing is not None:
                 seconds += steps[0][1]
         counts[outcome] = counts.get(outcome, 0) + 1
         details = _details(phase, steps)
@@ -180,7 +234,7 @@ def write_form_reports(report, output, *, finished=None):
         elif outcome == "broken":
             ET.SubElement(case, "error", message=message, type=str(phase.get("status"))).text = details
         elif outcome == "skipped":
-            ET.SubElement(case, "skipped", message="the previous phase did not pass")
+            ET.SubElement(case, "skipped", message=str(phase.get("error") or "the previous phase did not pass"))
         if details:
             ET.SubElement(case, "system-out").text = details
 

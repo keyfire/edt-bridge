@@ -22,7 +22,7 @@ import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from . import event_log, i18n, native_cache, native_report, native_reports, native_scenario, pii
+from . import event_log, i18n, native_cache, native_report, native_reports, native_scenario, native_web, pii
 
 
 _SCOPES = ("empty", "fixture", "application")
@@ -79,23 +79,31 @@ class _Timeline:
 
 def _driver_timings(marks):
     """The seconds between the marks the test manager driver records: the connection, the form lookup,
-    the command of a button check or each scenario step. A mark without a following one has no end yet
-    (a manager that did not finish) and is left out."""
+    the command of a button check or each scenario step. The marks of named scenarios carry the number of
+    the scenario, and so do their steps and the reopening of the form before each next one. A mark without
+    a following one has no end yet (a manager that did not finish) and is left out."""
     if not isinstance(marks, list):
         return None
     marks = [mark for mark in marks if isinstance(mark, dict) and isinstance(mark.get("name"), str)
              and isinstance(mark.get("at"), (int, float)) and not isinstance(mark.get("at"), bool)]
     if len(marks) < 2:
         return None
-    timings, steps = {}, []
+    timings, steps, reopens = {}, [], []
     for mark, following in zip(marks, marks[1:]):
         seconds = (following["at"] - mark["at"]) / 1000
         if mark["name"] == "step":
-            steps.append({"step": mark.get("step"), "action": mark.get("action"), "seconds": round(seconds, 2)})
+            step = {"step": mark.get("step"), "action": mark.get("action"), "seconds": round(seconds, 2)}
+            if "scenario" in mark:
+                step = {"scenario": mark["scenario"], **step}
+            steps.append(step)
+        elif mark["name"] == "reopen":
+            reopens.append({"scenario": mark.get("scenario"), "seconds": round(seconds, 2)})
         elif mark["name"] != "end":
             timings[mark["name"]] = round(timings.get(mark["name"], 0) + seconds, 2)
     if steps:
         timings["steps"] = steps
+    if reopens:
+        timings["reopens"] = reopens
     timings["total"] = round((marks[-1]["at"] - marks[0]["at"]) / 1000, 2)
     return timings
 
@@ -140,6 +148,7 @@ def add_arguments(parser):
     operation.add_argument("--scenario", type=Path, help=i18n.t("test-form.scenario"))
     parser.add_argument("--expect-message", help=i18n.t("test-form.expect-message"))
     parser.add_argument("--user", help=i18n.t("test-form.user"))
+    parser.add_argument("--web-client", action="store_true", help=i18n.t("test-form.web-client"))
     parser.add_argument("--output-dir", required=True, type=Path, help=i18n.t("test-form.output-dir"))
     parser.add_argument("--timeout", type=int, default=120, help=i18n.t("test-form.timeout"))
 
@@ -371,8 +380,18 @@ def _capture(stack, env, root, output):
     return {"screenshot": str(destination)}
 
 
+def _interaction(data):
+    """The answer of the test manager as the report keeps it. The observations of named scenarios are
+    already judged into their results, so they are left out here instead of being carried twice."""
+    if not isinstance(data.get("scenarios"), list):
+        return data
+    parts = [{key: value for key, value in part.items() if key != "observations"} if isinstance(part, dict)
+             else part for part in data["scenarios"]]
+    return dict(data, scenarios=parts)
+
+
 def _run_session(args, base, external, output, root, manager_base, manager_env, enterprise,
-                 xvfb, deadline, steps, launch_external=None):
+                 xvfb, deadline, steps, launch_external=None, scenarios=None):
     report = {"ok": False, "stage": "client_startup"}
     timeline = _Timeline(getattr(args, "_on_stage", None))
     timeline.enter("clientStart")
@@ -385,17 +404,27 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
     manager_process_log = root / "manager-process.log"
     client = None
     manager = None
+    page = None
+    pause = time.sleep
     with contextlib.ExitStack() as stack:
         try:
-            client_env = _display(stack, xvfb, root / "client-display", deadline)
-            port = _free_port()
-            auth = ["/N" + args.user] if args.user else []
-            target = (["/Execute", str(launch_external or external)] if external
-                      else ["/URL", args.navigation_link])
-            client = _spawn(stack, [*enterprise, "/F" + str(base), *auth, "/TestClient", f"-TPort{port}",
-                                   *target, "/Out", str(client_log)],
-                            client_env, client_process_log)
-            _wait_for_client(client, port, deadline)
+            if getattr(args, "_web_filter", None):
+                report.update(stage="web_publication", clientType="web")
+                client, page, client_id = native_web.start(
+                    stack, args._web_paths, Path(enterprise[0]).parent, args.navigation_link, external, args.user,
+                    args._web_language, deadline, _spawn, _free_port, _owns_listener)
+                port = native_web.TEST_PORT
+                pause = lambda seconds: native_web.wait_for_browser(page, seconds)
+            else:
+                client_env = _display(stack, xvfb, root / "client-display", deadline)
+                port = _free_port()
+                auth = ["/N" + args.user] if args.user else []
+                target = (["/Execute", str(launch_external or external)] if external
+                          else ["/URL", args.navigation_link])
+                client = _spawn(stack, [*enterprise, "/F" + str(base), *auth, "/TestClient", f"-TPort{port}",
+                                       *target, "/Out", str(client_log)],
+                                client_env, client_process_log)
+                _wait_for_client(client, port, deadline)
 
             timeline.enter("manager")
             report["stage"] = "form_interaction"
@@ -406,10 +435,18 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
                        "button": args.button or "", "expectedMessage": args.expect_message or "",
                        "waitSeconds": min(10, max(1, int(_seconds_left(deadline) / 2))),
                        "result": str(result), "progress": str(progress)}
+            # The limits of what the driver reads and lists; a button check lists candidate buttons as well.
+            payload.update(maxRows=native_scenario.MAX_ROWS,
+                           maxColumns=native_scenario.MAX_COLUMNS, maxItems=native_scenario.MAX_ITEMS,
+                           maxListed=native_scenario.MAX_LISTED)
+            if page is not None:
+                payload["clientId"] = client_id
             if steps is not None:
-                payload.update(steps=steps, maxRows=native_scenario.MAX_ROWS,
-                               maxColumns=native_scenario.MAX_COLUMNS, maxItems=native_scenario.MAX_ITEMS,
-                               maxListed=native_scenario.MAX_LISTED)
+                payload["steps"] = steps
+            if scenarios is not None:
+                # The launcher behind the form opens it again before each next scenario.
+                payload.update(scenarios=scenarios, launcherForm=getattr(args, "_launcher_form", ""),
+                               reopenButton=native_report.REOPEN_BUTTON)
             request.write_text(json.dumps(payload), encoding="utf-8", newline="")
             manager_args = [*enterprise, "/F" + str(manager_base), "/TestManager",
                             "/C" + str(request), "/Out", str(manager_log)]
@@ -424,17 +461,21 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
                 while not result.is_file():
                     if client.poll() is not None or manager.poll() is not None:
                         raise _CheckError("session_exited", "A native session exited before reporting a result.")
-                    time.sleep(min(0.15, _seconds_left(deadline)))
+                    pause(min(0.15, _seconds_left(deadline)))
                 if result.stat().st_size > 16_777_216:
                     raise _CheckError("driver_failed", "The test manager result exceeds 16 MiB.")
                 data = json.loads(result.read_text(encoding="utf-8-sig"))
                 if not isinstance(data, dict) or not isinstance(data.get("status"), str):
                     raise _CheckError("driver_failed", "The test manager returned an invalid result.")
                 marks = data.pop("timingMarks", None)
-                report.update(interaction=data, status=data["status"])
+                report.update(interaction=_interaction(data), status=data["status"])
                 if isinstance(data.get("observedFields"), dict):
                     # A selector that missed: the fields of the open form, where the caller looks first.
                     report["observedFields"] = data["observedFields"]
+                for key in ("matchedButtons", "observedButtons", "matchedFields"):
+                    if isinstance(data.get(key), (list, dict)):
+                        # A selector that matched several elements or none: the candidates by name and title.
+                        report[key] = data[key]
                 if isinstance(data.get("dialog"), dict):
                     # A window over the form that no step expected: what the solution showed, not a failure
                     # of the check, so the caller can judge it.
@@ -459,13 +500,21 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
                                                    + time.monotonic() - attempt_started, 2)
                 failed_connects["lastError"] = str(data.get("error") or "")[:300]
                 report["failedConnects"] = failed_connects
-                time.sleep(min(1, _seconds_left(deadline)))
+                pause(min(1, _seconds_left(deadline)))
                 _seconds_left(deadline)
-                if client.poll() is not None or not _owns_listener(client, port):
+                if client.poll() is not None or (page is None and not _owns_listener(client, port)):
                     break
                 result.unlink()
                 progress.unlink(missing_ok=True)
-            if steps is not None:
+            if scenarios is not None:
+                if data["status"] == "scenarios_observed":
+                    report.update(native_scenario.scenarios_verdict(
+                        native_scenario.scenario_results(scenarios, data.get("scenarios"))))
+                else:
+                    # The form was not reached: no scenario ran, and the status of the run says why.
+                    report["scenarios"] = native_scenario.scenario_results(
+                        scenarios, [], stopped=f"The form was not reached: {data['status']}.")
+            elif steps is not None:
                 if data["status"] == "scenario_observed":
                     report.update(native_scenario.evaluate(steps, data.get("observations")))
             elif data["status"] == "command_completed":
@@ -474,7 +523,7 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
                         or not isinstance(messages, list) or args.expect_message not in messages):
                     raise _CheckError("driver_failed", "The test manager did not report the expected result.")
                 report["ok"] = True
-        except (_CheckError, OSError, ValueError) as error:
+        except (_CheckError, native_web.WebError, OSError, ValueError) as error:
             _record_error(report, error, "driver_failed")
             if progress.is_file():
                 with contextlib.suppress(OSError, ValueError):
@@ -483,14 +532,27 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
                         # A manager that never finished: its progress has the marks up to the running step.
                         progress_marks = last.pop("timingMarks", None)
                         marks = progress_marks if marks is None else marks
+                        if scenarios is not None and "scenarios" not in report:
+                            # The scenarios that finished before the run stopped keep their results.
+                            with contextlib.suppress(native_scenario.DriverResultError):
+                                report["scenarios"] = native_scenario.scenario_results(
+                                    scenarios, last.get("scenarios") or [], stopped=report["error"])
+                            last = _interaction(last)
                     report["lastInteraction"] = last
         finally:
             if client is not None:
                 timeline.enter("screenshot")
                 try:
-                    report.update(_capture(stack, client_env, root, output))
-                except OSError as error:
+                    if page is None:
+                        report.update(_capture(stack, client_env, root, output))
+                    else:
+                        capture = native_web.capture(page, output, args._web_filter, deadline)
+                        args._web_screenshots.add(capture["screenshot"])
+                        report.update(capture)
+                except (native_web.WebError, OSError) as error:
                     report["screenshotError"] = str(error)
+                    if page is not None:
+                        report["screenshotWithheld"] = True
             timeline.enter("cleanup")
             for key, process in (("clientExitCode", client), ("managerExitCode", manager)):
                 if process is not None and process.poll() is not None:
@@ -621,6 +683,8 @@ def _suggested_pattern(base):
     if base.parent.name.startswith(_RUN_COPY_PREFIX):
         # edt_test_form works on a fresh copy in a directory with a random suffix.
         return f".*/{_RUN_COPY_PREFIX}.*"
+    if base.parent.name.startswith(native_web.COPY_PREFIX):
+        return f".*/{native_web.COPY_PREFIX}.*"
     return ".*" + _bre_literal(str(base)) + ".*"
 
 
@@ -764,15 +828,23 @@ def _prepare_manager(args, external, ibcmd, client_exe, stack, manager_env, root
         format_version = manifest["formatVersion"]
 
     launch_external = external
-    if args.erf:
+    scenario = getattr(args, "_scenario", None)
+    named = isinstance(scenario, dict) and "scenarios" in scenario
+    if (args.erf and not getattr(args, "_web_filter", None)) or (external and named):
+        # A report is always opened by the launcher; a data processor when named scenarios need the form
+        # opened again between them.
         timeline.enter("reportLauncher")
         report["stage"] = "report_launcher_setup"
         launcher = root / "report-loader"
         launcher.mkdir()
         if not format_version:
             raise _CheckError("setup_failed", "The exported manager configuration names no format version.")
+        kind = "ExternalReport" if args.erf else "ExternalDataProcessor"
         launcher_xml = native_report.write_launcher(
-            launcher, external, "" if standard_report_form else args.form.rsplit(".", 1)[1], format_version)
+            launcher, external, "" if standard_report_form else args.form.rsplit(".", 1)[1], format_version,
+            kind=kind)
+        args._launcher_form = native_report.launcher_form(
+            native_report.REPORT_LAUNCHER if args.erf else native_report.FORM_LAUNCHER)
         launch_external = root / "report-loader.epf"
         build = _spawn(stack, [*designer, "/LoadExternalDataProcessorOrReportFromFiles",
                               str(launcher_xml), str(launch_external), "/Out", str(designer_log)],
@@ -873,13 +945,24 @@ def _native_check(args, base, external, output, report):
     if not client_exe.is_file() or not ibcmd.is_file() or not xvfb:
         raise _CheckError("dependency_missing", "The check requires 1cv8, ibcmd, Xvfb and libX11.")
     report["stage"] = "client_environment"
-    _require_client_environment(args, platform, base, external, report)
+    web_client = getattr(args, "_web_filter", None) is not None
+    if not web_client:
+        _require_client_environment(args, platform, base, external, report)
 
     deadline = time.monotonic() + args.timeout
     with tempfile.TemporaryDirectory(prefix="edt-bridge-form-") as temporary, contextlib.ExitStack() as stack:
         root = Path(temporary)
         attempt_root = root
         try:
+            if web_client:
+                report["stage"] = "web_publication"
+                timeline.enter("infobaseCopy")
+                started = datetime.datetime.now()
+                args._web_paths = native_web.copy_infobase(stack, base)
+                base = args._web_paths[1]
+                report["stage"] = "client_environment"
+                _require_client_environment(args, platform, base, external, report)
+                args._web_language = report["clientEnvironment"]["systemLanguage"]["value"] or "en"
             report["stage"] = "manager_setup"
             timeline.enter("managerDisplay")
             display_root = root / "manager-display"
@@ -919,7 +1002,11 @@ def _native_check(args, base, external, output, report):
 
             enterprise = [str(client_exe), "ENTERPRISE", "/RunModeManagedApplication", *_START_FLAGS]
             scenario = getattr(args, "_scenario", None)
-            phases = [("steps", scenario["steps"])] if scenario else [("legacy", None)]
+            if scenario and "scenarios" in scenario:
+                # Named scenarios share one session of the client: one phase plays them all.
+                phases = [("scenarios", None)]
+            else:
+                phases = [("steps", scenario["steps"])] if scenario else [("legacy", None)]
             if scenario and "reopen" in scenario:
                 phases.append(("reopen", scenario["reopen"]))
             if scenario:
@@ -933,8 +1020,9 @@ def _native_check(args, base, external, output, report):
                 phase_output = output / name if scenario else output
                 if scenario:
                     phase_output.mkdir()
+                named = {"scenarios": scenario["scenarios"]} if name == "scenarios" else {}
                 result = _run_session(args, base, external, phase_output, root / name, manager_base,
-                                      manager_env, enterprise, xvfb, deadline, steps, launch_external)
+                                      manager_env, enterprise, xvfb, deadline, steps, launch_external, **named)
                 # The phase timings go to the timings of the run, not over the fields of the report.
                 phase_timings = result.pop("timings", None)
                 if isinstance(phase_timings, dict):
@@ -946,9 +1034,11 @@ def _native_check(args, base, external, output, report):
                     report["phases"].append(dict(name=name, **result))
                 if not result["ok"]:
                     break
-        except (_CheckError, OSError, ValueError) as error:
+        except (_CheckError, native_web.WebError, OSError, ValueError) as error:
             _record_error(report, error, "driver_failed")
         finally:
+            if getattr(args, "_web_paths", None):
+                report["eventLog"] = _read_event_log(base, started)
             report.update(_setup_logs(attempt_root))
             if not report["ok"]:
                 platform_logs = " ".join(report.get(key, "") for key in
@@ -987,13 +1077,26 @@ def run(args):
     report = {"ok": False, "scope": args.scope, "scopeSource": "caller", "stage": "validation"}
     output = None
     flt = pii.Filter()
+    args._web_filter = None
+    args._web_paths = None
+    args._web_screenshots = set()
     try:
         try:
             flt = pii.Filter.from_env()
         except pii.RulesError as error:
             raise _CheckError("invalid_input", str(error)) from error
         base, external, destination = _validated_paths(args)
+        if getattr(args, "web_client", False):
+            if not flt.active:
+                raise _CheckError("invalid_input", "The web client requires EDT_BRIDGE_PII.")
+            args._web_filter = flt
         args._scenario = native_scenario.load(args.scenario) if args.scenario else None
+        if args._web_filter is not None and args._scenario and "scenarios" in args._scenario:
+            raise _CheckError("invalid_input", "The web client accepts steps or a button. Use the desktop client "
+                                               "for named scenarios.")
+        if args._scenario and "scenarios" in args._scenario and not external:
+            raise _CheckError("invalid_input", "Named scenarios need an .epf or .erf: the form is opened again "
+                                               "between them by a launcher data processor.")
         try:
             # A run often names a directory per check inside a folder nobody has made yet.
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -1024,7 +1127,8 @@ def run(args):
             # Read after every session is stopped: the platform writes the log as the session runs and
             # finishes it on exit, and the error of a server call is only complete there.
             timeline.enter("eventLog")
-            report["eventLog"] = _read_event_log(base, started)
+            if "eventLog" not in report:
+                report["eventLog"] = _read_event_log(base, started)
     except (_CheckError, OSError, native_scenario.ScenarioError) as error:
         _record_error(report, error, "io_error")
     except KeyboardInterrupt:
@@ -1035,7 +1139,7 @@ def run(args):
     if flt.active:
         # The verdict is already taken on the values the check saw; only what leaves is masked.
         try:
-            pii.withhold_screenshots(report)
+            pii.withhold_screenshots(report, preserved=args._web_screenshots)
             report = pii.mask(report, flt)
             report["piiFilter"] = flt.marker()
         except Exception as error:  # any failure of the filter: nothing unmasked may leave

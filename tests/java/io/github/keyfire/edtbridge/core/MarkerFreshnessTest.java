@@ -105,4 +105,34 @@ class MarkerFreshnessTest {
                 MarkerFreshness.hint(2, 0, true));
         assertTrue(MarkerFreshness.hint(0, 4, true).startsWith("4 file(s) changed on disk"));
     }
+
+    /**
+     * EDT-DCS-03, seen on a live EDT 2026.2: a schema written without its join to a subquery kept the marker of the
+     * join check from the previous schema, while the variant check renewed its own marker after the write.
+     */
+    @Test
+    void aMarkerTheCheckAfterTheChangeDidNotRenewIsALeftover() {
+        long marker = 1_000, change = 2_000, renewed = 3_000;
+        var leftover = MarkerFreshness.judge(marker, change, true, renewed);
+        assertTrue(leftover.leftover);
+        assertFalse(leftover.stale);
+        assertTrue(leftover.current());
+
+        // No check seen after the change: the marker may still describe what is gone or what is there.
+        assertTrue(MarkerFreshness.judge(marker, change, true, 0).stale);
+        assertTrue(MarkerFreshness.judge(marker, change, true, change - 1).stale);
+        // A file the workspace has not read is never a leftover: no check has seen its change.
+        var unread = MarkerFreshness.judge(marker, change, false, renewed);
+        assertTrue(unread.stale && unread.unsynchronized && !unread.leftover);
+    }
+
+    @Test
+    void theHintNamesLeftoversAsNeedingNoFix() {
+        String only = MarkerFreshness.hint(0, 0, true, 0, 1);
+        assertTrue(only.startsWith("1 problem(s) are left over from an earlier version of their file"), only);
+        assertTrue(only.contains("leftover=true"));
+        assertNull(MarkerFreshness.hint(0, 0, true, 0, 0));
+        String both = MarkerFreshness.hint(1, 0, false, 0, 2);
+        assertTrue(both.contains("pass refresh=true") && both.contains("2 problem(s) are left over"), both);
+    }
 }

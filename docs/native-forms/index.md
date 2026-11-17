@@ -12,9 +12,9 @@ presentations, spreadsheet cells, and user messages. An optional second session 
 the state after reopening the same target.
 
 The command runs independently of EDT. It creates a temporary manager infobase and
-starts separate TestManager and TestClient processes. It uses the explicitly selected
-file infobase for the target; it does not create a copy of that infobase. UI commands
-can change its data.
+starts separate TestManager and TestClient processes. The desktop client uses the
+selected file infobase, and UI commands can change its data. The optional
+[web client](/native-forms/results#masked-web-client-screenshots) publishes a temporary copy.
 
 ## Prepare the environment
 
@@ -28,6 +28,12 @@ can change its data.
 4. Allow the intended external files to run in this test environment. The CLI does not
    disable the platform's unsafe action protection or confirm its security prompt, and it
    checks the protection setting before it starts the client (see below).
+
+For `edt_test_form`, open the test infobase once in the 1C:Enterprise client after
+creating or updating it. Wait for the application to open, close the client, and
+point `EDT_BRIDGE_TEST_INFOBASE` to the infobase directory. Each call copies
+`1Cv8.1CD` from this directory. If the source infobase has yet to be opened in the
+client, every copy incurs the first-start delay.
 
 For an unattended disposable runner, the environment owner can configure protection
 before running the check. In the Linux platform installation used by `--platform-bin`,

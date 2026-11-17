@@ -848,3 +848,206 @@ def test_a_taken_network_license_is_reported_as_unavailable(monkeypatch, tmp_pat
 
     assert report["status"] == "license_unavailable"
     assert report["designerLog"] == refusal
+
+
+# EDT-TEST-20: named scenarios in one start of the client.
+_NAMED = [{"name": "Empty period", "steps": [{"action": "read_form"}]},
+          {"name": "Two companies", "steps": [{"action": "assert_field", "field": "Company", "equals": "Two"}]}]
+_EMPTY = {"fields": [], "tables": [], "spreadsheets": [], "truncated": False}
+
+
+def _scenario_session(monkeypatch, tmp_path, answer, *, progress=None):
+    """A session whose test manager answers `answer` (None: it exits after writing `progress`)."""
+    args = _fixture_args(tmp_path)
+    args.output_dir.mkdir()
+    args._launcher_form = "ExternalDataProcessor.EdtBridgeFormLauncher.Form.Main"
+    monkeypatch.setattr(native_form, "_display", lambda *args: {})
+    monkeypatch.setattr(native_form, "_owns_listener", lambda *args: True)
+    monkeypatch.setattr(native_form, "_capture", lambda *args: {"screenshot": "screenshot.png"})
+    requests = []
+
+    def spawn(_stack, argv, _env, _log):
+        if "/TestManager" in argv:
+            request = json.loads(Path(next(arg[2:] for arg in argv if arg.startswith("/C"))).read_text(encoding="utf-8"))
+            requests.append(request)
+            if answer is None:
+                Path(request["progress"]).write_text(json.dumps(progress), encoding="utf-8")
+                return SimpleNamespace(poll=lambda: 1)
+            Path(request["result"]).write_text(json.dumps(answer, ensure_ascii=False), encoding="utf-8")
+        return SimpleNamespace(poll=lambda: None)
+
+    monkeypatch.setattr(native_form, "_spawn", spawn)
+    report = native_form._run_session(args, args.test_infobase, args.epf, args.output_dir,
+                                      tmp_path / "session", tmp_path / "manager", {},
+                                      ["1cv8", "ENTERPRISE"], "Xvfb", time.monotonic() + 30, None,
+                                      scenarios=_NAMED)
+    return report, requests
+
+
+def test_named_scenarios_go_to_one_manager_with_the_launcher_that_reopens_the_form(monkeypatch, tmp_path):
+    answer = {"status": "scenarios_observed", "stage": "scenarios", "scenarios": [
+        {"name": "Empty period", "status": "scenario_observed", "finished": True,
+         "observations": [{"action": "read_form", "actual": _EMPTY}]},
+        {"name": "Two companies", "status": "scenario_observed", "finished": True,
+         "observations": [{"action": "assert_field", "actual": "One"}]}],
+        "timingMarks": [{"name": "connect", "at": 0}, {"name": "formLookup", "at": 500},
+                        {"name": "step", "at": 1000, "step": 1, "action": "read_form", "scenario": 1},
+                        {"name": "reopen", "at": 1500, "scenario": 2},
+                        {"name": "step", "at": 3500, "step": 1, "action": "assert_field", "scenario": 2},
+                        {"name": "end", "at": 3700}]}
+
+    report, requests = _scenario_session(monkeypatch, tmp_path, answer)
+
+    request, = requests
+    assert request["scenarios"] == _NAMED and "steps" not in request
+    assert request["launcherForm"] == "ExternalDataProcessor.EdtBridgeFormLauncher.Form.Main"
+    assert request["reopenButton"] == "EdtBridgeReopen"
+    assert report["ok"] is False and report["status"] == "assertion_failed"
+    assert [(item["name"], item["status"]) for item in report["scenarios"]] == [
+        ("Empty period", "scenario_completed"), ("Two companies", "assertion_failed")]
+    assert report["summary"] == {"passed": 1, "failed": ["Two companies"]}
+    # The observations are judged into the results and not carried a second time.
+    assert all("observations" not in part for part in report["interaction"]["scenarios"])
+    driver = report["timings"]["driver"]
+    assert driver["reopens"] == [{"scenario": 2, "seconds": 2.0}]
+    assert [(step["scenario"], step["seconds"]) for step in driver["steps"]] == [(1, 0.5), (2, 0.2)]
+
+
+def test_a_form_that_was_not_reached_runs_no_scenario(monkeypatch, tmp_path):
+    report, _ = _scenario_session(monkeypatch, tmp_path, {"status": "form_not_found", "stage": "form_lookup",
+                                                          "observedForms": [], "observedTitles": []})
+
+    assert report["status"] == "form_not_found" and report["ok"] is False
+    assert [item["status"] for item in report["scenarios"]] == ["not_run", "not_run"]
+    assert "form_not_found" in report["scenarios"][0]["error"]
+
+
+def test_a_session_that_died_keeps_the_scenarios_that_finished(monkeypatch, tmp_path):
+    progress = {"status": "scenario_error", "stage": "assert_field", "timingMarks": [], "scenarios": [
+        {"name": "Empty period", "status": "scenario_observed", "finished": True,
+         "observations": [{"action": "read_form", "actual": _EMPTY}]},
+        {"name": "Two companies", "status": "scenario_error", "stage": "assert_field", "step": 1}]}
+
+    report, _ = _scenario_session(monkeypatch, tmp_path, None, progress=progress)
+
+    assert report["status"] == "session_exited"
+    assert [(item["name"], item["status"]) for item in report["scenarios"]] == [
+        ("Empty period", "scenario_completed"), ("Two companies", "interrupted")]
+    assert report["scenarios"][1]["error"] == report["error"]
+    assert "observations" not in report["lastInteraction"]["scenarios"][0]
+
+
+def test_named_scenarios_need_an_external_object(monkeypatch, tmp_path):
+    monkeypatch.setattr(native_form.sys, "platform", "linux")
+    monkeypatch.setattr(native_form, "_native_check", lambda *args: pytest.fail("the check must not start"))
+    args = _fixture_args(tmp_path)
+    scenario = tmp_path / "scenario.json"
+    scenario.write_text(json.dumps({"version": 1, "scenarios": _NAMED}), encoding="utf-8")
+    args.button, args.scenario, args.epf = None, scenario, None
+    args.navigation_link = "e1cib/data/Catalog.Products?ref=" + "0" * 32
+    args.form = "Catalog.Products.Form.ItemForm"
+
+    report = native_form.run(args)
+
+    assert report["status"] == "invalid_input"
+    assert "need an .epf or .erf" in report["error"]
+
+
+@pytest.mark.parametrize("named", [True, False])
+def test_a_data_processor_is_opened_by_the_launcher_only_for_named_scenarios(monkeypatch, tmp_path, named):
+    monkeypatch.setattr(native_form.shutil, "which", lambda name: name)
+    monkeypatch.setattr(native_form, "_display", lambda *args: {})
+    monkeypatch.setattr(native_form.native_cache, "entry", lambda *args: (None, "off for the test"))
+    args = _fixture_args(tmp_path)
+    args.output_dir.mkdir()
+    args._scenario = {"version": 1, "scenarios": _NAMED} if named else {"version": 1, "steps": _NAMED[0]["steps"]}
+    built = []
+
+    def spawn(_stack, argv, _env, _log):
+        if Path(argv[0]).name == "ibcmd" and "export" in argv:
+            Path(argv[-1] + ".xml").write_text(
+                "<MetaDataObject><ExternalDataProcessor><Properties>"
+                f"<DefaultForm>{args.form}</DefaultForm></Properties></ExternalDataProcessor></MetaDataObject>",
+                encoding="utf-8")
+        elif Path(argv[0]).name == "ibcmd":
+            directory = Path(next(x.split("=", 1)[1] for x in argv if x.startswith("--db-path=")))
+            directory.mkdir()
+            (directory / "1Cv8.1CD").touch()
+        elif "/DumpConfigToFiles" in argv:
+            (Path(argv[argv.index("/DumpConfigToFiles") + 1]) / "Configuration.xml").write_text(
+                '<MetaDataObject version="2.21"/>', encoding="utf-8")
+        elif "/LoadExternalDataProcessorOrReportFromFiles" in argv:
+            index = argv.index("/LoadExternalDataProcessorOrReportFromFiles")
+            source = Path(argv[index + 1])
+            built.append(json.loads((source.parent / "report-request.json").read_text(encoding="utf-8")))
+            Path(argv[index + 2]).touch()
+        return SimpleNamespace(wait=lambda timeout: 0)
+
+    monkeypatch.setattr(native_form, "_spawn", spawn)
+    opened = []
+
+    def session(*session_args, **named_args):
+        opened.append((session_args[11], named_args.get("scenarios")))
+        return {"ok": True, "status": "scenario_completed", "screenshot": "s.png", "cleanupComplete": True}
+
+    monkeypatch.setattr(native_form, "_run_session", session)
+    report = {"ok": False}
+
+    native_form._native_check(args, args.test_infobase, args.epf, args.output_dir, report)
+
+    assert report["ok"] is True, report
+    if named:
+        assert built == [{"file": str(args.epf), "formName": "Main", "kind": "ExternalDataProcessor"}]
+        assert opened[0][0].name == "report-loader.epf"
+        assert opened[0][1] == _NAMED
+        assert args._launcher_form == "ExternalDataProcessor.EdtBridgeFormLauncher.Form.Main"
+        assert [phase["name"] for phase in report["phases"]] == ["scenarios"]
+    else:
+        assert built == []
+        assert opened == [(args.epf, None)]
+
+
+# EDT-TEST-21: a selector that matched several elements or none brings the candidates.
+@pytest.mark.parametrize("answer", [
+    {"status": "ambiguous_button", "stage": "button_lookup", "clickAttempted": False, "clickReturned": False,
+     "matchedButtons": [{"name": "FormGenerate", "title": "Generate", "visible": True, "enabled": True},
+                        {"name": "Generate", "title": "Generate", "visible": True, "enabled": True}]},
+    {"status": "button_not_found", "stage": "button_lookup", "clickAttempted": False, "clickReturned": False,
+     "observedButtons": {"total": 1, "buttons": [{"name": "FormGenerate", "title": "Generate", "visible": True,
+                                                   "enabled": True}]}},
+])
+def test_a_button_selector_that_missed_brings_the_buttons(monkeypatch, tmp_path, answer):
+    args = _fixture_args(tmp_path)
+    args.output_dir.mkdir()
+    args.expect_message = "Done"
+    monkeypatch.setattr(native_form, "_display", lambda *args: {})
+    monkeypatch.setattr(native_form, "_owns_listener", lambda *args: True)
+    monkeypatch.setattr(native_form, "_capture", lambda *args: {"screenshot": "screenshot.png"})
+    requests = []
+
+    def spawn(_stack, argv, _env, _log):
+        if "/TestManager" in argv:
+            request = json.loads(Path(next(arg[2:] for arg in argv if arg.startswith("/C"))).read_text(encoding="utf-8"))
+            requests.append(request)
+            Path(request["result"]).write_text(json.dumps(answer), encoding="utf-8")
+        return SimpleNamespace(poll=lambda: None)
+
+    monkeypatch.setattr(native_form, "_spawn", spawn)
+    report = native_form._run_session(args, args.test_infobase, args.epf, args.output_dir,
+                                      tmp_path / "session", tmp_path / "manager", {},
+                                      ["1cv8", "ENTERPRISE"], "Xvfb", time.monotonic() + 30, None)
+
+    key = "matchedButtons" if answer["status"] == "ambiguous_button" else "observedButtons"
+    # A button check sends the limit of the lists too: without it the driver failed on the first list.
+    assert requests[0]["maxListed"] == native_scenario.MAX_LISTED
+    assert report["status"] == answer["status"]
+    assert report[key] == answer[key]
+
+
+def test_the_driver_resolves_a_table_the_same_way_for_every_table_step():
+    """assert_table_size took only a spreadsheet field, so a form table that read_table found failed it."""
+    driver = native_form._DRIVER.read_text(encoding="utf-8-sig")
+    assert ('If Step.action = "assert_table" Or Step.action = "read_table" Or Step.action = "assert_table_size" Then'
+            in driver)
+    for key in ("matchedButtons", "observedButtons", "matchedFields"):
+        assert f'Report.Insert("{key}"' in driver

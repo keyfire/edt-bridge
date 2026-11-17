@@ -142,6 +142,7 @@ import io.github.keyfire.edtbridge.tools.DebugInspectTool;
 import io.github.keyfire.edtbridge.tools.DebugControlTool;
 import io.github.keyfire.edtbridge.tools.DebugEvaluateTool;
 import io.github.keyfire.edtbridge.tools.ToolHelpTool;
+import io.github.keyfire.edtbridge.tools.ToolArguments;
 import io.github.keyfire.edtbridge.tools.JobStatusTool;
 import io.github.keyfire.edtbridge.tools.CancelJobTool;
 import com.google.gson.Gson;
@@ -150,6 +151,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -840,7 +842,8 @@ applyI18n();loadStatus();loadTools();
                 JsonObject params = req.has("params") ? req.getAsJsonObject("params") : new JsonObject();
                 String tool = params.has("name") ? params.get("name").getAsString() : "";
                 // The tools that return infobase data leave only through the personal data filter.
-                return result(id, PersonalDataFilter.apply(tool, toolsCall(params)));
+                JsonObject answer = PersonalDataFilter.apply(tool, toolsCall(params));
+                return result(id, answer);
             }
             case "ping":
                 return result(id, new JsonObject());
@@ -990,6 +993,7 @@ applyI18n();loadStatus();loadTools();
             JsonArray sets = new JsonArray();
             ToolSets.containing(tool.get("name").getAsString()).forEach(sets::add);
             tool.add("toolsets", sets);
+            ToolArguments.describe(tool);
         }
         JsonObject r = new JsonObject();
         r.add("tools", tools);
@@ -1009,12 +1013,79 @@ applyI18n();loadStatus();loadTools();
         JsonArray served = new JsonArray();
         for (JsonElement element : all.getAsJsonArray("tools")) {
             if (toolset.allows(element.getAsJsonObject().get("name").getAsString())) {
-                served.add(element);
+                served.add(annotatedDescriptor(element.getAsJsonObject(), toolset));
             }
         }
         JsonObject r = new JsonObject();
         r.add("tools", served);
         return r;
+    }
+
+    /**
+     * A descriptor whose descriptions mark the tools the selection does not serve. The descriptor of the full list
+     * stays as it is: the argument gate and the packaged catalog read it.
+     */
+    private static JsonObject annotatedDescriptor(JsonObject descriptor, ToolSets.Selection toolset) {
+        if (!toolset.limits()) {
+            return descriptor;
+        }
+        JsonObject copy = descriptor.deepCopy();
+        annotateDescriptions(copy, toolset);
+        return copy;
+    }
+
+    private static void annotateDescriptions(JsonElement element, ToolSets.Selection toolset) {
+        if (element == null || element.isJsonNull() || element.isJsonPrimitive()) {
+            return;
+        }
+        if (element.isJsonArray()) {
+            for (JsonElement item : element.getAsJsonArray()) annotateDescriptions(item, toolset);
+            return;
+        }
+        JsonObject object = element.getAsJsonObject();
+        for (String key : new java.util.ArrayList<>(object.keySet())) {
+            JsonElement value = object.get(key);
+            if (("description".equals(key) || "descriptionRu".equals(key)) && value.isJsonPrimitive()) {
+                object.addProperty(key, toolset.annotate(value.getAsString()));
+            } else {
+                annotateDescriptions(value, toolset);
+            }
+        }
+    }
+
+    /** Annotate the advisory field of a result that declares one. */
+    static void annotateTexts(JsonObject answer, ToolSets.Selection toolset, String field) {
+        if (!toolset.limits() || !answer.has("content") || !answer.get("content").isJsonArray()) {
+            return;
+        }
+        for (JsonElement item : answer.getAsJsonArray("content")) {
+            if (!item.isJsonObject()) {
+                continue;
+            }
+            JsonObject content = item.getAsJsonObject();
+            JsonElement text = content.get("text");
+            if (text == null || !text.isJsonPrimitive() || !text.getAsString().contains("edt_")) {
+                continue;
+            }
+            JsonElement payload;
+            try {
+                payload = JsonParser.parseString(text.getAsString());
+            } catch (JsonParseException ignored) {
+                continue;
+            }
+            if (payload.isJsonObject()) {
+                JsonObject body = payload.getAsJsonObject();
+                JsonElement hint = body.get(field);
+                if (hint != null && hint.isJsonPrimitive() && hint.getAsJsonPrimitive().isString()) {
+                    String advice = hint.getAsString();
+                    String marked = toolset.annotate(advice);
+                    if (!advice.equals(marked)) {
+                        body.addProperty(field, marked);
+                        content.addProperty("text", body.toString());
+                    }
+                }
+            }
+        }
     }
 
     /**
@@ -1065,12 +1136,24 @@ applyI18n();loadStatus();loadTools();
         if (misnamed != null) {
             return misnamed;
         }
+        Set<String> declared = declaredArguments().get(name);
+        if (declared != null) {
+            try {
+                ToolArguments.normalize(name, args);
+            } catch (IllegalArgumentException invalid) {
+                return toolError(name + ": " + invalid.getMessage());
+            }
+        }
         JsonObject outside = scopeGate(name, args);
         if (outside != null) {
             return outside;
         }
         if (toolHelp.name().equals(name)) {
-            return toolHelp.call(args, toolsList().getAsJsonArray("tools"), toolset);
+            JsonArray described = new JsonArray();
+            for (JsonElement element : toolsList().getAsJsonArray("tools")) {
+                described.add(element.isJsonObject() ? annotatedDescriptor(element.getAsJsonObject(), toolset) : element);
+            }
+            return toolHelp.call(args, described, toolset);
         }
         if (JobTools.runsAsJob(name) && args.has(JobTools.ASYNC) && args.get(JobTools.ASYNC).isJsonPrimitive()
                 && args.get(JobTools.ASYNC).getAsBoolean()) {
@@ -1090,7 +1173,7 @@ applyI18n();loadStatus();loadTools();
             return comparisonDetails.call(args);
         }
         if (projectErrors.name().equals(name)) {
-            return projectErrors.call(args);
+            return projectErrors.call(args, toolset);
         }
         if (projects.name().equals(name)) {
             return projects.call(args);
@@ -1384,7 +1467,12 @@ applyI18n();loadStatus();loadTools();
         }
         if (cleanProject.name().equals(name)) {
             JsonObject denied = writeTokenGate(cleanProject.isWrite(), name);
-            return denied != null ? denied : cleanProject.call(args);
+            if (denied != null) {
+                return denied;
+            }
+            JsonObject answer = cleanProject.call(args);
+            annotateTexts(answer, toolset, "nextStep");
+            return answer;
         }
         if (searchQueries.name().equals(name)) {
             JsonObject denied = writeTokenGate(searchQueries.isWrite(), name);
