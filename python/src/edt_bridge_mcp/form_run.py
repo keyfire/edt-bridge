@@ -12,6 +12,7 @@ a fresh copy of its data file, so a run can neither damage the infobase nor see 
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import shutil
@@ -48,7 +49,9 @@ DESCRIPTOR = {
         "one that fails does not hide the others. The scenarios of one call share one copy of the "
         "infobase: what one writes the next sees; a scenario that needs a clean copy goes to a call "
         "of its own. The configured infobase itself is never changed. Served by the wrapper; no EDT "
-        "needed."
+        "needed. Pass webClient=true with EDT_BRIDGE_PII enabled to get a masked screenshot from the "
+        "web client. In that mode use path and button or steps for an external file, or navigationLink "
+        "and steps for a stored document or catalog item."
     ),
     "descriptionRu": (
         "Запустить основную форму собранного .epf или .erf в свежей копии тестовой базы "
@@ -69,17 +72,26 @@ DESCRIPTOR = {
         "следующим форма открывается заново, а ответ несет итог каждого сценария отдельно, так что "
         "отказ одного не скрывает остальные. Сценарии одного вызова работают в одной копии базы: "
         "записанное одним видит следующий; сценарий, которому нужна чистая копия, запускается "
-        "отдельным вызовом. Настроенная база не меняется. Обслуживает обвязка, EDT не нужна."
+        "отдельным вызовом. Настроенная база не меняется. Обслуживает обвязка, EDT не нужна. "
+        "Чтобы получить снимок веб-клиента с маской, передайте webClient=true при включенном "
+        "EDT_BRIDGE_PII. Для внешнего файла укажите path и button или steps. Для существующего "
+        "документа или элемента справочника укажите navigationLink и steps."
     ),
     "inputSchema": {
         "type": "object",
         "properties": {
             "path": {"type": "string",
                      "description": "Absolute path of the built .epf or .erf"},
+            "webClient": {"type": "boolean",
+                          "description": "Use the web client with a masked screenshot. Pass button or steps"},
+            "navigationLink": {"type": "string",
+                               "description": "Internal e1cib/data link to the stored document or catalog item "
+                                              "in the test infobase. Pass with webClient=true and steps"},
             "form": {"type": "string",
                      "description": "Its main form: ExternalDataProcessor.Name.Form.FormName, or "
                                     "ExternalReport.Name.Form for a report opened with the standard "
-                                    "report form"},
+                                    "report form. With webClient, use Document.Name.Form.FormName or "
+                                    "Catalog.Name.Form.FormName"},
             "formTitle": {"type": "string",
                           "description": "Window title of the opened form. Optional: without it the form is "
                                          "found by its name when one form of that name is open. The window of "
@@ -118,7 +130,16 @@ DESCRIPTOR = {
                                        "they come only when the run did not reach a verdict (default false)"},
             "async": {"type": "boolean", "description": jobs.ASYNC_DESCRIPTION},
         },
-        "required": ["path", "form"],
+        "required": ["form"],
+        "oneOf": [
+            {"required": ["path"],
+             "not": {"anyOf": [
+                 {"required": ["navigationLink"]},
+                 {"required": ["webClient", "scenarios"], "properties": {"webClient": {"const": True}}},
+             ]}},
+            {"required": ["navigationLink", "webClient", "steps"], "properties": {"webClient": {"const": True}},
+             "not": {"required": ["path"]}},
+        ],
     },
     # The tool sets that carry it (EDT_BRIDGE_TOOLSET): the jobs that build an .epf or an .erf.
     "toolsets": ["processor", "report"],
@@ -131,7 +152,8 @@ VERDICTS = frozenset({"scenario_completed", "command_completed"}) | native_repor
 #: What the answer keeps of a run that reached its verdict: what the caller judges the solution by.
 _ANSWER_KEYS = ("ok", "status", "error", "stage", "step", "assertions", "reads", "messages", "dialog",
                 "observedFields", "matchedButtons", "observedButtons", "matchedFields", "observedForms",
-                "observedTitles", "defaultForm", "scenarios", "summary", "piiFilter")
+                "observedTitles", "defaultForm", "scenarios", "summary", "piiFilter", "clientType",
+                "screenshotMasked", "screenshotWithheld", "screenshotData")
 
 
 def _refusal(status: str, message: str) -> dict:
@@ -175,10 +197,19 @@ def run_tool(arguments: dict, *, runner=native_form.run, environ=os.environ, on_
     if not (source / DATA_FILE).is_file():
         return _refusal("not_configured", f"{ENV_INFOBASE} points to {source}, which has no {DATA_FILE}")
     path = Path(str(arguments.get("path") or ""))
+    web_client = arguments.get("webClient") is True
+    navigation_link = arguments.get("navigationLink")
     suffix = path.suffix.lower()
-    if suffix not in (".epf", ".erf") or not path.is_file():
-        return _refusal("invalid_input", "path must name an existing .epf or .erf file")
     button, steps, scenarios = arguments.get("button"), arguments.get("steps"), arguments.get("scenarios")
+    if navigation_link is not None:
+        if (not web_client or arguments.get("path") is not None
+                or not isinstance(navigation_link, str) or steps is None):
+            return _refusal("invalid_input", "navigationLink requires webClient and steps.")
+    elif suffix not in (".epf", ".erf") or not path.is_file():
+        return _refusal("invalid_input", "path must name an existing .epf or .erf file")
+    if web_client and scenarios is not None:
+        return _refusal("invalid_input", "The web client accepts steps or a button. Use the desktop client "
+                        "for named scenarios.")
     if sum(value is not None for value in (button, steps, scenarios)) != 1:
         return _refusal("invalid_input", "pass one of button, steps and scenarios")
     if steps is not None and not isinstance(steps, list):
@@ -201,11 +232,12 @@ def run_tool(arguments: dict, *, runner=native_form.run, environ=os.environ, on_
     with tempfile.TemporaryDirectory(prefix="edt-bridge-form-run-") as temporary:
         root = Path(temporary)
         copy = root / "infobase"
-        copy.mkdir()
         if on_stage is not None:
             on_stage("infobaseCopy")
         copy_started = time.monotonic()
-        shutil.copyfile(source / DATA_FILE, copy / DATA_FILE)
+        if not web_client:
+            copy.mkdir()
+            shutil.copyfile(source / DATA_FILE, copy / DATA_FILE)
         copy_seconds = time.monotonic() - copy_started
         scenario = None
         if content is not None:
@@ -213,21 +245,31 @@ def run_tool(arguments: dict, *, runner=native_form.run, environ=os.environ, on_
             # The scenario check of the native run requires the format version.
             scenario.write_text(json.dumps(content, ensure_ascii=False), encoding="utf-8", newline="")
         args = argparse.Namespace(
-            platform_bin=Path(platform), test_infobase=copy, scope="fixture",
+            platform_bin=Path(platform), test_infobase=source if web_client else copy,
+            scope="application" if navigation_link is not None else "fixture",
             epf=path if suffix == ".epf" else None, erf=path if suffix == ".erf" else None,
-            navigation_link=None, form=str(arguments.get("form") or ""),
+            web_client=web_client, navigation_link=navigation_link, form=str(arguments.get("form") or ""),
             form_title=None if arguments.get("formTitle") is None else str(arguments["formTitle"]),
             button=button, scenario=scenario,
             expect_message=arguments.get("expectMessage"), user=environ.get(ENV_USER),
             output_dir=root / "output", timeout=timeout, _on_stage=on_stage)
         report = runner(args)
+        if web_client and report.get("screenshotMasked") is True and isinstance(report.get("screenshot"), str):
+            screenshot = Path(report["screenshot"]).resolve()
+            if screenshot.is_relative_to(args.output_dir.resolve()):
+                try:
+                    report["screenshotData"] = base64.b64encode(screenshot.read_bytes()).decode("ascii")
+                except OSError:
+                    report["screenshotWithheld"] = True
+            for phase in report.get("phases", []):
+                phase.pop("screenshot", None)
     # The paths point into the copy that is gone now; the caller has no use for them.
     for key in ("testInfobase", "outputDir", "reports"):
         report.pop(key, None)
     # The screenshot lay in the output of the run, which is gone with the copy as well.
     report.pop("screenshot", None)
     timings = report.get("timings")
-    if isinstance(timings, dict) and isinstance(timings.get("stages"), dict):
+    if not web_client and isinstance(timings, dict) and isinstance(timings.get("stages"), dict):
         # The copy of a large infobase is part of the run the caller waits for.
         timings["stages"] = {"infobaseCopy": round(copy_seconds, 2), **timings["stages"]}
         timings["totalSeconds"] = round(timings.get("totalSeconds", 0) + copy_seconds, 2)

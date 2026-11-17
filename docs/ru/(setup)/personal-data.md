@@ -37,7 +37,7 @@ EDT в режиме headless, которую запускает сама обв�
 |---------|-------------|-----------------|
 | плагин | `edt_debug_inspect`, `edt_evaluate` | значения переменных и выражений в остановленном кадре |
 | плагин | `edt_infobase_sessions`, `edt_infobase_maintenance`, `edt_designer_agent` | пользователи и компьютеры сеансов, а также персональные данные в остальном ответе |
-| обвязка | `edt_test_form`, `test-form` | ответ, а в каталоге вывода `result.json`, `junit.xml` и `allure-results/`; снимки экрана удаляются |
+| обвязка | `edt_test_form`, `test-form` | ответ, `result.json`, `junit.xml` и `allure-results/`; сохраняются только [снимки веб-клиента с маской](/ru/native-forms/results#masked-web-client-screenshots) |
 | обвязка | `edt_unit_tests`, `unit-tests` | ответ, `result.json`, `junit.xml`, `allure-results/` и `yaxunit.log`; файлы, которые не являются текстом, удаляются |
 
 Ответы остальных инструментов не меняются. Тексты модулей, схемы компоновки данных и макеты не
@@ -119,7 +119,7 @@ EDT в режиме headless, которую запускает сама обв�
 | Поле | Значение |
 |------|----------|
 | `piiFilter` | режим и число замененных значений: `{"mode": "pseudonym", "masked": 3}` |
-| `screenshotWithheld` | `true` вместо `screenshot`: файл удален, потому что на снимке формы ее данные видны без маски |
+| `screenshotWithheld` | `true` вместо `screenshot`, когда у обвязки нет снимка с маской |
 | `filesWithheld` | сколько файлов запуска YAXUnit удалено, потому что фильтр не умеет их прочитать, например приложенная тестом картинка |
 
 Если фильтр завершился ошибкой, обвязка возвращает статус `pii_filter_failed`: ответ скрывается,

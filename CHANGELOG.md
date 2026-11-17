@@ -37,6 +37,9 @@ to the code and the reasoning behind it.
 - `edt_tool_help` lists the active tools or returns one tool's compact signature.
 - BSL, query and platform documentation searches accept `pattern` and `maxResults` as well
   as `query` and `limit`. Related tools accept compatible names for object and check selectors.
+- The form check can use Apache and Playwright to run a form in a browser with `EDT_BRIDGE_PII` enabled. It saves the masked screenshot in the run
+  and in Allure, and returns it as an MCP image. The browser can open an EPF, ERF, or a
+  stored document or catalog item by navigation link.
 
 ### Fixed
 

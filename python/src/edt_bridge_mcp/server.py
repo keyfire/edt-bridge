@@ -1668,8 +1668,7 @@ class StdioServer:
             except Exception as exc:  # a failed run must not take the server loop down
                 self._tool_error(req_id, f"{name} failed: {exc}")
                 return
-            self._result(req_id, {"content": [{"type": "text",
-                                               "text": json.dumps(report, ensure_ascii=False, indent=2)}]})
+            self._json_result(req_id, report)
             return
         try:
             seconds = max(1, int(arguments.get("timeoutSeconds")))
@@ -1688,7 +1687,14 @@ class StdioServer:
         threading.Thread(target=self._announce_when_ready, daemon=True).start()
 
     def _json_result(self, req_id, answer: dict, is_error: bool = False) -> None:
+        body = answer.get("result", answer)
+        screenshot = body.get("screenshotData") if isinstance(body, dict) and body.get("screenshotMasked") else None
+        if isinstance(screenshot, str):
+            clean = {key: value for key, value in body.items() if key != "screenshotData"}
+            answer = clean if body is answer else dict(answer, result=clean)
         result = {"content": [{"type": "text", "text": json.dumps(answer, ensure_ascii=False, indent=2)}]}
+        if isinstance(screenshot, str):
+            result["content"].append({"type": "image", "mimeType": "image/png", "data": screenshot})
         if is_error:
             result["isError"] = True
         self._result(req_id, result)

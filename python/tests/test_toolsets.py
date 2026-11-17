@@ -447,7 +447,10 @@ def test_help_for_a_wrapper_tool_outside_the_set_says_so(serve, monkeypatch):
     assert "a call of it is refused" in payload["note"]
     assert "Tool sets that contain it: processor, report." in payload["note"]
     # formTitle is optional: without it the form is found by its name.
-    assert payload["inputSchema"]["required"] == ["path", "form"]
+    schema = payload["inputSchema"]
+    assert schema["required"] == ["form"]
+    assert [branch["required"] for branch in schema["oneOf"]] == [
+        ["path"], ["navigationLink", "webClient", "steps"]]
 
 
 def test_help_for_a_plugin_tool_is_answered_by_the_wrapper(serve, monkeypatch):

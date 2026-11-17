@@ -12,9 +12,9 @@ presentations, spreadsheet cells, and user messages. An optional second session 
 the state after reopening the same target.
 
 The command runs independently of EDT. It creates a temporary manager infobase and
-starts separate TestManager and TestClient processes. It uses the explicitly selected
-file infobase for the target; it does not create a copy of that infobase. UI commands
-can change its data.
+starts separate TestManager and TestClient processes. The desktop client uses the
+selected file infobase, and UI commands can change its data. The optional
+[web client](/native-forms/results#masked-web-client-screenshots) publishes a temporary copy.
 
 ## Prepare the environment
 

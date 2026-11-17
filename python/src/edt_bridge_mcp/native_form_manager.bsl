@@ -35,7 +35,11 @@ EndProcedure
 
 Procedure RunCheck(Request, Report)
     MarkTime(Report, "connect");
-    Application = New TestedApplication("127.0.0.1", Request.port);
+    If Request.Property("clientId") Then
+        Application = New TestedApplication("127.0.0.1", Request.port, Request.clientId);
+    Else
+        Application = New TestedApplication("127.0.0.1", Request.port);
+    EndIf;
     Application.Connect();
 
     MarkTime(Report, "formLookup");

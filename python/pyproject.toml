@@ -28,6 +28,7 @@ edt-bridge-mcp = "edt_bridge_mcp.server:main"
 # PyPI refuses a distribution whose metadata carries a direct URL dependency, even
 # in an optional extra. See the CI workflow and CONTRIBUTING.
 test = ["pytest>=7"]
+web = ["playwright>=1.48"]
 
 [tool.setuptools.dynamic]
 version = { attr = "edt_bridge_mcp.__version__" }

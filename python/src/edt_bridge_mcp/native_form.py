@@ -22,7 +22,7 @@ import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from . import event_log, i18n, native_cache, native_report, native_reports, native_scenario, pii
+from . import event_log, i18n, native_cache, native_report, native_reports, native_scenario, native_web, pii
 
 
 _SCOPES = ("empty", "fixture", "application")
@@ -148,6 +148,7 @@ def add_arguments(parser):
     operation.add_argument("--scenario", type=Path, help=i18n.t("test-form.scenario"))
     parser.add_argument("--expect-message", help=i18n.t("test-form.expect-message"))
     parser.add_argument("--user", help=i18n.t("test-form.user"))
+    parser.add_argument("--web-client", action="store_true", help=i18n.t("test-form.web-client"))
     parser.add_argument("--output-dir", required=True, type=Path, help=i18n.t("test-form.output-dir"))
     parser.add_argument("--timeout", type=int, default=120, help=i18n.t("test-form.timeout"))
 
@@ -403,17 +404,27 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
     manager_process_log = root / "manager-process.log"
     client = None
     manager = None
+    page = None
+    pause = time.sleep
     with contextlib.ExitStack() as stack:
         try:
-            client_env = _display(stack, xvfb, root / "client-display", deadline)
-            port = _free_port()
-            auth = ["/N" + args.user] if args.user else []
-            target = (["/Execute", str(launch_external or external)] if external
-                      else ["/URL", args.navigation_link])
-            client = _spawn(stack, [*enterprise, "/F" + str(base), *auth, "/TestClient", f"-TPort{port}",
-                                   *target, "/Out", str(client_log)],
-                            client_env, client_process_log)
-            _wait_for_client(client, port, deadline)
+            if getattr(args, "_web_filter", None):
+                report.update(stage="web_publication", clientType="web")
+                client, page, client_id = native_web.start(
+                    stack, args._web_paths, Path(enterprise[0]).parent, args.navigation_link, external, args.user,
+                    args._web_language, deadline, _spawn, _free_port, _owns_listener)
+                port = native_web.TEST_PORT
+                pause = lambda seconds: native_web.wait_for_browser(page, seconds)
+            else:
+                client_env = _display(stack, xvfb, root / "client-display", deadline)
+                port = _free_port()
+                auth = ["/N" + args.user] if args.user else []
+                target = (["/Execute", str(launch_external or external)] if external
+                          else ["/URL", args.navigation_link])
+                client = _spawn(stack, [*enterprise, "/F" + str(base), *auth, "/TestClient", f"-TPort{port}",
+                                       *target, "/Out", str(client_log)],
+                                client_env, client_process_log)
+                _wait_for_client(client, port, deadline)
 
             timeline.enter("manager")
             report["stage"] = "form_interaction"
@@ -428,6 +439,8 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
             payload.update(maxRows=native_scenario.MAX_ROWS,
                            maxColumns=native_scenario.MAX_COLUMNS, maxItems=native_scenario.MAX_ITEMS,
                            maxListed=native_scenario.MAX_LISTED)
+            if page is not None:
+                payload["clientId"] = client_id
             if steps is not None:
                 payload["steps"] = steps
             if scenarios is not None:
@@ -448,7 +461,7 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
                 while not result.is_file():
                     if client.poll() is not None or manager.poll() is not None:
                         raise _CheckError("session_exited", "A native session exited before reporting a result.")
-                    time.sleep(min(0.15, _seconds_left(deadline)))
+                    pause(min(0.15, _seconds_left(deadline)))
                 if result.stat().st_size > 16_777_216:
                     raise _CheckError("driver_failed", "The test manager result exceeds 16 MiB.")
                 data = json.loads(result.read_text(encoding="utf-8-sig"))
@@ -487,9 +500,9 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
                                                    + time.monotonic() - attempt_started, 2)
                 failed_connects["lastError"] = str(data.get("error") or "")[:300]
                 report["failedConnects"] = failed_connects
-                time.sleep(min(1, _seconds_left(deadline)))
+                pause(min(1, _seconds_left(deadline)))
                 _seconds_left(deadline)
-                if client.poll() is not None or not _owns_listener(client, port):
+                if client.poll() is not None or (page is None and not _owns_listener(client, port)):
                     break
                 result.unlink()
                 progress.unlink(missing_ok=True)
@@ -510,7 +523,7 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
                         or not isinstance(messages, list) or args.expect_message not in messages):
                     raise _CheckError("driver_failed", "The test manager did not report the expected result.")
                 report["ok"] = True
-        except (_CheckError, OSError, ValueError) as error:
+        except (_CheckError, native_web.WebError, OSError, ValueError) as error:
             _record_error(report, error, "driver_failed")
             if progress.is_file():
                 with contextlib.suppress(OSError, ValueError):
@@ -530,9 +543,16 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
             if client is not None:
                 timeline.enter("screenshot")
                 try:
-                    report.update(_capture(stack, client_env, root, output))
-                except OSError as error:
+                    if page is None:
+                        report.update(_capture(stack, client_env, root, output))
+                    else:
+                        capture = native_web.capture(page, output, args._web_filter, deadline)
+                        args._web_screenshots.add(capture["screenshot"])
+                        report.update(capture)
+                except (native_web.WebError, OSError) as error:
                     report["screenshotError"] = str(error)
+                    if page is not None:
+                        report["screenshotWithheld"] = True
             timeline.enter("cleanup")
             for key, process in (("clientExitCode", client), ("managerExitCode", manager)):
                 if process is not None and process.poll() is not None:
@@ -663,6 +683,8 @@ def _suggested_pattern(base):
     if base.parent.name.startswith(_RUN_COPY_PREFIX):
         # edt_test_form works on a fresh copy in a directory with a random suffix.
         return f".*/{_RUN_COPY_PREFIX}.*"
+    if base.parent.name.startswith(native_web.COPY_PREFIX):
+        return f".*/{native_web.COPY_PREFIX}.*"
     return ".*" + _bre_literal(str(base)) + ".*"
 
 
@@ -808,7 +830,7 @@ def _prepare_manager(args, external, ibcmd, client_exe, stack, manager_env, root
     launch_external = external
     scenario = getattr(args, "_scenario", None)
     named = isinstance(scenario, dict) and "scenarios" in scenario
-    if args.erf or (external and named):
+    if (args.erf and not getattr(args, "_web_filter", None)) or (external and named):
         # A report is always opened by the launcher; a data processor when named scenarios need the form
         # opened again between them.
         timeline.enter("reportLauncher")
@@ -923,13 +945,24 @@ def _native_check(args, base, external, output, report):
     if not client_exe.is_file() or not ibcmd.is_file() or not xvfb:
         raise _CheckError("dependency_missing", "The check requires 1cv8, ibcmd, Xvfb and libX11.")
     report["stage"] = "client_environment"
-    _require_client_environment(args, platform, base, external, report)
+    web_client = getattr(args, "_web_filter", None) is not None
+    if not web_client:
+        _require_client_environment(args, platform, base, external, report)
 
     deadline = time.monotonic() + args.timeout
     with tempfile.TemporaryDirectory(prefix="edt-bridge-form-") as temporary, contextlib.ExitStack() as stack:
         root = Path(temporary)
         attempt_root = root
         try:
+            if web_client:
+                report["stage"] = "web_publication"
+                timeline.enter("infobaseCopy")
+                started = datetime.datetime.now()
+                args._web_paths = native_web.copy_infobase(stack, base)
+                base = args._web_paths[1]
+                report["stage"] = "client_environment"
+                _require_client_environment(args, platform, base, external, report)
+                args._web_language = report["clientEnvironment"]["systemLanguage"]["value"] or "en"
             report["stage"] = "manager_setup"
             timeline.enter("managerDisplay")
             display_root = root / "manager-display"
@@ -1001,9 +1034,11 @@ def _native_check(args, base, external, output, report):
                     report["phases"].append(dict(name=name, **result))
                 if not result["ok"]:
                     break
-        except (_CheckError, OSError, ValueError) as error:
+        except (_CheckError, native_web.WebError, OSError, ValueError) as error:
             _record_error(report, error, "driver_failed")
         finally:
+            if getattr(args, "_web_paths", None):
+                report["eventLog"] = _read_event_log(base, started)
             report.update(_setup_logs(attempt_root))
             if not report["ok"]:
                 platform_logs = " ".join(report.get(key, "") for key in
@@ -1042,13 +1077,23 @@ def run(args):
     report = {"ok": False, "scope": args.scope, "scopeSource": "caller", "stage": "validation"}
     output = None
     flt = pii.Filter()
+    args._web_filter = None
+    args._web_paths = None
+    args._web_screenshots = set()
     try:
         try:
             flt = pii.Filter.from_env()
         except pii.RulesError as error:
             raise _CheckError("invalid_input", str(error)) from error
         base, external, destination = _validated_paths(args)
+        if getattr(args, "web_client", False):
+            if not flt.active:
+                raise _CheckError("invalid_input", "The web client requires EDT_BRIDGE_PII.")
+            args._web_filter = flt
         args._scenario = native_scenario.load(args.scenario) if args.scenario else None
+        if args._web_filter is not None and args._scenario and "scenarios" in args._scenario:
+            raise _CheckError("invalid_input", "The web client accepts steps or a button. Use the desktop client "
+                                               "for named scenarios.")
         if args._scenario and "scenarios" in args._scenario and not external:
             raise _CheckError("invalid_input", "Named scenarios need an .epf or .erf: the form is opened again "
                                                "between them by a launcher data processor.")
@@ -1082,7 +1127,8 @@ def run(args):
             # Read after every session is stopped: the platform writes the log as the session runs and
             # finishes it on exit, and the error of a server call is only complete there.
             timeline.enter("eventLog")
-            report["eventLog"] = _read_event_log(base, started)
+            if "eventLog" not in report:
+                report["eventLog"] = _read_event_log(base, started)
     except (_CheckError, OSError, native_scenario.ScenarioError) as error:
         _record_error(report, error, "io_error")
     except KeyboardInterrupt:
@@ -1093,7 +1139,7 @@ def run(args):
     if flt.active:
         # The verdict is already taken on the values the check saw; only what leaves is masked.
         try:
-            pii.withhold_screenshots(report)
+            pii.withhold_screenshots(report, preserved=args._web_screenshots)
             report = pii.mask(report, flt)
             report["piiFilter"] = flt.marker()
         except Exception as error:  # any failure of the filter: nothing unmasked may leave

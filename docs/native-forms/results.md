@@ -34,10 +34,40 @@ result holds the result of each scenario in the order of the file: `name`, `ok`,
 passed scenarios and the names of the failed ones. `ok` is true when every scenario passed, and
 `status` is that of the first scenario that did not.
 
-With `EDT_BRIDGE_PII` set, the answer, `result.json` and the reports for CI are filtered of
-personal data, and `piiFilter` gives the mode and the number of values replaced. Screenshots are
-not kept, since a picture of a form shows its data unmasked: `screenshotWithheld` stands in place
-of the path. The verdict is still taken on the real values; see [Personal data](/personal-data).
+With `EDT_BRIDGE_PII` enabled, the wrapper filters personal data from the answer, `result.json`
+and the CI reports. `piiFilter` shows the mode and the number of replacements. The verdict uses
+the original values. The desktop client's screenshot is withheld and the report sets
+`screenshotWithheld` in place of its path. See [Personal data](/personal-data).
+
+## Masked web client screenshots
+
+To capture a masked screenshot, set `EDT_BRIDGE_PII` to `redact` or `pseudonym` and pass
+`--web-client` to `test-form` or `webClient=true` to `edt_test_form`.
+
+- For an external `.epf` or `.erf`, supply the file path, the form name and a button or a
+  single scenario. Use the desktop client for a batch of named scenarios.
+- For a stored document or catalog item, pass `--navigation-link` and `--scenario` to
+  `test-form`, with the form name. In `edt_test_form`, pass `navigationLink`, `form` and `steps`.
+
+1. In the isolated Linux runner, provide Apache 2.4 with the event MPM and the platform's
+   `wsap24.so` module. `EDT_BRIDGE_TEST_WEB_HTTPD` selects Apache and defaults to
+   `/usr/local/apache2/bin/httpd`. When the runner uses root, Apache needs a `www-data` worker account.
+2. Install `edt-bridge-mcp[web]` and run `python -m playwright install chromium` in that environment.
+   Keep TCP ports 1538–1539 free and private to the runner. The bridge binds HTTP to loopback;
+   the platform's test listener binds to the runner's network interfaces.
+3. Run the check. The wrapper publishes a private copy of `1Cv8.1CD` in a temporary Apache
+   process. It closes Chromium and Apache and removes the copy when the check finishes.
+
+The web client opens external files through its file upload dialog and leaves any security
+prompt for the file unanswered. To prepare the runner for unattended checks of trusted
+files, use a test user with the appropriate platform setting or scope
+`DisableUnsafeActionProtection` to the temporary copies with `.*/edt-bridge-web-.*`.
+
+The web client masks visible DOM content matched by the field and value rules. It hides
+tables, embedded images, canvas and frames before capture. A saved screenshot sets `screenshotMasked`
+and appears in `result.json` and the Allure attachments. The MCP tool returns the final
+screenshot as image content. If Chromium cannot analyze or capture the DOM, the report
+sets `screenshotWithheld` and gives the reason in `screenshotError`.
 
 | Result | Meaning |
 | --- | --- |
@@ -48,6 +78,7 @@ of the path. The verdict is still taken on the real values; see [Personal data](
 | `reopen_failed`, `not_run`, `interrupted` | Named scenarios only. The form could not be opened again before this scenario; the scenario was not reached; the session stopped while it ran. |
 | `unexpected_dialog` | A click raised a warning or a question window over the form that the step did not expect. `dialog` holds its `kind` (`warning`, `question`), `text` and visible `buttons`; the scenario stops there and a question is left unanswered, so the caller decides whether the window is an acceptable answer. |
 | `dependency_missing`, `license_unavailable`, `access_denied`, `setup_failed` | The environment or permissions do not allow the check to run. |
+| `web_publication_failed` | Apache or Chromium could not start the temporary publication or open its test channel. |
 | `client_environment` | No `conf.cfg` the client reads sets `DisableUnsafeActionProtection`, so the client would stop at the security warning; see `clientEnvironment` and [Prepare the environment](/native-forms#prepare-the-environment). |
 | `timeout` | The overall time limit expired. The recorded progress and available screenshot show where execution stopped. |
 | `screenshot_failed` | Observations passed but the required screenshot was not obtained. |
