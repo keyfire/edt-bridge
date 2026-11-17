@@ -199,7 +199,8 @@ public final class UpdateInfobaseTool {
                 o.addProperty("registrationWarning", "this extension changes methods of the base "
                         + "configuration (" + mc.count + " interception(s)), so in the infobase it must "
                         + "be registered with safe mode and dangerous-action protection OFF - both are "
-                        + "ON by default. Clear them with edt_extension_properties.");
+                        + "ON by default and have to be cleared where the extension is registered in the "
+                        + "infobase, e.g. with edt_extension_properties.");
             } else if (mc.ok) {
                 o.addProperty("changesMethods", false);
             }

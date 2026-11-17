@@ -195,7 +195,8 @@ public final class FormGateway {
     /** A form command. */
     public static final class FormCmd {
         public String name;
-        public String title;      // ru
+        public String title;      // ru, the caption of the command
+        public String toolTip;    // ru, the tooltip, apart from the title
         public String handler;    // BSL action procedure, best-effort
     }
 
@@ -308,11 +309,7 @@ public final class FormGateway {
                     r.attributes.add(attributeOf(a, queryLimit));
                 }
                 for (FormCommand c : form.getFormCommands()) {
-                    FormCmd fc = new FormCmd();
-                    fc.name = c.getName();
-                    fc.title = ruOf(c.getToolTip());
-                    fc.handler = handlerOf(c);
-                    r.commands.add(fc);
+                    r.commands.add(commandOf(c));
                 }
                 for (FormParameter pm : form.getParameters()) {
                     FormParam fp = new FormParam();
@@ -525,6 +522,20 @@ public final class FormGateway {
         } catch (RuntimeException e) {
             return null;
         }
+    }
+
+    /**
+     * One form command as edt_form_structure lists it. The title is the caption of the command and the tooltip
+     * is apart from it: the tooltip used to be shown as the title, so a title written by
+     * edt_modify_form_command read back as unchanged.
+     */
+    FormCmd commandOf(FormCommand c) {
+        FormCmd fc = new FormCmd();
+        fc.name = c.getName();
+        fc.title = ruOf(c.getTitle());
+        fc.toolTip = ruOf(c.getToolTip());
+        fc.handler = handlerOf(c);
+        return fc;
     }
 
     /** BSL action procedure backing a form command; best-effort (never throws). */

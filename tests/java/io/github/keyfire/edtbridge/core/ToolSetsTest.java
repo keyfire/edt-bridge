@@ -236,4 +236,74 @@ class ToolSetsTest {
         throw new IllegalStateException("the tool sources were not found above "
                 + Path.of("").toAbsolutePath());
     }
+
+    // EDT-AGENT-12: a hint names a tool the caller cannot call only together with that fact.
+    @Test
+    void aToolOutsideTheSetIsMarkedWhereATextFirstNamesIt() {
+        ToolSets.Selection extension = ToolSets.parse("extension");
+        String hint = "both are ON by default and have to be cleared where the extension is registered in the "
+                + "infobase, e.g. with edt_extension_properties. Then edt_extension_properties again.";
+        String marked = extension.annotate(hint);
+        assertTrue(marked.contains("with edt_extension_properties (outside the active tool set 'extension': a call "
+                + "of it is refused). Then edt_extension_properties again."), marked);
+        // Marked once, and a text marked already is not marked again.
+        assertEquals(marked, extension.annotate(marked));
+        // A tool of the set, a name that is no tool and a selection that narrows nothing stay as they are.
+        assertEquals("build with edt_build_extension", extension.annotate("build with edt_build_extension"));
+        assertEquals("edt_bridge_token edt_nothing", extension.annotate("edt_bridge_token edt_nothing"));
+        assertEquals(hint, ToolSets.parse("").annotate(hint));
+        // The hint of a stale marker of a report job.
+        assertTrue(ToolSets.parse("report").annotate("edt_clean_project rebuilds the project from scratch")
+                .startsWith("edt_clean_project (outside the active tool set 'report'"));
+    }
+
+    @Test
+    void theMarkKeepsAJsonTextValid() {
+        String json = "{\"hint\": \"edt_clean_project rebuilds the project\"}";
+        String marked = ToolSets.parse("report").annotate(json);
+        assertEquals(json.chars().filter(c -> c == '"').count(), marked.chars().filter(c -> c == '"').count());
+        assertFalse(marked.contains("\\"));
+    }
+
+    /**
+     * Every description in the packaged catalog, for every set: a tool it names outside the set is marked. The walk
+     * also counts such mentions, so a catalog without any would not pass the test unseen.
+     */
+    @Test
+    void everyDescriptionOfASetMarksTheToolsOutsideIt() throws IOException {
+        Path catalog = toolSources().resolve("../../../../../../../python/src/edt_bridge_mcp/tool_catalog.json").normalize();
+        String text = Files.readString(catalog, StandardCharsets.UTF_8);
+        Matcher descriptor = Pattern.compile("\"name\": \"(edt_[a-z0-9_]+)\",\\s*\"description\": \"((?:[^\"\\\\]++|\\\\.)*+)\"")
+                .matcher(text);
+        Pattern named = Pattern.compile("(?<![A-Za-z0-9_])edt_[a-z0-9_]+");
+        int checked = 0;
+        int outside = 0;
+        while (descriptor.find()) {
+            String tool = descriptor.group(1);
+            String description = descriptor.group(2);
+            for (String set : ToolSets.names()) {
+                if (!ToolSets.tools(set).contains(tool)) {
+                    continue;
+                }
+                ToolSets.Selection selection = ToolSets.parse(set);
+                String marked = selection.annotate(description);
+                checked++;
+                Matcher mention = named.matcher(description);
+                Set<String> seen = new TreeSet<>();
+                while (mention.find()) {
+                    String other = mention.group();
+                    boolean known = ToolSets.base().contains(other) || ToolSets.outside().contains(other)
+                            || ToolSets.names().stream().anyMatch(name -> ToolSets.own(name).contains(other));
+                    if (!known || ToolSets.tools(set).contains(other) || !seen.add(other)) {
+                        continue;
+                    }
+                    outside++;
+                    assertTrue(marked.contains(other + " (outside the active tool set '" + set + "'"),
+                            tool + " in set " + set + " names " + other + " unmarked: " + marked);
+                }
+            }
+        }
+        assertTrue(checked > 100, "descriptions checked: " + checked);
+        assertTrue(outside > 0, "no description of a set names a tool outside it");
+    }
 }

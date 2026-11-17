@@ -83,6 +83,8 @@ public final class ProjectGateway {
         public boolean stale;
         /** The file changed on disk and the workspace has not read the change yet. */
         public boolean unsynchronized;
+        /** The marker predates the last change of its file, and EDT checked the file since without renewing it. */
+        public boolean leftover;
         /** When the marker was created, epoch ms; 0 when the marker does not say. */
         public long markerCreatedAt;
         /** The last write of the file on disk, epoch ms; 0 when the file was not found. */
@@ -180,6 +182,8 @@ public final class ProjectGateway {
         /** Listed problems whose marker predates the last change of their file; -1 when nothing
          *  was listed to judge (countOnly). */
         public int staleCount = -1;
+        /** Listed problems left over from an earlier version of their file; they keep the report complete. */
+        public int leftoverCount;
         /** Whether freshness was inspected for every filtered marker before presentation limits. */
         public boolean markerFreshnessComplete;
         /** Files in scope the workspace has not read since their last write on disk - the first
@@ -314,8 +318,12 @@ public final class ProjectGateway {
             }
             r.unsynchronized.add(path);
         }
+        int staleSchemas = 0;
+        for (Problem problem : r.problems) {
+            if (problem.stale && problem.filePath != null && problem.filePath.endsWith(".dcs")) staleSchemas++;
+        }
         r.hint = MarkerFreshness.hint(Math.max(r.staleCount, 0), r.unsynchronizedCount,
-                refreshed != null);
+                refreshed != null, staleSchemas, r.leftoverCount);
         if (!r.markerFreshnessComplete) {
             r.hint = appendHint(r.hint, "Marker freshness was not inspected for the full scope. "
                     + "Use countOnly=false and narrow fqn/modulePath or increase limit for a complete snapshot.");
@@ -386,9 +394,11 @@ public final class ProjectGateway {
         if (report.countOnly) return;
         judgeFreshness(report.problems, lookup);
         report.staleCount = 0;
+        report.leftoverCount = 0;
         int unresolvedEdt = 0;
         for (Problem problem : report.problems) {
             if (problem.stale) report.staleCount++;
+            if (problem.leftover) report.leftoverCount++;
             if (problem.file == null) {
                 report.markerFreshnessComplete = false;
                 if (problem.edtMarker != null || "edt-check".equals(problem.source)) unresolvedEdt++;
@@ -403,6 +413,9 @@ public final class ProjectGateway {
         }
         java.util.Map<Object, IResource> byObject = new java.util.HashMap<>();
         java.util.Map<IResource, long[]> stamps = new java.util.HashMap<>();
+        // When EDT last checked each file: the newest marker it created there. A marker older than the change of a
+        // file EDT checked after that change was not renewed by that check.
+        java.util.Map<IResource, Long> checked = new java.util.HashMap<>();
         for (Problem p : listed) {
             IResource res = p.file;
             if (res == null && p.edtMarker != null) {
@@ -412,15 +425,24 @@ public final class ProjectGateway {
                     p.filePath = res.getProjectRelativePath().toString();
                 }
             }
+            if (res != null && p.edtMarker != null) {
+                checked.merge(res, p.markerCreatedAt, Math::max);
+            }
+        }
+        for (Problem p : listed) {
+            IResource res = p.file;
             if (res == null) {
                 continue;
             }
             long[] stamp = stamps.computeIfAbsent(res, file -> new long[] {
                 diskStamp(file), file.isSynchronized(IResource.DEPTH_ZERO) ? 1L : 0L });
+            long checkedAt = p.edtMarker == null ? 0L : Math.max(checked.getOrDefault(res, 0L),
+                    CheckedFiles.checkedAt(res.getProject().getName(), res.getProjectRelativePath().toString()));
             MarkerFreshness.Verdict verdict =
-                    MarkerFreshness.judge(p.markerCreatedAt, stamp[0], stamp[1] == 1L);
+                    MarkerFreshness.judge(p.markerCreatedAt, stamp[0], stamp[1] == 1L, checkedAt);
             p.stale = verdict.stale;
             p.unsynchronized = verdict.unsynchronized;
+            p.leftover = verdict.leftover;
             p.fileModifiedAt = stamp[0];
         }
     }

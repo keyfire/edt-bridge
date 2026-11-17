@@ -37,7 +37,7 @@ after `-vmargs`; a launch property takes precedence over a variable. `scripts/ru
 |------|-------|------------------|
 | plugin | `edt_debug_inspect`, `edt_evaluate` | the values of variables and expressions in a suspended frame |
 | plugin | `edt_infobase_sessions`, `edt_infobase_maintenance`, `edt_designer_agent` | the users and computers of sessions, and any personal data in the rest of the answer |
-| wrapper | `edt_test_form`, `test-form` | the answer and `result.json`, `junit.xml` and `allure-results/` in the output directory; screenshots are deleted |
+| wrapper | `edt_test_form`, `test-form` | the answer and `result.json`, `junit.xml` and `allure-results/`; screenshots are kept only with [web client masking](/native-forms/results#masked-web-client-screenshots) |
 | wrapper | `edt_unit_tests`, `unit-tests` | the answer and `result.json`, `junit.xml`, `allure-results/` and `yaxunit.log`; files that are not text are deleted |
 
 The answers of other tools do not change. Module texts, data composition schemas and templates
@@ -119,7 +119,7 @@ instead of answering unfiltered.
 | Field | Meaning |
 |-------|---------|
 | `piiFilter` | the mode and the number of values replaced: `{"mode": "pseudonym", "masked": 3}` |
-| `screenshotWithheld` | `true` in place of `screenshot`: the file is deleted, since a picture of a form shows its data unmasked |
+| `screenshotWithheld` | `true` in place of `screenshot` when the wrapper has no masked screenshot |
 | `filesWithheld` | how many files of a YAXUnit run were deleted because the filter cannot read them, an image a test attached for example |
 
 When the filter fails with an error, the wrapper returns the status `pii_filter_failed` instead:

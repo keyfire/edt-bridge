@@ -172,8 +172,9 @@ def test_the_copy_of_the_test_infobase_is_a_stage_of_the_tool(tmp_path):
         return {"ok": True, "status": "command_completed",
                 "timings": {"totalSeconds": 2.0, "stages": {"preparation": 2.0}, "phases": []}}
 
+    # The stages are diagnostics: the answer brings them with details (EDT-OUT-03).
     report = form_run.run_tool({"path": str(artifact), "form": "ExternalDataProcessor.Check.Form.Form",
-                                "button": "Run"}, runner=runner, environ=environ)
+                                "button": "Run", "details": True}, runner=runner, environ=environ)
 
     stages = report["timings"]["stages"]
     assert list(stages) == ["infobaseCopy", "preparation"]

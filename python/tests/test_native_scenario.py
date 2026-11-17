@@ -381,3 +381,112 @@ def test_a_scenario_built_from_the_schema_passes_the_check():
                 step[key] = sample[key]
         steps.append(step)
     assert native_scenario.validate(_scenario(*steps)) is not None
+
+
+# EDT-TEST-20: named scenarios in one start of the client.
+_READ_FORM = {"action": "read_form"}
+_EMPTY_FORM = {"fields": [], "tables": [], "spreadsheets": [], "truncated": False}
+
+
+def _named(*names):
+    return {"version": 1, "scenarios": [{"name": name, "steps": [dict(_READ_FORM)]} for name in names]}
+
+
+def test_named_scenarios_are_validated_one_by_one():
+    native_scenario.validate(_named("Empty period", "Two companies"))
+    bad = _named("Empty period", "Two companies")
+    bad["scenarios"][1]["steps"] = [{"action": "click", "button": "Run"}]
+    with pytest.raises(native_scenario.ScenarioError, match="scenario 'Two companies' must confirm"):
+        native_scenario.validate(bad)
+    bad["scenarios"][1]["steps"] = [{"action": "input", "field": "Period"}]
+    with pytest.raises(native_scenario.ScenarioError, match="step 1 in scenario 'Two companies': missing text"):
+        native_scenario.validate(bad)
+
+
+@pytest.mark.parametrize("value, words", [
+    (_named("A", "A"), "unique: 'A' repeats"),
+    (_named(" "), "needs a name"),
+    ({"version": 1, "scenarios": []}, "between 1 and 20"),
+    ({"version": 1, "scenarios": [{"name": "A", "steps": [_READ_FORM], "extra": 1}]}, "exactly name and steps"),
+    ({"version": 1, "scenarios": [{"name": "A", "steps": [_READ_FORM]}], "steps": [_READ_FORM]}, "not both"),
+    ({"version": 1, "scenarios": [{"name": "A", "steps": [_READ_FORM]}], "reopen": [_READ_FORM]}, "not both"),
+    (_named(*[f"S{index}" for index in range(21)]), "between 1 and 20"),
+])
+def test_bad_named_scenarios_are_refused_with_the_reason(value, words):
+    with pytest.raises(native_scenario.ScenarioError, match=words):
+        native_scenario.validate(value)
+
+
+def test_each_named_scenario_gets_its_own_result_and_a_failure_hides_none():
+    scenarios = [
+        {"name": "Passes", "steps": [{"action": "assert_field", "field": "Total", "equals": "10"}]},
+        {"name": "Fails", "steps": [{"action": "assert_field", "field": "Total", "equals": "10"}]},
+        {"name": "Stops", "steps": [_READ_FORM, {"action": "input", "field": "Period", "text": "x"}, _READ_FORM]},
+        {"name": "Broken", "steps": [_READ_FORM]},
+        {"name": "Last", "steps": [_READ_FORM]},
+    ]
+    parts = [
+        {"name": "Passes", "status": "scenario_observed", "finished": True,
+         "observations": [{"action": "assert_field", "actual": "10"}]},
+        {"name": "Fails", "status": "scenario_observed", "finished": True,
+         "observations": [{"action": "assert_field", "actual": "12"}]},
+        {"name": "Stops", "status": "scenario_error", "stage": "input", "step": 2, "finished": True,
+         "error": "The field selector must match exactly one field.", "observedFields": {"total": 0, "fields": []},
+         "observations": [{"action": "read_form", "actual": _EMPTY_FORM}]},
+        # Data the driver could not have produced: this scenario fails alone.
+        {"name": "Broken", "status": "scenario_observed", "finished": True, "observations": []},
+        {"name": "Last", "status": "scenario_observed", "finished": True,
+         "observations": [{"action": "read_form", "actual": _EMPTY_FORM}]},
+    ]
+
+    results = native_scenario.scenario_results(scenarios, parts)
+    verdict = native_scenario.scenarios_verdict(results)
+
+    assert [(result["name"], result["status"]) for result in results] == [
+        ("Passes", "scenario_completed"), ("Fails", "assertion_failed"), ("Stops", "scenario_error"),
+        ("Broken", "driver_failed"), ("Last", "scenario_completed")]
+    assert results[1]["assertions"][0]["actual"] == "12"
+    assert results[2]["step"] == 2 and results[2]["observedFields"] == {"total": 0, "fields": []}
+    assert results[2]["observations"][0]["action"] == "read_form"
+    assert results[4]["reads"][0]["actual"] == _EMPTY_FORM
+    assert verdict["ok"] is False
+    assert verdict["status"] == "assertion_failed"
+    assert verdict["summary"] == {"passed": 2, "failed": ["Fails", "Stops", "Broken"]}
+
+
+def test_a_stopped_run_keeps_the_finished_scenarios_and_names_the_rest():
+    scenarios = [{"name": name, "steps": [dict(_READ_FORM)]} for name in ("First", "Second", "Third")]
+    parts = [{"name": "First", "status": "scenario_observed", "finished": True,
+              "observations": [{"action": "read_form", "actual": _EMPTY_FORM}]},
+             {"name": "Second", "status": "scenario_error", "stage": "read_form", "step": 1}]
+
+    results = native_scenario.scenario_results(scenarios, parts, stopped="A native session exited.")
+
+    assert [(result["name"], result["ok"], result["status"]) for result in results] == [
+        ("First", True, "scenario_completed"), ("Second", False, "interrupted"), ("Third", False, "not_run")]
+    assert results[1]["error"] == results[2]["error"] == "A native session exited."
+
+
+def test_scenarios_the_driver_reports_as_not_run_keep_their_reason():
+    scenarios = [{"name": name, "steps": [dict(_READ_FORM)]} for name in ("First", "Second", "Third")]
+    parts = [{"name": "First", "status": "scenario_observed", "finished": True,
+              "observations": [{"action": "read_form", "actual": _EMPTY_FORM}]},
+             {"name": "Second", "status": "reopen_failed", "stage": "reopen", "finished": True,
+              "error": "A window the previous scenario left did not close: MessageBox"},
+             {"name": "Third", "status": "not_run", "finished": True, "error": "The form could not be opened again."}]
+
+    verdict = native_scenario.scenarios_verdict(native_scenario.scenario_results(scenarios, parts))
+
+    assert verdict["status"] == "reopen_failed"
+    assert [result["status"] for result in verdict["scenarios"]] == ["scenario_completed", "reopen_failed", "not_run"]
+    assert verdict["scenarios"][2]["error"] == "The form could not be opened again."
+
+
+@pytest.mark.parametrize("parts", [
+    [{"name": "Other", "status": "scenario_observed"}],
+    [{"name": "Only", "status": "scenario_observed"}, {"name": "Extra", "status": "scenario_observed"}],
+    "not a list",
+])
+def test_scenario_results_the_driver_cannot_have_written_are_refused(parts):
+    with pytest.raises(native_scenario.DriverResultError):
+        native_scenario.scenario_results([{"name": "Only", "steps": [_READ_FORM]}], parts)

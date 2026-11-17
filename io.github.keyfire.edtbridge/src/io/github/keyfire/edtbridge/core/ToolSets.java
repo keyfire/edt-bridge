@@ -177,6 +177,18 @@ public final class ToolSets {
             "edt_debug_inspect",
             "edt_evaluate");
 
+    /** Every tool the server registers: the base, the sets and the tools outside them. */
+    private static final Set<String> ALL = all();
+    /** A tool name inside a text: edt_ and a snake_case word, not part of a longer word. */
+    private static final java.util.regex.Pattern TOOL_NAME = java.util.regex.Pattern.compile("(?<![A-Za-z0-9_])edt_[a-z0-9_]+");
+
+    private static Set<String> all() {
+        Set<String> all = new LinkedHashSet<>(BASE);
+        SETS.values().forEach(all::addAll);
+        all.addAll(OUTSIDE);
+        return Collections.unmodifiableSet(all);
+    }
+
     private ToolSets() {
     }
 
@@ -335,6 +347,43 @@ public final class ToolSets {
         public String refusal(String tool) {
             return tool + " is outside the active " + label() + " (EDT_BRIDGE_TOOLSET), so the call "
                     + "was refused and nothing was done. " + membership(tool);
+        }
+
+        /**
+         * A text that names tools, with the tools the selection does not serve marked where they are first named:
+         * a hint or a refusal that points at a tool the caller cannot call says so at that place. A text that
+         * names only served tools, or a selection that narrows nothing, comes back as it is. The mark holds no
+         * double quote or backslash, so a JSON text stays valid JSON.
+         */
+        public String annotate(String text) {
+            if (text == null || names.isEmpty() || !unknown.isEmpty() || !text.contains("edt_")) {
+                return text;
+            }
+            java.util.regex.Matcher named = TOOL_NAME.matcher(text);
+            StringBuilder out = new StringBuilder(text.length() + 64);
+            Set<String> marked = new LinkedHashSet<>();
+            int last = 0;
+            while (named.find()) {
+                String tool = named.group();
+                if (tools.contains(tool) || !ALL.contains(tool) || marked.contains(tool)) {
+                    continue;
+                }
+                marked.add(tool);
+                out.append(text, last, named.end());
+                last = named.end();
+                if (!text.startsWith(mark(), last)) {
+                    out.append(mark());
+                }
+            }
+            if (marked.isEmpty()) {
+                return text;
+            }
+            return out.append(text, last, text.length()).toString();
+        }
+
+        /** What follows a tool the selection does not serve in an annotated text. */
+        String mark() {
+            return " (outside the active " + label() + ": a call of it is refused)";
         }
 
         /** The note a description of a tool outside the selection carries. */
