@@ -200,6 +200,85 @@ def test_a_live_list_of_a_bridge_started_without_the_variable_is_narrowed(serve,
     assert listed(srv, sent) == ["edt_projects", "edt_add_form", "edt_test_form"]
 
 
+def test_live_description_and_hint_follow_the_wrapper_toolset(serve, monkeypatch):
+    srv, sent = serve("report")
+    mark = " (outside the active tool set 'report': a call of it is refused)"
+    tools = [{"name": "edt_project_errors", "toolsets": ["report"],
+              "description": "Read markers; consider edt_clean_project for a fresh build.",
+              "descriptionRu": "Проверить маркеры. Для пересборки вызвать edt_clean_project."},
+             {"name": "edt_clean_project", "toolsets": ["extension"]}]
+    # The installed catalog can lag behind the live EDT.
+    offline(srv, monkeypatch, [{"name": "edt_clean_project", "toolsets": ["report"]}])
+    monkeypatch.setattr(srv.backend, "is_up", lambda: True)
+    monkeypatch.setattr(srv.backend, "ensure", lambda **_kw: (True, "up"))
+    monkeypatch.setattr(srv.backend, "forward", lambda message: {"result": {"tools": tools}
+                        if message["method"] == "tools/list" else {"content": [{"type": "text",
+                            "text": '{ "hint": "Retry with edt_clean_project", "source": "edt_clean_project" }'}]}})
+
+    assert "edt_clean_project" not in listed(srv, sent)
+    description = sent.pop()["result"]["tools"][0]
+    assert "edt_clean_project" + mark in description["description"]
+    assert "edt_clean_project" + mark in description["descriptionRu"]
+    assert mark not in tools[0]["description"]
+    answer = call(srv, sent, "edt_project_errors", {"projectName": "Demo"})
+    assert json.loads(answer["content"][0]["text"]) == {
+        "hint": "Retry with edt_clean_project" + mark, "source": "edt_clean_project"}
+
+
+@pytest.mark.parametrize("name, text", [
+    ("edt_project_errors", '{ "hint": "Retry with edt_clean_project (outside the active tool set '
+                           "'report': a call of it is refused)" + '" }'),
+    ("edt_project_errors", '{\n "source": "edt_clean_project", "sourceHash":"123" \n}'),
+    ("edt_project_errors", "<result>edt_clean_project</result>"),
+    ("edt_module_text", '{ "hint": "edt_clean_project", "source": "edt_clean_project" }'),
+])
+def test_wrapper_preserves_unmarked_payload_bytes(serve, monkeypatch, name, text):
+    srv, sent = serve("report")
+    offline(srv, monkeypatch, [{"name": "edt_clean_project", "toolsets": []}])
+    monkeypatch.setattr(srv.backend, "ensure", lambda **_kw: (True, "up"))
+    monkeypatch.setattr(srv.backend, "forward", lambda _: {
+        "result": {"content": [{"type": "text", "text": text}]}})
+
+    assert call(srv, sent, name, {})["content"][0]["text"] == text
+
+
+def test_forwarded_help_descriptions_mark_known_references(serve, monkeypatch):
+    srv, sent = serve("report")
+    offline(srv, monkeypatch, [{"name": "edt_clean_project", "toolsets": []}])
+    monkeypatch.setattr(srv.backend, "ensure", lambda **_kw: (True, "up"))
+    payload = {"name": "edt_project_errors", "available": True, "toolsets": ["report"],
+               "description": "See edt_clean_project.",
+               "inputSchema": {"type": "object", "properties": {"refresh": {
+                   "description": "Compare with edt_clean_project.", "default": "edt_clean_project"}}}}
+    monkeypatch.setattr(srv.backend, "forward", lambda _: {
+        "result": {"content": [{"type": "text", "text": json.dumps(payload)}]}})
+    body = json.loads(call(srv, sent, "edt_tool_help", {"tool": payload["name"]})["content"][0]["text"])
+    mark = " (outside the active tool set 'report': a call of it is refused)"
+    assert body["description"] == "See edt_clean_project" + mark + "."
+    refresh = body["inputSchema"]["properties"]["refresh"]
+    assert refresh["description"] == "Compare with edt_clean_project" + mark + "."
+    assert refresh["default"] == "edt_clean_project"
+
+
+@pytest.mark.parametrize("job_tool, name, field", [
+    ("edt_job_status", "edt_project_errors", "hint"),
+    ("edt_cancel_job", "edt_clean_project", "nextStep"),
+])
+def test_known_advisory_in_a_forwarded_job_result_is_marked(serve, monkeypatch, job_tool, name, field):
+    srv, sent = serve("report")
+    offline(srv, monkeypatch, [{"name": "edt_clean_project", "toolsets": []}])
+    monkeypatch.setattr(srv.backend, "is_up", lambda: True)
+    monkeypatch.setattr(srv.backend, "ensure", lambda **_kw: (True, "up"))
+    payload = {"jobId": "edt-1", "status": "succeeded", "tool": name,
+               "result": {field: "Try edt_clean_project", "source": "edt_clean_project"}}
+    monkeypatch.setattr(srv.backend, "forward", lambda _: {
+        "result": {"content": [{"type": "text", "text": json.dumps(payload)}]}})
+    reply = json.loads(call(srv, sent, job_tool, {"jobId": "edt-1"})["content"][0]["text"])
+    assert reply["result"][field] == (
+        "Try edt_clean_project (outside the active tool set 'report': a call of it is refused)")
+    assert reply["result"]["source"] == "edt_clean_project"
+
+
 def test_a_refusal_of_the_bridge_to_list_reaches_the_client(serve, monkeypatch):
     """The bridge was started with a misspelled set and the wrapper with none."""
     srv, sent = serve(None)

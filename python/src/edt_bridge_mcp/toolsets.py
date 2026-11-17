@@ -20,6 +20,7 @@ from __future__ import annotations
 import difflib
 import json
 import os
+import re
 from dataclasses import dataclass
 
 #: The names of the sets, as core/ToolSets.java declares them and in the same order.
@@ -31,6 +32,11 @@ HELP_TOOL = "edt_tool_help"
 
 #: How many near names a refusal offers.
 _SUGGESTIONS = 5
+
+_TOOL_NAME = re.compile(r"(?<![A-Za-z0-9_])edt_[a-z0-9_]+(?![A-Za-z0-9_])")
+_ADVICE_MARK = re.compile(r" \(outside the active tool sets? [^\n]+?: a call of it is refused\)")
+_ADVISORY_FIELDS = {"edt_project_errors": "hint", "edt_clean_project": "nextStep"}
+_JOB_RESULTS = frozenset(("edt_job_status", "edt_cancel_job"))
 
 
 def _quoted(names) -> str:
@@ -186,7 +192,103 @@ def describe(descriptor: dict, selection: Selection, *, brief: bool = False) -> 
     return json.dumps(answer, ensure_ascii=False, indent=2)
 
 
-def agree_with_selection(result: dict, selection: Selection) -> dict:
+def _annotate(text: str, selection: Selection, unavailable: set[str]) -> str:
+    seen = set()
+    mark = f" (outside the active {selection.label()}: a call of it is refused)"
+
+    def insert(match):
+        name = match[0]
+        if name not in unavailable or name in seen:
+            return name
+        seen.add(name)
+        if _ADVICE_MARK.match(text, match.end()):
+            return name
+        return name + mark
+
+    return _TOOL_NAME.sub(insert, text) if unavailable and "edt_" in text else text
+
+
+def _described_fields(node: dict, selection: Selection, unavailable: set[str]) -> dict:
+    for key in ("description", "descriptionRu"):
+        value = node.get(key)
+        if isinstance(value, str):
+            marked = _annotate(value, selection, unavailable)
+            if marked != value:
+                node = dict(node, **{key: marked})
+    return node
+
+
+def _described_schema(schema, selection: Selection, unavailable: set[str]):
+    if isinstance(schema, list):
+        return [_described_schema(item, selection, unavailable) for item in schema]
+    if not isinstance(schema, dict):
+        return schema
+    described = _described_fields(schema, selection, unavailable)
+    for key in ("properties", "patternProperties", "$defs", "definitions"):
+        value = schema.get(key)
+        if isinstance(value, dict):
+            marked = {name: _described_schema(item, selection, unavailable) for name, item in value.items()}
+            if marked != value:
+                described = dict(described, **{key: marked})
+    for key in ("items", "prefixItems", "additionalProperties", "allOf", "anyOf", "oneOf",
+                "not", "if", "then", "else"):
+        value = schema.get(key)
+        if isinstance(value, (dict, list)):
+            marked = _described_schema(value, selection, unavailable)
+            if marked != value:
+                described = dict(described, **{key: marked})
+    return described
+
+
+def annotated_descriptor(descriptor: dict, selection: Selection, unavailable: set[str]) -> dict:
+    if not unavailable:
+        return descriptor
+    described = _described_fields(descriptor, selection, unavailable)
+    for key in ("inputSchema", "outputSchema"):
+        schema = descriptor.get(key)
+        marked = _described_schema(schema, selection, unavailable)
+        if marked != schema:
+            described = dict(described, **{key: marked})
+    return described
+
+
+def _text_payload(content):
+    if isinstance(content, dict) and content.get("type") == "text":
+        text = content.get("text")
+        if isinstance(text, str) and text.lstrip().startswith("{"):
+            try:
+                return json.loads(text)
+            except ValueError:
+                pass
+    return None
+
+
+def annotate_advisory(tool, result, selection: Selection, unavailable: set[str]) -> None:
+    """Annotate only the known advisory field of a forwarded tool response."""
+    if not (unavailable and isinstance(result, dict) and isinstance(result.get("content"), list)):
+        return
+    for content in result["content"]:
+        payload = _text_payload(content)
+        if not isinstance(payload, dict):
+            continue
+        body, source = payload, tool
+        if tool in _JOB_RESULTS:
+            body, source = payload.get("result"), payload.get("tool")
+        field = _ADVISORY_FIELDS.get(source) if isinstance(source, str) else None
+        if not (field and isinstance(body, dict) and isinstance(body.get(field), str)):
+            continue
+        advice = body[field]
+        marked = _annotate(advice, selection, unavailable)
+        if marked != advice:
+            body[field] = marked
+            content["text"] = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+
+
+def has_advisory(tool) -> bool:
+    return isinstance(tool, str) and (tool in _ADVISORY_FIELDS or tool in _JOB_RESULTS)
+
+
+def agree_with_selection(result: dict, selection: Selection, unavailable: set[str] | None = None) -> dict:
     """Make the bridge's description of a tool agree with the selection of this wrapper.
 
     The bridge marks a tool as outside the set by ITS variable. A bridge started without the
@@ -196,18 +298,16 @@ def agree_with_selection(result: dict, selection: Selection) -> dict:
     if not (selection.names and isinstance(result, dict)) or result.get("isError"):
         return result
     content = result.get("content") or []
-    if len(content) != 1 or not isinstance(content[0], dict) or content[0].get("type") != "text":
+    if not isinstance(content, list) or len(content) != 1:
         return result
-    try:
-        payload = json.loads(content[0].get("text") or "")
-    except ValueError:
+    payload = _text_payload(content[0])
+    if not isinstance(payload, dict) or not isinstance(payload.get("name"), str):
         return result
-    if (not isinstance(payload, dict) or not isinstance(payload.get("name"), str)
-            or payload.get("available") is not True or selection.shows(payload)):
-        return result
-    payload["available"] = False
-    payload["note"] = selection.note(payload)
-    content[0]["text"] = json.dumps(payload, ensure_ascii=False, indent=2)
+    described = annotated_descriptor(payload, selection, unavailable or set())
+    if payload.get("available") is True and not selection.shows(payload):
+        described = dict(described, available=False, note=selection.note(payload))
+    if described != payload:
+        content[0]["text"] = json.dumps(described, ensure_ascii=False, indent=2)
     return result
 
 

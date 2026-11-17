@@ -18,6 +18,7 @@ package io.github.keyfire.edtbridge.tools;
 
 import io.github.keyfire.edtbridge.edt.ProjectGateway;
 import io.github.keyfire.edtbridge.core.ProblemBaselines;
+import io.github.keyfire.edtbridge.core.ToolSets;
 import io.github.keyfire.edtbridge.mcp.McpServer;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -136,7 +137,7 @@ public final class ProjectErrorsTool {
     }
 
     /** Execute the tool; returns an MCP tool result (content[] / isError). */
-    public JsonObject call(JsonObject args) {
+    public JsonObject call(JsonObject args, ToolSets.Selection toolset) {
         String project = getStr(args, "projectName");
         String fqn = getStr(args, "fqn");
         String modulePath = getStr(args, "modulePath");
@@ -168,6 +169,7 @@ public final class ProjectErrorsTool {
                     : null;
             ProjectGateway.ProblemReport rep = gateway.reportProblems(project, fqn, modulePath, severity,
                     baselineMode == null && countOnly, baselineMode == null ? limit : BASELINE_MARKER_LIMIT, refreshed);
+            String hint = toolset.annotate(rep.hint);
             JsonObject baseline = null;
             String baselineText = "";
             if (baselineMode != null) {
@@ -175,7 +177,7 @@ public final class ProjectErrorsTool {
                     return McpServer.toolError("A baseline requires a complete validation snapshot. "
                             + "Refresh and wait for modelReady=true, synchronized sources and settled validation; "
                             + "narrow fqn or modulePath if the marker limit is exceeded. "
-                            + (rep.hint == null ? "" : rep.hint));
+                            + (hint == null ? "" : hint));
                 }
                 java.util.List<ProblemBaselines.Entry> entries = rep.problems.stream().map(ProjectErrorsTool::entry).toList();
                 String scope = baselineScope(project, fqn, modulePath, severity, rep.locations);
@@ -232,7 +234,7 @@ public final class ProjectErrorsTool {
                 rep.problems = new java.util.ArrayList<>(rep.problems.stream().limit(countOnly ? 0 : displayLimit).toList());
             }
             if (brief && !countOnly) {
-                return McpServer.textResult(baselineText + briefReport(project, fqn, modulePath, severity, rep));
+                return McpServer.textResult(baselineText + briefReport(project, fqn, modulePath, severity, rep, hint));
             }
             JsonObject payload = new JsonObject();
             if (project != null) {
@@ -281,8 +283,8 @@ public final class ProjectErrorsTool {
             rep.unsynchronized.forEach(unsynchronized::add);
             payload.add("unsynchronized", unsynchronized);
             payload.addProperty("unsynchronizedCount", rep.unsynchronizedCount);
-            if (rep.hint != null) {
-                payload.addProperty("hint", rep.hint);
+            if (hint != null) {
+                payload.addProperty("hint", hint);
             }
             if (rep.refreshed != null) {
                 payload.add("refreshed", refreshedJson(rep.refreshed, diagnostics));
@@ -438,7 +440,7 @@ public final class ProjectErrorsTool {
      * here a problem is severity, resource with line, message and the check id when there is one.
      */
     static String briefReport(String project, String fqn, String modulePath, String severity,
-            ProjectGateway.ProblemReport rep) {
+            ProjectGateway.ProblemReport rep, String hint) {
         StringBuilder sb = new StringBuilder();
         sb.append(project != null ? project : "all open projects").append(": ").append(rep.total)
           .append(" problem(s) (ERROR ").append(rep.errors).append(", WARNING ").append(rep.warnings)
@@ -487,8 +489,8 @@ public final class ProjectErrorsTool {
             }
             sb.append('\n');
         }
-        if (rep.hint != null) {
-            sb.append("hint: ").append(rep.hint).append('\n');
+        if (hint != null) {
+            sb.append("hint: ").append(hint).append('\n');
         }
         for (ProjectGateway.Problem p : rep.problems) {
             sb.append(p.severity).append("  ").append(p.resource);

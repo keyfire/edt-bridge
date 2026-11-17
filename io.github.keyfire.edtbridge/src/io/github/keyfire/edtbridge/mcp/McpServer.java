@@ -151,6 +151,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -842,11 +843,6 @@ applyI18n();loadStatus();loadTools();
                 String tool = params.has("name") ? params.get("name").getAsString() : "";
                 // The tools that return infobase data leave only through the personal data filter.
                 JsonObject answer = PersonalDataFilter.apply(tool, toolsCall(params));
-                // A hint or a refusal that names a tool outside the active set says so where it names it. The help
-                // of a tool marks its descriptions itself and keeps the names its answer is about.
-                if (!toolHelp.name().equals(tool)) {
-                    annotateTexts(answer, toolset());
-                }
                 return result(id, answer);
             }
             case "ping":
@@ -1057,16 +1053,37 @@ applyI18n();loadStatus();loadTools();
         }
     }
 
-    /** The text content of a tool answer with the tools outside the selection marked. */
-    static void annotateTexts(JsonObject answer, ToolSets.Selection toolset) {
-        if (answer == null || !toolset.limits() || !answer.has("content") || !answer.get("content").isJsonArray()) {
+    /** Annotate the advisory field of a result that declares one. */
+    static void annotateTexts(JsonObject answer, ToolSets.Selection toolset, String field) {
+        if (!toolset.limits() || !answer.has("content") || !answer.get("content").isJsonArray()) {
             return;
         }
         for (JsonElement item : answer.getAsJsonArray("content")) {
-            if (item.isJsonObject() && item.getAsJsonObject().has("text")
-                    && item.getAsJsonObject().get("text").isJsonPrimitive()) {
-                JsonObject content = item.getAsJsonObject();
-                content.addProperty("text", toolset.annotate(content.get("text").getAsString()));
+            if (!item.isJsonObject()) {
+                continue;
+            }
+            JsonObject content = item.getAsJsonObject();
+            JsonElement text = content.get("text");
+            if (text == null || !text.isJsonPrimitive() || !text.getAsString().contains("edt_")) {
+                continue;
+            }
+            JsonElement payload;
+            try {
+                payload = JsonParser.parseString(text.getAsString());
+            } catch (JsonParseException ignored) {
+                continue;
+            }
+            if (payload.isJsonObject()) {
+                JsonObject body = payload.getAsJsonObject();
+                JsonElement hint = body.get(field);
+                if (hint != null && hint.isJsonPrimitive() && hint.getAsJsonPrimitive().isString()) {
+                    String advice = hint.getAsString();
+                    String marked = toolset.annotate(advice);
+                    if (!advice.equals(marked)) {
+                        body.addProperty(field, marked);
+                        content.addProperty("text", body.toString());
+                    }
+                }
             }
         }
     }
@@ -1156,7 +1173,7 @@ applyI18n();loadStatus();loadTools();
             return comparisonDetails.call(args);
         }
         if (projectErrors.name().equals(name)) {
-            return projectErrors.call(args);
+            return projectErrors.call(args, toolset);
         }
         if (projects.name().equals(name)) {
             return projects.call(args);
@@ -1450,7 +1467,12 @@ applyI18n();loadStatus();loadTools();
         }
         if (cleanProject.name().equals(name)) {
             JsonObject denied = writeTokenGate(cleanProject.isWrite(), name);
-            return denied != null ? denied : cleanProject.call(args);
+            if (denied != null) {
+                return denied;
+            }
+            JsonObject answer = cleanProject.call(args);
+            annotateTexts(answer, toolset, "nextStep");
+            return answer;
         }
         if (searchQueries.name().equals(name)) {
             JsonObject denied = writeTokenGate(searchQueries.isWrite(), name);

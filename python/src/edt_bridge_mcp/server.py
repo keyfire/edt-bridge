@@ -1409,7 +1409,7 @@ class StdioServer:
         #: When the running bridge's scope was last compared with the wrapper's, and the verdict.
         self._scope_checked: tuple[float, str | None] | None = None
         #: The sets each bridge tool belongs to, as the descriptors listed so far declare.
-        self._bridge_sets: dict[str, list] = {}
+        self._bridge_sets: dict[str, list | None] = {}
         self._unlabelled_noted = False
         if self._toolset.problem:
             log(self._toolset.problem)
@@ -1435,7 +1435,7 @@ class StdioServer:
         """The part of a tool list the selected tool sets leave (toolsets.Selection.shows)."""
         return [tool for tool in tools if self._toolset.shows(tool)]
 
-    def _bridge_shown(self, tools: list[dict]) -> list[dict]:
+    def _bridge_shown(self, tools: list[dict], *, live: bool = True) -> list[dict]:
         """Narrow a list of bridge descriptors, and remember where each tool belongs.
 
         The bridge narrows its own list when it was started with the same tool sets. A bridge
@@ -1445,22 +1445,43 @@ class StdioServer:
         """
         if not self._toolset.limits:
             return tools
-        labelled = {tool.get("name"): tool["toolsets"] for tool in tools
-                    if isinstance(tool.get("toolsets"), list)}
-        self._bridge_sets = {**self._bridge_sets, **labelled}
-        if len(labelled) < len(tools) and not self._unlabelled_noted:
+        declared = {tool["name"]: tool.get("toolsets") if isinstance(tool.get("toolsets"), list) else None
+                    for tool in tools}
+        # A live descriptor wins over the packaged fallback, including an older bridge that
+        # does not report toolset membership.
+        self._bridge_sets = ({**self._bridge_sets, **declared} if live else {**declared, **self._bridge_sets})
+        if None in declared.values() and not self._unlabelled_noted:
             self._unlabelled_noted = True
             log("some bridge tools do not say which tool sets carry them (a bridge or a catalog "
                 "older than this wrapper?) - they are listed whatever is selected")
         return self._shown(tools)
+
+    def _unavailable_references(self) -> set[str]:
+        """Names a tool description or advisory can mark against this wrapper's selection."""
+        if not self._toolset.names:
+            return set()
+        from .catalog import bridge_tools
+
+        try:
+            declared = {tool["name"]: tool.get("toolsets") for tool in bridge_tools()}
+        except (OSError, RuntimeError, ValueError):
+            declared = {}
+        declared.update(self._bridge_sets)
+        declared.update({tool["name"]: tool.get("toolsets") for tool in self._local_descriptors()})
+        return {name for name, memberships in declared.items() if not self._toolset.shows({"toolsets": memberships})}
+
+    def _annotated_descriptors(self, tools: list[dict]) -> list[dict]:
+        unavailable = self._unavailable_references()
+        return [toolsets.annotated_descriptor(tool, self._toolset, unavailable) for tool in tools]
 
     def _offline_descriptors(self) -> list[dict]:
         from .catalog import bridge_tools
 
         local = self._local_descriptors()
         names = {tool["name"] for tool in local}
-        return (self._bridge_shown([tool for tool in bridge_tools() if tool["name"] not in names])
-                + self._shown(local))
+        return self._annotated_descriptors(
+            self._bridge_shown([tool for tool in bridge_tools() if tool["name"] not in names], live=False)
+            + self._shown(local))
 
     # -- frames ----------------------------------------------------------
 
@@ -1575,6 +1596,8 @@ class StdioServer:
                     return
                 described = self._local_descriptor(wanted)
                 if described is not None:
+                    if not brief:
+                        described = self._annotated_descriptors([described])[0]
                     self._result(req_id, {"content": [{"type": "text",
                         "text": toolsets.describe(described, self._toolset, brief=brief)}]})
                     return
@@ -1807,9 +1830,9 @@ class StdioServer:
                               if tool.get("name") in local_names)
             if shadowed:
                 log("bridge tools shadowed by the wrapper or a plugin: " + ", ".join(shadowed))
-            result["tools"] = (self._bridge_shown([tool for tool in result["tools"]
-                                                   if tool.get("name") not in local_names])
-                               + self._shown(local))
+            result["tools"] = self._annotated_descriptors(
+                self._bridge_shown([tool for tool in result["tools"] if tool.get("name") not in local_names])
+                + self._shown(local))
         reply.setdefault("jsonrpc", "2.0")
         reply["id"] = req_id
         self._send(reply)
@@ -1831,7 +1854,10 @@ class StdioServer:
             toolsets.add_wrapper_names(
                 reply.get("result"), arguments.get("tool") if isinstance(arguments, dict) else None,
                 [tool["name"] for tool in self._local_descriptors()])
-            toolsets.agree_with_selection(reply.get("result"), self._toolset)
+            toolsets.agree_with_selection(reply.get("result"), self._toolset, self._unavailable_references())
+        elif message.get("method") == "tools/call" and toolsets.has_advisory(params.get("name")):
+            toolsets.annotate_advisory(params["name"], reply.get("result"), self._toolset,
+                                       self._unavailable_references())
         if req_id is not None:
             arguments = params.get("arguments")
             if (self._job_events.enabled and message.get("method") == "tools/call"
