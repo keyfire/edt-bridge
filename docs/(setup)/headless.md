@@ -30,6 +30,12 @@ One headless EDT serves one workspace. The supervisor holds a lock for its works
 runs. A second wrapper started on the same workspace waits for that EDT, even if the process list
 does not show it yet or the PowerShell query behind that list on Windows times out.
 
+When the bridge does not come up, headless or in the EDT window, run `edt-bridge-mcp doctor
+--workspace <ws>`. The command starts and changes nothing. It checks the jar in `dropins` and
+whether EDT can read it, which bridge version each EDT configuration registers, whether EDT runs
+as administrator, and whether the last EDT session logged a plugin load error. Each problem it
+finds comes with the step that fixes it.
+
 ## Waiting for the models
 
 The bridge answers before a large project is indexed, and a tool called in between is refused

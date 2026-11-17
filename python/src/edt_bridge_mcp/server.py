@@ -741,7 +741,7 @@ class Backend:
                 query = ("[Console]::OutputEncoding = [Text.UTF8Encoding]::new(); "
                          "Get-CimInstance Win32_Process | Where-Object { "
                          "$_.Name -in @('1cedt.exe','1cedtcli.exe','1cedtc.exe') } | "
-                         "Select-Object ProcessId,ExecutablePath,CommandLine | ConvertTo-Json -Compress")
+                         "Select-Object ProcessId,Name,ExecutablePath,CommandLine | ConvertTo-Json -Compress")
                 raw = subprocess.run(["powershell", "-NoProfile", "-Command", query],
                                      capture_output=True, timeout=30, check=False,
                                      stdin=subprocess.DEVNULL).stdout

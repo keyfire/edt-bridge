@@ -30,7 +30,7 @@ from pathlib import Path
 
 from . import __version__, i18n
 
-BRIDGE_COMMANDS = ("call", "tools", "status", "wait-ready", "shutdown", "gui", "plugins")
+BRIDGE_COMMANDS = ("call", "tools", "status", "doctor", "wait-ready", "shutdown", "gui", "plugins")
 COMMANDS = (*BRIDGE_COMMANDS, "workspace", "test-form", "unit-tests")
 
 _TOKEN_HINT = (
@@ -646,6 +646,18 @@ def _run(command: str, argv: list[str]) -> int:
         # ALREADY up (and degrades itself when none is).
         return _call_plugin_tool(plugin_tools[args.tool], args, backend)
 
+    if command == "doctor":
+        from . import doctor
+
+        report = doctor.diagnose(backend)
+        _emit(json.dumps(report, ensure_ascii=False, indent=2))
+        if report["elevatedConsole"]:
+            print("this console runs as administrator: start EDT from a console without "
+                  "administrator rights", file=sys.stderr)
+        for problem in report["problems"]:
+            print(problem, file=sys.stderr)
+        return 1 if report["problems"] else 0
+
     if command == "status":
         if args.ports is not None and not args.all_bridges:
             print("--ports requires --all", file=sys.stderr)
@@ -679,7 +691,8 @@ def _run(command: str, argv: list[str]) -> int:
             return 0 if bridges else 1
         status = backend.status()
         if status is None:
-            print("no bridge is running in the scanned port range", file=sys.stderr)
+            print("no bridge is running in the scanned port range - edt-bridge-mcp doctor "
+                  "checks what keeps it down", file=sys.stderr)
             return 1
         status = {**_with_jar_on_disk(status), "wrapperVersion": __version__}
         _emit(json.dumps(status, ensure_ascii=False, indent=2))

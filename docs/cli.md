@@ -44,6 +44,7 @@ usage: edt-bridge-mcp [options]           (no command: run as an MCP server)
 | `call <tool>` | call one bridge tool and print what it returned |
 | `tools` | list the tools the running bridge serves |
 | `status` | report the running bridge (never starts one) |
+| `doctor` | check what keeps the bridge from working, without a bridge |
 | `wait-ready` | wait until the project models are loaded |
 | `shutdown` | shut down the EDT behind the bridge |
 | `gui` | stop the headless EDT and open the GUI one |
@@ -146,6 +147,30 @@ usage: edt-bridge-mcp status [-h] [--all] [--ports PORTS] [--workspace WORKSPACE
 | `--version` | show the version and exit |
 
 `edt-bridge-mcp status --all` checks the bridge discovery port range without starting EDT. Use `--ports 8770,8771` to select ports explicitly. Each detected bridge reports its workspace, port, bridge bundle version, EDT product version and project readiness. Unreachable ports and other HTTP services are distinguished from a running bridge.
+
+## `edt-bridge-mcp doctor`
+
+Check what keeps the bridge from working: the jar in dropins and its permissions, the bridge versions the EDT configurations register, whether EDT runs as administrator, and plugin load errors in the workspace log. Needs no bridge and no EDT: the command starts and changes nothing. Problems and their fixes go to stderr, with exit code 1.
+
+```bash
+usage: edt-bridge-mcp doctor [-h] [--workspace WORKSPACE] [--edt-dir EDT_DIR] [--port
+                             PORT] [--start-timeout START_TIMEOUT] [--no-autostart]
+                             [--heap HEAP] [--vmargs OPTIONS] [--version]
+```
+
+**Options**
+
+| Option | Description |
+|---|---|
+| `-h, --help` | show this help message and exit |
+| `--workspace WORKSPACE` | EDT workspace path for the headless auto-start |
+| `--edt-dir EDT_DIR` | EDT install dir (the folder with 1cedtcli and dropins); auto-detected when omitted |
+| `--port PORT` | bridge port (default 8770) |
+| `--start-timeout START_TIMEOUT` | seconds to wait for a starting backend |
+| `--no-autostart` | never launch a headless EDT |
+| `--heap HEAP` | maximum JVM heap of an auto-started headless EDT, e.g. 4096m or 6g |
+| `--vmargs OPTIONS` | further JVM options of an auto-started headless EDT, separated by spaces; join them to the flag with = because they start with a dash |
+| `--version` | show the version and exit |
 
 ## `edt-bridge-mcp wait-ready`
 
