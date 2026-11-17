@@ -1231,9 +1231,64 @@ def test_a_protected_newer_local_jar_keeps_the_readable_release(monkeypatch, tmp
     release.write_bytes(b"working release")
     local.write_bytes(b"protected build")
     monkeypatch.setattr(update, "_dacl_protected", lambda path: path == local)
+    # A jar that cannot be written again: without administrator rights, or held by EDT.
+    monkeypatch.setattr(update, "_repair_permissions", lambda jar, emit: False)
     lines = []
 
     assert update.install_latest_jar(tmp_path, emit=lines.append) is False
     assert release.read_bytes() == b"working release"
     assert local.read_bytes() == b"protected build"
     assert f'icacls "{local}" /reset' in lines[-1]
+    assert lines[-1].endswith("from a console without administrator rights")
+
+
+def test_a_jar_left_without_the_permissions_of_dropins_is_written_again(monkeypatch, tmp_path):
+    """An update from 0.47 installs the new jar with the old code, before it replaces the
+    wrapper, so the jar lands with the protected DACL of a temporary directory. The next
+    self-update found it, named icacls and stopped; it has the rights to repair the jar itself."""
+    _latest_release(monkeypatch)
+    jar = tmp_path / (update.JAR_PREFIX + "0.34.1.202611030809.jar")
+    jar.write_bytes(b"release jar")
+    monkeypatch.setattr(update, "_dacl_protected", lambda path: path == jar)
+    lines = []
+
+    assert update.install_latest_jar(tmp_path, emit=lines.append) is True
+
+    assert jar.read_bytes() == b"release jar"
+    assert sorted(tmp_path.iterdir()) == [jar]
+    assert any("now takes the permissions of dropins" in line for line in lines)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="the permissions in question are Windows ACLs")
+def test_a_protected_jar_gets_the_permissions_of_dropins_back(monkeypatch, tmp_path):
+    _latest_release(monkeypatch)
+    dropins = tmp_path / "dropins"
+    dropins.mkdir()
+    _icacls(dropins, "/grant", "*S-1-5-32-545:(OI)(CI)(RX)")
+    jar = dropins / (update.JAR_PREFIX + "0.34.1.202611030809.jar")
+    jar.write_bytes(b"release jar")
+    _icacls(jar, "/inheritance:d")
+    sibling = dropins / "written-directly.txt"
+    sibling.write_bytes(b"")
+    assert update._dacl_protected(jar) is True
+
+    assert update.install_latest_jar(dropins, emit=lambda _line: None) is True
+
+    assert update._dacl_protected(jar) is False
+    assert _entries(jar) == _entries(sibling)
+    assert jar.read_bytes() == b"release jar"
+    assert sorted(dropins.iterdir()) == [jar, sibling]
+
+
+def test_a_failed_jar_step_in_an_elevated_console_says_how_to_start_edt(monkeypatch, tmp_path,
+                                                                        capsys):
+    """The step that failed is exactly when the next command in this console starts EDT."""
+    dropins = tmp_path / "dropins"
+    dropins.mkdir()
+    monkeypatch.setattr(update, "_find_dropins", lambda: dropins)
+    monkeypatch.setattr(update, "install_latest_jar", lambda path, *, version: False)
+    monkeypatch.setattr(update, "_elevated", lambda: True)
+
+    assert update.update_jar() is False
+
+    assert "without administrator rights" in capsys.readouterr().out

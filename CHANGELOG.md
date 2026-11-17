@@ -13,6 +13,21 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
+## Unreleased
+
+### Fixed
+
+- `self-update` repairs a jar in `dropins` that does not take the permissions of the folder,
+  instead of only naming the `icacls` command. An update from 0.47 installs the new jar with the
+  old code, before it replaces the wrapper, so the jar lands unreadable for EDT started without
+  administrator rights. The next `self-update`, run as administrator, writes the jar again
+  beside itself, and the copy takes the permissions of `dropins`. Without the rights to do that,
+  it still names the command.
+- The fix that `self-update` names now says to start EDT from a console without administrator
+  rights, and an elevated console gets that advice even when the jar step fails. The message
+  used to end with "start EDT once with -clean", and EDT started from the same elevated console
+  kept its configuration under Program Files.
+
 ## 2026-11-16 – 0.48.0, 0.48.1
 
 ### Added
