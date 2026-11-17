@@ -7,7 +7,8 @@ sidebar:
 ---
 
 Pass a UTF-8 JSON file with `--scenario`. Its top-level fields are `version: 1`,
-`steps`, and an optional `reopen` array. Each phase contains 1–128 steps and must end
+`steps`, and an optional `reopen` array, or `version: 1` and
+[`scenarios`](#named-scenarios) instead of both. Each phase contains 1–128 steps and must end
 with an assertion or a read after its last UI action. Unknown fields and duplicate JSON keys
 are rejected; the refusal names the step, its unexpected and missing keys and the keys its
 action takes, for example `Invalid 'input' step 1 in steps: unexpected value; missing text;
@@ -81,6 +82,35 @@ table over the limits instead, because it compares complete tables only. A form 
 read from its first row down. The read takes a failed move to the next row for the end of
 the table only when the cursor stands on the last row; otherwise the step fails, so a
 broken read does not look like a short table.
+
+## Named scenarios
+
+Most of a run is the start of the client and the test manager, about a minute, while the steps
+take seconds. `scenarios` plays several scenarios in one start: a list of 1–20 objects with a
+unique `name` and their own `steps`, checked by the same rules as `steps`. The form is opened
+again before each scenario after the first, so each one starts on a new form.
+
+```json
+{"version": 1, "scenarios": [
+  {"name": "Empty period", "steps": [{"action": "click", "button": "Generate"},
+                                     {"action": "read_table", "field": "Result"}]},
+  {"name": "Two companies", "steps": [{"action": "input", "field": "Company", "text": "Two"},
+                                      {"action": "click", "button": "Generate"},
+                                      {"action": "read_table", "field": "Result"}]}
+]}
+```
+
+- The .epf or .erf is opened by a launcher data processor that stays behind the form. Before
+  the next scenario the windows the previous one left are closed: the form, a window over it and
+  a form it opened. The launcher then opens the form again. An .epf is connected in unsafe mode,
+  as the client runs an .epf it opens itself. A form opened by `--navigation-link` has no
+  launcher, so named scenarios need an .epf or .erf.
+- All scenarios of one run work in one copy of the infobase: what one scenario writes, the next
+  one sees. A scenario that needs clean data goes to a run of its own.
+- Each scenario has its own result in `scenarios`, in the order of the file. A scenario that fails
+  does not stop the next one. A form that cannot be opened again stops the run: that scenario
+  is `reopen_failed` and the ones after it are `not_run`.
+- `reopen` is not combined with `scenarios`.
 
 ## Order of evaluation
 

@@ -33,6 +33,12 @@ MAX_COLUMNS = 50
 MAX_ITEMS = 500
 #: Fields a selector that missed lists at most, the visible ones first.
 MAX_LISTED = 200
+#: Named scenarios one run plays at most, and the longest name of one.
+MAX_SCENARIOS = 20
+MAX_NAME = 200
+#: What the test manager reports about a scenario that did not complete, carried into its result.
+_FAILURE_KEYS = ("stage", "step", "error", "observedFields", "dialog", "errorDialog", "expectedErrorDialog",
+                 "warningDialog", "expectedWarning", "warningPanel", "observedForms", "observedTitles")
 
 
 def _text(value, *, selector=False):
@@ -223,34 +229,61 @@ def _step_problem(phase, action, step, has_click):
     return None
 
 
+def _validate_steps(steps, phase, where):
+    """Check one list of steps; `phase` is steps or reopen, `where` names the list in a refusal."""
+    if not isinstance(steps, list) or not 1 <= len(steps) <= 128:
+        raise ScenarioError(f"{where} must contain between 1 and 128 steps.")
+    has_click = False
+    assertion_after_action = False
+    for index, step in enumerate(steps):
+        if not isinstance(step, dict) or not isinstance(step.get("action"), str):
+            raise ScenarioError(f"Invalid step {index + 1} in {where}: a step is an object with an action, "
+                                f"e.g. {EXAMPLE}.")
+        action = step["action"]
+        problem = _step_problem(phase, action, step, has_click)
+        if problem:
+            raise ScenarioError(f"Invalid {action!r} step {index + 1} in {where}: {problem}.")
+        if action in ("input", "click"):
+            assertion_after_action = False
+            has_click = action == "click"
+        else:
+            assertion_after_action = True
+    if not assertion_after_action:
+        raise ScenarioError(f"{where} must confirm the result after its last action with an assertion or a read.")
+
+
+def _validate_scenarios(scenarios):
+    if not isinstance(scenarios, list) or not 1 <= len(scenarios) <= MAX_SCENARIOS:
+        raise ScenarioError(f"scenarios must contain between 1 and {MAX_SCENARIOS} named scenarios.")
+    names = set()
+    for index, scenario in enumerate(scenarios):
+        if not isinstance(scenario, dict) or set(scenario) != {"name", "steps"}:
+            raise ScenarioError(f"Scenario {index + 1} must be an object with exactly name and steps, e.g. "
+                                f'{{"name": "Empty period", "steps": {EXAMPLE}}}.')
+        name = scenario["name"]
+        if not _text(name) or not name.strip() or len(name) > MAX_NAME:
+            raise ScenarioError(f"Scenario {index + 1} needs a name of 1 to {MAX_NAME} characters.")
+        if name in names:
+            raise ScenarioError(f"Scenario names must be unique: {name!r} repeats.")
+        names.add(name)
+        _validate_steps(scenario["steps"], "steps", f"scenario {name!r}")
+
+
 def validate(value):
-    if (not isinstance(value, dict) or set(value) - {"version", "steps", "reopen"}
+    if (not isinstance(value, dict) or set(value) - {"version", "steps", "reopen", "scenarios"}
             or type(value.get("version")) is not int or value["version"] != 1):
-        raise ScenarioError("A scenario must contain version 1, steps, and optionally reopen.")
+        raise ScenarioError("A scenario must contain version 1 and either steps (optionally with reopen) or "
+                            "scenarios.")
+    if "scenarios" in value:
+        if "steps" in value or "reopen" in value:
+            raise ScenarioError("Use either steps (optionally with reopen) or scenarios, not both: each named "
+                                "scenario carries its own steps.")
+        _validate_scenarios(value["scenarios"])
+        return value
     for phase in ("steps", "reopen"):
         if phase == "reopen" and phase not in value:
             continue
-        steps = value.get(phase)
-        if not isinstance(steps, list) or not 1 <= len(steps) <= 128:
-            raise ScenarioError(f"{phase} must contain between 1 and 128 steps.")
-        has_click = False
-        assertion_after_action = False
-        for index, step in enumerate(steps):
-            if not isinstance(step, dict) or not isinstance(step.get("action"), str):
-                raise ScenarioError(f"Invalid step {index + 1} in {phase}: a step is an object with an action, "
-                                    f"e.g. {EXAMPLE}.")
-            action = step["action"]
-            problem = _step_problem(phase, action, step, has_click)
-            if problem:
-                raise ScenarioError(f"Invalid {action!r} step {index + 1} in {phase}: {problem}.")
-            if action in ("input", "click"):
-                assertion_after_action = False
-                has_click = action == "click"
-            else:
-                assertion_after_action = True
-        if not assertion_after_action:
-            raise ScenarioError(f"{phase} must confirm the result after its last action with an assertion or a "
-                                "read.")
+        _validate_steps(value.get(phase), phase, phase)
     return value
 
 
@@ -398,3 +431,49 @@ def evaluate(steps, observations):
     if reads:
         result["reads"] = reads
     return result
+
+
+def scenario_results(scenarios, parts, *, stopped=None):
+    """The result of each named scenario, from the parts the test manager reported for them in order.
+
+    A part the manager finished is judged like a single scenario, and one that cannot be judged fails
+    alone, so it does not hide the others. A part the manager did not finish was running when the run
+    stopped, and `stopped` says why; a scenario without a part never ran."""
+    if not isinstance(parts, list) or len(parts) > len(scenarios):
+        raise DriverResultError("The test manager returned invalid scenario results.")
+    results = []
+    for index, scenario in enumerate(scenarios):
+        name = scenario["name"]
+        if index >= len(parts):
+            results.append({"name": name, "ok": False, "status": "not_run",
+                            "error": stopped or "The run ended before this scenario."})
+            continue
+        part = parts[index]
+        if not isinstance(part, dict) or part.get("name") != name or not isinstance(part.get("status"), str):
+            raise DriverResultError("The test manager returned invalid scenario results.")
+        if part["status"] == "scenario_observed":
+            try:
+                result = evaluate(scenario["steps"], part.get("observations"))
+            except DriverResultError as error:
+                result = {"ok": False, "status": "driver_failed", "error": str(error)}
+        else:
+            finished = part.get("finished") is True or stopped is None
+            result = {"ok": False, "status": part["status"] if finished else "interrupted"}
+            result.update({key: part[key] for key in _FAILURE_KEYS if key in part})
+            if not finished:
+                result["error"] = stopped
+            if part.get("observations"):
+                # The steps before the one that failed: what the form showed up to there.
+                result["observations"] = part["observations"]
+        results.append({"name": name, **result})
+    return results
+
+
+def scenarios_verdict(results):
+    """The outcome of a run of named scenarios: ok only when every scenario passed, and the status of the
+    first one that did not."""
+    failed = [result["name"] for result in results if not result["ok"]]
+    status = next((result["status"] for result in results if not result["ok"]), "scenario_completed")
+    verdict = {"ok": not failed, "status": status, "scenarios": results,
+               "summary": {"passed": len(results) - len(failed), "failed": failed}}
+    return verdict

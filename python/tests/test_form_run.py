@@ -99,3 +99,36 @@ def test_the_schema_describes_every_kind_of_step():
         assert set(item["required"]) <= set(item["properties"])
         if action != "click":
             assert set(item["required"]) == native_scenario._KEYS[action]
+
+
+def test_named_scenarios_become_a_scenario_file(setup):
+    """EDT-TEST-20: several named scenarios in one call, played in one start of the client."""
+    _, artifact, environ = setup
+    scenarios = [{"name": "Empty period", "steps": [{"action": "read_form"}]},
+                 {"name": "Two companies", "steps": [{"action": "click", "button": "Run"},
+                                                     {"action": "assert_messages", "text": "Done", "count": 1}]}]
+    seen = []
+    call({"path": str(artifact), "form": "ExternalDataProcessor.Check.Form.Form", "scenarios": scenarios},
+         environ, seen)
+    assert seen[1] == {"version": 1, "scenarios": scenarios}
+    native_scenario.validate(seen[1])
+
+
+@pytest.mark.parametrize("selection", [
+    {"button": "Run", "scenarios": [{"name": "A", "steps": [{"action": "read_form"}]}]},
+    {"steps": [{"action": "read_form"}], "scenarios": [{"name": "A", "steps": [{"action": "read_form"}]}]},
+])
+def test_scenarios_go_alone(setup, selection):
+    _, artifact, environ = setup
+    report = call({"path": str(artifact), "form": "ExternalDataProcessor.Check.Form.Form", **selection}, environ)
+    assert report["status"] == "invalid_input"
+    assert "one of button, steps and scenarios" in report["error"]
+
+
+def test_the_schema_describes_named_scenarios():
+    schema = form_run.DESCRIPTOR["inputSchema"]["properties"]["scenarios"]
+    assert schema["maxItems"] == native_scenario.MAX_SCENARIOS
+    assert schema["items"]["required"] == ["name", "steps"]
+    # The description says that the scenarios of one call share one copy of the infobase.
+    assert "share one copy" in form_run.DESCRIPTOR["description"]
+    assert "одной копии базы" in form_run.DESCRIPTOR["descriptionRu"]

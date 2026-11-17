@@ -13,6 +13,17 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
+## Unreleased
+
+### Added
+
+- `edt_test_form` takes `scenarios`, and a `test-form` scenario file may hold them: several named
+  scenarios played in one start of the client, which takes about a minute of each run while the
+  steps take seconds. The form is opened again before each next scenario by a launcher data
+  processor behind it. The answer carries the result of each scenario and a `summary`, and a
+  scenario that fails does not stop the next one. The scenarios of one run share one copy of the
+  infobase. The CI reports have one test per scenario.
+
 ## 2026-11-16 – 0.48.0, 0.48.1
 
 ### Added

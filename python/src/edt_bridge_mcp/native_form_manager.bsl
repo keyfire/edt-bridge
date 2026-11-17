@@ -15,7 +15,7 @@ Procedure OnStart()
     // The wrapper turns the marks into the seconds of each part: the connection, the form lookup,
     // the command or each scenario step.
     Report.Insert("timingMarks", New Array);
-    If Not Request.Property("steps") Then
+    If Not Request.Property("steps") And Not Request.Property("scenarios") Then
         Report.Insert("clickAttempted", False);
         Report.Insert("clickReturned", False);
     EndIf;
@@ -39,46 +39,17 @@ Procedure RunCheck(Request, Report)
     Application.Connect();
 
     MarkTime(Report, "formLookup");
-    Report.stage = "form_lookup";
-    FormType = Type("TestedForm");
-    If IsBlankString(Request.formTitle) Then
-        WaitForNamedForm(Application, Request);
-    Else
-        Application.WaitForObjectDisplayed(FormType, Request.formTitle, , Request.waitSeconds);
-    EndIf;
-    If ReadClientError(Application, Report, "form_open_error") Then
-        Return;
-    EndIf;
-
-    Forms = FindForms(Application, Request);
-    Target = Undefined;
-    For Each Candidate In Forms Do
-        If NormalizeFormName(Candidate.FormName) = NormalizeFormName(Request.form) Then
-            If Target <> Undefined Then
-                Report.status = "ambiguous_form";
-                Return;
-            EndIf;
-            Target = Candidate;
-        EndIf;
-    EndDo;
+    Target = OpenedTarget(Application, Request, Report);
     If Target = Undefined Then
-        Report.status = "form_not_found";
-        Names = New Array;
-        Titles = New Array;
-        For Each OpenForm In Application.FindObjects(FormType) Do
-            Names.Add(OpenForm.FormName);
-            Titles.Add(OpenForm.TitleText);
-        EndDo;
-        Report.Insert("observedForms", Names);
-        Report.Insert("observedTitles", Titles);
         Return;
     EndIf;
-    Report.Insert("observedForm", Target.FormName);
-    Report.Insert("observedTitle", Target.TitleText);
-    Target.Activate();
     MessageWindow = TargetWindow(Application, Target, Request);
+    If Request.Property("scenarios") Then
+        RunScenarios(Application, Target, MessageWindow, Request, Report);
+        Return;
+    EndIf;
     If Request.Property("steps") Then
-        RunScenario(Application, Target, MessageWindow, Request, Report);
+        RunScenario(Application, Target, MessageWindow, Request, Request.steps, Report, Report);
         Return;
     EndIf;
 
@@ -130,6 +101,187 @@ Procedure RunCheck(Request, Report)
     EndIf;
 EndProcedure
 
+// The requested form once it is shown, activated; Undefined when it is not found or not alone, with
+// the status that says so in Report.
+Function OpenedTarget(Application, Request, Report)
+    Report.stage = "form_lookup";
+    FormType = Type("TestedForm");
+    If IsBlankString(Request.formTitle) Then
+        WaitForNamedForm(Application, Request);
+    Else
+        Application.WaitForObjectDisplayed(FormType, Request.formTitle, , Request.waitSeconds);
+    EndIf;
+    If ReadClientError(Application, Report, "form_open_error") Then
+        Return Undefined;
+    EndIf;
+
+    Forms = FindForms(Application, Request);
+    Target = Undefined;
+    For Each Candidate In Forms Do
+        If NormalizeFormName(Candidate.FormName) = NormalizeFormName(Request.form) Then
+            If Target <> Undefined Then
+                Report.status = "ambiguous_form";
+                Return Undefined;
+            EndIf;
+            Target = Candidate;
+        EndIf;
+    EndDo;
+    If Target = Undefined Then
+        Report.status = "form_not_found";
+        Names = New Array;
+        Titles = New Array;
+        For Each OpenForm In Application.FindObjects(FormType) Do
+            Names.Add(OpenForm.FormName);
+            Titles.Add(OpenForm.TitleText);
+        EndDo;
+        Report.Insert("observedForms", Names);
+        Report.Insert("observedTitles", Titles);
+        Return Undefined;
+    EndIf;
+    Report.Insert("observedForm", Target.FormName);
+    Report.Insert("observedTitle", Target.TitleText);
+    Target.Activate();
+    Return Target;
+EndFunction
+
+// Named scenarios in one session of the client. The first one runs on the form the client opened; each
+// next one on a new form: the windows the previous scenario left are closed and the launcher opens the
+// form again. A scenario that fails is recorded and the next one still runs; only a form that cannot be
+// opened again stops the run, and the scenarios after it are reported as not run.
+Procedure RunScenarios(Application, Target, MessageWindow, Request, Report)
+    Parts = New Array;
+    Report.Insert("scenarios", Parts);
+    Kept = KeptForms(Application, Request);
+    For Index = 0 To Request.scenarios.Count() - 1 Do
+        Scenario = Request.scenarios[Index];
+        Part = New Structure("name,status,stage", Scenario.name, "scenario_error", "");
+        Parts.Add(Part);
+        If Index > 0 Then
+            MarkTime(Report, "reopen", , , Index + 1);
+            Part.status = "reopen_failed";
+            Part.stage = "reopen";
+            SaveReport(Report, Request.progress);
+            Try
+                Target = ReopenedTarget(Application, Request, Kept, Part);
+                If Target <> Undefined Then
+                    MessageWindow = TargetWindow(Application, Target, Request);
+                EndIf;
+            Except
+                Part.Insert("error", ОбработкаОшибок.ПодробноеПредставлениеОшибки(ИнформацияОбОшибке()));
+                Target = Undefined;
+            EndTry;
+            If Target = Undefined Then
+                Part.Insert("finished", True);
+                For Rest = Index + 1 To Request.scenarios.Count() - 1 Do
+                    Skipped = New Structure("name,status,finished,error", Request.scenarios[Rest].name, "not_run",
+                        True, NStr("en = 'The form could not be opened again after an earlier scenario.'; ru = 'Форму не удалось открыть заново после предыдущего сценария.'"));
+                    Parts.Add(Skipped);
+                EndDo;
+                Break;
+            EndIf;
+        EndIf;
+        Try
+            RunScenario(Application, Target, MessageWindow, Request, Scenario.steps, Part, Report, Index + 1);
+        Except
+            Part.Insert("error", ОбработкаОшибок.ПодробноеПредставлениеОшибки(ИнформацияОбОшибке()));
+        EndTry;
+        Part.Insert("finished", True);
+    EndDo;
+    Report.stage = "scenarios";
+    Report.status = "scenarios_observed";
+EndProcedure
+
+// The names of the forms open beside the target before the first scenario: the launcher behind it and
+// the windows the client showed at its start. They stay open between scenarios.
+Function KeptForms(Application, Request)
+    Kept = New Array;
+    For Each OpenForm In Application.FindObjects(Type("TestedForm")) Do
+        Name = NormalizeFormName(OpenForm.FormName);
+        If Name <> NormalizeFormName(Request.form) And Kept.Find(Name) = Undefined Then
+            Kept.Add(Name);
+        EndIf;
+    EndDo;
+    Return Kept;
+EndFunction
+
+Function ReopenedTarget(Application, Request, Kept, Part)
+    CloseLeftWindows(Application, Request, Kept);
+    Launcher = Undefined;
+    For Each OpenForm In Application.FindObjects(Type("TestedForm")) Do
+        If NormalizeFormName(OpenForm.FormName) = NormalizeFormName(Request.launcherForm) Then
+            Launcher = OpenForm;
+        EndIf;
+    EndDo;
+    If Launcher = Undefined Then
+        Raise NStr("en = 'The launcher form that opens the form again is not open.'; ru = 'Форма загрузчика, которая открывает форму заново, не открыта.'");
+    EndIf;
+    Launcher.Activate();
+    Buttons = Launcher.FindObjects(Type("TestedFormButton"), , Request.reopenButton, Request.waitSeconds);
+    If Buttons.Count() <> 1 Then
+        Raise NStr("en = 'The launcher form has no button that opens the form again.'; ru = 'На форме загрузчика нет кнопки, которая открывает форму заново.'");
+    EndIf;
+    Buttons[0].Click();
+    If ReadClientError(Application, Part, "form_open_error") Then
+        Return Undefined;
+    EndIf;
+    Return OpenedTarget(Application, Request, Part);
+EndFunction
+
+// Closes every window the previous scenario left: the form, a window over it and a form it opened. The
+// main window, the start page and a window with a kept form stay. The active window goes first: a
+// modal window has to close before the form under it can.
+Procedure CloseLeftWindows(Application, Request, Kept)
+    For Round = 1 To 20 Do
+        Window = LeftWindow(Application, Kept);
+        If Window = Undefined Then
+            Return;
+        EndIf;
+        Forms = Window.FindObjects(Type("TestedForm"));
+        Window.Close();
+        For Each OpenForm In Forms Do
+            If Not OpenForm.WaitForClosing(Request.waitSeconds) Then
+                Detail = OpenForm.FormName;
+                Dialog = RaisedDialog(Application, OpenForm);
+                If Dialog <> Undefined Then
+                    Described = DescribeDialog(Dialog);
+                    Detail = Detail + ": " + Described.formName + " " + Described.text;
+                EndIf;
+                Raise NStr("en = 'A window the previous scenario left did not close: '; ru = 'Окно, оставшееся от предыдущего сценария, не закрылось: '") + Detail;
+            EndIf;
+        EndDo;
+    EndDo;
+    Raise NStr("en = 'The windows the previous scenario left did not close.'; ru = 'Окна, оставшиеся от предыдущего сценария, не закрылись.'");
+EndProcedure
+
+Function LeftWindow(Application, Kept)
+    Active = Application.GetActiveWindow();
+    If Active <> Undefined And IsLeftWindow(Active, Kept) Then
+        Return Active;
+    EndIf;
+    For Each Window In Application.FindObjects(Type("TestedClientApplicationWindow")) Do
+        If IsLeftWindow(Window, Kept) Then
+            Return Window;
+        EndIf;
+    EndDo;
+    Return Undefined;
+EndFunction
+
+Function IsLeftWindow(Window, Kept)
+    If Window.IsMain Or Window.HomePage Then
+        Return False;
+    EndIf;
+    Forms = Window.FindObjects(Type("TestedForm"));
+    If Forms.Count() = 0 Then
+        Return False;
+    EndIf;
+    For Each OpenForm In Forms Do
+        If Kept.Find(NormalizeFormName(OpenForm.FormName)) <> Undefined Then
+            Return False;
+        EndIf;
+    EndDo;
+    Return True;
+EndFunction
+
 // The forms of the application or a window: those with the requested title, or all of them when the
 // request names the form only. The form is then picked by its name either way.
 Function FindForms(Owner, Request)
@@ -165,17 +317,20 @@ Function TargetWindow(Application, Target, Request)
     Raise NStr("en = 'The active window does not contain the selected form.'; ru = 'Активное окно не содержит выбранную форму.'");
 EndFunction
 
-Procedure RunScenario(Application, Target, MessageWindow, Request, Report)
+// Plays Steps on the form. Report gets the status and the observations of the scenario; Root is the report
+// of the whole run, which carries the timing marks and is saved as the progress before each step. A single
+// scenario passes its report as both; a named scenario passes its number for the marks.
+Procedure RunScenario(Application, Target, MessageWindow, Request, Steps, Report, Root, ScenarioNumber = Undefined)
     Observations = New Array;
     Report.Insert("observations", Observations);
     BeforeMessages = New Array;
     AfterMessages = New Array;
-    For Each Step In Request.steps Do
+    For Each Step In Steps Do
         Report.status = "scenario_error";
         Report.stage = Step.action;
         Report.Insert("step", Observations.Count() + 1);
-        MarkTime(Report, "step", Report.step, Step.action);
-        SaveReport(Report, Request.progress);
+        MarkTime(Root, "step", Report.step, Step.action, ScenarioNumber);
+        SaveReport(Root, Request.progress);
         Observation = New Structure("action", Step.action);
         If Step.action = "click" Then
             If Step.Property("button_name") Then
@@ -190,7 +345,7 @@ Procedure RunScenario(Application, Target, MessageWindow, Request, Report)
             If Not Button.CurrentVisible() Or Not Button.CurrentEnable() Then
                 Raise NStr("en = 'The selected button is unavailable.'; ru = 'Выбранная кнопка недоступна.'");
             EndIf;
-            ObserveMessages = NeedsMessageObservation(Request.steps, Observations.Count());
+            ObserveMessages = NeedsMessageObservation(Steps, Observations.Count());
             If ObserveMessages Or Step.Property("expect_warning") Then
                 BeforeMessages = VisibleMessages(MessageWindow, Report, "beforeMessagePanel");
             EndIf;
@@ -820,12 +975,16 @@ Function VisibleMessages(Window, Report, PresenceKey)
     EndTry;
 EndFunction
 
-// A point in time the wrapper measures the parts of the check between; a step mark names the step.
-Procedure MarkTime(Report, Name, StepNumber = Undefined, Action = Undefined)
+// A point in time the wrapper measures the parts of the check between; a step mark names the step, and
+// the marks of named scenarios name the scenario by its number.
+Procedure MarkTime(Report, Name, StepNumber = Undefined, Action = Undefined, ScenarioNumber = Undefined)
     Mark = New Structure("name,at", Name, CurrentUniversalDateInMilliseconds());
     If StepNumber <> Undefined Then
         Mark.Insert("step", StepNumber);
         Mark.Insert("action", Action);
+    EndIf;
+    If ScenarioNumber <> Undefined Then
+        Mark.Insert("scenario", ScenarioNumber);
     EndIf;
     Report.timingMarks.Add(Mark);
 EndProcedure

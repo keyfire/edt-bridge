@@ -42,8 +42,13 @@ DESCRIPTOR = {
         "answer carries status, the observed messages, the error dialog and the "
         "exception text - what a static check cannot see, e.g. a method of the object module called "
         "on form data. eventLog.errors adds the errors the platform logged during the run with "
-        "message, module and line, which the client only shows as an error window. The infobase "
-        "itself is never changed. Served by the wrapper; no EDT needed."
+        "message, module and line, which the client only shows as an error window. scenarios plays "
+        "several named scenarios in one start of the client, which takes most of a call: the form is "
+        "opened again before each next one, and the answer has the result of each scenario apart, so "
+        "one that fails does not hide the others. The scenarios of one call share one copy of the "
+        "infobase: what one writes the next sees; a scenario that needs a clean copy goes to a call "
+        "of its own. The configured infobase itself is never changed. Served by the wrapper; no EDT "
+        "needed."
     ),
     "descriptionRu": (
         "Запустить основную форму собранного .epf или .erf в свежей копии тестовой базы "
@@ -59,8 +64,12 @@ DESCRIPTOR = {
         "содержит статус, сообщения, окно ошибки и текст исключения - то, чего не видит статическая проверка, "
         "например вызов метода модуля объекта у данных формы. eventLog.errors добавляет ошибки, "
         "записанные платформой в журнал регистрации за время запуска, с текстом, модулем и строкой: "
-        "клиент показывает их только окном ошибки. Сама база не меняется. Обслуживает обвязка, EDT "
-        "не нужна."
+        "клиент показывает их только окном ошибки. scenarios проигрывает несколько именованных "
+        "сценариев за один старт клиента, который занимает большую часть вызова: перед каждым "
+        "следующим форма открывается заново, а ответ несет итог каждого сценария отдельно, так что "
+        "отказ одного не скрывает остальные. Сценарии одного вызова работают в одной копии базы: "
+        "записанное одним видит следующий; сценарий, которому нужна чистая копия, запускается "
+        "отдельным вызовом. Настроенная база не меняется. Обслуживает обвязка, EDT не нужна."
     ),
     "inputSchema": {
         "type": "object",
@@ -79,13 +88,28 @@ DESCRIPTOR = {
                                          "\"Check*\". * (any run of characters) and ? (one character) are wildcards, "
                                          "e.g. \"Order 7 dated *\" for a title that carries a date"},
             "button": {"type": "string",
-                       "description": "Caption of the command to press. Mutually exclusive with steps"},
+                       "description": "Caption of the command to press. Pass one of button, steps and "
+                                      "scenarios"},
             "expectMessage": {"type": "string",
                               "description": "Optional message text the button must produce"},
             "steps": {"type": "array", "items": {"oneOf": native_scenario.step_schemas()},
                       "description": "Scenario steps. Each step is one of the kinds in items, with exactly "
                                      "the keys of its kind, e.g. " + native_scenario.EXAMPLE + ". A refused step is "
                                      "named with its unexpected and missing keys."},
+            "scenarios": {"type": "array", "minItems": 1, "maxItems": native_scenario.MAX_SCENARIOS,
+                          "items": {"type": "object",
+                                    "properties": {"name": {"type": "string",
+                                                            "description": "Unique name of the scenario"},
+                                                   "steps": {"type": "array", "items": {"type": "object"},
+                                                             "description": "Its steps, of the same kinds "
+                                                                            "as in steps"}},
+                                    "required": ["name", "steps"], "additionalProperties": False},
+                          "description": "Named scenarios played one after another in one start of the "
+                                         "client, the form opened again before each next one, e.g. "
+                                         '[{"name": "Empty period", "steps": [...]}, '
+                                         '{"name": "Two companies", "steps": [...]}]. They share one copy '
+                                         "of the infobase. The answer has scenarios[] with the result of "
+                                         "each and summary"},
             "timeoutSeconds": {"type": "integer",
                                "description": "Whole run limit, 60-900 seconds (default 300)"},
             "async": {"type": "boolean", "description": jobs.ASYNC_DESCRIPTION},
@@ -114,9 +138,9 @@ def run_tool(arguments: dict, *, runner=native_form.run, environ=os.environ, on_
     suffix = path.suffix.lower()
     if suffix not in (".epf", ".erf") or not path.is_file():
         return _refusal("invalid_input", "path must name an existing .epf or .erf file")
-    button, steps = arguments.get("button"), arguments.get("steps")
-    if (button is None) == (steps is None):
-        return _refusal("invalid_input", "pass either button or steps")
+    button, steps, scenarios = arguments.get("button"), arguments.get("steps"), arguments.get("scenarios")
+    if sum(value is not None for value in (button, steps, scenarios)) != 1:
+        return _refusal("invalid_input", "pass one of button, steps and scenarios")
     if steps is not None and not isinstance(steps, list):
         return _refusal("invalid_input", "steps must be a list of step objects")
     try:
@@ -135,11 +159,11 @@ def run_tool(arguments: dict, *, runner=native_form.run, environ=os.environ, on_
         shutil.copyfile(source / DATA_FILE, copy / DATA_FILE)
         copy_seconds = time.monotonic() - copy_started
         scenario = None
-        if steps is not None:
+        if steps is not None or scenarios is not None:
             scenario = root / "scenario.json"
             # The scenario check of the native run requires the format version.
-            scenario.write_text(json.dumps({"version": 1, "steps": steps}, ensure_ascii=False),
-                                encoding="utf-8", newline="")
+            content = {"version": 1, "steps": steps} if steps is not None else {"version": 1, "scenarios": scenarios}
+            scenario.write_text(json.dumps(content, ensure_ascii=False), encoding="utf-8", newline="")
         args = argparse.Namespace(
             platform_bin=Path(platform), test_infobase=copy, scope="fixture",
             epf=path if suffix == ".epf" else None, erf=path if suffix == ".erf" else None,

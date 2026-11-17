@@ -19,6 +19,14 @@ and `panel`. Screenshots are saved as `steps/screenshot.png` and,
 when that phase runs, `reopen/screenshot.png`. A single-button run uses
 `screenshot.png` in the output directory. The JSON records screenshot paths.
 
+A run of [named scenarios](/native-forms/scenario#named-scenarios) has one phase, `scenarios`, and
+one screenshot, `scenarios/screenshot.png`, taken after the last scenario. `scenarios` in the
+result holds the result of each scenario in the order of the file: `name`, `ok`, `status`, and
+`assertions` and `reads` as in a single scenario. A scenario that stopped on a step also carries
+`stage`, `step`, `error` and the observations of the steps before it. `summary` gives the number of
+passed scenarios and the names of the failed ones. `ok` is true when every scenario passed, and
+`status` is that of the first scenario that did not.
+
 With `EDT_BRIDGE_PII` set, the answer, `result.json` and the reports for CI are filtered of
 personal data, and `piiFilter` gives the mode and the number of values replaced. Screenshots are
 not kept, since a picture of a form shows its data unmasked: `screenshotWithheld` stands in place
@@ -30,6 +38,7 @@ of the path. The verdict is still taken on the real values; see [Personal data](
 | `assertion_failed` | An observed value or message count differs from the expectation. |
 | `message_baseline_not_empty` | The message panel did not change and already held the expected text, so whether the click wrote it again is not established. |
 | `scenario_error`, `command_error` | An action, element lookup, or platform operation failed. |
+| `reopen_failed`, `not_run`, `interrupted` | Named scenarios only. The form could not be opened again before this scenario; the scenario was not reached; the session stopped while it ran. |
 | `unexpected_dialog` | A click raised a warning or a question window over the form that the step did not expect. `dialog` holds its `kind` (`warning`, `question`), `text` and visible `buttons`; the scenario stops there and a question is left unanswered, so the caller decides whether the window is an acceptable answer. |
 | `dependency_missing`, `license_unavailable`, `access_denied`, `setup_failed` | The environment or permissions do not allow the check to run. |
 | `client_environment` | No `conf.cfg` the client reads sets `DisableUnsafeActionProtection`, so the client would stop at the security warning; see `clientEnvironment` and [Prepare the environment](/native-forms#prepare-the-environment). |
@@ -89,8 +98,8 @@ takes about ten. When `ibcmd` cannot read the file, the designer reads it as bef
 
 Next to `result.json` the command writes `junit.xml`, a JUnit XML report that GitLab shows in a
 merge request (`artifacts:reports:junit`), and `allure-results/`, the results Allure builds its
-report from. Each phase is a test: `steps` and `reopen` of a scenario, or `click <button>` of a
-button check; a check that stopped before its first phase is one test named `setup`. A phase whose
+report from. Each phase is a test: `steps` and `reopen` of a scenario, every named scenario under its
+name, or `click <button>` of a button check; a check that stopped before its first phase is one test named `setup`. A phase whose
 solution did not behave (`assertion_failed`, `scenario_error`, `unexpected_dialog` and the like) is
 a JUnit `failure` and an Allure `failed` test; a phase the check could not finish (`setup_failed`,
 `timeout`, `license_unavailable` and the like) is an `error` and `broken`; a phase that was not

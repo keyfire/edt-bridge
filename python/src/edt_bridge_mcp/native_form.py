@@ -79,23 +79,31 @@ class _Timeline:
 
 def _driver_timings(marks):
     """The seconds between the marks the test manager driver records: the connection, the form lookup,
-    the command of a button check or each scenario step. A mark without a following one has no end yet
-    (a manager that did not finish) and is left out."""
+    the command of a button check or each scenario step. The marks of named scenarios carry the number of
+    the scenario, and so do their steps and the reopening of the form before each next one. A mark without
+    a following one has no end yet (a manager that did not finish) and is left out."""
     if not isinstance(marks, list):
         return None
     marks = [mark for mark in marks if isinstance(mark, dict) and isinstance(mark.get("name"), str)
              and isinstance(mark.get("at"), (int, float)) and not isinstance(mark.get("at"), bool)]
     if len(marks) < 2:
         return None
-    timings, steps = {}, []
+    timings, steps, reopens = {}, [], []
     for mark, following in zip(marks, marks[1:]):
         seconds = (following["at"] - mark["at"]) / 1000
         if mark["name"] == "step":
-            steps.append({"step": mark.get("step"), "action": mark.get("action"), "seconds": round(seconds, 2)})
+            step = {"step": mark.get("step"), "action": mark.get("action"), "seconds": round(seconds, 2)}
+            if "scenario" in mark:
+                step = {"scenario": mark["scenario"], **step}
+            steps.append(step)
+        elif mark["name"] == "reopen":
+            reopens.append({"scenario": mark.get("scenario"), "seconds": round(seconds, 2)})
         elif mark["name"] != "end":
             timings[mark["name"]] = round(timings.get(mark["name"], 0) + seconds, 2)
     if steps:
         timings["steps"] = steps
+    if reopens:
+        timings["reopens"] = reopens
     timings["total"] = round((marks[-1]["at"] - marks[0]["at"]) / 1000, 2)
     return timings
 
@@ -371,8 +379,18 @@ def _capture(stack, env, root, output):
     return {"screenshot": str(destination)}
 
 
+def _interaction(data):
+    """The answer of the test manager as the report keeps it. The observations of named scenarios are
+    already judged into their results, so they are left out here instead of being carried twice."""
+    if not isinstance(data.get("scenarios"), list):
+        return data
+    parts = [{key: value for key, value in part.items() if key != "observations"} if isinstance(part, dict)
+             else part for part in data["scenarios"]]
+    return dict(data, scenarios=parts)
+
+
 def _run_session(args, base, external, output, root, manager_base, manager_env, enterprise,
-                 xvfb, deadline, steps, launch_external=None):
+                 xvfb, deadline, steps, launch_external=None, scenarios=None):
     report = {"ok": False, "stage": "client_startup"}
     timeline = _Timeline(getattr(args, "_on_stage", None))
     timeline.enter("clientStart")
@@ -406,10 +424,16 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
                        "button": args.button or "", "expectedMessage": args.expect_message or "",
                        "waitSeconds": min(10, max(1, int(_seconds_left(deadline) / 2))),
                        "result": str(result), "progress": str(progress)}
-            if steps is not None:
-                payload.update(steps=steps, maxRows=native_scenario.MAX_ROWS,
+            if steps is not None or scenarios is not None:
+                payload.update(maxRows=native_scenario.MAX_ROWS,
                                maxColumns=native_scenario.MAX_COLUMNS, maxItems=native_scenario.MAX_ITEMS,
                                maxListed=native_scenario.MAX_LISTED)
+            if steps is not None:
+                payload["steps"] = steps
+            if scenarios is not None:
+                # The launcher behind the form opens it again before each next scenario.
+                payload.update(scenarios=scenarios, launcherForm=getattr(args, "_launcher_form", ""),
+                               reopenButton=native_report.REOPEN_BUTTON)
             request.write_text(json.dumps(payload), encoding="utf-8", newline="")
             manager_args = [*enterprise, "/F" + str(manager_base), "/TestManager",
                             "/C" + str(request), "/Out", str(manager_log)]
@@ -431,7 +455,7 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
                 if not isinstance(data, dict) or not isinstance(data.get("status"), str):
                     raise _CheckError("driver_failed", "The test manager returned an invalid result.")
                 marks = data.pop("timingMarks", None)
-                report.update(interaction=data, status=data["status"])
+                report.update(interaction=_interaction(data), status=data["status"])
                 if isinstance(data.get("observedFields"), dict):
                     # A selector that missed: the fields of the open form, where the caller looks first.
                     report["observedFields"] = data["observedFields"]
@@ -465,7 +489,15 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
                     break
                 result.unlink()
                 progress.unlink(missing_ok=True)
-            if steps is not None:
+            if scenarios is not None:
+                if data["status"] == "scenarios_observed":
+                    report.update(native_scenario.scenarios_verdict(
+                        native_scenario.scenario_results(scenarios, data.get("scenarios"))))
+                else:
+                    # The form was not reached: no scenario ran, and the status of the run says why.
+                    report["scenarios"] = native_scenario.scenario_results(
+                        scenarios, [], stopped=f"The form was not reached: {data['status']}.")
+            elif steps is not None:
                 if data["status"] == "scenario_observed":
                     report.update(native_scenario.evaluate(steps, data.get("observations")))
             elif data["status"] == "command_completed":
@@ -483,6 +515,12 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
                         # A manager that never finished: its progress has the marks up to the running step.
                         progress_marks = last.pop("timingMarks", None)
                         marks = progress_marks if marks is None else marks
+                        if scenarios is not None and "scenarios" not in report:
+                            # The scenarios that finished before the run stopped keep their results.
+                            with contextlib.suppress(native_scenario.DriverResultError):
+                                report["scenarios"] = native_scenario.scenario_results(
+                                    scenarios, last.get("scenarios") or [], stopped=report["error"])
+                            last = _interaction(last)
                     report["lastInteraction"] = last
         finally:
             if client is not None:
@@ -764,15 +802,23 @@ def _prepare_manager(args, external, ibcmd, client_exe, stack, manager_env, root
         format_version = manifest["formatVersion"]
 
     launch_external = external
-    if args.erf:
+    scenario = getattr(args, "_scenario", None)
+    named = isinstance(scenario, dict) and "scenarios" in scenario
+    if args.erf or (external and named):
+        # A report is always opened by the launcher; a data processor when named scenarios need the form
+        # opened again between them.
         timeline.enter("reportLauncher")
         report["stage"] = "report_launcher_setup"
         launcher = root / "report-loader"
         launcher.mkdir()
         if not format_version:
             raise _CheckError("setup_failed", "The exported manager configuration names no format version.")
+        kind = "ExternalReport" if args.erf else "ExternalDataProcessor"
         launcher_xml = native_report.write_launcher(
-            launcher, external, "" if standard_report_form else args.form.rsplit(".", 1)[1], format_version)
+            launcher, external, "" if standard_report_form else args.form.rsplit(".", 1)[1], format_version,
+            kind=kind)
+        args._launcher_form = native_report.launcher_form(
+            native_report.REPORT_LAUNCHER if args.erf else native_report.FORM_LAUNCHER)
         launch_external = root / "report-loader.epf"
         build = _spawn(stack, [*designer, "/LoadExternalDataProcessorOrReportFromFiles",
                               str(launcher_xml), str(launch_external), "/Out", str(designer_log)],
@@ -919,7 +965,11 @@ def _native_check(args, base, external, output, report):
 
             enterprise = [str(client_exe), "ENTERPRISE", "/RunModeManagedApplication", *_START_FLAGS]
             scenario = getattr(args, "_scenario", None)
-            phases = [("steps", scenario["steps"])] if scenario else [("legacy", None)]
+            if scenario and "scenarios" in scenario:
+                # Named scenarios share one session of the client: one phase plays them all.
+                phases = [("scenarios", None)]
+            else:
+                phases = [("steps", scenario["steps"])] if scenario else [("legacy", None)]
             if scenario and "reopen" in scenario:
                 phases.append(("reopen", scenario["reopen"]))
             if scenario:
@@ -933,8 +983,9 @@ def _native_check(args, base, external, output, report):
                 phase_output = output / name if scenario else output
                 if scenario:
                     phase_output.mkdir()
+                named = {"scenarios": scenario["scenarios"]} if name == "scenarios" else {}
                 result = _run_session(args, base, external, phase_output, root / name, manager_base,
-                                      manager_env, enterprise, xvfb, deadline, steps, launch_external)
+                                      manager_env, enterprise, xvfb, deadline, steps, launch_external, **named)
                 # The phase timings go to the timings of the run, not over the fields of the report.
                 phase_timings = result.pop("timings", None)
                 if isinstance(phase_timings, dict):
@@ -994,6 +1045,9 @@ def run(args):
             raise _CheckError("invalid_input", str(error)) from error
         base, external, destination = _validated_paths(args)
         args._scenario = native_scenario.load(args.scenario) if args.scenario else None
+        if args._scenario and "scenarios" in args._scenario and not external:
+            raise _CheckError("invalid_input", "Named scenarios need an .epf or .erf: the form is opened again "
+                                               "between them by a launcher data processor.")
         try:
             # A run often names a directory per check inside a folder nobody has made yet.
             destination.parent.mkdir(parents=True, exist_ok=True)

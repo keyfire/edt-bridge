@@ -185,3 +185,37 @@ def test_characters_xml_does_not_allow_are_dropped(tmp_path):
 
     error = _junit(tmp_path).find("testsuite/testcase/error")
     assert error.get("message") == "setup_failed; Ошибка платформы"
+
+
+def test_named_scenarios_give_one_test_each(tmp_path):
+    """EDT-TEST-20: the scenarios of one session are reported as tests of their own, in their order."""
+    scenario = {"version": 1, "scenarios": [{"name": "Empty period", "steps": [{"action": "read_form"}]},
+                                            {"name": "Two companies", "steps": [{"action": "assert_field"}]},
+                                            {"name": "Last", "steps": [{"action": "read_form"}]}]}
+    results = [{"name": "Empty period", "ok": True, "status": "scenario_completed", "assertions": []},
+               {"name": "Two companies", "ok": False, "status": "assertion_failed",
+                "assertions": [{"step": 1, "action": "assert_field", "expected": "Two", "actual": "One", "ok": False}]},
+               {"name": "Last", "ok": False, "status": "not_run", "error": "The run ended before this scenario."}]
+    timing = {"name": "scenarios", "seconds": 20.0, "clientStart": 9.0, "managerStartup": 5.0, "screenshot": 0.2,
+              "driver": {"connect": 0.1, "formLookup": 0.4,
+                         "steps": [{"scenario": 1, "step": 1, "action": "read_form", "seconds": 1.5},
+                                   {"scenario": 2, "step": 1, "action": "assert_field", "seconds": 0.5}],
+                         "reopens": [{"scenario": 2, "seconds": 2.0}], "total": 4.5}}
+    report = {"ok": False, "status": "assertion_failed", "form": "ExternalReport.Sales.Form", "erf": "Sales.erf",
+              "scenario": scenario, "scenarios": results, "phases": [{"name": "scenarios", "ok": False}],
+              "timings": {"totalSeconds": 30.0, "stages": {"preparation": 0.1, "phases": 20.0},
+                          "phases": [timing]}}
+
+    native_reports.write_form_reports(report, tmp_path)
+
+    junit = _junit(tmp_path)
+    assert (junit.get("tests"), junit.get("failures"), junit.get("skipped")) == ("3", "1", "1")
+    first, second, last = junit.find("testsuite").findall("testcase")
+    assert [case.get("name") for case in (first, second, last)] == ["Empty period", "Two companies", "Last"]
+    assert second.find("failure").get("type") == "assertion_failed"
+    assert last.find("skipped").get("message") == "The run ended before this scenario."
+    allure = _allure(tmp_path)
+    assert [step["name"] for step in allure[0]["steps"]] == [
+        "setup", "client start", "test manager start", "connect", "form lookup", "step 1: read_form"]
+    assert [step["name"] for step in allure[1]["steps"]] == ["reopen the form", "step 1: assert_field"]
+    assert float(second.get("time")) == 2.5
