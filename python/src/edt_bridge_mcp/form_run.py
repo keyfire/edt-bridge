@@ -130,8 +130,8 @@ DESCRIPTOR = {
 VERDICTS = frozenset({"scenario_completed", "command_completed"}) | native_reports.FAILURES
 #: What the answer keeps of a run that reached its verdict: what the caller judges the solution by.
 _ANSWER_KEYS = ("ok", "status", "error", "stage", "step", "assertions", "reads", "messages", "dialog",
-                "observedFields", "observedForms", "observedTitles", "defaultForm", "scenarios", "summary",
-                "piiFilter")
+                "observedFields", "matchedButtons", "observedButtons", "matchedFields", "observedForms",
+                "observedTitles", "defaultForm", "scenarios", "summary", "piiFilter")
 
 
 def _refusal(status: str, message: str) -> dict:
@@ -183,6 +183,15 @@ def run_tool(arguments: dict, *, runner=native_form.run, environ=os.environ, on_
         return _refusal("invalid_input", "pass one of button, steps and scenarios")
     if steps is not None and not isinstance(steps, list):
         return _refusal("invalid_input", "steps must be a list of step objects")
+    content = None
+    if steps is not None or scenarios is not None:
+        content = {"version": 1, "steps": steps} if steps is not None else {"version": 1, "scenarios": scenarios}
+        try:
+            # The steps are checked before the copy of the infobase and the start of the client: a refused
+            # step costs a call, not a minute.
+            native_scenario.validate(content)
+        except native_scenario.ScenarioError as error:
+            return _refusal("invalid_input", str(error))
     try:
         timeout = int(arguments.get("timeoutSeconds") or 300)
     except (TypeError, ValueError):
@@ -199,10 +208,9 @@ def run_tool(arguments: dict, *, runner=native_form.run, environ=os.environ, on_
         shutil.copyfile(source / DATA_FILE, copy / DATA_FILE)
         copy_seconds = time.monotonic() - copy_started
         scenario = None
-        if steps is not None or scenarios is not None:
+        if content is not None:
             scenario = root / "scenario.json"
             # The scenario check of the native run requires the format version.
-            content = {"version": 1, "steps": steps} if steps is not None else {"version": 1, "scenarios": scenarios}
             scenario.write_text(json.dumps(content, ensure_ascii=False), encoding="utf-8", newline="")
         args = argparse.Namespace(
             platform_bin=Path(platform), test_infobase=copy, scope="fixture",

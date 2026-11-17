@@ -1005,3 +1005,49 @@ def test_a_data_processor_is_opened_by_the_launcher_only_for_named_scenarios(mon
     else:
         assert built == []
         assert opened == [(args.epf, None)]
+
+
+# EDT-TEST-21: a selector that matched several elements or none brings the candidates.
+@pytest.mark.parametrize("answer", [
+    {"status": "ambiguous_button", "stage": "button_lookup", "clickAttempted": False, "clickReturned": False,
+     "matchedButtons": [{"name": "FormGenerate", "title": "Generate", "visible": True, "enabled": True},
+                        {"name": "Generate", "title": "Generate", "visible": True, "enabled": True}]},
+    {"status": "button_not_found", "stage": "button_lookup", "clickAttempted": False, "clickReturned": False,
+     "observedButtons": {"total": 1, "buttons": [{"name": "FormGenerate", "title": "Generate", "visible": True,
+                                                   "enabled": True}]}},
+])
+def test_a_button_selector_that_missed_brings_the_buttons(monkeypatch, tmp_path, answer):
+    args = _fixture_args(tmp_path)
+    args.output_dir.mkdir()
+    args.expect_message = "Done"
+    monkeypatch.setattr(native_form, "_display", lambda *args: {})
+    monkeypatch.setattr(native_form, "_owns_listener", lambda *args: True)
+    monkeypatch.setattr(native_form, "_capture", lambda *args: {"screenshot": "screenshot.png"})
+    requests = []
+
+    def spawn(_stack, argv, _env, _log):
+        if "/TestManager" in argv:
+            request = json.loads(Path(next(arg[2:] for arg in argv if arg.startswith("/C"))).read_text(encoding="utf-8"))
+            requests.append(request)
+            Path(request["result"]).write_text(json.dumps(answer), encoding="utf-8")
+        return SimpleNamespace(poll=lambda: None)
+
+    monkeypatch.setattr(native_form, "_spawn", spawn)
+    report = native_form._run_session(args, args.test_infobase, args.epf, args.output_dir,
+                                      tmp_path / "session", tmp_path / "manager", {},
+                                      ["1cv8", "ENTERPRISE"], "Xvfb", time.monotonic() + 30, None)
+
+    key = "matchedButtons" if answer["status"] == "ambiguous_button" else "observedButtons"
+    # A button check sends the limit of the lists too: without it the driver failed on the first list.
+    assert requests[0]["maxListed"] == native_scenario.MAX_LISTED
+    assert report["status"] == answer["status"]
+    assert report[key] == answer[key]
+
+
+def test_the_driver_resolves_a_table_the_same_way_for_every_table_step():
+    """assert_table_size took only a spreadsheet field, so a form table that read_table found failed it."""
+    driver = native_form._DRIVER.read_text(encoding="utf-8-sig")
+    assert ('If Step.action = "assert_table" Or Step.action = "read_table" Or Step.action = "assert_table_size" Then'
+            in driver)
+    for key in ("matchedButtons", "observedButtons", "matchedFields"):
+        assert f'Report.Insert("{key}"' in driver

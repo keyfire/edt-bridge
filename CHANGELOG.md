@@ -29,6 +29,18 @@ to the code and the reasoning behind it.
   a field. A change of a query or a condition no longer sends the whole schema. Apply takes the
   `sourceHash` of `edt_read_dcs`, without a dry-run.
 
+### Fixed
+
+- `assert_table_size` takes a form table, as `read_table` and `assert_table` do: it compares the
+  rows and the visible columns. A table that `read_table` found used to fail the size check with
+  `scenario_error`.
+- A button caption that matches several buttons lists them in `matchedButtons` with name and title,
+  in a button check (`ambiguous_button`) and in a scenario, so the next run presses one by
+  `button_name`. A caption that matches none lists the buttons of the form in `observedButtons`, and
+  a field name that matches several fields lists them in `matchedFields`.
+- `edt_test_form` checks the steps before it copies the infobase and starts the client, so a
+  refused step costs no run.
+
 ### Changed
 
 - `edt_test_form` answers with what the caller judges by: the verdict, the assertions, the reads,

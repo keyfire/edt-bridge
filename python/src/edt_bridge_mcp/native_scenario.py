@@ -37,7 +37,8 @@ MAX_LISTED = 200
 MAX_SCENARIOS = 20
 MAX_NAME = 200
 #: What the test manager reports about a scenario that did not complete, carried into its result.
-_FAILURE_KEYS = ("stage", "step", "error", "observedFields", "dialog", "errorDialog", "expectedErrorDialog",
+_FAILURE_KEYS = ("stage", "step", "error", "observedFields", "matchedButtons", "observedButtons", "matchedFields",
+                 "dialog", "errorDialog", "expectedErrorDialog",
                  "warningDialog", "expectedWarning", "warningPanel", "observedForms", "observedTitles")
 
 
@@ -134,7 +135,8 @@ _DESCRIPTIONS = {
     "assert_field": "Compare the presentation of a field",
     "assert_cell": "Compare one cell of a spreadsheet field",
     "assert_table": "Compare a spreadsheet field or a form table with the expected rows",
-    "assert_table_size": "Compare the populated size of a spreadsheet field",
+    "assert_table_size": "Compare the populated size of a spreadsheet field, or the rows and visible columns of a "
+                         "form table",
     "assert_messages": "Count the messages with this text that the preceding click added to the message panel",
     "read_form": "Return every visible field, form table and spreadsheet of the form",
     "read_table": "Return one form table or spreadsheet field",

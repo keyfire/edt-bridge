@@ -245,3 +245,32 @@ def test_a_failed_solution_answers_with_what_it_did_short(setup, failure):
 
 def test_the_descriptor_offers_details():
     assert form_run.DESCRIPTOR["inputSchema"]["properties"]["details"]["type"] == "boolean"
+
+
+# EDT-TEST-21: refusals of steps name the reason and the candidates, and cost no run.
+@pytest.mark.parametrize("selection, words", [
+    ({"steps": [{"action": "input", "field": "Article"}, {"action": "read_form"}]}, "missing text"),
+    ({"steps": [{"action": "click", "button": "Run"}]}, "must confirm the result"),
+    ({"scenarios": [{"name": "A", "steps": [{"action": "read_from"}]}]}, "unknown action"),
+])
+def test_a_bad_scenario_is_refused_before_the_infobase_is_copied(setup, monkeypatch, selection, words):
+    _, artifact, environ = setup
+    copies = []
+    monkeypatch.setattr(form_run.shutil, "copyfile", lambda *args: copies.append(args))
+    report = form_run.run_tool({"path": str(artifact), "form": "ExternalDataProcessor.Check.Form.Form", **selection},
+                               runner=lambda args: pytest.fail("no run for a refused scenario"), environ=environ)
+    assert report["status"] == "invalid_input"
+    assert words in report["error"]
+    assert copies == []
+
+
+def test_the_candidates_of_a_selector_stay_in_the_short_answer(setup):
+    _, artifact, environ = setup
+    matched = [{"name": "FormGenerate", "title": "Generate", "visible": True, "enabled": True},
+               {"name": "GenerateMore", "title": "Generate", "visible": False, "enabled": True}]
+    report = {"ok": False, "status": "ambiguous_button", "stage": "button_lookup", "matchedButtons": matched,
+              "timings": {"stages": {}}, "clientEnvironment": {}}
+    answer = form_run.run_tool({"path": str(artifact), "form": "ExternalDataProcessor.Check.Form.Form",
+                                "button": "Generate"}, runner=lambda args: report, environ=environ)
+    assert answer["matchedButtons"] == matched
+    assert "clientEnvironment" not in answer

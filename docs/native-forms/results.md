@@ -94,7 +94,10 @@ When a step's `field` matches no field or several, the result carries `observedF
 the fields and form tables the test client sees on the form, each with `name`, `title`,
 `kind`, `visible` and `enabled`, the visible ones first, up to 200, and `total`. Fields
 that the form creates as it opens, such as the quick settings of a standard report form,
-are named nowhere else.
+are named nowhere else. A name that matches several fields adds `matchedFields`: those fields.
+A button caption that matches several buttons answers `ambiguous_button` in a button check and
+`scenario_error` in a scenario, with `matchedButtons`; one that matches none adds
+`observedButtons`, the buttons of the form with `name`, `title`, `visible` and `enabled`.
 
 The metadata of the selected EPF or ERF (its main form, name and main data composition
 schema) is read by `ibcmd config export --file`, which takes about a second where the designer

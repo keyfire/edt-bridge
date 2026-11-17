@@ -58,9 +58,12 @@ Procedure RunCheck(Request, Report)
     Buttons = Target.FindObjects(Type("TestedFormButton"), Request.button);
     If Buttons.Count() = 0 Then
         Report.status = "button_not_found";
+        Report.Insert("observedButtons", ObservedButtons(Target, Request));
         Return;
     ElsIf Buttons.Count() > 1 Then
+        // The buttons that share the caption, by name: a scenario presses one of them by button_name.
         Report.status = "ambiguous_button";
+        Report.Insert("matchedButtons", DescribeButtons(Buttons, Request));
         Return;
     EndIf;
 
@@ -338,8 +341,12 @@ Procedure RunScenario(Application, Target, MessageWindow, Request, Steps, Report
             Else
                 Buttons = Target.FindObjects(Type("TestedFormButton"), Step.button, , Request.waitSeconds);
             EndIf;
-            If Buttons.Count() <> 1 Then
-                Raise NStr("en = 'The button selector must match exactly one button.'; ru = 'Селектор кнопки должен соответствовать ровно одной кнопке.'");
+            If Buttons.Count() > 1 Then
+                Report.Insert("matchedButtons", DescribeButtons(Buttons, Request));
+                Raise NStr("en = 'The button selector matches several buttons; press one of matchedButtons by button_name.'; ru = 'Селектор кнопки соответствует нескольким кнопкам; нажмите одну из matchedButtons по button_name.'");
+            ElsIf Buttons.Count() = 0 Then
+                Report.Insert("observedButtons", ObservedButtons(Target, Request));
+                Raise NStr("en = 'The button selector matches no button; observedButtons lists the buttons of the form.'; ru = 'Селектор кнопки не соответствует ни одной кнопке; observedButtons перечисляет кнопки формы.'");
             EndIf;
             Button = Buttons[0];
             If Not Button.CurrentVisible() Or Not Button.CurrentEnable() Then
@@ -381,8 +388,9 @@ Procedure RunScenario(Application, Target, MessageWindow, Request, Steps, Report
             Observation.Insert("actual", ReadForm(Target, Request));
         Else
             Tables = New Array;
-            If Step.action = "assert_table" Or Step.action = "read_table" Then
-                // A form table is an object of its own type, not a field: both are looked for in turn.
+            If Step.action = "assert_table" Or Step.action = "read_table" Or Step.action = "assert_table_size" Then
+                // A form table is an object of its own type, not a field: both are looked for in turn, the
+                // same way for every step that takes a table.
                 Fields = FindFieldOrTable(Target, Step.field, Tables, Request);
             Else
                 Fields = Target.FindObjects(Type("TestedFormField"), , Step.field, Request.waitSeconds);
@@ -390,9 +398,15 @@ Procedure RunScenario(Application, Target, MessageWindow, Request, Steps, Report
             If Tables.Count() = 1 Then
                 // An assertion compares a complete table; a read returns what fits and says so.
                 FormTable = ReadFormTable(Tables[0], Request, Step.action = "read_table");
-                Observation.Insert("actual", FormTable.rows);
-                Observation.Insert("columns", FormTable.columns);
-                Observation.Insert("truncated", FormTable.truncated);
+                If Step.action = "assert_table_size" Then
+                    // The size of a form table: its rows and its visible columns.
+                    Observation.Insert("actual", New Structure("rows,columns", FormTable.rows.Count(),
+                        FormTable.columns.Count()));
+                Else
+                    Observation.Insert("actual", FormTable.rows);
+                    Observation.Insert("columns", FormTable.columns);
+                    Observation.Insert("truncated", FormTable.truncated);
+                EndIf;
             ElsIf Tables.Count() > 1 Then
                 Report.Insert("observedFields", ObservedFields(Target, Request));
                 Raise NStr("en = 'The table selector must match exactly one field or form table.'; ru = 'Селектор таблицы должен соответствовать ровно одному полю или таблице формы.'");
@@ -400,6 +414,10 @@ Procedure RunScenario(Application, Target, MessageWindow, Request, Steps, Report
                 If Fields.Count() <> 1 Then
                     // The names of fields that appear only when the form opens are not in any source.
                     Report.Insert("observedFields", ObservedFields(Target, Request));
+                    If Fields.Count() > 1 Then
+                        Report.Insert("matchedFields", DescribeFields(Fields));
+                        Raise NStr("en = 'The field selector matches several fields; matchedFields lists them.'; ru = 'Селектор поля соответствует нескольким полям; matchedFields перечисляет их.'");
+                    EndIf;
                     Raise NStr("en = 'The field selector must match exactly one field.'; ru = 'Селектор поля должен соответствовать ровно одному полю.'");
                 EndIf;
                 Field = Fields[0];
@@ -715,6 +733,46 @@ Function ObservedFields(Target, Request)
         EndIf;
     EndDo;
     Return New Structure("fields,total", Listed, Visible.Count() + Hidden.Count());
+EndFunction
+
+// The buttons a caption matched: name, title, visibility and availability.
+Function DescribeButtons(Buttons, Request)
+    Described = New Array;
+    For Each Button In Buttons Do
+        If Described.Count() >= Request.maxListed Then
+            Break;
+        EndIf;
+        Described.Add(New Structure("name,title,visible,enabled", TestedObjectName(Button), Button.TitleText,
+            Button.CurrentVisible(), Button.CurrentEnable()));
+    EndDo;
+    Return Described;
+EndFunction
+
+// The buttons of the form for a caption that matched none: the visible ones first, up to the limit.
+Function ObservedButtons(Target, Request)
+    Visible = New Array;
+    Hidden = New Array;
+    For Each Button In Target.FindObjects(Type("TestedFormButton")) Do
+        If Button.CurrentVisible() Then
+            Visible.Add(Button);
+        Else
+            Hidden.Add(Button);
+        EndIf;
+    EndDo;
+    For Each Button In Hidden Do
+        Visible.Add(Button);
+    EndDo;
+    Return New Structure("buttons,total", DescribeButtons(Visible, Request), Visible.Count());
+EndFunction
+
+// The fields a name matched, as observedFields describes a field.
+Function DescribeFields(Fields)
+    Described = New Array;
+    For Each Item In Fields Do
+        Described.Add(New Structure("name,title,kind,visible,enabled", Item.Name, Item.TitleText, String(Item.Type),
+            Item.CurrentVisible(), Item.CurrentEnable()));
+    EndDo;
+    Return Described;
 EndFunction
 
 Procedure CollectFields(Items, Visible, Hidden)

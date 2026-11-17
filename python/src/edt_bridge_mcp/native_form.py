@@ -424,10 +424,10 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
                        "button": args.button or "", "expectedMessage": args.expect_message or "",
                        "waitSeconds": min(10, max(1, int(_seconds_left(deadline) / 2))),
                        "result": str(result), "progress": str(progress)}
-            if steps is not None or scenarios is not None:
-                payload.update(maxRows=native_scenario.MAX_ROWS,
-                               maxColumns=native_scenario.MAX_COLUMNS, maxItems=native_scenario.MAX_ITEMS,
-                               maxListed=native_scenario.MAX_LISTED)
+            # The limits of what the driver reads and lists; a button check lists candidate buttons as well.
+            payload.update(maxRows=native_scenario.MAX_ROWS,
+                           maxColumns=native_scenario.MAX_COLUMNS, maxItems=native_scenario.MAX_ITEMS,
+                           maxListed=native_scenario.MAX_LISTED)
             if steps is not None:
                 payload["steps"] = steps
             if scenarios is not None:
@@ -459,6 +459,10 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
                 if isinstance(data.get("observedFields"), dict):
                     # A selector that missed: the fields of the open form, where the caller looks first.
                     report["observedFields"] = data["observedFields"]
+                for key in ("matchedButtons", "observedButtons", "matchedFields"):
+                    if isinstance(data.get(key), (list, dict)):
+                        # A selector that matched several elements or none: the candidates by name and title.
+                        report[key] = data[key]
                 if isinstance(data.get("dialog"), dict):
                     # A window over the form that no step expected: what the solution showed, not a failure
                     # of the check, so the caller can judge it.
