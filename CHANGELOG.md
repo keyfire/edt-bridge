@@ -23,6 +23,7 @@ to the code and the reasoning behind it.
   one and the per-user one in `~/.eclipse`), EDT processes running as administrator, and a plugin
   load error in the last session of the workspace log. Each problem goes to stderr with the step
   that fixes it, and the exit code is 1. `status` with no bridge running points to the command.
+  ([#98](https://github.com/keyfire/edt-bridge/pull/98))
 
 ## 2026-11-16 – 0.48.0, 0.48.1
 
