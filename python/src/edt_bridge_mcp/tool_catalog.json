@@ -4828,19 +4828,21 @@
     },
     {
       "name": "edt_tool_help",
-      "description": "READ: the full description and the argument schema of one tool, by its name. The server also describes a tool outside the active tool set (EDT_BRIDGE_TOOLSET): the answer then states that a call of it is refused and lists the tool sets that contain it. The answer contains name, description, inputSchema, toolsets and available. For an unknown name the server returns a refusal with the nearest tool names.",
-      "descriptionRu": "ЧТЕНИЕ: полное описание и схема аргументов одного инструмента по его имени. Сервер описывает и инструмент вне действующего набора (EDT_BRIDGE_TOOLSET): в этом случае в ответе указано, что вызов инструмента отклоняется, и перечислены наборы, в которые он входит. Ответ содержит name, description, inputSchema, toolsets и available. Для неизвестного имени сервер возвращает отказ с ближайшими именами инструментов.",
+      "description": "READ: list the active tools with a short description, or pass tool for its description and argument schema. Use brief=true with tool for its signature. The server also describes a tool outside the active tool set (EDT_BRIDGE_TOOLSET): the answer then states that a call of it is refused and lists the tool sets that contain it. The answer contains name, description, inputSchema, toolsets and available. For an unknown name the server returns a refusal with the nearest tool names.",
+      "descriptionRu": "ЧТЕНИЕ: список инструментов действующего набора с краткими описаниями или описание и схема аргументов инструмента по имени. Для краткой сигнатуры передайте имя в tool и brief=true. Сервер описывает и инструмент вне действующего набора (EDT_BRIDGE_TOOLSET): в этом случае в ответе указано, что вызов инструмента отклоняется, и перечислены наборы, в которые он входит. Ответ содержит name, description, inputSchema, toolsets и available. Для неизвестного имени сервер возвращает отказ с ближайшими именами инструментов.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "tool": {
             "type": "string",
-            "description": "Name of the tool to describe, e.g. edt_project_errors"
+            "description": "Tool to describe. Omit to list the active tools."
+          },
+          "brief": {
+            "type": "boolean",
+            "description": "Return only the signature of a named tool. An asterisk marks a required argument."
           }
         },
-        "required": [
-          "tool"
-        ]
+        "required": []
       },
       "toolsets": [
         "processor",

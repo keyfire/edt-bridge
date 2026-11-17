@@ -1567,14 +1567,21 @@ class StdioServer:
                 self._tool_error(req_id, self._toolset.problem)
                 return
             arguments = params.get("arguments") or {}
-            described = (self._local_descriptor(arguments.get("tool"))
-                         if params.get("name") == toolsets.HELP_TOOL and isinstance(arguments, dict)
-                         else None)
-            if described is not None:
-                # The bridge describes its own tools; a tool served here is unknown to it.
-                # Before ensure(): the answer is in the wrapper and needs no EDT.
-                self._describe_local(req_id, described, arguments)
-                return
+            if params.get("name") == toolsets.HELP_TOOL:
+                try:
+                    wanted, brief = toolsets.help_options(arguments)
+                except ValueError as invalid:
+                    self._tool_error(req_id, f"{toolsets.HELP_TOOL}: {invalid}")
+                    return
+                described = self._local_descriptor(wanted)
+                if described is not None:
+                    self._result(req_id, {"content": [{"type": "text",
+                        "text": toolsets.describe(described, self._toolset, brief=brief)}]})
+                    return
+                if wanted is None:
+                    self._result(req_id, {"content": [{"type": "text",
+                        "text": toolsets.list_help(self._offline_descriptors(), self._toolset)}]})
+                    return
             if (params.get("name") in (jobs.STATUS_TOOL, jobs.CANCEL_TOOL) and isinstance(arguments, dict)
                     and self._job_call(req_id, params.get("name"), arguments)):
                 # A job of the wrapper, the list of jobs, or a bridge job with no EDT to ask.
@@ -1754,16 +1761,6 @@ class StdioServer:
                              "EDT that ran it and its result is lost. Run the call again.")
             return True
         return False
-
-    def _describe_local(self, req_id, descriptor: dict, arguments: dict) -> None:
-        """Answer edt_tool_help for a tool the wrapper or a plugin serves."""
-        misnamed = unknown_arguments(toolsets.HELP_TOOL, arguments, tools=[
-            {"name": toolsets.HELP_TOOL, "inputSchema": {"properties": {"tool": {}}}}])
-        if misnamed:
-            self._tool_error(req_id, misnamed)
-            return
-        self._result(req_id, {"content": [{"type": "text",
-                                           "text": toolsets.describe(descriptor, self._toolset)}]})
 
     def _call_plugin(self, req_id, tool: plugins.Tool, arguments: dict) -> None:
         """Run a plugin tool and report as a normal tool result."""

@@ -127,13 +127,56 @@ def active() -> Selection:
     return parse(os.environ.get("EDT_BRIDGE_TOOLSET"))
 
 
-def describe(descriptor: dict, selection: Selection) -> str:
+def help_options(arguments: dict) -> tuple[str | None, bool]:
+    """Read the help arguments used by both MCP and the CLI."""
+    if not isinstance(arguments, dict):
+        raise ValueError("arguments must be an object")
+    extra = sorted(arguments.keys() - {"tool", "brief"})
+    if extra:
+        names = _quoted(extra)
+        raise ValueError(f"unknown argument {names}. Arguments this tool takes: brief, tool")
+    name = arguments.get("tool")
+    if name is not None and (not isinstance(name, str) or not name.strip()):
+        raise ValueError("tool must be a non-empty name")
+    brief = arguments.get("brief", False)
+    if not isinstance(brief, bool):
+        raise ValueError("brief must be a boolean")
+    return name.strip() if name is not None else None, brief
+
+
+def list_help(descriptors: list[dict], selection: Selection) -> str:
+    tools = []
+    for descriptor in descriptors:
+        if selection.shows(descriptor):
+            line = " ".join(descriptor.get("description", "").split())
+            before, period, _ = line.partition(". ")
+            line = before + ("." if period else "")
+            if len(line) > 160:
+                line = line[:157].rstrip() + "..."
+            tools.append({"name": descriptor["name"], "description": line})
+    return json.dumps({"tools": tools}, ensure_ascii=False, indent=2)
+
+
+def describe(descriptor: dict, selection: Selection, *, brief: bool = False) -> str:
     """The answer of edt_tool_help for a tool the wrapper serves, shaped like the bridge's."""
-    answer = {
-        "name": descriptor["name"],
-        "description": descriptor.get("description", ""),
-        "inputSchema": descriptor.get("inputSchema", {"type": "object", "properties": {}}),
-    }
+    name = descriptor["name"]
+    schema = descriptor.get("inputSchema", {"type": "object", "properties": {}})
+    answer = {"name": name}
+    if brief:
+        args = []
+        required = set(schema.get("required", ()))
+        for group in schema.get("allOf", ()):
+            alternatives = group.get("anyOf") or ()
+            if alternatives:
+                required.update(alternatives[0].get("required", ()))
+        for key, prop in schema.get("properties", {}).items():
+            kind = prop.get("type", "any") if isinstance(prop, dict) else "any"
+            if isinstance(kind, list):
+                kind = "|".join(kind)
+            args.append(f"{key}{'*' if key in required else ''}: {kind}")
+        answer["signature"] = f"{name}({', '.join(args)})"
+    else:
+        answer.update(description=descriptor.get("description", ""), inputSchema=schema)
     declared = descriptor.get("toolsets")
     if isinstance(declared, (list, tuple)):
         answer["toolsets"] = list(declared)

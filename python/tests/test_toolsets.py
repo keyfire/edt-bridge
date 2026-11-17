@@ -383,6 +383,27 @@ def test_a_plugin_naming_an_unknown_set_refuses_at_validation(declared, message)
 
 # -- edt_tool_help ------------------------------------------------------------
 
+def test_tool_help_lists_active_tools_without_starting_edt(serve, monkeypatch):
+    srv, sent = serve("report")
+    monkeypatch.setattr(srv.backend, "ensure", untouched)
+    payload = json.loads(call(srv, sent, "edt_tool_help", {})["content"][0]["text"])
+    listed = {tool["name"]: tool["description"] for tool in payload["tools"]}
+    assert "edt_test_form" in listed
+    assert "edt_clean_project" not in listed
+    assert "\n" not in listed["edt_test_form"]
+
+
+def test_tool_help_brief_includes_required_arguments_without_schema(serve, monkeypatch):
+    srv, sent = serve(None)
+    monkeypatch.setattr(srv.backend, "ensure", untouched)
+    answer = call(srv, sent, "edt_tool_help", {"tool": "edt_test_form", "brief": True})
+    text = answer["content"][0]["text"]
+    payload = json.loads(text)
+    assert len(text) < 1000
+    assert payload["signature"].startswith("edt_test_form(")
+    assert "form*: string" in payload["signature"]
+    assert "inputSchema" not in payload
+
 
 def test_reference_plugin_tools_accept_compatible_argument_names(serve):
     doc = plugins.Tool("edt_platform_doc_grep", "Find matching documentation lines.", lambda args: args,
