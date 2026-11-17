@@ -384,9 +384,34 @@ def _dacl_protected(path: Path) -> bool | None:
 
 
 def _unreadable_jar(jar: Path) -> str:
+    # "without administrator rights" is spelled out: a user ran icacls in an elevated console and
+    # started EDT from the same console, which put EDT on the configuration under Program Files.
     return (f"{jar} does not take the permissions of dropins: EDT started without administrator "
             f'rights cannot read it, and the bridge does not load. Run icacls "{jar}" /reset as '
-            "administrator, then start EDT once with -clean")
+            "administrator, then start EDT once with -clean from a console without administrator "
+            "rights")
+
+
+def _repair_permissions(jar: Path, emit) -> bool:
+    """Give ``jar`` the permissions of its folder by writing it again beside itself.
+
+    A jar an older self-update left behind keeps the protected DACL of the temporary directory it
+    was downloaded to - and an update from such a version installs the new jar with the old code,
+    before it replaces the wrapper. The same bytes written to a new file in dropins take the
+    permissions of the folder, the way a download is staged now. It takes the rights that wrote
+    dropins, which an elevated self-update has; without them nothing changes."""
+    try:
+        with _staging_files(jar.parent) as stage:
+            copy = stage()
+            with open(jar, "rb") as source, open(copy, "wb") as target:
+                shutil.copyfileobj(source, target)
+            if _dacl_protected(copy):
+                return False
+            copy.replace(jar)
+    except OSError:
+        return False
+    emit(f"{jar.name} now takes the permissions of dropins")
+    return True
 
 
 def install_latest_jar(dropins: Path, emit=log, *, version: str | None = None) -> bool:
@@ -419,7 +444,7 @@ def install_latest_jar(dropins: Path, emit=log, *, version: str | None = None) -
     if installed is not None:
         # Keep the newest local copy only after checking the jar cleanup will retain.
         _, retained = installed
-        if _dacl_protected(retained):
+        if _dacl_protected(retained) and not _repair_permissions(retained, emit):
             emit(_unreadable_jar(retained))
             return False
         purge_stale_jars(dropins, emit, keep=retained, keep_newer=True)
@@ -580,17 +605,19 @@ def update_jar(version: str | None = None) -> bool:
     if ok:
         warn_stale_configurations(dropins)
         log("a running EDT (GUI or headless) keeps the old code until restarted")
-        if _elevated():
-            log("this console runs as administrator: start EDT from a console without "
-                "administrator rights. An elevated EDT keeps its configuration in the install "
-                "directory, and the next start without elevation may reset the configuration "
-                "it keeps in ~/.eclipse")
         # Named, not just warned about: the running bridge answered 0.21.0 while 0.22.0 lay in
         # dropins, and nothing said so - the session went on believing it ran the new code.
         jar, live = installed_jar(dropins), running_bridge_version()
         if jar and live and not jar[0].startswith(live):
             log(f"the bridge answering now is {live}, the jar in dropins is {jar[0]} - "
                 f"restart EDT (edt-bridge-mcp shutdown) to run it")
+    # Also after a failed step: that is when the next command typed into this console is the
+    # one that starts EDT.
+    if _elevated():
+        log("this console runs as administrator: start EDT from a console without "
+            "administrator rights. An elevated EDT keeps its configuration in the install "
+            "directory, and the next start without elevation may reset the configuration "
+            "it keeps in ~/.eclipse")
     return ok
 
 

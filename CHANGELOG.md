@@ -25,6 +25,19 @@ to the code and the reasoning behind it.
   that fixes it, and the exit code is 1. `status` with no bridge running points to the command.
   ([#98](https://github.com/keyfire/edt-bridge/pull/98))
 
+### Fixed
+
+- `self-update` repairs a jar in `dropins` that does not take the permissions of the folder,
+  instead of only naming the `icacls` command. An update from 0.47 installs the new jar with the
+  old code, before it replaces the wrapper, so the jar lands unreadable for EDT started without
+  administrator rights. The next `self-update`, run as administrator, writes the jar again
+  beside itself, and the copy takes the permissions of `dropins`. Without the rights to do that,
+  it still names the command. ([#99](https://github.com/keyfire/edt-bridge/pull/99))
+- The fix that `self-update` names now says to start EDT from a console without administrator
+  rights, and an elevated console gets that advice even when the jar step fails. The message
+  used to end with "start EDT once with -clean", and EDT started from the same elevated console
+  kept its configuration under Program Files. ([#99](https://github.com/keyfire/edt-bridge/pull/99))
+
 ## 2026-11-17 – 0.49.0
 
 ### Added
