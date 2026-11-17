@@ -22,11 +22,11 @@ to the code and the reasoning behind it.
   old code, before it replaces the wrapper, so the jar lands unreadable for EDT started without
   administrator rights. The next `self-update`, run as administrator, writes the jar again
   beside itself, and the copy takes the permissions of `dropins`. Without the rights to do that,
-  it still names the command.
+  it still names the command. ([#99](https://github.com/keyfire/edt-bridge/pull/99))
 - The fix that `self-update` names now says to start EDT from a console without administrator
   rights, and an elevated console gets that advice even when the jar step fails. The message
   used to end with "start EDT once with -clean", and EDT started from the same elevated console
-  kept its configuration under Program Files.
+  kept its configuration under Program Files. ([#99](https://github.com/keyfire/edt-bridge/pull/99))
 
 ## 2026-11-17 – 0.49.0
 
