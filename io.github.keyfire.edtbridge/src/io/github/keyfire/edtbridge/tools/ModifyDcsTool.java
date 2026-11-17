@@ -73,15 +73,17 @@ public final class ModifyDcsTool {
                 + "data set, replace an exact fragment, set the title or the format of a field, remove a field. The "
                 + "changes are made in the saved designer XML, the rest of the file keeps its bytes, and the answer "
                 + "names the changed lines and resultHash, not the schema text. Apply directly with expectedHash = "
-                + "sourceHash of edt_read_dcs, no dry-run needed. EDT validation does not check the schema XML: build "
-                + "the report or data processor with edt_dump_external_object to check the result. Dry-run by default.");
+                + "sourceHash of edt_read_dcs, no dry-run needed. The changed schema is checked as edt_replace_dcs checks "
+                + "it: a text EDT cannot read is not written, problems lists a data set without a data source and a "
+                + "variant without structure; the build (edt_dump_external_object) checks the rest. Dry-run by default.");
         descriptor.addProperty("descriptionRu", "ЗАПИСЬ: изменить часть существующего макета DATA_COMPOSITION_SCHEMA, "
                 + "не передавая XML схемы целиком: добавить поле набора данных или параметр, задать запрос набора, "
                 + "заменить точный фрагмент, задать заголовок или формат поля, удалить поле. Изменения вносятся в "
                 + "сохраненный XML конфигуратора, остальная часть файла не меняется, ответ называет измененные строки и "
                 + "resultHash без текста схемы. Запись сразу: expectedHash = sourceHash из edt_read_dcs, предпросмотр не "
-                + "обязателен. Проверка EDT не сверяет XML схемы с форматом платформы: результат проверяет сборка отчета "
-                + "или обработки (edt_dump_external_object). По умолчанию предпросмотр.");
+                + "обязателен. Измененная схема проверяется так же, как в edt_replace_dcs: текст, который EDT не прочитает, "
+                + "не записывается, problems называет набор без источника и вариант без структуры; остальное проверяет "
+                + "сборка (edt_dump_external_object). По умолчанию предпросмотр.");
         JsonObject schema = ReadDcsTool.schema(properties, false);
         schema.getAsJsonArray("required").add("edits");
         descriptor.add("inputSchema", schema);

@@ -52,10 +52,20 @@ public final class MarkerFreshness {
         public final boolean stale;
         /** The file changed on disk and the workspace has not read the change. */
         public final boolean unsynchronized;
+        /**
+         * The marker predates the file's last change, and EDT has checked the file since without renewing it:
+         * what it reports is gone from the file, and only the marker is left. Not stale - nothing is pending.
+         */
+        public final boolean leftover;
 
         Verdict(boolean stale, boolean unsynchronized) {
+            this(stale, unsynchronized, false);
+        }
+
+        Verdict(boolean stale, boolean unsynchronized, boolean leftover) {
             this.stale = stale;
             this.unsynchronized = unsynchronized;
+            this.leftover = leftover;
         }
 
         /** True when there is nothing to report about this marker. */
@@ -84,6 +94,20 @@ public final class MarkerFreshness {
     }
 
     /**
+     * {@link #judge(long, long, boolean)}, knowing when EDT last checked the file: the latest marker it created on
+     * the file, or the end of a check the bridge waited for after its own write; {@code <= 0} when unknown. A marker
+     * older than the change of a file that EDT has checked after that change was not renewed by that check: it is
+     * a leftover, as EDT keeps the marker of a query check after the query no longer has the problem (EDT 2026.2).
+     */
+    public static Verdict judge(long markerCreatedAt, long fileModifiedAt, boolean workspaceInSync, long checkedAt) {
+        Verdict verdict = judge(markerCreatedAt, fileModifiedAt, workspaceInSync);
+        if (verdict.stale && !verdict.unsynchronized && fileModifiedAt > 0 && checkedAt > fileModifiedAt) {
+            return new Verdict(false, false, true);
+        }
+        return verdict;
+    }
+
+    /**
      * The one line that tells the caller what to do about it, or {@code null} when nothing is
      * stale and nothing is unsynchronized.
      *
@@ -93,9 +117,32 @@ public final class MarkerFreshness {
      *                            is then a full clean, not another refresh
      */
     public static String hint(int staleProblems, int unsynchronizedFiles, boolean afterRefresh) {
+        return hint(staleProblems, unsynchronizedFiles, afterRefresh, 0);
+    }
+
+    /**
+     * {@link #hint(int, int, boolean)}, knowing how many of the stale problems sit on a data composition
+     * schema. EDT keeps the previous schema of a .dcs file it cannot read, and its previous problems with
+     * it: no refresh and no rebuild clears them, a schema EDT reads does.
+     */
+    public static String hint(int staleProblems, int unsynchronizedFiles, boolean afterRefresh, int staleSchemaProblems) {
+        return hint(staleProblems, unsynchronizedFiles, afterRefresh, staleSchemaProblems, 0);
+    }
+
+    /** {@link #hint(int, int, boolean, int)} that also names the leftover markers, which need no action. */
+    public static String hint(int staleProblems, int unsynchronizedFiles, boolean afterRefresh, int staleSchemaProblems,
+            int leftovers) {
+        String leftoverNote = leftovers <= 0 ? null : leftovers + " problem(s) are left over from an earlier version of "
+                + "their file: EDT checked the file after its last change and did not report them again (leftover=true); "
+                + "they need no fix, and recreating the object removes them";
         if (staleProblems <= 0 && unsynchronizedFiles <= 0) {
-            return null;
+            return leftoverNote;
         }
+        String main = hintOf(staleProblems, unsynchronizedFiles, afterRefresh, staleSchemaProblems);
+        return leftoverNote == null ? main : main + ". " + leftoverNote;
+    }
+
+    private static String hintOf(int staleProblems, int unsynchronizedFiles, boolean afterRefresh, int staleSchemaProblems) {
         StringBuilder sb = new StringBuilder();
         if (staleProblems > 0) {
             sb.append(staleProblems).append(" problem(s) predate the last change of their file");
@@ -109,6 +156,13 @@ public final class MarkerFreshness {
             if (staleProblems <= 0) {
                 sb.append(" and may hold problems nothing reports yet");
             }
+        }
+        if (afterRefresh && staleSchemaProblems > 0) {
+            sb.append(" even after the refresh. ").append(staleSchemaProblems).append(" of them sit on a data "
+                    + "composition schema: EDT keeps the previous schema and its problems while it cannot read the "
+                    + "file - write the schema again with edt_replace_dcs or edt_modify_dcs, which name the place "
+                    + "where EDT stops reading");
+            return sb.toString();
         }
         sb.append(afterRefresh
                 ? " even after the refresh – edt_clean_project rebuilds the project from scratch"

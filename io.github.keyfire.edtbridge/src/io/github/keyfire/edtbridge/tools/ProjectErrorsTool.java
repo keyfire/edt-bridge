@@ -274,6 +274,9 @@ public final class ProjectErrorsTool {
             if (rep.staleCount >= 0) {
                 payload.addProperty("staleCount", rep.staleCount);
             }
+            if (rep.leftoverCount > 0) {
+                payload.addProperty("leftoverCount", rep.leftoverCount);
+            }
             JsonArray unsynchronized = new JsonArray();
             rep.unsynchronized.forEach(unsynchronized::add);
             payload.add("unsynchronized", unsynchronized);
@@ -346,6 +349,12 @@ public final class ProjectErrorsTool {
                     }
                     if (p.unsynchronized) {
                         o.addProperty("unsynchronized", true);
+                    }
+                    if (p.leftover) {
+                        o.addProperty("leftover", true);
+                        if (p.markerCreatedAt > 0) {
+                            o.addProperty("validatedAt", iso(p.markerCreatedAt));
+                        }
                     }
                     arr.add(o);
                 }

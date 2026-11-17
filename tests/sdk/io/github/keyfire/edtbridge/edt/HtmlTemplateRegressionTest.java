@@ -476,5 +476,56 @@ class HtmlTemplateRegressionTest {
         public void write(HtmlTemplateGateway.Target target, byte[] bytes) {
             writes++; text = corruptWrite ? "unexpected writer content" : ExactTextReplacement.decode(bytes); stamp++;
         }
+        /** What EDT's own reader says about a schema text; null reads it. */
+        io.github.keyfire.edtbridge.core.DcsCheck.Problem unreadable;
+        int takeWaits;
+        public io.github.keyfire.edtbridge.core.DcsCheck.Problem unreadableSchema(HtmlTemplateGateway.Target target, String text) {
+            return unreadable;
+        }
+        public boolean awaitTaken(HtmlTemplateGateway.Target target, long timeoutMs) { takeWaits++; return true; }
+    }
+
+    // EDT-DCS-03: a schema is checked before it is written, and EDT is given the time to take it.
+    private static final String SCHEMA_HEAD = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+            + "<DataCompositionSchema xmlns=\"http://v8.1c.ru/8.1/data-composition-system/schema\" "
+            + "xmlns:dcsset=\"http://v8.1c.ru/8.1/data-composition-system/settings\" "
+            + "xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">\n";
+    private static final String NO_SOURCE = SCHEMA_HEAD
+            + "\t<dataSource>\n\t\t<name>Source</name>\n\t\t<dataSourceType>Local</dataSourceType>\n\t</dataSource>\n"
+            + "\t<dataSet xsi:type=\"DataSetQuery\">\n\t\t<name>Orders</name>\n\t\t<query>SELECT 1</query>\n\t</dataSet>\n"
+            + "</DataCompositionSchema>\n";
+    private static final String READABLE = NO_SOURCE.replace("\t\t<query>", "\t\t<dataSource>Source</dataSource>\n\t\t<query>");
+
+    @Test void aDryRunOfASchemaWithoutADataSourceSaysSoAndIsNotValid() {
+        var access = new MemoryAccess(); var gateway = new HtmlTemplateGateway(access);
+        var preview = gateway.replace("Demo", "ExternalReport.Demo.Template.Main", HtmlTemplateGateway.SCHEMA,
+                NO_SOURCE, null, false, false);
+        assertTrue(preview.ok, preview.message);
+        assertFalse(preview.valid);
+        assertTrue(preview.problems.get(0).message().startsWith("data set Orders has no dataSource"), preview.problems.toString());
+        assertTrue(preview.message.contains("has no dataSource"), preview.message);
+    }
+
+    @Test void aSchemaEdtCannotReadIsNotWrittenAndTheRefusalNamesThePlace() {
+        var access = new MemoryAccess(); var gateway = new HtmlTemplateGateway(access);
+        access.unreadable = new io.github.keyfire.edtbridge.core.DcsCheck.Problem("error",
+                "EDT cannot read the schema: Wrong element: {schema}unknownElement", 14, 19);
+        var write = gateway.replace("Demo", "ExternalReport.Demo.Template.Main", HtmlTemplateGateway.SCHEMA,
+                READABLE, ExactTextReplacement.hash("old\r\n"), true, true);
+        assertFalse(write.ok);
+        assertEquals(0, access.writes);
+        assertTrue(write.message.contains("would keep the previous one"), write.message);
+        assertTrue(write.message.contains("(line 14, column 19)"), write.message);
+    }
+
+    @Test void aWrittenSchemaWaitsUntilEdtHasTakenIt() {
+        var access = new MemoryAccess(); var gateway = new HtmlTemplateGateway(access);
+        var write = gateway.replace("Demo", "ExternalReport.Demo.Template.Main", HtmlTemplateGateway.SCHEMA,
+                READABLE, ExactTextReplacement.hash("old\r\n"), true, true);
+        assertTrue(write.ok, write.message);
+        assertEquals(1, access.writes);
+        assertEquals(1, access.takeWaits);
+        assertEquals(Boolean.TRUE, write.revalidated);
+        assertTrue(write.valid);
     }
 }

@@ -40,6 +40,16 @@ to the code and the reasoning behind it.
   a field name that matches several fields lists them in `matchedFields`.
 - `edt_test_form` checks the steps before it copies the infobase and starts the client, so a
   refused step costs no run.
+- `edt_replace_dcs` and `edt_modify_dcs` check a schema before they write it. A text EDT cannot
+  read is refused with the line and column where its reader stops: EDT used to keep the previous
+  schema with its problems and build that one, while the write answered `valid: true`. `problems`
+  names a data set without a data source and a settings variant without structure, which used to
+  show only when the report ran. After the write, `revalidated` says whether EDT has taken the
+  schema and checked it.
+- `edt_project_errors` no longer stays incomplete over a marker that EDT keeps after a data
+  composition schema has lost the problem, as it does with the join check of a query: such a
+  marker is reported as `leftover`. A stale marker on a schema names `edt_replace_dcs` and
+  `edt_modify_dcs` instead of a full clean.
 
 ### Changed
 
