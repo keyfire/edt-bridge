@@ -272,21 +272,23 @@ def withheld(output, error):
     return answer
 
 
-def withhold_screenshots(node):
-    """Remove the screenshots a filtered answer names: a picture of a form shows its data unmasked."""
+def withhold_screenshots(node, *, preserved=()):
+    """Remove every screenshot except those produced by the masked browser capture."""
     if isinstance(node, list):
         for item in node:
-            withhold_screenshots(item)
+            withhold_screenshots(item, preserved=preserved)
     elif isinstance(node, dict):
-        path = node.pop("screenshot", None)
-        if isinstance(path, str) and path:
-            try:
-                Path(path).unlink(missing_ok=True)
-            except OSError:
-                pass
-            node["screenshotWithheld"] = True
+        path = node.get("screenshot")
+        if not isinstance(path, str) or path not in preserved:
+            node.pop("screenshot", None)
+            if isinstance(path, str) and path:
+                try:
+                    Path(path).unlink(missing_ok=True)
+                except OSError:
+                    pass
+                node["screenshotWithheld"] = True
         for value in node.values():
-            withhold_screenshots(value)
+            withhold_screenshots(value, preserved=preserved)
 
 
 def mask_files(paths, flt):

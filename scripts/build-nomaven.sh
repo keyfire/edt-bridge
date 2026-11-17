@@ -178,6 +178,7 @@ need=(
   com._1c.g5.v8.dt.form.layout
   com._1c.g5.v8.dt.form.layout.model
   com._1c.g5.v8.dt.form.presentation
+  com._1c.g5.v8.dt.dcs
   com._1c.g5.v8.dt.dcs.model
   com._1c.g5.v8.dt.rights
   com._1c.g5.v8.dt.rights.model

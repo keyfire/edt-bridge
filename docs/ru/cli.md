@@ -328,8 +328,8 @@ usage: edt-bridge-mcp test-form [-h] --platform-bin PLATFORM_BIN --test-infobase
                                 EPF | --erf ERF | --navigation-link NAVIGATION_LINK)
                                 --form FORM [--form-title FORM_TITLE] (--button BUTTON |
                                 --scenario SCENARIO) [--expect-message EXPECT_MESSAGE]
-                                [--user USER] --output-dir OUTPUT_DIR [--timeout
-                                TIMEOUT] [--version]
+                                [--user USER] [--web-client] --output-dir OUTPUT_DIR
+                                [--timeout TIMEOUT] [--version]
 ```
 
 **Параметры**
@@ -349,6 +349,7 @@ usage: edt-bridge-mcp test-form [-h] --platform-bin PLATFORM_BIN --test-infobase
 | `--scenario SCENARIO` | файл JSON со сценарием ввода, команд и проверок наблюдаемого результата |
 | `--expect-message EXPECT_MESSAGE` | точное новое сообщение после команды для подтверждения результата |
 | `--user USER` | имя пользователя тестовой базы, если оно необходимо для входа без пароля |
+| `--web-client` | открыть форму в веб-клиенте и сохранить снимок с маской при EDT_BRIDGE_PII |
 | `--output-dir OUTPUT_DIR` | новый каталог для отчета JSON и снимка PNG; недостающие родительские каталоги создаются |
 | `--timeout TIMEOUT` | предел времени проверки в секундах, по умолчанию 120 |
 | `--version` | показать версию и выйти |

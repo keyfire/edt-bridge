@@ -105,42 +105,51 @@ public final class DumpExternalObjectTool {
             MetadataWriteGateway.DumpExternalObjectResult res =
                     gateway.dumpExternalObject(projectName, objectName, kind, targetPath,
                             getStr(args, "logPath"), getStr(args, "route"), apply);
-            JsonObject o = new JsonObject();
-            o.addProperty("ok", res.ok);
-            o.addProperty("applied", res.applied);
-            o.addProperty("project", res.project);
-            if (res.fqn != null) {
-                o.addProperty("fqn", res.fqn);
-            }
-            o.addProperty("targetPath", res.targetPath);
-            if (res.logPath != null) {
-                o.addProperty("logPath", res.logPath);
-            }
-            if (res.method != null) {
-                o.addProperty("method", res.method);
-            }
-            if (res.route != null) {
-                o.addProperty("route", res.route);
-            }
-            if (res.nativeError != null) {
-                o.addProperty("nativeError", res.nativeError);
-            }
-            if (res.autoDumpRestored) {
-                o.addProperty("autoDumpRestored", true);
-            }
-            if (res.validation != null && !res.validation.isEmpty()) {
-                o.addProperty("validation", res.validation);
-            }
-            if (res.plan != null) {
-                o.addProperty("plan", res.plan);
-            }
-            if (res.message != null) {
-                o.addProperty("message", res.message);
-            }
+            JsonObject o = answer(res);
             return McpServer.textResult(new GsonBuilder().setPrettyPrinting().create().toJson(o));
         } catch (Exception e) {
             return McpServer.toolError("edt_dump_external_object failed: " + e.getMessage());
         }
+    }
+
+    /**
+     * The answer of one call. A build that succeeded names the route it took and leaves out what EDT's own
+     * dumper said before the disk route took over: that refusal is only news when the build failed.
+     */
+    static JsonObject answer(MetadataWriteGateway.DumpExternalObjectResult res) {
+        JsonObject o = new JsonObject();
+        o.addProperty("ok", res.ok);
+        o.addProperty("applied", res.applied);
+        o.addProperty("project", res.project);
+        if (res.fqn != null) {
+            o.addProperty("fqn", res.fqn);
+        }
+        o.addProperty("targetPath", res.targetPath);
+        if (res.logPath != null) {
+            o.addProperty("logPath", res.logPath);
+        }
+        if (res.method != null) {
+            o.addProperty("method", res.method);
+        }
+        if (res.route != null) {
+            o.addProperty("route", res.route);
+        }
+        if (res.nativeError != null && !res.ok) {
+            o.addProperty("nativeError", res.nativeError);
+        }
+        if (res.autoDumpRestored) {
+            o.addProperty("autoDumpRestored", true);
+        }
+        if (res.validation != null && !res.validation.isEmpty()) {
+            o.addProperty("validation", res.validation);
+        }
+        if (res.plan != null) {
+            o.addProperty("plan", res.plan);
+        }
+        if (res.message != null) {
+            o.addProperty("message", res.message);
+        }
+        return o;
     }
 
     private static JsonObject strProp(String desc) {

@@ -25,6 +25,67 @@ to the code and the reasoning behind it.
   that fixes it, and the exit code is 1. `status` with no bridge running points to the command.
   ([#98](https://github.com/keyfire/edt-bridge/pull/98))
 
+## 2026-11-17 – 0.49.0
+
+### Added
+
+- `test-form` and `edt_test_form` run named scenarios in one client session. The form
+  reopens for each scenario. JUnit and Allure report each scenario and show a separate
+  session failure if the client cannot finish the run.
+  ([#101](https://github.com/keyfire/edt-bridge/pull/101))
+- `edt_modify_dcs` supports `setQuery`, `replaceFragment`, `setField` and `removeField`.
+  Pass the `sourceHash` from `edt_read_dcs` to save a targeted change.
+  ([#101](https://github.com/keyfire/edt-bridge/pull/101))
+- `edt_search_queries` with `kind=dcsText` searches entire data composition schemas.
+  Each match includes the template, line number and nearby text.
+  ([#101](https://github.com/keyfire/edt-bridge/pull/101))
+- `edt_module_text` reads a line range with a character limit. It returns the full
+  saved module's `sourceHash` for a subsequent write.
+  ([#101](https://github.com/keyfire/edt-bridge/pull/101))
+- `edt_tool_help` lists active tools or returns a compact signature for one tool.
+  ([#101](https://github.com/keyfire/edt-bridge/pull/101))
+- BSL, query and platform documentation searches accept both `pattern`/`maxResults`
+  and `query`/`limit`. Related tools accept aliases for object and check selectors.
+  ([#101](https://github.com/keyfire/edt-bridge/pull/101))
+- Form tests can use Apache and Playwright to capture masked screenshots when
+  `EDT_BRIDGE_PII` is enabled. The web client opens EPF and ERF files or stored forms
+  by navigation link. Allure attaches the screenshot, and MCP returns it as an image.
+  ([#101](https://github.com/keyfire/edt-bridge/pull/101))
+- The form testing guide explains how to open and close a new test infobase before
+  the first run and measure client startup with `timings`.
+  ([#101](https://github.com/keyfire/edt-bridge/pull/101))
+
+### Fixed
+
+- `assert_table_size` checks form tables, including row and visible column counts.
+  ([#101](https://github.com/keyfire/edt-bridge/pull/101))
+- A form test lists candidate buttons or fields on missing or ambiguous matches.
+  `edt_test_form` rejects invalid steps before it copies the infobase or starts the client.
+  ([#101](https://github.com/keyfire/edt-bridge/pull/101))
+- `edt_replace_dcs` and `edt_modify_dcs` reject schemas the EDT reader cannot load.
+  The result reports semantic problems separately. After a write, `revalidated`
+  indicates whether EDT checked the new schema.
+  ([#101](https://github.com/keyfire/edt-bridge/pull/101))
+- `edt_project_errors` marks validation markers left behind after a schema fix as
+  `leftover`. For stale markers it suggests a targeted edit to the schema.
+  ([#101](https://github.com/keyfire/edt-bridge/pull/101))
+- `edt_form_structure` returns a form command's caption in `title` and its tooltip in
+  `toolTip`.
+  ([#101](https://github.com/keyfire/edt-bridge/pull/101))
+- With `EDT_BRIDGE_TOOLSET` set, descriptions and validation hints identify tools
+  outside the active sets, including when the wrapper connects to a running EDT.
+  The annotation leaves module text and schemas intact.
+  ([#101](https://github.com/keyfire/edt-bridge/pull/101))
+
+### Changed
+
+- `edt_test_form` returns a compact verdict by default. Set `details=true` for the full
+  diagnostic report after a completed check. The CLI and `result.json` keep the full report.
+  ([#101](https://github.com/keyfire/edt-bridge/pull/101))
+- `edt_dump_external_object` omits the EDT dumper output after a successful on-disk build.
+  A failed build still includes it in `nativeError`.
+  ([#101](https://github.com/keyfire/edt-bridge/pull/101))
+
 ## 2026-11-16 – 0.48.0, 0.48.1
 
 ### Added

@@ -32,8 +32,15 @@
             "description": "Snapshot id returned by baseline=save; required for baseline=compare."
           },
           "severity": {
-            "type": "string",
-            "description": "Keep these severities: ERROR, WARNING or INFO, one or several separated by commas (\"ERROR,WARNING\"), case-insensitive. A generated-code check wants both: EDT reports a call to a method nobody declares as a WARNING, so ERROR alone reads clean over broken code. Optional - omit for every severity."
+            "type": [
+              "string",
+              "array"
+            ],
+            "description": "Keep these severities: ERROR, WARNING or INFO, one or several separated by commas (\"ERROR,WARNING\"), case-insensitive. A generated-code check wants both: EDT reports a call to a method nobody declares as a WARNING, so ERROR alone reads clean over broken code. Optional - omit for every severity.",
+            "items": {
+              "type": "string",
+              "description": "Severity name"
+            }
           },
           "countOnly": {
             "type": "boolean",
@@ -58,6 +65,28 @@
           "async": {
             "type": "boolean",
             "description": "true = run the call as a background job: the answer is a jobId at once, and edt_job_status gives the state and, at the end, the same result the call returns without it. Use it when the call may outlast the time your client waits for a tool; edt_cancel_job stops the job. A call refused at once or a dry-run plan still answers directly."
+          },
+          "severities": {
+            "type": [
+              "string",
+              "array"
+            ],
+            "description": "Alias for severity. Pass only one name.",
+            "items": {
+              "type": "string",
+              "description": "Severity name"
+            }
+          },
+          "levels": {
+            "type": [
+              "string",
+              "array"
+            ],
+            "description": "Alias for severity. Pass only one name.",
+            "items": {
+              "type": "string",
+              "description": "Severity name"
+            }
           }
         },
         "required": []
@@ -236,8 +265,8 @@
     },
     {
       "name": "edt_module_text",
-      "description": "READ: BSL source of a module (or a single method) from the live workspace, with the module's procedure/function list and signatures when the whole module is read. Resolve by fqn (CommonModule.X, HTTPService.X, a form FQN, or an object + moduleType) or by modulePath. A method read leaves the list out (methodsIncluded: false) unless includeMethods=true. If a top object has several modules and none is chosen, returns the candidates in availableModules.",
-      "descriptionRu": "ЧТЕНИЕ: исходный BSL модуля (или одного метода) из живой рабочей области, а при чтении модуля целиком еще и список процедур/функций с сигнатурами. Адресация по fqn (CommonModule.X, HTTPService.X, FQN формы или объект + moduleType) либо по modulePath. Чтение метода не возвращает список (methodsIncluded: false), если не передан includeMethods=true. Если у объекта несколько модулей и не выбран moduleType – вернёт варианты в availableModules.",
+      "description": "READ: BSL source of a module (or a single method) from the live workspace, with the module's procedure/function list and signatures when the whole module is read. Resolve by fqn (CommonModule.X, HTTPService.X, a form FQN, or an object + moduleType) or by modulePath. A method read leaves the list out (methodsIncluded: false) unless includeMethods=true. If a top object has several modules and none is chosen, returns the candidates in availableModules. Use startLine/endLine for a range and maxChars to cap the text. totalLines counts module lines. sourceHash covers the whole saved module and can be passed as expectedHash when writing.",
+      "descriptionRu": "ЧТЕНИЕ: исходный BSL модуля (или одного метода) из живой рабочей области, а при чтении модуля целиком еще и список процедур/функций с сигнатурами. Адресация по fqn (CommonModule.X, HTTPService.X, FQN формы или объект + moduleType) либо по modulePath. Чтение метода не возвращает список (methodsIncluded: false), если не передан includeMethods=true. Если у объекта несколько модулей и не выбран moduleType – вернет варианты в availableModules. startLine/endLine задают диапазон, maxChars ограничивает объем текста, totalLines содержит число строк модуля. sourceHash вычисляется по всему сохраненному модулю и подходит для expectedHash при записи.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -263,7 +292,27 @@
           },
           "includeMethods": {
             "type": "boolean",
-            "description": "Also return the module's procedure/function catalogue with signatures. Default: true for a whole-module read, false when method is given - the catalogue of a large module is many times the size of one method."
+            "description": "Also return the module's procedure/function catalogue with signatures. Default: true for a whole-module read, false when method is given or a line range is requested."
+          },
+          "startLine": {
+            "type": "integer",
+            "description": "First module line to return, starting at 1. Default 1. Omit when reading a method."
+          },
+          "endLine": {
+            "type": "integer",
+            "description": "Last module line to return, inclusive. Default: end of the module. Omit when reading a method."
+          },
+          "maxChars": {
+            "type": "integer",
+            "description": "Maximum source text length, in UTF-16 code units. Default and maximum: 200000."
+          },
+          "moduleFqn": {
+            "type": "string",
+            "description": "Alias for fqn. Pass only one name."
+          },
+          "objectFqn": {
+            "type": "string",
+            "description": "Alias for fqn. Pass only one name."
           }
         },
         "required": [
@@ -503,6 +552,10 @@
           "method": {
             "type": "string",
             "description": "validate only the query literals inside this procedure/function"
+          },
+          "query": {
+            "type": "string",
+            "description": "Alias for queryText. Pass only one name."
           }
         },
         "required": [
@@ -645,11 +698,30 @@
           "apply": {
             "type": "boolean",
             "description": "false (default): audit or preview without allocating IDs. true: repair selected duplicate occurrences and request Form.form export; requires a configured token."
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Alias for formFqn. Pass only one name."
           }
         },
         "required": [
-          "projectName",
-          "formFqn"
+          "projectName"
+        ],
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "required": [
+                  "formFqn"
+                ]
+              },
+              {
+                "required": [
+                  "fqn"
+                ]
+              }
+            ]
+          }
         ]
       },
       "toolsets": [
@@ -719,11 +791,30 @@
           "item": {
             "type": "string",
             "description": "Form item name, when fqn is a form. Omitted on a form lists its item names."
+          },
+          "formFqn": {
+            "type": "string",
+            "description": "Alias for fqn. Pass only one name."
           }
         },
         "required": [
-          "projectName",
-          "fqn"
+          "projectName"
+        ],
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "required": [
+                  "fqn"
+                ]
+              },
+              {
+                "required": [
+                  "formFqn"
+                ]
+              }
+            ]
+          }
         ]
       },
       "toolsets": [
@@ -879,8 +970,8 @@
     },
     {
       "name": "edt_replace_dcs",
-      "description": "WRITE: replace the complete source of one existing DATA_COMPOSITION_SCHEMA template with designer XML of the schema; EDT reloads the schema from the file. Dry-run returns oldText/newText, sourceHash and resultHash. Apply requires the current expectedHash and force=true, writes only the schema file and rereads it. EDT validation does not check the schema XML against the platform format: build the report or data processor with edt_dump_external_object to check it. To add a field or a parameter, edt_modify_dcs takes just the addition. Create the template with edt_add_template; when its schema file is not on disk yet, the call waits for it up to 15 s. Requires a configured write token.",
-      "descriptionRu": "ЗАПИСЬ: заменить полный текст существующего макета DATA_COMPOSITION_SCHEMA на XML схемы в формате конфигуратора; EDT перечитывает схему из файла. Dry-run возвращает oldText/newText, sourceHash и resultHash. Для apply нужны актуальный expectedHash и force=true; записывается только файл схемы, результат перечитывается. Проверка EDT не сверяет XML схемы с форматом платформы: результат проверяет сборка отчета или обработки (edt_dump_external_object). Поле или параметр добавляет edt_modify_dcs без передачи всей схемы. Макет создает edt_add_template; если файла схемы еще нет на диске, вызов ждет его до 15 с. Нужен токен записи.",
+      "description": "WRITE: replace the complete source of one existing DATA_COMPOSITION_SCHEMA template with designer XML of the schema; EDT reloads the schema from the file. Dry-run returns oldText/newText, sourceHash and resultHash. Apply requires the current expectedHash and force=true, writes only the schema file and rereads it. The dry-run and the write check the schema first: a text EDT cannot read is refused with the line and column where it stops (EDT would keep the previous schema and its problems), and problems lists a data set without a data source and a settings variant without structure. After the write, revalidated says whether EDT has taken the schema and checked it. The platform format beyond that is checked by the build (edt_dump_external_object). To change a part, edt_modify_dcs takes just the change. Create the template with edt_add_template; when its schema file is not on disk yet, the call waits for it up to 15 s. Requires a configured write token.",
+      "descriptionRu": "ЗАПИСЬ: заменить полный текст существующего макета DATA_COMPOSITION_SCHEMA на XML схемы в формате конфигуратора; EDT перечитывает схему из файла. Dry-run возвращает oldText/newText, sourceHash и resultHash. Для apply нужны актуальный expectedHash и force=true; записывается только файл схемы, результат перечитывается. Предпросмотр и запись сначала проверяют схему: текст, который EDT не прочитает, отклоняется со строкой и колонкой, где чтение останавливается (EDT оставил бы прежнюю схему и ее замечания), а problems называет набор данных без источника и вариант настроек без структуры. После записи revalidated говорит, принял ли EDT схему и проверил ли ее. Остальное в формате платформы проверяет сборка (edt_dump_external_object). Часть схемы меняет edt_modify_dcs без передачи всей схемы. Макет создает edt_add_template; если файла схемы еще нет на диске, вызов ждет его до 15 с. Нужен токен записи.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -921,8 +1012,8 @@
     },
     {
       "name": "edt_modify_dcs",
-      "description": "WRITE: add fields to a data set and parameters to an existing DATA_COMPOSITION_SCHEMA template without sending the whole schema XML. The additions are inserted into the saved designer XML, the rest of the file keeps its bytes, and the dry-run shows the changed region. EDT validation does not check the schema XML: build the report or data processor with edt_dump_external_object to check the result. Dry-run by default.",
-      "descriptionRu": "ЗАПИСЬ: добавить поля набора данных и параметры в существующий макет DATA_COMPOSITION_SCHEMA, не передавая XML схемы целиком. Добавления вставляются в сохраненный XML конфигуратора, остальная часть файла не меняется, предпросмотр показывает измененный участок. Проверка EDT не сверяет XML схемы с форматом платформы: результат проверяет сборка отчета или обработки (edt_dump_external_object). По умолчанию предпросмотр.",
+      "description": "WRITE: change a part of an existing DATA_COMPOSITION_SCHEMA template without sending the whole schema XML: add a field to a data set or a parameter, set the query of a data set, replace an exact fragment, set the title or the format of a field, remove a field. The changes are made in the saved designer XML, the rest of the file keeps its bytes, and the answer names the changed lines and resultHash, not the schema text. Apply directly with expectedHash = sourceHash of edt_read_dcs, no dry-run needed. The changed schema is checked as edt_replace_dcs checks it: a text EDT cannot read is not written, problems lists a data set without a data source and a variant without structure; the build (edt_dump_external_object) checks the rest. Dry-run by default.",
+      "descriptionRu": "ЗАПИСЬ: изменить часть существующего макета DATA_COMPOSITION_SCHEMA, не передавая XML схемы целиком: добавить поле набора данных или параметр, задать запрос набора, заменить точный фрагмент, задать заголовок или формат поля, удалить поле. Изменения вносятся в сохраненный XML конфигуратора, остальная часть файла не меняется, ответ называет измененные строки и resultHash без текста схемы. Запись сразу: expectedHash = sourceHash из edt_read_dcs, предпросмотр не обязателен. Измененная схема проверяется так же, как в edt_replace_dcs: текст, который EDT не прочитает, не записывается, problems называет набор без источника и вариант без структуры; остальное проверяет сборка (edt_dump_external_object). По умолчанию предпросмотр.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -936,16 +1027,20 @@
           },
           "edits": {
             "type": "array",
-            "description": "Additions, applied in order. addField: dataSet, dataPath, optional field (defaults to dataPath) and titleRu - adds a field to a data set. addParameter: name, optional titleRu and type - String(N), Number(D,F), Date, DateTime, Boolean or StandardPeriod (Russian names accepted; default String). A duplicate field or parameter is refused.",
+            "description": "Changes, applied in order. addField: dataSet, dataPath, optional field (defaults to dataPath) and titleRu - adds a field to a data set. addParameter: name, optional titleRu and type - String(N), Number(D,F), Date, DateTime, Boolean or StandardPeriod (Russian names accepted; default String). setQuery: dataSet, query - the whole new query text of a query data set. replaceFragment: fragment, replacement - an exact piece of the schema text, as edt_read_dcs returns it, replaced; refused when it matches no place or several. setField: dataSet, dataPath, titleRu and/or format (a format string such as ЧДЦ=2 or ДФ=dd.MM.yyyy) - sets the title or the format of a field. removeField: dataSet, dataPath. A duplicate field or parameter is refused.",
             "items": {
               "type": "object",
               "properties": {
                 "action": {
                   "type": "string",
-                  "description": "addField or addParameter",
+                  "description": "addField, addParameter, setQuery, replaceFragment, setField, removeField",
                   "enum": [
                     "addField",
-                    "addParameter"
+                    "addParameter",
+                    "setQuery",
+                    "replaceFragment",
+                    "setField",
+                    "removeField"
                   ]
                 },
                 "dataSet": {
@@ -971,6 +1066,22 @@
                 "type": {
                   "type": "string",
                   "description": "type"
+                },
+                "query": {
+                  "type": "string",
+                  "description": "query"
+                },
+                "fragment": {
+                  "type": "string",
+                  "description": "fragment"
+                },
+                "replacement": {
+                  "type": "string",
+                  "description": "replacement"
+                },
+                "format": {
+                  "type": "string",
+                  "description": "format"
                 }
               },
               "required": [
@@ -980,11 +1091,11 @@
           },
           "expectedHash": {
             "type": "string",
-            "description": "sourceHash from the dry-run. Required for apply."
+            "description": "sourceHash of edt_read_dcs or of the dry-run: the schema the changes are made to. Required for apply."
           },
           "apply": {
             "type": "boolean",
-            "description": "false (default): return the plan, the added lines and sourceHash without writing. true: write; requires expectedHash and a configured token."
+            "description": "false (default): return the plan, the changed lines and sourceHash without writing. true: write; requires expectedHash and a configured token."
           }
         },
         "required": [
@@ -1164,7 +1275,7 @@
           },
           "fqn": {
             "type": "string",
-            "description": "The old name of formFqn. Still accepted, so calls written before the form tools agreed on one name keep working; write formFqn in new ones."
+            "description": "Alias for formFqn. Pass only one name."
           },
           "limit": {
             "type": "integer",
@@ -1176,8 +1287,23 @@
           }
         },
         "required": [
-          "projectName",
-          "formFqn"
+          "projectName"
+        ],
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "required": [
+                  "formFqn"
+                ]
+              },
+              {
+                "required": [
+                  "fqn"
+                ]
+              }
+            ]
+          }
         ]
       },
       "toolsets": [
@@ -1203,7 +1329,7 @@
           },
           "fqn": {
             "type": "string",
-            "description": "The old name of formFqn. Still accepted, so calls written before the form tools agreed on one name keep working; write formFqn in new ones."
+            "description": "Alias for formFqn. Pass only one name."
           },
           "variant": {
             "type": "string",
@@ -1239,8 +1365,23 @@
           }
         },
         "required": [
-          "projectName",
-          "formFqn"
+          "projectName"
+        ],
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "required": [
+                  "formFqn"
+                ]
+              },
+              {
+                "required": [
+                  "fqn"
+                ]
+              }
+            ]
+          }
         ]
       },
       "toolsets": [
@@ -1531,6 +1672,10 @@
           "limit": {
             "type": "integer",
             "description": "Cap on listed checks (default 50)."
+          },
+          "checkId": {
+            "type": "string",
+            "description": "Alias for check. Pass only one name."
           }
         },
         "required": []
@@ -1884,13 +2029,32 @@
           "apply": {
             "type": "boolean",
             "description": "false (default) = dry-run: validate (form resolves, name free, type parses) and return the plan, write nothing. true = add the attribute and serialize Form.form."
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Alias for formFqn. Pass only one name."
           }
         },
         "required": [
           "projectName",
-          "formFqn",
           "name",
           "type"
+        ],
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "required": [
+                  "formFqn"
+                ]
+              },
+              {
+                "required": [
+                  "fqn"
+                ]
+              }
+            ]
+          }
         ]
       },
       "toolsets": [
@@ -1936,12 +2100,31 @@
           "apply": {
             "type": "boolean",
             "description": "false (default) = dry-run: validate and return the plan, write nothing. true = apply the change and serialize Form.form."
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Alias for formFqn. Pass only one name."
           }
         },
         "required": [
           "projectName",
-          "formFqn",
           "name"
+        ],
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "required": [
+                  "formFqn"
+                ]
+              },
+              {
+                "required": [
+                  "fqn"
+                ]
+              }
+            ]
+          }
         ]
       },
       "toolsets": [
@@ -1979,12 +2162,31 @@
           "apply": {
             "type": "boolean",
             "description": "false (default) = dry-run: report the attribute and the items bound to it, remove nothing. true = remove it (force must also be true)."
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Alias for formFqn. Pass only one name."
           }
         },
         "required": [
           "projectName",
-          "formFqn",
           "name"
+        ],
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "required": [
+                  "formFqn"
+                ]
+              },
+              {
+                "required": [
+                  "fqn"
+                ]
+              }
+            ]
+          }
         ]
       },
       "toolsets": [
@@ -2030,12 +2232,31 @@
           "apply": {
             "type": "boolean",
             "description": "false (default) = dry-run: validate and return the plan, write nothing. true = add the command and serialize Form.form."
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Alias for formFqn. Pass only one name."
           }
         },
         "required": [
           "projectName",
-          "formFqn",
           "name"
+        ],
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "required": [
+                  "formFqn"
+                ]
+              },
+              {
+                "required": [
+                  "fqn"
+                ]
+              }
+            ]
+          }
         ]
       },
       "toolsets": [
@@ -2077,12 +2298,31 @@
           "apply": {
             "type": "boolean",
             "description": "false (default) = dry-run: validate (form, item, event, and that the event is not handled already) and return the plan, write nothing. true = register the handler and serialize Form.form."
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Alias for formFqn. Pass only one name."
           }
         },
         "required": [
           "projectName",
-          "formFqn",
           "event"
+        ],
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "required": [
+                  "formFqn"
+                ]
+              },
+              {
+                "required": [
+                  "fqn"
+                ]
+              }
+            ]
+          }
         ]
       },
       "toolsets": [
@@ -2124,12 +2364,31 @@
           "apply": {
             "type": "boolean",
             "description": "false (default) = dry-run: validate and return the plan, write nothing. true = apply the change and serialize Form.form."
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Alias for formFqn. Pass only one name."
           }
         },
         "required": [
           "projectName",
-          "formFqn",
           "name"
+        ],
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "required": [
+                  "formFqn"
+                ]
+              },
+              {
+                "required": [
+                  "fqn"
+                ]
+              }
+            ]
+          }
         ]
       },
       "toolsets": [
@@ -2163,12 +2422,31 @@
           "apply": {
             "type": "boolean",
             "description": "false (default) = dry-run: report the command and the buttons using it, remove nothing. true = remove it (force must also be true)."
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Alias for formFqn. Pass only one name."
           }
         },
         "required": [
           "projectName",
-          "formFqn",
           "name"
+        ],
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "required": [
+                  "formFqn"
+                ]
+              },
+              {
+                "required": [
+                  "fqn"
+                ]
+              }
+            ]
+          }
         ]
       },
       "toolsets": [
@@ -2366,12 +2644,31 @@
           "apply": {
             "type": "boolean",
             "description": "false (default) = dry-run: validate (form resolves, parent exists, name free, data path and command resolve) and return the plan, add nothing. true = add the item and serialize Form.form."
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Alias for formFqn. Pass only one name."
           }
         },
         "required": [
           "projectName",
-          "formFqn",
           "kind"
+        ],
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "required": [
+                  "formFqn"
+                ]
+              },
+              {
+                "required": [
+                  "fqn"
+                ]
+              }
+            ]
+          }
         ]
       },
       "toolsets": [
@@ -2540,12 +2837,31 @@
           "apply": {
             "type": "boolean",
             "description": "false (default) = dry-run: validate and return the plan, write nothing. true = apply the change and serialize Form.form."
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Alias for formFqn. Pass only one name."
           }
         },
         "required": [
           "projectName",
-          "formFqn",
           "name"
+        ],
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "required": [
+                  "formFqn"
+                ]
+              },
+              {
+                "required": [
+                  "fqn"
+                ]
+              }
+            ]
+          }
         ]
       },
       "toolsets": [
@@ -2592,12 +2908,31 @@
           "apply": {
             "type": "boolean",
             "description": "false (default) validates and returns the destination without writing. true moves the existing item and serializes Form.form."
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Alias for formFqn. Pass only one name."
           }
         },
         "required": [
           "projectName",
-          "formFqn",
           "name"
+        ],
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "required": [
+                  "formFqn"
+                ]
+              },
+              {
+                "required": [
+                  "fqn"
+                ]
+              }
+            ]
+          }
         ]
       },
       "toolsets": [
@@ -2631,12 +2966,31 @@
           "apply": {
             "type": "boolean",
             "description": "false (default) = dry-run: report the item and what is nested inside it, remove nothing. true = remove it (force must also be true)."
+          },
+          "fqn": {
+            "type": "string",
+            "description": "Alias for formFqn. Pass only one name."
           }
         },
         "required": [
           "projectName",
-          "formFqn",
           "name"
+        ],
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "required": [
+                  "formFqn"
+                ]
+              },
+              {
+                "required": [
+                  "fqn"
+                ]
+              }
+            ]
+          }
         ]
       },
       "toolsets": [
@@ -2768,8 +3122,8 @@
     },
     {
       "name": "edt_replace_method",
-      "description": "WRITE: replace one existing BSL method using EDT's parsed method range. Dry-run returns exact oldText/newText, sourceHash and resultHash. apply requires force=true and expectedHash from a current dry-run. Keeps the method name and kind; attached comments and pragmas are part of methodText and are removed if omitted. Refuses extra methods, module-level code, wrappers, parse errors, dirty editors and stale sources. Preserves surrounding source and its BOM, normalizing only the replacement's line endings. Does not refactor callers; check references and run edt_project_errors after changing a signature. Requires a configured write token and caller verification of edt_support_status=EDITABLE.",
-      "descriptionRu": "ЗАПИСЬ: заменить один существующий метод BSL по диапазону из модели EDT. По умолчанию dry-run: точные oldText/newText, sourceHash и resultHash без записи. Для apply нужны force=true и expectedHash из актуального dry-run. Имя и вид метода сохраняются; прилегающие комментарии и директивы входят в methodText и удаляются, если их не передать. Второй метод, код уровня модуля, обертки областей/препроцессора, ошибки разбора, несохраненный редактор и устаревший источник дают отказ. Окружающий код и BOM сохраняются, окончания строк нормализуются только в новом фрагменте. Вызовы не меняются: после изменения сигнатуры проверьте ссылки и edt_project_errors. Нужны токен записи и предварительная проверка вызывающим edt_support_status=EDITABLE.",
+      "description": "WRITE: replace one existing BSL method using EDT's parsed method range. Dry-run returns exact oldText/newText, sourceHash and resultHash. apply requires force=true and expectedHash from edt_module_text or a dry-run. Keeps the method name and kind; attached comments and pragmas are part of methodText and are removed if omitted. Refuses extra methods, module-level code, wrappers, parse errors, dirty editors and stale sources. Preserves surrounding source and its BOM, normalizing only the replacement's line endings. Does not refactor callers; check references and run edt_project_errors after changing a signature. Requires a configured write token and caller verification of edt_support_status=EDITABLE.",
+      "descriptionRu": "ЗАПИСЬ: заменить один существующий метод BSL по диапазону из модели EDT. По умолчанию dry-run: точные oldText/newText, sourceHash и resultHash без записи. Для apply нужны force=true и expectedHash из edt_module_text или dry-run. Имя и вид метода сохраняются; прилегающие комментарии и директивы входят в methodText и удаляются, если их не передать. Второй метод, код уровня модуля, обертки областей/препроцессора, ошибки разбора, несохраненный редактор и устаревший источник дают отказ. Окружающий код и BOM сохраняются, окончания строк нормализуются только в новом фрагменте. Вызовы не меняются: после изменения сигнатуры проверьте ссылки и edt_project_errors. Нужны токен записи и предварительная проверка вызывающим edt_support_status=EDITABLE.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2799,7 +3153,7 @@
           },
           "expectedHash": {
             "type": "string",
-            "description": "sourceHash from a current dry-run: SHA-256 of the entire UTF-8 module, including any BOM. Required for apply; a changed source is refused."
+            "description": "sourceHash from edt_module_text or a dry-run. It covers the entire UTF-8 module, including any BOM. Required for apply."
           },
           "apply": {
             "type": "boolean",
@@ -2824,8 +3178,8 @@
     },
     {
       "name": "edt_replace_module_fragment",
-      "description": "WRITE: replace one exact fragment of a module's BSL text - compilation directives, module variables, regions, a preprocessor block, the text that edt_add_method and edt_replace_method do not reach. The fragment must occur exactly once and the module must still parse after the replacement; edits applies several fragments together, for a region or a #If block that opens and closes in different places. Both dry-run and apply return a short preview and a line for each entry in edits, in previews. Dry-run also returns sourceHash; apply needs that hash as expectedHash, so a module changed in between is refused. A form module without its form model is refused. Check the result with edt_project_errors. Requires a configured write token.",
-      "descriptionRu": "ЗАПИСЬ: заменить один точный фрагмент текста модуля - директивы компиляции, переменные модуля, области, блок препроцессора, то, до чего не достают edt_add_method и edt_replace_method. Фрагмент должен встречаться ровно один раз, модуль после замены должен разбираться; edits применяет несколько фрагментов вместе - для области или блока #Если, которые открываются и закрываются в разных местах. Dry-run и apply возвращают в previews строку и короткий предпросмотр каждой замены из edits. Dry-run также возвращает sourceHash; для apply нужен этот хеш в expectedHash, поэтому модуль, измененный в промежутке, дает отказ. Модуль формы без модели формы дает отказ. Результат проверять edt_project_errors. Нужен токен записи.",
+      "description": "WRITE: replace one exact fragment of a module's BSL text - compilation directives, module variables, regions, a preprocessor block, the text that edt_add_method and edt_replace_method do not reach. The fragment must occur exactly once and the module must still parse after the replacement; edits applies several fragments together, for a region or a #If block that opens and closes in different places. Both dry-run and apply return a short preview and a line for each entry in edits, in previews. For apply, pass sourceHash from edt_module_text or a dry-run as expectedHash. A changed module is refused. A form module without its form model is refused. Check the result with edt_project_errors. Requires a configured write token.",
+      "descriptionRu": "ЗАПИСЬ: заменить один точный фрагмент текста модуля - директивы компиляции, переменные модуля, области, блок препроцессора, то, до чего не достают edt_add_method и edt_replace_method. Фрагмент должен встречаться ровно один раз, модуль после замены должен разбираться; edits применяет несколько фрагментов вместе - для области или блока #Если, которые открываются и закрываются в разных местах. Dry-run и apply возвращают в previews строку и короткий предпросмотр каждой замены из edits. Для apply передайте sourceHash из edt_module_text или dry-run в expectedHash. Изменившийся модуль дает отказ. Модуль формы без модели формы дает отказ. Результат проверять edt_project_errors. Нужен токен записи.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2862,7 +3216,7 @@
           },
           "expectedHash": {
             "type": "string",
-            "description": "sourceHash from the dry-run. Required for apply."
+            "description": "sourceHash from edt_module_text or a dry-run. Required for apply."
           },
           "apply": {
             "type": "boolean",
@@ -4158,10 +4512,32 @@
           "maxResults": {
             "type": "integer",
             "description": "Cap on hits returned (default 200). The result says whether it truncated."
+          },
+          "query": {
+            "type": "string",
+            "description": "Alias for pattern. Pass only one name."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Alias for maxResults. Pass only one name."
           }
         },
-        "required": [
-          "pattern"
+        "required": [],
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "required": [
+                  "pattern"
+                ]
+              },
+              {
+                "required": [
+                  "query"
+                ]
+              }
+            ]
+          }
         ]
       },
       "toolsets": [
@@ -4172,8 +4548,8 @@
     },
     {
       "name": "edt_search_queries",
-      "description": "READ: search dynamic-list queryText in .form files and DCS dataset queries in .dcs files. Returns the form and attribute or template and dataset, query line, XML field line and source path. Reads stored XML and open text buffers; unsaved graphical-designer changes and BSL query literals are outside this scan. Parse failures and truncation make coverage incomplete and are reported explicitly.",
-      "descriptionRu": "ЧТЕНИЕ: искать текст в queryText динамических списков файлов .form и запросах наборов данных .dcs. Возвращает форму и реквизит либо макет и набор, строку запроса, строку XML-поля и путь. Читает сохраненный XML и открытые текстовые буферы; несохраненные правки визуальных редакторов и BSL-литералы сюда не входят. Ошибки разбора и усечение явно отмечаются как неполное покрытие.",
+      "description": "READ: search dynamic-list queryText in .form files and DCS dataset queries in .dcs files. Returns the form and attribute or template and dataset, query line, XML field line and source path. Reads stored XML and open text buffers; unsaved graphical-designer changes and BSL query literals are outside this scan. Parse failures and truncation make coverage incomplete and are reported explicitly. kind=dcsText searches every line of the .dcs files instead, e.g. QuickAccess, <format or ДФ=, and returns the template, the line and a fragment of the lines around it - a sample of a setting without reading every schema.",
+      "descriptionRu": "ЧТЕНИЕ: искать текст в queryText динамических списков файлов .form и запросах наборов данных .dcs. Возвращает форму и реквизит либо макет и набор, строку запроса, строку XML-поля и путь. Читает сохраненный XML и открытые текстовые буферы; несохраненные правки визуальных редакторов и BSL-литералы сюда не входят. Ошибки разбора и усечение явно отмечаются как неполное покрытие. kind=dcsText ищет по каждой строке файлов .dcs, например QuickAccess, <format или ДФ=, и возвращает макет, строку и фрагмент строк вокруг нее - образец настройки без чтения всех схем.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -4199,15 +4575,37 @@
           },
           "kind": {
             "type": "string",
-            "description": "all (default), dynamicList, or dcs"
+            "description": "all (default), dynamicList or dcs search query text; dcsText searches the whole text of data composition schemas - fields, formats, settings, quick access, filters"
           },
           "maxResults": {
             "type": "integer",
             "description": "Maximum matching lines, default 200, at most 10000"
+          },
+          "query": {
+            "type": "string",
+            "description": "Alias for pattern. Pass only one name."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Alias for maxResults. Pass only one name."
           }
         },
-        "required": [
-          "pattern"
+        "required": [],
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "required": [
+                  "pattern"
+                ]
+              },
+              {
+                "required": [
+                  "query"
+                ]
+              }
+            ]
+          }
         ]
       },
       "toolsets": [
@@ -4430,19 +4828,21 @@
     },
     {
       "name": "edt_tool_help",
-      "description": "READ: the full description and the argument schema of one tool, by its name. The server also describes a tool outside the active tool set (EDT_BRIDGE_TOOLSET): the answer then states that a call of it is refused and lists the tool sets that contain it. The answer contains name, description, inputSchema, toolsets and available. For an unknown name the server returns a refusal with the nearest tool names.",
-      "descriptionRu": "ЧТЕНИЕ: полное описание и схема аргументов одного инструмента по его имени. Сервер описывает и инструмент вне действующего набора (EDT_BRIDGE_TOOLSET): в этом случае в ответе указано, что вызов инструмента отклоняется, и перечислены наборы, в которые он входит. Ответ содержит name, description, inputSchema, toolsets и available. Для неизвестного имени сервер возвращает отказ с ближайшими именами инструментов.",
+      "description": "READ: list the active tools with a short description, or pass tool for its description and argument schema. Use brief=true with tool for its signature. The server also describes a tool outside the active tool set (EDT_BRIDGE_TOOLSET): the answer then states that a call of it is refused and lists the tool sets that contain it. The answer contains name, description, inputSchema, toolsets and available. For an unknown name the server returns a refusal with the nearest tool names.",
+      "descriptionRu": "ЧТЕНИЕ: список инструментов действующего набора с краткими описаниями или описание и схема аргументов инструмента по имени. Для краткой сигнатуры передайте имя в tool и brief=true. Сервер описывает и инструмент вне действующего набора (EDT_BRIDGE_TOOLSET): в этом случае в ответе указано, что вызов инструмента отклоняется, и перечислены наборы, в которые он входит. Ответ содержит name, description, inputSchema, toolsets и available. Для неизвестного имени сервер возвращает отказ с ближайшими именами инструментов.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "tool": {
             "type": "string",
-            "description": "Name of the tool to describe, e.g. edt_project_errors"
+            "description": "Tool to describe. Omit to list the active tools."
+          },
+          "brief": {
+            "type": "boolean",
+            "description": "Return only the signature of a named tool. An asterisk marks a required argument."
           }
         },
-        "required": [
-          "tool"
-        ]
+        "required": []
       },
       "toolsets": [
         "processor",
@@ -4451,5 +4851,5 @@
       ]
     }
   ],
-  "version": "0.48.1"
+  "version": "0.49.0"
 }

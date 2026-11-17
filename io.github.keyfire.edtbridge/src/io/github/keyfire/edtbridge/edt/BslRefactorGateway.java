@@ -241,7 +241,7 @@ public final class BslRefactorGateway {
             if (methodName == null || methodName.isBlank()) throw new IllegalArgumentException("methodName is required");
             if (methodText == null || methodText.isBlank()) throw new IllegalArgumentException("methodText is required");
             if (apply && (expectedHash == null || expectedHash.isBlank())) {
-                throw new IllegalArgumentException("apply requires expectedHash from a current dry-run");
+                throw new IllegalArgumentException("apply requires sourceHash from edt_module_text or a dry-run as expectedHash");
             }
             if (apply && !force) throw new IllegalArgumentException("apply requires force=true");
             IFile file = moduleFile(projectName, fqn, moduleType, modulePath);

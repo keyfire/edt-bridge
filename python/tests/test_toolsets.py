@@ -200,6 +200,128 @@ def test_a_live_list_of_a_bridge_started_without_the_variable_is_narrowed(serve,
     assert listed(srv, sent) == ["edt_projects", "edt_add_form", "edt_test_form"]
 
 
+def test_live_description_and_hint_follow_the_wrapper_toolset(serve, monkeypatch):
+    srv, sent = serve("report")
+    mark = " (outside the active tool set 'report': a call of it is refused)"
+    tools = [{"name": "edt_project_errors", "toolsets": ["report"],
+              "description": "Read markers; consider edt_clean_project for a fresh build.",
+              "descriptionRu": "Проверить маркеры. Для пересборки вызвать edt_clean_project."},
+             {"name": "edt_clean_project", "toolsets": ["extension"]}]
+    # The installed catalog can lag behind the live EDT.
+    offline(srv, monkeypatch, [{"name": "edt_clean_project", "toolsets": ["report"]}])
+    monkeypatch.setattr(srv.backend, "is_up", lambda: True)
+    monkeypatch.setattr(srv.backend, "ensure", lambda **_kw: (True, "up"))
+    monkeypatch.setattr(srv.backend, "forward", lambda message: {"result": {"tools": tools}
+                        if message["method"] == "tools/list" else {"content": [{"type": "text",
+                            "text": '{ "hint": "Retry with edt_clean_project", "source": "edt_clean_project" }'}]}})
+
+    assert "edt_clean_project" not in listed(srv, sent)
+    description = sent.pop()["result"]["tools"][0]
+    assert "edt_clean_project" + mark in description["description"]
+    assert "edt_clean_project" + mark in description["descriptionRu"]
+    assert mark not in tools[0]["description"]
+    answer = call(srv, sent, "edt_project_errors", {"projectName": "Demo"})
+    assert json.loads(answer["content"][0]["text"]) == {
+        "hint": "Retry with edt_clean_project" + mark, "source": "edt_clean_project"}
+
+
+@pytest.mark.parametrize("name, text", [
+    ("edt_project_errors", '{ "hint": "Retry with edt_clean_project (outside the active tool set '
+                           "'report': a call of it is refused)" + '" }'),
+    ("edt_project_errors", '{\n "source": "edt_clean_project", "sourceHash":"123" \n}'),
+    ("edt_project_errors", "<result>edt_clean_project</result>"),
+    ("edt_module_text", '{ "hint": "edt_clean_project", "source": "edt_clean_project" }'),
+])
+def test_wrapper_preserves_unmarked_payload_bytes(serve, monkeypatch, name, text):
+    srv, sent = serve("report")
+    offline(srv, monkeypatch, [{"name": "edt_clean_project", "toolsets": []}])
+    monkeypatch.setattr(srv.backend, "ensure", lambda **_kw: (True, "up"))
+    monkeypatch.setattr(srv.backend, "forward", lambda _: {
+        "result": {"content": [{"type": "text", "text": text}]}})
+
+    assert call(srv, sent, name, {})["content"][0]["text"] == text
+
+
+@pytest.mark.parametrize("envelope, args, mark_hint", [
+    ("Demo: 1 problem(s) (ERROR 1, WARNING 0, INFO 0; eclipse 1, edt-check 0)\n"
+     "modelReady: true\nrefreshed: Demo (build 5 ms, validation settled after 7 ms)\nhint: ",
+     {"brief": True}, True),
+    ("A baseline requires a complete validation snapshot. "
+     "Refresh and wait for modelReady=true, synchronized sources and settled validation; "
+     "narrow fqn or modulePath if the marker limit is exceeded. ", {"baseline": "save"}, True),
+    ("Demo: 1 problem(s) (ERROR 1, WARNING 0, INFO 0; eclipse 1, edt-check 0)\n"
+     "modelReady: true\nrefreshed: Demo (build 5 ms, validation NOT settled after 7 ms)"
+     " - build failed: Exception\nhint: ", {"brief": True}, False),
+    ("Demo: 1 problem(s) (ERROR 1, WARNING 0, INFO 0; eclipse 1, edt-check 0)\n"
+     "modelReady: true\nERROR  Module.bsl:1  \nhint: ", {"brief": True}, False),
+    ("hint: ", {"brief": True}, False),
+])
+def test_plain_project_report_only_marks_its_generated_hint(serve, monkeypatch, envelope, args, mark_hint):
+    srv, sent = serve("report")
+    offline(srv, monkeypatch, [{"name": "edt_clean_project", "toolsets": []}])
+    monkeypatch.setattr(srv.backend, "ensure", lambda **_kw: (True, "up"))
+    hint = "1 problem(s) predate the last change of their file even after the refresh – edt_clean_project"
+    suffix = " rebuilds the project from scratch"
+    if "brief" in args:
+        suffix += "\nERROR  Module.bsl:1  Rewrite edt_clean_project\n"
+    monkeypatch.setattr(srv.backend, "forward", lambda _: {
+        "result": {"isError": "baseline" in args, "content": [
+            {"type": "text", "text": envelope + hint + suffix}]}})
+    mark = " (outside the active tool set 'report': a call of it is refused)" if mark_hint else ""
+    answer = call(srv, sent, "edt_project_errors", args)
+    assert answer["content"][0]["text"] == envelope + hint + mark + suffix
+
+
+@pytest.mark.parametrize("before, after", [
+    ("; filter: fqn=Unknown\nmodelReady: true\n", "modelReady: true\n"),
+    ("\nmodelReady: true\nrefreshed: Demo (build 2 ms, validation settled after 3 ms)\n",
+     "Other path (build 4 ms, validation settled after 5 ms)\n"),
+])
+def test_project_hint_with_a_duplicate_header_or_timing_is_ambiguous(before, after):
+    summary = "Demo: 0 problem(s) (ERROR 0, WARNING 0, INFO 0; eclipse 0, edt-check 0)"
+    raw = summary + before + "hint: Try edt_clean_project\n" + after
+    answer = {"content": [{"type": "text", "text": raw}]}
+    toolsets.annotate_advisory("edt_project_errors", answer, toolsets.parse("report"), {"edt_clean_project"})
+    assert answer["content"][0]["text"] == raw
+
+
+def test_forwarded_help_descriptions_mark_known_references(serve, monkeypatch):
+    srv, sent = serve("report")
+    offline(srv, monkeypatch, [{"name": "edt_clean_project", "toolsets": []}])
+    monkeypatch.setattr(srv.backend, "ensure", lambda **_kw: (True, "up"))
+    payload = {"name": "edt_project_errors", "available": True, "toolsets": ["report"],
+               "description": "See edt_clean_project.",
+               "inputSchema": {"type": "object", "properties": {"refresh": {
+                   "description": "Compare with edt_clean_project.", "default": "edt_clean_project"}}}}
+    monkeypatch.setattr(srv.backend, "forward", lambda _: {
+        "result": {"content": [{"type": "text", "text": json.dumps(payload)}]}})
+    body = json.loads(call(srv, sent, "edt_tool_help", {"tool": payload["name"]})["content"][0]["text"])
+    mark = " (outside the active tool set 'report': a call of it is refused)"
+    assert body["description"] == "See edt_clean_project" + mark + "."
+    refresh = body["inputSchema"]["properties"]["refresh"]
+    assert refresh["description"] == "Compare with edt_clean_project" + mark + "."
+    assert refresh["default"] == "edt_clean_project"
+
+
+@pytest.mark.parametrize("job_tool, name, field", [
+    ("edt_job_status", "edt_project_errors", "hint"),
+    ("edt_cancel_job", "edt_clean_project", "nextStep"),
+])
+def test_known_advisory_in_a_forwarded_job_result_is_marked(serve, monkeypatch, job_tool, name, field):
+    srv, sent = serve("report")
+    offline(srv, monkeypatch, [{"name": "edt_clean_project", "toolsets": []}])
+    monkeypatch.setattr(srv.backend, "is_up", lambda: True)
+    monkeypatch.setattr(srv.backend, "ensure", lambda **_kw: (True, "up"))
+    payload = {"jobId": "edt-1", "status": "succeeded", "tool": name,
+               "result": {field: "Try edt_clean_project", "source": "edt_clean_project"}}
+    monkeypatch.setattr(srv.backend, "forward", lambda _: {
+        "result": {"content": [{"type": "text", "text": json.dumps(payload)}]}})
+    reply = json.loads(call(srv, sent, job_tool, {"jobId": "edt-1"})["content"][0]["text"])
+    assert reply["result"][field] == (
+        "Try edt_clean_project (outside the active tool set 'report': a call of it is refused)")
+    assert reply["result"]["source"] == "edt_clean_project"
+
+
 def test_a_refusal_of_the_bridge_to_list_reaches_the_client(serve, monkeypatch):
     """The bridge was started with a misspelled set and the wrapper with none."""
     srv, sent = serve(None)
@@ -383,6 +505,46 @@ def test_a_plugin_naming_an_unknown_set_refuses_at_validation(declared, message)
 
 # -- edt_tool_help ------------------------------------------------------------
 
+def test_tool_help_lists_active_tools_without_starting_edt(serve, monkeypatch):
+    srv, sent = serve("report")
+    monkeypatch.setattr(srv.backend, "ensure", untouched)
+    payload = json.loads(call(srv, sent, "edt_tool_help", {})["content"][0]["text"])
+    listed = {tool["name"]: tool["description"] for tool in payload["tools"]}
+    assert "edt_test_form" in listed
+    assert "edt_clean_project" not in listed
+    assert "\n" not in listed["edt_test_form"]
+
+
+def test_tool_help_brief_includes_required_arguments_without_schema(serve, monkeypatch):
+    srv, sent = serve(None)
+    monkeypatch.setattr(srv.backend, "ensure", untouched)
+    answer = call(srv, sent, "edt_tool_help", {"tool": "edt_test_form", "brief": True})
+    text = answer["content"][0]["text"]
+    payload = json.loads(text)
+    assert len(text) < 1000
+    assert payload["signature"].startswith("edt_test_form(")
+    assert "form*: string" in payload["signature"]
+    assert "inputSchema" not in payload
+
+
+def test_reference_plugin_tools_accept_compatible_argument_names(serve):
+    doc = plugins.Tool("edt_platform_doc_grep", "Find matching documentation lines.", lambda args: args,
+                       {"properties": {"pattern": {"type": "string"}, "limit": {"type": "integer"}},
+                        "required": ["pattern"]})
+    standard = plugins.Tool("edt_standards_page", "Read a standard.", lambda args: args,
+                            {"properties": {"standard": {"type": "integer"}}, "required": ["standard"]})
+    srv, sent = serve(None, [doc, standard])
+    answer = call(srv, sent, doc.name, {"query": "TestClient", "maxResults": 2})
+    assert json.loads(answer["content"][0]["text"]) == {"pattern": "TestClient", "limit": 2}
+    for alias in ("number", "id"):
+        sent.clear()
+        answer = call(srv, sent, standard.name, {alias: 456})
+        assert json.loads(answer["content"][0]["text"]) == {"standard": 456}
+    sent.clear()
+    answer = call(srv, sent, doc.name, {"pattern": "one", "query": "two"})
+    assert answer["isError"]
+    assert "pass only one" in answer["content"][0]["text"]
+
 
 def test_help_for_a_wrapper_tool_is_answered_without_a_bridge(serve, monkeypatch):
     srv, sent = serve(None)
@@ -407,7 +569,10 @@ def test_help_for_a_wrapper_tool_outside_the_set_says_so(serve, monkeypatch):
     assert "a call of it is refused" in payload["note"]
     assert "Tool sets that contain it: processor, report." in payload["note"]
     # formTitle is optional: without it the form is found by its name.
-    assert payload["inputSchema"]["required"] == ["path", "form"]
+    schema = payload["inputSchema"]
+    assert schema["required"] == ["form"]
+    assert [branch["required"] for branch in schema["oneOf"]] == [
+        ["path"], ["navigationLink", "webClient", "steps"]]
 
 
 def test_help_for_a_plugin_tool_is_answered_by_the_wrapper(serve, monkeypatch):

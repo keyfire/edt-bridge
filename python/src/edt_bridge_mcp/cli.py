@@ -252,6 +252,7 @@ def _call_plugin_tool(tool, args: argparse.Namespace, backend) -> int:
         print(misnamed, file=sys.stderr)
         return 2
     try:
+        arguments = tool.normalize_arguments(arguments)
         if plugins.wants_bridge(tool.handler):
             answer = tool.handler(arguments, bridge=backend.call_tool)
         else:
@@ -615,11 +616,23 @@ def _run(command: str, argv: list[str]) -> int:
         except OSError as bad:
             print(f"could not read the arguments: {bad}", file=sys.stderr)
             return 1
+        try:
+            wanted, brief = toolsets.help_options(arguments)
+        except ValueError as bad:
+            print(f"{toolsets.HELP_TOOL}: {bad}", file=sys.stderr)
+            return 2
         served = list(LOCAL_TOOLS) + [plugin_tools[name].descriptor() for name in sorted(plugin_tools)]
-        described = next((tool for tool in served if tool["name"] == arguments.get("tool")), None)
+        described = next((tool for tool in served if tool["name"] == wanted), None)
         if described is not None:
             _print_result({"content": [{"type": "text",
-                                        "text": toolsets.describe(described, selection)}]}, args.raw)
+                                        "text": toolsets.describe(described, selection, brief=brief)}]}, args.raw)
+            return 0
+        if wanted is None:
+            from .catalog import bridge_tools
+
+            local_names = {tool["name"] for tool in served}
+            descriptors = [tool for tool in bridge_tools() if tool["name"] not in local_names] + served
+            _print_result({"content": [{"type": "text", "text": toolsets.list_help(descriptors, selection)}]}, args.raw)
             return 0
 
     if command == "call" and args.tool in plugin_tools:

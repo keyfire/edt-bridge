@@ -11,6 +11,13 @@ remaining `--timeout` while the same client owns the port. Retries stop when the
 manager connects or the platform reports an access or license error.
 `connectAttempts` records the number of attempts for the phase.
 
+`edt_test_form` answers shorter than the command. A run that reached its verdict, passed or not,
+returns `ok`, `status`, `assertions`, `reads`, the messages, the window over the form, `observedFields`,
+the logged errors of `eventLog` and, for a failed scenario, its `interaction`. The stages, the client
+environment, the platform logs and the echo of the scenario come with `details=true`, or by
+themselves when the run did not reach a verdict: setup, license, timeout and the like. `omitted`
+says what was left out. `test-form` and its `result.json` keep the whole report.
+
 The command prints JSON and writes `result.json` when it has created the output
 directory. A scenario result contains `phases`, observations under each phase's
 `interaction`, and `assertions` with `expected`, `actual`, and `ok`. Message assertions
@@ -19,10 +26,48 @@ and `panel`. Screenshots are saved as `steps/screenshot.png` and,
 when that phase runs, `reopen/screenshot.png`. A single-button run uses
 `screenshot.png` in the output directory. The JSON records screenshot paths.
 
-With `EDT_BRIDGE_PII` set, the answer, `result.json` and the reports for CI are filtered of
-personal data, and `piiFilter` gives the mode and the number of values replaced. Screenshots are
-not kept, since a picture of a form shows its data unmasked: `screenshotWithheld` stands in place
-of the path. The verdict is still taken on the real values; see [Personal data](/personal-data).
+A run of [named scenarios](/native-forms/scenario#named-scenarios) has one phase, `scenarios`, and
+one screenshot, `scenarios/screenshot.png`, taken after the last scenario. `scenarios` in the
+result holds the result of each scenario in the order of the file: `name`, `ok`, `status`, and
+`assertions` and `reads` as in a single scenario. A scenario that stopped on a step also carries
+`stage`, `step`, `error` and the observations of the steps before it. `summary` gives the number of
+passed scenarios and the names of the failed ones. `ok` is true when every scenario passed, and
+`status` is that of the first scenario that did not.
+
+With `EDT_BRIDGE_PII` enabled, the wrapper filters personal data from the answer, `result.json`
+and the CI reports. `piiFilter` shows the mode and the number of replacements. The verdict uses
+the original values. The desktop client's screenshot is withheld and the report sets
+`screenshotWithheld` in place of its path. See [Personal data](/personal-data).
+
+## Masked web client screenshots
+
+To capture a masked screenshot, set `EDT_BRIDGE_PII` to `redact` or `pseudonym` and pass
+`--web-client` to `test-form` or `webClient=true` to `edt_test_form`.
+
+- For an external `.epf` or `.erf`, supply the file path, the form name and a button or a
+  single scenario. Use the desktop client for a batch of named scenarios.
+- For a stored document or catalog item, pass `--navigation-link` and `--scenario` to
+  `test-form`, with the form name. In `edt_test_form`, pass `navigationLink`, `form` and `steps`.
+
+1. In the isolated Linux runner, provide Apache 2.4 with the event MPM and the platform's
+   `wsap24.so` module. `EDT_BRIDGE_TEST_WEB_HTTPD` selects Apache and defaults to
+   `/usr/local/apache2/bin/httpd`. When the runner uses root, Apache needs a `www-data` worker account.
+2. Install `edt-bridge-mcp[web]` and run `python -m playwright install chromium` in that environment.
+   Keep TCP ports 1538–1539 free and private to the runner. The bridge binds HTTP to loopback;
+   the platform's test listener binds to the runner's network interfaces.
+3. Run the check. The wrapper publishes a private copy of `1Cv8.1CD` in a temporary Apache
+   process. It closes Chromium and Apache and removes the copy when the check finishes.
+
+The web client opens external files through its file upload dialog and leaves any security
+prompt for the file unanswered. To prepare the runner for unattended checks of trusted
+files, use a test user with the appropriate platform setting or scope
+`DisableUnsafeActionProtection` to the temporary copies with `.*/edt-bridge-web-.*`.
+
+The web client masks visible DOM content matched by the field and value rules. It hides
+tables, embedded images, canvas and frames before capture. A saved screenshot sets `screenshotMasked`
+and appears in `result.json` and the Allure attachments. The MCP tool returns the final
+screenshot as image content. If Chromium cannot analyze or capture the DOM, the report
+sets `screenshotWithheld` and gives the reason in `screenshotError`.
 
 | Result | Meaning |
 | --- | --- |
@@ -30,8 +75,10 @@ of the path. The verdict is still taken on the real values; see [Personal data](
 | `assertion_failed` | An observed value or message count differs from the expectation. |
 | `message_baseline_not_empty` | The message panel did not change and already held the expected text, so whether the click wrote it again is not established. |
 | `scenario_error`, `command_error` | An action, element lookup, or platform operation failed. |
+| `reopen_failed`, `not_run`, `interrupted` | Named scenarios only. The form could not be opened again before this scenario; the scenario was not reached; the session stopped while it ran. |
 | `unexpected_dialog` | A click raised a warning or a question window over the form that the step did not expect. `dialog` holds its `kind` (`warning`, `question`), `text` and visible `buttons`; the scenario stops there and a question is left unanswered, so the caller decides whether the window is an acceptable answer. |
 | `dependency_missing`, `license_unavailable`, `access_denied`, `setup_failed` | The environment or permissions do not allow the check to run. |
+| `web_publication_failed` | Apache or Chromium could not start the temporary publication or open its test channel. |
 | `client_environment` | No `conf.cfg` the client reads sets `DisableUnsafeActionProtection`, so the client would stop at the security warning; see `clientEnvironment` and [Prepare the environment](/native-forms#prepare-the-environment). |
 | `timeout` | The overall time limit expired. The recorded progress and available screenshot show where execution stopped. |
 | `screenshot_failed` | Observations passed but the required screenshot was not obtained. |
@@ -78,7 +125,10 @@ When a step's `field` matches no field or several, the result carries `observedF
 the fields and form tables the test client sees on the form, each with `name`, `title`,
 `kind`, `visible` and `enabled`, the visible ones first, up to 200, and `total`. Fields
 that the form creates as it opens, such as the quick settings of a standard report form,
-are named nowhere else.
+are named nowhere else. A name that matches several fields adds `matchedFields`: those fields.
+A button caption that matches several buttons answers `ambiguous_button` in a button check and
+`scenario_error` in a scenario, with `matchedButtons`; one that matches none adds
+`observedButtons`, the buttons of the form with `name`, `title`, `visible` and `enabled`.
 
 The metadata of the selected EPF or ERF (its main form, name and main data composition
 schema) is read by `ibcmd config export --file`, which takes about a second where the designer
@@ -87,10 +137,13 @@ takes about ten. When `ibcmd` cannot read the file, the designer reads it as bef
 
 ## Reports for CI
 
+When a shared session fails and no named scenario contains that failure, JUnit and Allure
+record it under `scenario session`. Scenarios that did not run remain skipped.
+
 Next to `result.json` the command writes `junit.xml`, a JUnit XML report that GitLab shows in a
 merge request (`artifacts:reports:junit`), and `allure-results/`, the results Allure builds its
-report from. Each phase is a test: `steps` and `reopen` of a scenario, or `click <button>` of a
-button check; a check that stopped before its first phase is one test named `setup`. A phase whose
+report from. Each phase is a test: `steps` and `reopen` of a scenario, every named scenario under its
+name, or `click <button>` of a button check; a check that stopped before its first phase is one test named `setup`. A phase whose
 solution did not behave (`assertion_failed`, `scenario_error`, `unexpected_dialog` and the like) is
 a JUnit `failure` and an Allure `failed` test; a phase the check could not finish (`setup_failed`,
 `timeout`, `license_unavailable` and the like) is an `error` and `broken`; a phase that was not

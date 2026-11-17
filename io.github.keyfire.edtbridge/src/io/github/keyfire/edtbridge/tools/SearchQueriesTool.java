@@ -33,17 +33,22 @@ public final class SearchQueriesTool {
         props.add("regex", ToolJson.boolProp("Treat pattern as a Java regular expression; default false"));
         props.add("caseSensitive", ToolJson.boolProp("Match case; default false with Unicode case folding"));
         props.add("pathFilter", ToolJson.strProp("Optional substring of the project-relative .form/.dcs path"));
-        props.add("kind", ToolJson.strProp("all (default), dynamicList, or dcs"));
+        props.add("kind", ToolJson.strProp("all (default), dynamicList or dcs search query text; dcsText searches the "
+                + "whole text of data composition schemas - fields, formats, settings, quick access, filters"));
         props.add("maxResults", ToolJson.intProp("Maximum matching lines, default 200, at most 10000"));
         return ToolJson.descriptor(name(),
                 "READ: search dynamic-list queryText in .form files and DCS dataset queries in .dcs files. Returns the form and "
                 + "attribute or template and dataset, query line, XML field line and source path. Reads stored XML and open text "
                 + "buffers; unsaved graphical-designer changes and BSL query literals are outside this scan. Parse failures and "
-                + "truncation make coverage incomplete and are reported explicitly.",
+                + "truncation make coverage incomplete and are reported explicitly. kind=dcsText searches every line of the "
+                + ".dcs files instead, e.g. QuickAccess, <format or ДФ=, and returns the template, the line and a fragment of "
+                + "the lines around it - a sample of a setting without reading every schema.",
                 "ЧТЕНИЕ: искать текст в queryText динамических списков файлов .form и запросах наборов данных .dcs. Возвращает "
                 + "форму и реквизит либо макет и набор, строку запроса, строку XML-поля и путь. Читает сохраненный XML и открытые "
                 + "текстовые буферы; несохраненные правки визуальных редакторов и BSL-литералы сюда не входят. Ошибки разбора и "
-                + "усечение явно отмечаются как неполное покрытие.", props, "pattern");
+                + "усечение явно отмечаются как неполное покрытие. kind=dcsText ищет по каждой строке файлов .dcs, например "
+                + "QuickAccess, <format или ДФ=, и возвращает макет, строку и фрагмент строк вокруг нее - образец настройки "
+                + "без чтения всех схем.", props, "pattern");
     }
     public JsonObject call(JsonObject args) {
         int limit = args.has("maxResults") ? args.get("maxResults").getAsInt() : 200;
