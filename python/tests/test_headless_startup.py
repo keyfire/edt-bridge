@@ -332,6 +332,12 @@ def test_a_waiting_wrapper_can_start_after_the_other_supervisor_exits(launcher, 
 
     processes[0].terminate()
     processes[0].wait(timeout=10)
+    # Windows drops the locks of a dead process a moment after it is gone (LockFile: "the time
+    # it takes ... depends upon available system resources"), here 1-17 ms after wait(). Asked
+    # at once, the second wrapper still saw the workspace taken and failed most runs.
+    from edt_bridge_mcp import headless
+
+    assert _until(lambda: not headless.lock_held(other._session_lock()))
     assert other.ensure(wait=False) == (False, "starting")
     assert len(processes) == 2
 
