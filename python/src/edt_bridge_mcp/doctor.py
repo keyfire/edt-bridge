@@ -102,24 +102,31 @@ def _configurations(edt: Path, workspace: str | None) -> list[dict]:
 
 
 def _processes(backend, edt: Path | None, problems: list[str]) -> list[dict]:
+    """The EDT processes of this install. Windows shows a console without elevation neither the
+    path nor the command line of an elevated process, so such a process is kept as one whose
+    install is unknown: it is the very process this check is after."""
     found = []
     install = backend._path_key(str(edt)) if edt else None
     for process in backend._edt_processes():
         args = backend._args(process)
+        hidden = not args and not process.get("ExecutablePath")
         executable = Path(process.get("ExecutablePath") or (args[0] if args else ""))
-        if install and backend._path_key(str(executable.parent)) != install:
+        if not hidden and install and backend._path_key(str(executable.parent)) != install:
             continue
         pid = process.get("ProcessId")
+        image = executable.name or process.get("Name") or "EDT"
         workspace = args[args.index("-data") + 1] if "-data" in args[:-1] else None
         elevated = process_elevated(pid) if isinstance(pid, int) else None
-        found.append({"pid": pid, "image": executable.name, "workspace": workspace,
-                      "elevated": elevated})
+        found.append({"pid": pid, "image": image, "workspace": workspace, "elevated": elevated,
+                      "commandLineHidden": hidden})
         if elevated:
+            where = ("its install directory" if hidden
+                     else str(executable.parent / "configuration"))
             problems.append(
-                f"EDT process {pid} ({executable.name}) runs as administrator: it keeps its "
-                f"configuration in {executable.parent / 'configuration'}, and the next start "
-                "without elevation may reset the one in ~/.eclipse. Close it and start EDT "
-                "without administrator rights")
+                f"EDT process {pid} ({image}) runs as administrator: it keeps its configuration "
+                f"in {where}, and the next start without elevation may reset the one in "
+                "~/.eclipse. Close it and start EDT once with -clean from a console without "
+                "administrator rights")
     return found
 
 

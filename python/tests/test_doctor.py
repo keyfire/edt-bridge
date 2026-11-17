@@ -118,9 +118,26 @@ def test_an_edt_running_as_administrator_is_a_problem(edt, monkeypatch):
     report = doctor.diagnose(server.Backend())
 
     assert report["edtProcesses"] == [{"pid": 29416, "image": server.GUI_IMAGE,
-                                       "workspace": "D:\\ws", "elevated": True}]
+                                       "workspace": "D:\\ws", "elevated": True,
+                                       "commandLineHidden": False}]
     assert any("29416" in p and "administrator" in p for p in report["problems"])
     assert any("no bridge answers" in p for p in report["problems"])
+
+
+def test_an_elevated_edt_with_a_hidden_command_line_is_still_found(edt, monkeypatch):
+    """Found on a real machine: Win32_Process gives a console without elevation an empty path
+    and command line for an elevated EDT, and the install filter used to drop it - the one
+    process this check exists for."""
+    monkeypatch.setattr(server.Backend, "_edt_processes", lambda self: [
+        {"ProcessId": 12636, "Name": "1cedt.exe", "ExecutablePath": None, "CommandLine": None}])
+    monkeypatch.setattr(doctor, "process_elevated", lambda pid: True)
+
+    report = doctor.diagnose(server.Backend())
+
+    assert report["edtProcesses"] == [{"pid": 12636, "image": "1cedt.exe", "workspace": None,
+                                       "elevated": True, "commandLineHidden": True}]
+    assert any("12636" in p and "install directory" in p and "-clean" in p
+               for p in report["problems"])
 
 
 def test_an_edt_of_another_install_is_left_out(edt, monkeypatch):
