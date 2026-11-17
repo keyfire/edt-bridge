@@ -150,6 +150,9 @@ public final class FormStructureTool {
             if (c.title != null) {
                 o.addProperty("title", c.title);
             }
+            if (c.toolTip != null && !c.toolTip.equals(c.title)) {
+                o.addProperty("toolTip", c.toolTip);
+            }
             if (c.handler != null) {
                 o.addProperty("handler", c.handler);
             }

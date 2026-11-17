@@ -50,6 +50,9 @@ to the code and the reasoning behind it.
   composition schema has lost the problem, as it does with the join check of a query: such a
   marker is reported as `leftover`. A stale marker on a schema names `edt_replace_dcs` and
   `edt_modify_dcs` instead of a full clean.
+- `edt_form_structure` returns the caption of a form command in `title` and its tooltip in
+  `toolTip`. The tooltip used to stand in `title`, so a title written by `edt_modify_form_command`
+  read back unchanged.
 
 ### Changed
 
