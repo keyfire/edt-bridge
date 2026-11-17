@@ -40,6 +40,7 @@ import com.google.inject.Injector;
 import io.github.keyfire.edtbridge.core.MetadataPaths;
 import io.github.keyfire.edtbridge.core.QueryMetadataNames;
 import io.github.keyfire.edtbridge.core.QueryTextFields;
+import io.github.keyfire.edtbridge.core.SchemaLines;
 import io.github.keyfire.edtbridge.core.SearchPattern;
 
 /** Search stored form/DCS query fields and find metadata table sources through EDT's QL AST. */
@@ -63,6 +64,8 @@ public final class QueryUsageGateway {
         public String table;
         public boolean unsaved;
         public boolean textTruncated;
+        /** dcsText: the lines around the matched one, indentation removed, so the element it sits in is seen. */
+        public String fragment;
     }
     public static final class Failure {
         public String project;
@@ -96,6 +99,9 @@ public final class QueryUsageGateway {
         } catch (RuntimeException invalid) {
             Result result = new Result(); result.message = "invalid search expression: " + invalid.getMessage(); return result;
         }
+        if (kind != null && kind.trim().equalsIgnoreCase("dcsText")) {
+            return scanSchemaText(projectName, pattern, pathFilter, maxResults);
+        }
         return scan(projectName, pathFilter, kind, maxResults, query -> {
             List<Hit> hits = new ArrayList<>();
             String[] lines = query.field().text().split("\\R", -1);
@@ -104,6 +110,111 @@ public final class QueryUsageGateway {
             }
             return hits;
         });
+    }
+
+    /** Lines of context a dcsText hit carries on each side of the matched line. */
+    static final int SCHEMA_CONTEXT_LINES = 2;
+
+    /**
+     * The whole text of every data composition schema, line by line: fields, formats, settings, quick access - what a
+     * caller otherwise finds by reading every schema of the project one by one.
+     */
+    private Result scanSchemaText(String projectName, Pattern pattern, String pathFilter, int maxResults) {
+        Result result = new Result();
+        result.coverage = "The whole text of workspace .dcs files and their open text buffers, line by line";
+        int cap = Math.min(maxResults > 0 ? maxResults : 200, 10000);
+        List<IProject> projects = projects(projectName, result);
+        if (projects == null) return result;
+        for (IProject project : projects) {
+            List<IFile> files = files(project, "dcs", pathFilter, result);
+            if (files == null) continue;
+            for (IFile file : files) {
+                result.filesScanned++;
+                try {
+                    var manager = FileBuffers.getTextFileBufferManager();
+                    var buffer = manager == null ? null : manager.getTextFileBuffer(file.getFullPath(), LocationKind.IFILE);
+                    boolean unsaved = buffer != null && buffer.isDirty();
+                    String text;
+                    if (buffer != null && buffer.getDocument() != null) {
+                        if (buffer.getDocument().getLength() > MAX_XML_BYTES) throw new IOException("schema XML exceeds the 32 MiB scan limit");
+                        text = buffer.getDocument().get();
+                    } else {
+                        try (var input = file.getContents()) {
+                            byte[] bytes = input.readNBytes(MAX_XML_BYTES + 1);
+                            if (bytes.length > MAX_XML_BYTES) throw new IOException("schema XML exceeds the 32 MiB scan limit");
+                            text = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+                        }
+                    }
+                    String fqn = sourceFqn(file.getProjectRelativePath().toString());
+                    for (SchemaLines.Match found : SchemaLines.find(text, pattern, SCHEMA_CONTEXT_LINES)) {
+                        if (result.hits.size() == cap) {
+                            result.truncated = true;
+                            finishText(result);
+                            return result;
+                        }
+                        Hit hit = new Hit();
+                        hit.project = project.getName();
+                        hit.kind = "dcsText";
+                        hit.sourcePath = file.getProjectRelativePath().toString();
+                        hit.sourceFqn = fqn;
+                        hit.templateFqn = fqn;
+                        hit.line = found.line();
+                        hit.xmlLine = found.line();
+                        hit.unsaved = unsaved;
+                        hit.textTruncated = found.text().length() > 4000;
+                        hit.text = hit.textTruncated ? found.text().substring(0, 4000) : found.text();
+                        hit.fragment = found.fragment();
+                        result.hits.add(hit);
+                    }
+                } catch (Exception failure) {
+                    failed(result, project.getName(), file.getProjectRelativePath().toString(), null, failure);
+                }
+            }
+        }
+        finishText(result);
+        return result;
+    }
+
+    private static void finishText(Result result) {
+        result.ok = result.errorCount == 0;
+        result.complete = !result.truncated && result.errorCount == 0;
+        result.message = "scanned " + result.filesScanned + " schema file(s); returned " + result.hits.size() + " hit(s)"
+                + (result.truncated ? "; hit limit reached, coverage is incomplete" : "")
+                + (result.errorCount > 0 ? "; " + result.errorCount + " file(s) could not be inspected" : "");
+    }
+
+    /** The open projects to scan: the one named, or all of them by name; null with the message set when it is missing. */
+    private static List<IProject> projects(String projectName, Result result) {
+        List<IProject> projects = new ArrayList<>();
+        if (projectName != null && !projectName.isBlank()) {
+            IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+            if (!project.isOpen()) { result.message = "project not found or closed: " + projectName; return null; }
+            projects.add(project);
+        } else {
+            for (IProject project : ResourcesPlugin.getWorkspace().getRoot().getProjects()) if (project.isOpen()) projects.add(project);
+        }
+        projects.sort(Comparator.comparing(IProject::getName));
+        return projects;
+    }
+
+    /** The files of a project with this extension whose path contains the filter, by path; null when the walk failed. */
+    private static List<IFile> files(IProject project, String extension, String pathFilter, Result result) {
+        List<IFile> files = new ArrayList<>();
+        try {
+            project.accept(resource -> {
+                if (resource instanceof IFile file && extension.equalsIgnoreCase(file.getFileExtension())
+                        && (pathFilter == null || pathFilter.isBlank()
+                                || file.getProjectRelativePath().toString().contains(pathFilter))) {
+                    files.add(file);
+                }
+                return true;
+            });
+        } catch (Exception failure) {
+            failed(result, project.getName(), null, null, failure);
+            return null;
+        }
+        files.sort(Comparator.comparing(file -> file.getProjectRelativePath().toString()));
+        return files;
     }
 
     public Result references(String projectName, String fqn, int limit) {
@@ -117,7 +228,7 @@ public final class QueryUsageGateway {
         Result result = new Result();
         String scope = kind == null || kind.isBlank() ? "all" : kind.toLowerCase(Locale.ROOT);
         if (!List.of("all", "dynamiclist", "dcs").contains(scope)) {
-            result.message = "kind must be all, dynamicList, or dcs"; return result;
+            result.message = "kind must be all, dynamicList, dcs, or dcsText"; return result;
         }
         int cap = Math.min(maxResults > 0 ? maxResults : 200, 10000);
         List<IProject> projects = new ArrayList<>();

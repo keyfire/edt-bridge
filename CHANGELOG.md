@@ -28,6 +28,10 @@ to the code and the reasoning behind it.
   place or several, `setField` sets the title or the format of a field, and `removeField` removes
   a field. A change of a query or a condition no longer sends the whole schema. Apply takes the
   `sourceHash` of `edt_read_dcs`, without a dry-run.
+- `edt_search_queries` with `kind=dcsText` searches the whole text of the data composition
+  schemas of a project: quick access, formats, filters, settings. A hit names the template, the
+  line and `fragment`, the lines around it. A sample of a setting no longer takes reading every
+  schema of the configuration one call at a time.
 
 ### Fixed
 

@@ -4192,8 +4192,8 @@
     },
     {
       "name": "edt_search_queries",
-      "description": "READ: search dynamic-list queryText in .form files and DCS dataset queries in .dcs files. Returns the form and attribute or template and dataset, query line, XML field line and source path. Reads stored XML and open text buffers; unsaved graphical-designer changes and BSL query literals are outside this scan. Parse failures and truncation make coverage incomplete and are reported explicitly.",
-      "descriptionRu": "ЧТЕНИЕ: искать текст в queryText динамических списков файлов .form и запросах наборов данных .dcs. Возвращает форму и реквизит либо макет и набор, строку запроса, строку XML-поля и путь. Читает сохраненный XML и открытые текстовые буферы; несохраненные правки визуальных редакторов и BSL-литералы сюда не входят. Ошибки разбора и усечение явно отмечаются как неполное покрытие.",
+      "description": "READ: search dynamic-list queryText in .form files and DCS dataset queries in .dcs files. Returns the form and attribute or template and dataset, query line, XML field line and source path. Reads stored XML and open text buffers; unsaved graphical-designer changes and BSL query literals are outside this scan. Parse failures and truncation make coverage incomplete and are reported explicitly. kind=dcsText searches every line of the .dcs files instead, e.g. QuickAccess, <format or ДФ=, and returns the template, the line and a fragment of the lines around it - a sample of a setting without reading every schema.",
+      "descriptionRu": "ЧТЕНИЕ: искать текст в queryText динамических списков файлов .form и запросах наборов данных .dcs. Возвращает форму и реквизит либо макет и набор, строку запроса, строку XML-поля и путь. Читает сохраненный XML и открытые текстовые буферы; несохраненные правки визуальных редакторов и BSL-литералы сюда не входят. Ошибки разбора и усечение явно отмечаются как неполное покрытие. kind=dcsText ищет по каждой строке файлов .dcs, например QuickAccess, <format или ДФ=, и возвращает макет, строку и фрагмент строк вокруг нее - образец настройки без чтения всех схем.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -4219,7 +4219,7 @@
           },
           "kind": {
             "type": "string",
-            "description": "all (default), dynamicList, or dcs"
+            "description": "all (default), dynamicList or dcs search query text; dcsText searches the whole text of data composition schemas - fields, formats, settings, quick access, filters"
           },
           "maxResults": {
             "type": "integer",
