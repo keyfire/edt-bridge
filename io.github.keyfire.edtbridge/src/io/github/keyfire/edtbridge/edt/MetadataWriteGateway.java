@@ -82,6 +82,9 @@ import com._1c.g5.v8.dt.metadata.mdclass.BasicFeature;
 import com._1c.g5.v8.dt.metadata.mdclass.BasicForm;
 import com._1c.g5.v8.dt.metadata.mdclass.MdClassPackage;
 import com._1c.g5.v8.dt.metadata.mdclass.MdObject;
+import com._1c.g5.v8.dt.metadata.mdclass.Role;
+import com._1c.g5.v8.dt.rights.IRightInfosService;
+import com._1c.g5.v8.dt.rights.model.Right;
 import io.github.keyfire.edtbridge.core.Versions;
 import com._1c.g5.v8.dt.metadata.mdclass.util.MdProducedTypesUtil;
 import com._1c.g5.v8.dt.metadata.mdtype.MdTypePackage;
@@ -1589,7 +1592,8 @@ public final class MetadataWriteGateway {
             Map.entry("задача", "Task"),
             Map.entry("планобмена", "ExchangePlan"),
             Map.entry("константа", "Constant"),
-            Map.entry("общиймодуль", "CommonModule"));
+            Map.entry("общиймодуль", "CommonModule"),
+            Map.entry("роль", "Role"));
 
     /**
      * Normalize the class prefix of a top-object FQN from a Russian metadata kind
@@ -1616,7 +1620,9 @@ public final class MetadataWriteGateway {
         public boolean applied;       // the object was created
         public String objectType;     // requested Russian kind
         public String eClass;         // resolved MdClass EClass name
-        public String name;
+        public String name;           // the name the object gets, with the extension prefix
+        public String requestedName;  // the name as asked, when the prefix was added to it
+        public String namePrefix;     // the prefix of the extension the object goes into
         public String fqn;            // Type.name
         public String synonymRu;
         public boolean nameValid;     // name is a legal 1C identifier
@@ -1624,6 +1630,8 @@ public final class MetadataWriteGateway {
         public Boolean nameAvailable; // null if not checked
         public boolean configFound;
         public String feature;        // Configuration containment feature it goes into (e.g. catalogs)
+        public List<String> rights;   // a role: the rights it starts with on the configuration
+        public String rightsFqn;      // a role: the FQN of its Rights.rights once created
         public String plan;
         public String warning;
         public String message;
@@ -1637,13 +1645,15 @@ public final class MetadataWriteGateway {
      * <ul>
      *   <li>{@code apply=false} (default) – DRY-RUN: validate (type → eClass; {@code name} a legal 1C
      *       identifier; FQN free; the {@code Configuration} has a containment feature for the eClass) and
-     *       return the plan, creating nothing.
+     *       return the plan, creating nothing. In an extension the name gets the extension's prefix.
      *   <li>{@code apply=true} – perform the recipe (from EDT's New-object wizard): {@code factory.create}
      *       → set name/synonym/comment → {@code tx.toTransactionObject} → {@code tx.attachTopObject(fqn)}
      *       → add to the config feature → {@code factory.fillDefaultReferences}, then forceExport the new
      *       object AND the Configuration. Creating an object is additive (non-breaking) → no
      *       {@code force}; still token-gated and {@code edt_support_status} EDITABLE is the caller's gate.
      * </ul>
+     * A role also gets its {@code Rights.rights} in the same import: a role keeps its rights as a top
+     * object of its own, which EDT's New Role wizard adds next to the object.
      */
     public CreateObjectResult createObject(String projectName, String objectType, String name,
             String synonymRu, String comment, boolean apply) {
@@ -1693,39 +1703,67 @@ public final class MetadataWriteGateway {
         }
         r.typeKnown = true;
         r.eClass = mdClassName;
-        final String fqn = mdClassName + "." + name;
-        r.fqn = fqn;
+        final boolean role = eClass == MdClassPackage.Literals.ROLE;
         IBmModelManager mm = ServiceAccess.get(IBmModelManager.class);
         IBmModel model = (mm == null) ? null : mm.getModel(p);
         if (model == null) {
             r.message = "no BM model for project: " + projectName;
             return r;
         }
+        final IRightInfosService infos;
+        try {
+            infos = role ? RoleRightsGateway.rightInfos() : null;
+        } catch (RuntimeException unavailable) {
+            r.message = GatewaySupport.describeCause(unavailable);
+            return r;
+        }
 
         // Stage 1 – validate against the live model (read): config present, has a feature for this
-        // eClass, and the FQN is free.
+        // eClass, and the FQN is free. An object an extension owns takes the extension's prefix.
         final String[] featureName = {null};
         model.executeReadonlyTask(new AbstractBmTask<Object>("edt-bridge.createObject.validate") {
             @Override
             public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
                 EObject config = tx.getTopObjectByFqn("Configuration");
                 r.configFound = config != null;
+                if (config instanceof Configuration configuration && RoleRightsGateway.adopted(configuration)
+                        && configuration.getNamePrefix() != null && !configuration.getNamePrefix().isBlank()) {
+                    r.namePrefix = configuration.getNamePrefix();
+                    r.name = io.github.keyfire.edtbridge.core.NewObjects.extensionName(name, r.namePrefix);
+                    if (!r.name.equals(name)) r.requestedName = name;
+                }
+                r.fqn = mdClassName + "." + r.name;
                 if (config != null) {
                     EReference feat = findConfigFeature(config, eClass);
                     if (feat != null) {
                         featureName[0] = feat.getName();
                         r.feature = feat.getName();
                     }
+                    if (role) {
+                        r.rights = new ArrayList<>();
+                        for (Right right : RoleRightsGateway.startingConfigurationRights(infos, config)) {
+                            r.rights.add(right.getName());
+                        }
+                    }
                 }
-                r.nameAvailable = tx.getTopObjectByFqn(fqn) == null;
+                r.nameAvailable = tx.getTopObjectByFqn(r.fqn) == null;
                 return null;
             }
         });
+        final String finalName = r.name;
+        final String fqn = r.fqn;
+        if (!IDENT.matcher(finalName).matches()) {
+            r.message = "the name with the extension prefix is not a valid 1C identifier: \"" + finalName + "\"";
+            return r;
+        }
 
         r.ok = r.configFound && featureName[0] != null && Boolean.TRUE.equals(r.nameAvailable);
-        r.plan = "Create " + objectType + " \"" + name + "\" (" + fqn + ")"
+        r.plan = "Create " + objectType + " \"" + finalName + "\" (" + fqn + ")"
                 + (r.feature != null ? " in Configuration." + r.feature : "")
-                + (synonymRu != null && !synonymRu.isBlank() ? " (synonym: " + synonymRu + ")" : "");
+                + (synonymRu != null && !synonymRu.isBlank() ? " (synonym: " + synonymRu + ")" : "")
+                + (r.requestedName != null ? "; the extension prefix " + r.namePrefix + " is added to the name" : "")
+                + (role ? "; its Rights.rights " + (r.rights == null || r.rights.isEmpty()
+                        ? "sets no rights" : "sets " + String.join(", ", r.rights) + " on the configuration") : "");
         r.warning = "a new object becomes part of the configuration contract – name it per conventions; "
                 + "the addition is additive and does not break backward compatibility.";
         if (!r.configFound) {
@@ -1757,7 +1795,7 @@ public final class MetadataWriteGateway {
                     return r;
                 }
                 MdObject md = (MdObject) created;
-                md.setName(name);
+                md.setName(finalName);
                 md.setUuid(UUID.randomUUID());
                 if (synonymRu != null && !synonymRu.isBlank()) {
                     md.getSynonym().put("ru", synonymRu);
@@ -1778,13 +1816,17 @@ public final class MetadataWriteGateway {
                         @SuppressWarnings("unchecked")
                         List<EObject> list = (List<EObject>) config.eGet(feat);
                         int position = io.github.keyfire.edtbridge.core.MetadataOrder.insertionIndex(
-                                list.stream().map(object -> object instanceof MdObject md ? md.getName() : null).toList(), name);
+                                list.stream().map(object -> object instanceof MdObject md ? md.getName() : null).toList(), finalName);
                         list.add(position, created);
                         if (created instanceof com._1c.g5.v8.dt.metadata.mdclass.CommonModule module
                                 && properties != null && !properties.isEmpty()) {
                             CommonModuleSettings.apply(module, properties, false);
                         }
                         factory.fillDefaultReferences(created);
+                        if (created instanceof Role newRole) {
+                            r.rightsFqn = RoleRightsGateway.attachNewRights(tx, newRole, fqn, config,
+                                    RoleRightsGateway.startingConfigurationRights(infos, config));
+                        }
                         return null;
                     }
                 }, false);
@@ -1792,10 +1834,15 @@ public final class MetadataWriteGateway {
                 // Serialize the new object AND the Configuration (its child list changed).
                 IDtProject dtProject = mm.getDtProject(model);
                 boolean exportedObj = dtProject != null && mm.forceExport(dtProject, fqn);
+                boolean exportedRights = r.rightsFqn == null
+                        || (dtProject != null && mm.forceExport(dtProject, r.rightsFqn));
                 boolean exportedCfg = dtProject != null && mm.forceExport(dtProject, "Configuration");
                 r.message = "created " + objectType + " " + fqn
-                        + ((exportedObj && exportedCfg) ? " (serialized: object .mdo + Configuration.mdo)"
+                        + ((exportedObj && exportedRights && exportedCfg)
+                                ? " (serialized: object .mdo" + (r.rightsFqn != null ? " + Rights.rights" : "")
+                                        + " + Configuration.mdo)"
                                 : " – WARNING: created in-memory but forceExport incomplete (object=" + exportedObj
+                                        + (r.rightsFqn != null ? ", rights=" + exportedRights : "")
                                         + ", configuration=" + exportedCfg + ")");
             } catch (RuntimeException ex) {
                 r.ok = false;
@@ -1835,10 +1882,18 @@ public final class MetadataWriteGateway {
      * {@code catalogs}). In EDT's mdclass model these are NON-containment references – top objects are
      * owned by the BM, and the Configuration just lists them – so scan all many-valued references, not
      * only containments. Prefer an exact type match over a supertype one.
+     *
+     * <p>Roles are listed three times: {@code roles} holds them, while {@code defaultRoles} and
+     * {@code standaloneConfigurationRestrictionRoles} name some of them, so the first match would put
+     * a new role among the default roles. Every other class has one list.
      */
-    private EReference findConfigFeature(EObject config, EClass eClass) {
+    static EReference findConfigFeature(EObject config, EClass eClass) {
         if (config == null) {
             return null;
+        }
+        if (eClass == MdClassPackage.Literals.ROLE
+                && config.eClass().getEAllReferences().contains(MdClassPackage.Literals.CONFIGURATION__ROLES)) {
+            return MdClassPackage.Literals.CONFIGURATION__ROLES;
         }
         EReference exact = null;
         EReference superType = null;

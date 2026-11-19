@@ -3436,8 +3436,8 @@
     },
     {
       "name": "edt_create_object",
-      "description": "WRITE (Phase 2): create a new top metadata object (Catalog/Document/Enum/InformationRegister/...) via EDT's own factory + per-type initializer, registered in the Configuration. Dry-run by default: validates and returns the plan WITHOUT creating. apply=true creates it (object .mdo + Configuration.mdo). Additive – no force needed – but requires a configured token. Verify edt_support_status EDITABLE before apply.",
-      "descriptionRu": "ЗАПИСЬ (Phase 2): создать новый объект метаданных (Справочник/Документ/Перечисление/РегистрСведений/...) через штатную фабрику EDT + инициализатор типа, с регистрацией в Configuration. По умолчанию dry-run: проверяет и возвращает план БЕЗ создания. apply=true создаёт (object .mdo + Configuration.mdo). Аддитивно – force не нужен – но требует токен. Перед apply проверить edt_support_status = EDITABLE.",
+      "description": "WRITE (Phase 2): create a new top metadata object (Catalog/Document/Enum/InformationRegister/Role/...) via EDT's own factory + per-type initializer, registered in the Configuration. In an extension the object is the extension's own and its name gets the extension's prefix. A role gets its Rights.rights: in a configuration with the main window modes and the analytics system client on the configuration, as the designer creates a role, in an extension with no rights; set others with edt_modify_role_rights. Dry-run by default: validates and returns the plan WITHOUT creating. apply=true creates it (object .mdo + Configuration.mdo). Additive – no force needed – but requires a configured token. Verify edt_support_status EDITABLE before apply.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): создать новый объект метаданных (Справочник/Документ/Перечисление/РегистрСведений/Роль/...) через штатную фабрику EDT + инициализатор типа, с регистрацией в Configuration. В расширении объект собственный, и к имени добавляется префикс расширения. Роль получает Rights.rights: в конфигурации с режимами основного окна и клиентом системы аналитики на конфигурацию, как роль создает конфигуратор, в расширении без прав; другие права задает edt_modify_role_rights. По умолчанию dry-run: проверяет и возвращает план БЕЗ создания. apply=true создаёт (object .mdo + Configuration.mdo). Аддитивно – force не нужен – но требует токен. Перед apply проверить edt_support_status = EDITABLE.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -3447,11 +3447,11 @@
           },
           "objectType": {
             "type": "string",
-            "description": "Object kind (Russian): Справочник, Документ, Перечисление, РегистрСведений, РегистрНакопления, РегистрБухгалтерии, РегистрРасчета, Отчет, Обработка, ПланВидовХарактеристик, ПланСчетов, ПланВидовРасчета, БизнесПроцесс, Задача, ПланОбмена, Константа, ОбщийМодуль"
+            "description": "Object kind (Russian): Справочник, Документ, Перечисление, РегистрСведений, РегистрНакопления, РегистрБухгалтерии, РегистрРасчета, Отчет, Обработка, ПланВидовХарактеристик, ПланСчетов, ПланВидовРасчета, БизнесПроцесс, Задача, ПланОбмена, Константа, ОбщийМодуль, Роль"
           },
           "name": {
             "type": "string",
-            "description": "New object name (a valid 1C identifier, Cyrillic allowed)"
+            "description": "New object name (a valid 1C identifier, Cyrillic allowed). In an extension the extension's name prefix is added unless the name starts with it."
           },
           "synonymRu": {
             "type": "string",

@@ -13,6 +13,30 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
+## Unreleased
+
+### Added
+
+- `edt_create_object` creates a role with `objectType="Роль"`, in a configuration and in an
+  extension. The role gets its `Rights.rights` in the same step, filled the way the platform
+  designer fills a new role. In a configuration the role sets the main window modes and the
+  analytics system client on the configuration. In an extension it sets no rights. Set rights on
+  objects with `edt_modify_role_rights`. ([#103](https://github.com/keyfire/edt-bridge/pull/103))
+
+### Changed
+
+- `edt_create_object` adds the extension's name prefix to an object created in an extension,
+  unless the name already starts with it. The response reports the prefix in `namePrefix` and
+  the name as passed in `requestedName`. The object used to get the name exactly as passed.
+  ([#103](https://github.com/keyfire/edt-bridge/pull/103))
+
+### Fixed
+
+- `edt_role_rights` with `object` and `edt_modify_role_rights` work with a role without its own
+  `Rights.rights`, such as a main role created by the New Configuration Extension wizard. Both
+  stopped with a `ClassCastException`. The first write of rights now creates the file.
+  ([#103](https://github.com/keyfire/edt-bridge/pull/103))
+
 ## 2026-11-18 – 0.50.0
 
 ### Added

@@ -6,10 +6,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import org.eclipse.emf.ecore.EClass;
+import org.eclipse.emf.ecore.EObject;
 import org.junit.jupiter.api.Test;
 import com._1c.g5.v8.dt.metadata.mdclass.Catalog;
+import com._1c.g5.v8.dt.metadata.mdclass.Configuration;
 import com._1c.g5.v8.dt.metadata.mdclass.MdClassFactory;
+import com._1c.g5.v8.dt.metadata.mdclass.ObjectBelonging;
 import com._1c.g5.v8.dt.metadata.mdclass.Role;
+import com._1c.g5.v8.dt.rights.IRightInfosService;
 import com._1c.g5.v8.dt.rights.model.ObjectRight;
 import com._1c.g5.v8.dt.rights.model.ObjectRights;
 import com._1c.g5.v8.dt.rights.model.Right;
@@ -74,6 +79,78 @@ class RoleRightsGatewayTest {
         assertNull(RoleRightsGateway.value(RightValue.PROVIDED));
         assertEquals(Boolean.TRUE, RoleRightsGateway.value(RightValue.SET));
         assertEquals(Boolean.FALSE, RoleRightsGateway.value(RightValue.UNSET));
+    }
+
+    @Test void aNewRoleStartsWithTheDesignerFlagsAndTheGivenRightsOfTheConfiguration() {
+        RoleDescription rights = RoleRightsGateway.newDescription();
+        assertFalse(rights.isSetForNewObjects());
+        assertTrue(rights.isSetForAttributesByDefault());
+        assertFalse(rights.isIndependentRightsOfChildObjects());
+        Role role = MdClassFactory.eINSTANCE.createRole();
+        role.setName("Manager");
+        role.setRights(rights);
+        Configuration configuration = configuration(false);
+
+        Right normal = right("MainWindowModeNormal", "РежимОсновногоОкнаОбычный");
+        Right analytics = right("AnalyticsSystemClient", "КлиентСистемыАналитики");
+        RoleRightsGateway.grant(role, rights, configuration, List.of(normal, analytics), "Role.Manager", null);
+
+        ObjectRights entry = rights.getRights().get(0);
+        assertSame(configuration, entry.getObject());
+        assertEquals(List.of("MainWindowModeNormal", "AnalyticsSystemClient"),
+                entry.getRights().stream().map(r -> r.getRight().getName()).toList());
+        assertEquals(List.of(RightValue.SET, RightValue.SET), entry.getRights().stream().map(ObjectRight::getValue).toList());
+    }
+
+    @Test void anEmptyListGrantsNothing() {
+        RoleDescription rights = RoleRightsGateway.newDescription();
+        Role role = MdClassFactory.eINSTANCE.createRole();
+        role.setRights(rights);
+        RoleRightsGateway.grant(role, rights, configuration(false), List.of(), "Role.Manager", null);
+        assertTrue(rights.getRights().isEmpty());
+    }
+
+    @Test void aConfigurationGivesANewRoleTheStartingRightsItHasAndAnExtensionNone() {
+        Right administration = right("Administration", "Администрирование");
+        Right kiosk = right("MainWindowModeKiosk", "РежимОсновногоОкнаКиоск");
+        Right normal = right("MainWindowModeNormal", "РежимОсновногоОкнаОбычный");
+        IRightInfosService infos = infos(Set.of(administration, kiosk, normal), Map.of(1, administration, 2, kiosk, 3, normal));
+
+        assertEquals(List.of(normal, kiosk), RoleRightsGateway.startingConfigurationRights(infos, configuration(false)));
+        assertEquals(List.of(), RoleRightsGateway.startingConfigurationRights(infos, configuration(true)));
+        assertEquals(List.of(), RoleRightsGateway.startingConfigurationRights(infos, null));
+    }
+
+    @Test void aRoleWithoutItsOwnRightsSetsNothingAndAnAdoptedOneLeavesItToTheBase() {
+        Catalog products = catalog();
+        Role placeholder = MdClassFactory.eINSTANCE.createRole();
+        placeholder.setRights(MdClassFactory.eINSTANCE.createAbstractRoleDescription());
+        assertEquals(RightValue.UNSET, RoleRightsGateway.defaultValue(products, placeholder));
+        assertEquals(RightValue.UNSET, RoleRightsGateway.defaultValue(products, MdClassFactory.eINSTANCE.createRole()));
+
+        Role adopted = MdClassFactory.eINSTANCE.createRole();
+        adopted.setObjectBelonging(ObjectBelonging.ADOPTED);
+        assertEquals(RightValue.PROVIDED, RoleRightsGateway.defaultValue(products, adopted));
+
+        var states = RoleRightsGateway.states(placeholder, null, products, List.of(read));
+        assertEquals(Boolean.FALSE, states.get(0).value);
+        assertFalse(states.get(0).explicit);
+    }
+
+    private static IRightInfosService infos(Set<Right> rights, Map<Integer, Right> order) {
+        return new IRightInfosService() {
+            @Override public Set<Right> getRights(EObject object) { return rights; }
+            @Override public Set<Right> getEClassRights(EObject object, EClass eClass) { return rights; }
+            @Override public Map<Integer, Right> getEClassRightsOrder(EObject object, EClass eClass) { return order; }
+        };
+    }
+
+    private static Configuration configuration(boolean extension) {
+        Configuration configuration = MdClassFactory.eINSTANCE.createConfiguration();
+        configuration.setName("Demo");
+        configuration.setUuid(UUID.randomUUID());
+        if (extension) configuration.setObjectBelonging(ObjectBelonging.ADOPTED);
+        return configuration;
     }
 
     private static Map<Right, Boolean> values(Object... pairs) {

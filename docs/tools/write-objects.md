@@ -1,6 +1,6 @@
 ---
 title: "Write: metadata objects"
-description: "Write tools for metadata objects: create, delete, rename, attributes and register fields, common modules, subsystems, role rights and the command interface."
+description: "Write tools for metadata objects: create, delete, rename, attributes and register fields, common modules, subsystems, roles and their rights, and the command interface."
 sidebar:
   label: "Write: metadata objects"
   order: 4
@@ -15,12 +15,12 @@ Changes need a token and are returned as a plan until `apply=true` is passed; se
 
 | Write tool | What it does |
 |------------|--------------|
-| `edt_create_object` · `edt_delete_object` | Creates a new top-level object – Catalog, Document, Enum, InformationRegister and the rest – through EDT's factory and the per-type initializer, and registers it in the Configuration. Deletion uses EDT refactoring and requires `force`. The preview reports indexed references and possible uses in BSL, query text and form bindings. These uses can remain after deletion; the response does not promise a complete cascade. |
+| `edt_create_object` · `edt_delete_object` | Creates a new top-level object – Catalog, Document, Enum, InformationRegister, Role and the rest – through EDT's factory and the per-type initializer, and registers it in the Configuration. A role comes with its `Rights.rights`. In an extension the object is the extension's own, and its name gets the extension's prefix. Deletion uses EDT refactoring and requires `force`. The preview reports indexed references and possible uses in BSL, query text and form bindings. These uses can remain after deletion; the response does not promise a complete cascade. |
 | `edt_add_attribute` · `edt_modify_attribute` · `edt_remove_attribute` | Adds or changes an attribute, register resource or dimension (`kind`, default `attribute`). Addition checks the name across all three field lists. Changes support the type, Russian synonym and comment. `edt_remove_attribute` removes attributes; use `edt_delete_object` with the member FQN for resources and dimensions. Optional `use=ForFolder\|ForItem\|ForFolderAndItem` applies to hierarchical fields; `multiLine` controls multiline input. Invalid or inapplicable options are rejected before writing. Modification preserves the field UUID; `properties` reports the actual values. |
 | `edt_rename` | Renames a method, metadata object or member and updates references through EDT's refactoring engine. The preview reports known affected files and the completeness of file and edit counts. Requires `force` because external uses of the old name may break. |
 | `edt_adopt_object` | Adopts an object of the base configuration into an extension project through EDT's own `IModelObjectAdopter`. Nothing in an extension can intercept that object until this happens, and it is the step that completes `edt_create_extension`. |
 | `edt_modify_object` · `edt_update_subsystem` | Sets common-module execution flags and result reuse, or adds/removes existing objects from a subsystem. Both validate the whole request before writing and show a plan. Removing members additionally requires `force=true`. `extendModule=true` enables an adopted common module for extension. |
-| `edt_modify_role_rights` | Sets rights of a role on one object the way the rights editor of EDT does: a value equal to the role's default removes the explicit entry. Exports the role and its `Rights.rights`. An unknown right is refused with the rights the object has, and a right with a data access restriction is never changed. In an extension the role and the object must be the extension's own or adopted. Dry-run by default; apply needs a token. |
+| `edt_modify_role_rights` | Sets rights of a role on one object the way the rights editor of EDT does: a value equal to the role's default removes the explicit entry. Exports the role and its `Rights.rights`; a role without its own `Rights.rights` gets one. An unknown right is refused with the rights the object has, and a right with a data access restriction is never changed. In an extension the role and the object must be the extension's own or adopted. Dry-run by default; apply needs a token. |
 | `edt_modify_command_interface` | Changes `CommandInterface.cmi` of a subsystem section: the visibility of a command in common and by role, its group within its panel, the order of a group, or a return to the default. Takes the names `edt_command_interface` prints. An adopted subsystem without its own `CommandInterface.cmi` gets one. Dry-run by default; apply needs a token. |
 
 ## Deleting an object
@@ -85,6 +85,55 @@ and edit counts before `apply=true, force=true`. Save affected editors before ap
 Metadata mode also returns `targetPath`. Some metadata refactoring items expose no file mapping:
 `coverageComplete=false`, `unmappedItemCount` and `unmappedItems` identify that partial preview.
 The known file list is then a subset; inspect the native `items` before applying.
+
+## Roles
+
+`edt_create_object` with `objectType="Роль"` creates a role together with its `Rights.rights`.
+The rights file is a model object of its own, which EDT's New Role wizard adds next to the role.
+The bridge creates it in the same step and fills it the way the platform designer fills a new role:
+
+- In a configuration, the role sets the main window modes and the analytics system client on the
+  configuration. A configuration in an older compatibility mode lacks some of these rights, and
+  they are left out.
+- In an extension, the role is the extension's own and sets no rights, because an extension cannot
+  set rights on the configuration.
+
+In both cases rights are not set for new objects and are set for attributes and tabular sections
+by default. The preview lists the starting rights in `rights`. After `apply=true`, `rightsFqn`
+names the rights file.
+
+In an extension, the name of a new object gets the extension's prefix unless it already starts
+with it; the check ignores case. This applies to every object type, not only to roles. `name` is
+the name the object gets, `namePrefix` is the prefix, and `requestedName` is the name as passed
+when the prefix was added.
+
+Set rights on objects with `edt_modify_role_rights`, one object per call, after the role exists.
+An own role of an extension sets rights on the extension's own and adopted objects, so adopt a
+base object with `edt_adopt_object` first. `edt_role_rights` and `edt_modify_role_rights` also
+accept a role without its own `Rights.rights`, such as a main role created by the New
+Configuration Extension wizard. The first write of rights creates the file.
+
+For example, preview a role in an extension with the prefix `Расш_`:
+
+```json
+{
+  "projectName": "DemoExt",
+  "objectType": "Роль",
+  "name": "Менеджер"
+}
+```
+
+The plan names `Role.Расш_Менеджер`. After `apply=true`, adopt `Catalog.Товары` and give the role
+the rights to read it:
+
+```json
+{
+  "projectName": "DemoExt",
+  "role": "Role.Расш_Менеджер",
+  "object": "Catalog.Товары",
+  "rights": {"Read": true, "View": true}
+}
+```
 
 ## Common modules and subsystems
 
