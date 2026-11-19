@@ -32,10 +32,12 @@ import com._1c.g5.v8.bm.core.IBmTransaction;
 import com._1c.g5.v8.bm.integration.AbstractBmTask;
 import com._1c.g5.v8.bm.integration.IBmModel;
 import com._1c.g5.v8.dt.core.model.IModelObjectCollectionRuntimeOrderSorter;
+import com._1c.g5.v8.dt.core.naming.ITopObjectFqnGenerator;
 import com._1c.g5.v8.dt.core.platform.IBmModelManager;
 import com._1c.g5.v8.dt.core.platform.IExtensionProject;
 import com._1c.g5.v8.dt.core.platform.IV8Project;
 import com._1c.g5.v8.dt.core.platform.IV8ProjectManager;
+import com._1c.g5.v8.dt.metadata.mdclass.MdClassPackage;
 import com._1c.g5.v8.dt.metadata.mdclass.MdObject;
 import com._1c.g5.v8.dt.metadata.mdclass.Role;
 import com._1c.g5.v8.dt.rights.IRightInfosService;
@@ -49,6 +51,7 @@ import com._1c.g5.v8.dt.rights.model.Rls;
 import com._1c.g5.v8.dt.rights.model.RoleDescription;
 import com._1c.g5.v8.dt.rights.model.util.RightsModelUtil;
 import com._1c.g5.wiring.ServiceAccess;
+import io.github.keyfire.edtbridge.core.NewObjects;
 import io.github.keyfire.edtbridge.core.RoleRightsEdit;
 
 /**
@@ -219,7 +222,7 @@ public final class RoleRightsGateway {
                     for (Right right : allowed(infos, object)) byName.put(right.getName(), right);
                     Map<Right, Boolean> values = new LinkedHashMap<>();
                     for (Change change : changes) values.put(byName.get(change.right), change.after);
-                    RoleDescription description = writableDescription(role);
+                    RoleDescription description = writableDescription(tx, role);
                     applyValues(role, description, object, target, values, roleFqn, sorter());
                     // The rights are a top object of their own (Rights.rights): exporting the role
                     // rewrites the role file and leaves the rights file as it was.
@@ -254,7 +257,7 @@ public final class RoleRightsGateway {
                 throw new IllegalArgumentException(RoleRightsEdit.restrictedRefusal(right.getName(), objectFqn, roleFqn));
             }
         }
-        RightValue defaultValue = RightsModelUtil.getDefaultRightValue(object, role);
+        RightValue defaultValue = defaultValue(object, role);
         for (Map.Entry<Right, Boolean> value : values.entrySet()) {
             RightsModelUtil.changeObjectRight(RightsModelUtil.getRightValue(value.getValue()), defaultValue, entry,
                     value.getKey());
@@ -270,7 +273,7 @@ public final class RoleRightsGateway {
     static List<RightState> states(Role role, RoleDescription description, EObject object, List<Right> allowed) {
         ObjectRights entry = description == null ? null
                 : RightsModelUtil.filterObjectRightsByEObjectFastly(object, description);
-        Boolean byDefault = value(RightsModelUtil.getDefaultRightValue(object, role));
+        Boolean byDefault = value(defaultValue(object, role));
         List<RightState> states = new ArrayList<>();
         for (Right right : allowed) {
             RightState state = new RightState();
@@ -306,6 +309,16 @@ public final class RoleRightsGateway {
             else entry.childObjects++;
         }
         return new ArrayList<>(entries.values());
+    }
+
+    /**
+     * The value a right of the object takes when the role does not state it. A role without its own
+     * {@code Rights.rights} answers a placeholder that EDT's helper cannot read: such a role sets
+     * nothing, so a right is not set, and in an adopted role the base configuration decides.
+     */
+    static RightValue defaultValue(EObject object, Role role) {
+        if (role.getRights() instanceof RoleDescription) return RightsModelUtil.getDefaultRightValue(object, role);
+        return adopted(role) ? RightValue.PROVIDED : RightValue.UNSET;
     }
 
     static Boolean value(RightValue value) {
@@ -383,12 +396,83 @@ public final class RoleRightsGateway {
         return role.getRights() instanceof RoleDescription description ? description : null;
     }
 
-    private static RoleDescription writableDescription(Role role) {
+    /**
+     * The rights of the role to write into. A role without its own {@code Rights.rights} gets one:
+     * a description that is not attached to the model would never reach a file.
+     */
+    private static RoleDescription writableDescription(IBmTransaction tx, Role role) {
         RoleDescription description = description(role);
-        if (description != null) return description;
-        description = RightsFactory.eINSTANCE.createRoleDescription();
-        role.setRights(description);
+        if (description != null && attached(description)) return description;
+        description = newDescription();
+        attach(tx, role, description);
         return description;
+    }
+
+    /**
+     * Empty rights with the flags the designer gives a role it creates: rights are not set for new
+     * objects and are set for attributes and tabular sections by default.
+     */
+    static RoleDescription newDescription() {
+        RoleDescription description = RightsFactory.eINSTANCE.createRoleDescription();
+        description.setSetForNewObjects(false);
+        description.setSetForAttributesByDefault(true);
+        description.setIndependentRightsOfChildObjects(false);
+        return description;
+    }
+
+    /**
+     * The rights of a new role, attached as the role's own top object, {@code Rights.rights}. A
+     * role of a configuration also gets the starting rights on the configuration that it has, a
+     * role of an extension gets none. Returns the FQN of the rights.
+     */
+    static String attachNewRights(IBmTransaction tx, Role role, String roleFqn, EObject configuration,
+            List<Right> configurationRights) {
+        RoleDescription description = newDescription();
+        String fqn = attach(tx, role, description);
+        grant(role, description, configuration, configurationRights, roleFqn, sorter());
+        return fqn;
+    }
+
+    /** Sets the given rights of the object; an empty list leaves the rights as they are. */
+    static void grant(Role role, RoleDescription description, EObject object, List<Right> rights, String roleFqn,
+            IModelObjectCollectionRuntimeOrderSorter sorter) {
+        if (rights == null || rights.isEmpty()) return;
+        Map<Right, Boolean> values = new LinkedHashMap<>();
+        for (Right right : rights) values.put(right, Boolean.TRUE);
+        applyValues(role, description, object, fqn(object), values, roleFqn, sorter);
+    }
+
+    /**
+     * The rights of the configuration that a new role starts with: none in an extension, which
+     * cannot set rights on the configuration, and otherwise those of
+     * {@link NewObjects#ROLE_CONFIGURATION_RIGHTS} the configuration has.
+     */
+    static List<Right> startingConfigurationRights(IRightInfosService infos, EObject configuration) {
+        List<Right> rights = new ArrayList<>();
+        boolean extension = configuration instanceof MdObject md && adopted(md);
+        if (configuration == null || (extension
+                ? !RightsModelUtil.EXTENSION_SUPPORTED_RIGHT_ECLASSES.contains(configuration.eClass())
+                : !RightsModelUtil.SUPPORTED_RIGHT_ECLASSES.contains(configuration.eClass()))) {
+            return rights;
+        }
+        List<Right> allowed = allowed(infos, configuration);
+        Map<String, Right> byName = new LinkedHashMap<>();
+        for (Right right : allowed) byName.put(right.getName(), right);
+        for (String name : NewObjects.roleConfigurationRights(byName.keySet())) rights.add(byName.get(name));
+        return rights;
+    }
+
+    private static String attach(IBmTransaction tx, Role role, RoleDescription description) {
+        ITopObjectFqnGenerator names = FormWriteGateway.topObjectFqnGenerator();
+        if (names == null) throw new IllegalStateException("EDT top object FQN generator is unavailable");
+        String fqn = names.generateExternalPropertyFqn(role, MdClassPackage.Literals.ROLE__RIGHTS);
+        tx.attachTopObject((IBmObject) description, fqn);
+        role.setRights(description);
+        return fqn;
+    }
+
+    private static boolean attached(RoleDescription description) {
+        return description instanceof IBmObject bm && !bm.bmIsTransient() && bm.bmGetEngine() != null;
     }
 
     static boolean adopted(MdObject object) {
@@ -417,7 +501,7 @@ public final class RoleRightsGateway {
         return String.valueOf(object);
     }
 
-    private static IRightInfosService rightInfos() {
+    static IRightInfosService rightInfos() {
         IRightInfosService service = null;
         try {
             service = ServiceAccess.get(IRightInfosService.class);
