@@ -162,8 +162,10 @@ def _workspace_log(workspace: str | None, problems: list[str]) -> dict | None:
 
 
 def diagnose(backend) -> dict:
-    """Everything doctor checks, as one JSON-ready report; ``problems`` lists what to fix."""
+    """Everything doctor checks, as one JSON-ready report; ``problems`` lists what to fix and
+    ``notes`` what EDT puts right by itself on its next start."""
     problems: list[str] = []
+    notes: list[str] = []
     cli = backend._find_cli()
     dropins = cli.parent / "dropins" if cli else update._find_dropins()
     edt = dropins.parent if dropins else None
@@ -173,7 +175,7 @@ def diagnose(backend) -> dict:
     jars = _jars(dropins, problems) if dropins else []
     configurations = _configurations(edt, backend.workspace) if edt else []
     if dropins:
-        update.warn_stale_configurations(dropins, emit=problems.append)
+        update.warn_stale_configurations(dropins, emit=problems.append, note=notes.append)
     processes = _processes(backend, edt, problems)
     status = backend.status()
     bridge = None if status is None else {"port": backend._active_port,
@@ -196,4 +198,5 @@ def diagnose(backend) -> dict:
         "bridge": bridge,
         "workspaceLog": _workspace_log(backend.workspace, problems),
         "problems": problems,
+        "notes": notes,
     }

@@ -11,6 +11,7 @@ from zipfile import ZipFile
 
 
 import os
+import time
 
 import pytest
 
@@ -774,6 +775,67 @@ def test_a_start_list_naming_a_replaced_jar_is_reported(monkeypatch, tmp_path):
     assert len(lines) == 1
     assert str(area / "config.ini") in lines[0]
     assert _OLD_JAR in lines[0] and "-clean" in lines[0]
+
+
+def _install_area(dropins, started=None):
+    """The configuration of the install; ``started`` is when an EDT last started with it."""
+    area = dropins.parent / "configuration"
+    (area / "org.eclipse.equinox.simpleconfigurator").mkdir(parents=True)
+    if started is not None:
+        table = area / "org.eclipse.osgi" / ".manager" / ".fileTable.1"
+        table.parent.mkdir(parents=True)
+        table.write_bytes(b"")
+        os.utime(table, (started, started))
+    return area
+
+
+def _stale_check(dropins):
+    problems, notes = [], []
+    update.warn_stale_configurations(dropins, emit=problems.append, note=notes.append)
+    return problems, notes
+
+
+def test_the_old_entry_before_the_first_start_is_a_note(monkeypatch, tmp_path):
+    """Right after self-update the install configuration still registers the replaced jar, and EDT
+    rewrites the entry on its next start: 18.11.2026 it went from 0.49.0 to 0.50.0 that way, while
+    doctor had called it a problem and exited with 1."""
+    _home(monkeypatch, tmp_path)
+    dropins = _edt_with_new_jar(tmp_path)
+    area = _install_area(dropins, started=time.time() - 3600)
+    _registers(area, _OLD_JAR)
+
+    problems, notes = _stale_check(dropins)
+
+    assert problems == []
+    assert len(notes) == 1 and _OLD_JAR in notes[0] and "next start" in notes[0]
+
+
+def test_the_old_entry_after_a_start_is_a_problem(monkeypatch, tmp_path):
+    """EDT started after the jar came and kept the old entry: it will not put that right."""
+    _home(monkeypatch, tmp_path)
+    dropins = _edt_with_new_jar(tmp_path)
+    _registers(_install_area(dropins, started=time.time() + 60), _OLD_JAR)
+
+    problems, notes = _stale_check(dropins)
+
+    assert notes == []
+    assert len(problems) == 1 and "stale Equinox configuration" in problems[0]
+
+
+def test_the_same_version_under_another_file_is_a_problem_before_any_start(monkeypatch, tmp_path):
+    """An entry of the installed version under another file name is one EDT keeps on start, and the
+    bridge then does not load (12.11.2026, a renamed copy of an installed jar)."""
+    _home(monkeypatch, tmp_path)
+    dropins = _edt_with_new_jar(tmp_path)
+    area = _install_area(dropins)
+    version = _NEW_JAR[len(update.JAR_PREFIX):-len(".jar")]
+    (area / "org.eclipse.equinox.simpleconfigurator" / "bundles.info").write_text(
+        f"io.github.keyfire.edtbridge,{version},dropins/renamed.jar,4,false\n", encoding="utf-8")
+
+    problems, notes = _stale_check(dropins)
+
+    assert notes == []
+    assert len(problems) == 1 and "renamed.jar" in problems[0]
 
 
 @pytest.mark.parametrize("elevated", [False, True])

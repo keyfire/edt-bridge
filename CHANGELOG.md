@@ -13,6 +13,15 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
+## Unreleased
+
+### Fixed
+
+- `doctor` and `self-update` no longer report a problem when the EDT configuration still
+  registers the replaced jar right after an update. EDT rewrites that entry on its next start, so
+  `doctor` shows it as a note and exits with 0. An entry EDT will not fix stays a problem: the
+  same version under another file name, or an old entry after EDT has started since the update.
+
 ## 2026-11-18 – 0.50.0
 
 ### Added
