@@ -656,6 +656,8 @@ def _run(command: str, argv: list[str]) -> int:
                   "administrator rights", file=sys.stderr)
         for problem in report["problems"]:
             print(problem, file=sys.stderr)
+        for note in report["notes"]:
+            print("note: " + note, file=sys.stderr)
         return 1 if report["problems"] else 0
 
     if command == "status":

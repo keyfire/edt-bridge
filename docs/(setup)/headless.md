@@ -34,7 +34,9 @@ When the bridge does not come up, headless or in the EDT window, run `edt-bridge
 --workspace <ws>`. The command starts and changes nothing. It checks the jar in `dropins` and
 whether EDT can read it, which bridge version each EDT configuration registers, whether EDT runs
 as administrator, and whether the last EDT session logged a plugin load error. Each problem it
-finds comes with the step that fixes it.
+finds comes with the step that fixes it. Right after `self-update` the EDT configuration still
+registers the replaced jar. That is not a problem: EDT rewrites the entry on its next start, and
+the command shows it as a note with exit code 0.
 
 ## Waiting for the models
 

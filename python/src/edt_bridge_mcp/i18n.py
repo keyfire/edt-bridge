@@ -316,12 +316,16 @@ MESSAGES = {
               "моста регистрируют области конфигурации EDT, запущена ли EDT от администратора, "
               "ошибки загрузки плагина в журнале рабочей области. Мост и EDT для этого не нужны: "
               "команда ничего не запускает и не меняет. Найденные проблемы и способы их "
-              "исправить выводятся в stderr, код выхода 1.",
+              "исправить выводятся в stderr, код выхода 1. То, что EDT исправит сама при "
+              "следующем запуске, например запись прежнего jar сразу после self-update, "
+              "выводится туда же с пометкой note и на код выхода не влияет.",
         "en": "Check what keeps the bridge from working: the jar in dropins and its permissions, "
               "the bridge versions the EDT configurations register, whether EDT runs as "
               "administrator, and plugin load errors in the workspace log. Needs no bridge and no "
               "EDT: the command starts and changes nothing. Problems and their fixes go to "
-              "stderr, with exit code 1.",
+              "stderr, with exit code 1. What EDT puts right by itself on its next start, such "
+              "as the entry of the replaced jar right after self-update, goes there as a note "
+              "and leaves the exit code alone.",
     },
     "shutdown.description": {
         "ru": "Штатно завершить EDT, обслуживающую мост, - вместо taskkill по процессам. "

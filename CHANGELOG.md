@@ -32,6 +32,11 @@ to the code and the reasoning behind it.
 
 ### Fixed
 
+- `doctor` and `self-update` no longer report a problem when the EDT configuration still
+  registers the replaced jar right after an update. EDT rewrites that entry on its next start, so
+  `doctor` shows it as a note and exits with 0. An entry EDT will not fix stays a problem: the
+  same version under another file name, or an old entry after EDT has started since the update.
+  ([#104](https://github.com/keyfire/edt-bridge/pull/104))
 - `edt_role_rights` with `object` and `edt_modify_role_rights` work with a role without its own
   `Rights.rights`, such as a main role created by the New Configuration Extension wizard. Both
   stopped with a `ClassCastException`. The first write of rights now creates the file.

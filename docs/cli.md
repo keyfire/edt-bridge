@@ -150,7 +150,7 @@ usage: edt-bridge-mcp status [-h] [--all] [--ports PORTS] [--workspace WORKSPACE
 
 ## `edt-bridge-mcp doctor`
 
-Check what keeps the bridge from working: the jar in dropins and its permissions, the bridge versions the EDT configurations register, whether EDT runs as administrator, and plugin load errors in the workspace log. Needs no bridge and no EDT: the command starts and changes nothing. Problems and their fixes go to stderr, with exit code 1.
+Check what keeps the bridge from working: the jar in dropins and its permissions, the bridge versions the EDT configurations register, whether EDT runs as administrator, and plugin load errors in the workspace log. Needs no bridge and no EDT: the command starts and changes nothing. Problems and their fixes go to stderr, with exit code 1. What EDT puts right by itself on its next start, such as the entry of the replaced jar right after self-update, goes there as a note and leaves the exit code alone.
 
 ```bash
 usage: edt-bridge-mcp doctor [-h] [--workspace WORKSPACE] [--edt-dir EDT_DIR] [--port

@@ -194,6 +194,26 @@ def test_a_plugin_failure_of_an_earlier_session_is_history(edt, tmp_path, monkey
     assert report["problems"] == []
 
 
+def _install_registers(install, jar):
+    info = install / "configuration" / "org.eclipse.equinox.simpleconfigurator" / "bundles.info"
+    info.parent.mkdir(parents=True)
+    version = jar[len(update.JAR_PREFIX):-len(".jar")]
+    info.write_text(f"io.github.keyfire.edtbridge,{version},dropins/{jar},4,false\n",
+                    encoding="utf-8")
+
+
+def test_an_install_entry_edt_rewrites_on_its_next_start_is_a_note(edt, capsys):
+    """The state right after self-update, before EDT started: not a fault, and exit code 0."""
+    _install_registers(edt, _OLD)
+
+    report = doctor.diagnose(server.Backend())
+
+    assert report["problems"] == []
+    assert len(report["notes"]) == 1 and _OLD in report["notes"][0]
+    assert cli.run("doctor", []) == 0
+    assert "note: " in capsys.readouterr().err
+
+
 def test_the_command_prints_the_report_and_the_problems(edt, capsys):
     _user_area(edt, _OLD)
 

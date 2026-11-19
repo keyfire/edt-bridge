@@ -49,6 +49,7 @@ import shutil
 import subprocess
 import tempfile
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 import zipfile
@@ -543,12 +544,52 @@ def _configuration_lines(path: Path, emit, encoding: str = "utf-8-sig") -> list[
         return []
 
 
-def warn_stale_configurations(dropins: Path, emit=log) -> None:
+def _last_start(configuration: Path) -> float | None:
+    """When an EDT last started with this configuration, or None if none has: Equinox rewrites
+    its file table under org.eclipse.osgi/.manager on every start."""
+    try:
+        return max((entry.stat().st_mtime for entry in
+                    (configuration / "org.eclipse.osgi" / ".manager").iterdir()), default=None)
+    except OSError:
+        return None
+
+
+def _pinned_file(location: str, base: Path) -> Path:
+    """The file a bundles.info location names: a file: URL, or a path relative to the install."""
+    if location.startswith("file:"):
+        return Path(urllib.request.url2pathname(urllib.parse.urlparse(location).path))
+    return base / location
+
+
+def _awaits_start(configuration: Path, pinned_version: str, location: str, version: str,
+                  jar: Path) -> bool:
+    """Whether an entry for the replaced jar is what EDT itself rewrites on its next start.
+
+    It is when the entry names another version, its jar is gone from dropins and no EDT has
+    started with the configuration since the new jar came. On 18.11.2026 EDT rewrote such an
+    entry from 0.49.0 to 0.50.0 on its first start after self-update. An entry of the same
+    version under another file name it keeps, and the bridge then does not load; an entry still
+    there after a start is the same failure."""
+    if pinned_version == version or _pinned_file(location, jar.parent.parent).exists():
+        return False
+    try:
+        state = jar.stat()
+    except OSError:
+        return False
+    started = _last_start(configuration)
+    return started is None or started < max(state.st_mtime, state.st_ctime)
+
+
+def warn_stale_configurations(dropins: Path, emit=log, note=None) -> None:
     """Report pinned Equinox entries in known configurations without changing a running EDT.
 
-    The per-user configuration of the install is read as well: a start of EDT without elevation
-    that found it still registering a replaced jar came up without simpleconfigurator, an empty
-    EDT. Its `config.ini` is read too, since in that state `osgi.bundles` named the jar itself."""
+    An entry of the install or workspace configuration that EDT rewrites on its next start goes
+    to ``note`` (``emit`` by default): right after self-update that is the usual state, not a
+    fault. The per-user configuration of the install is read as well: a start of EDT without
+    elevation that found it still registering a replaced jar came up without simpleconfigurator,
+    an empty EDT. Its `config.ini` is read too, since in that state `osgi.bundles` named the jar
+    itself."""
+    note = note or emit
     installed = installed_jar(dropins)
     if installed is None:
         return
@@ -566,6 +607,13 @@ def warn_stale_configurations(dropins: Path, emit=log) -> None:
             if len(fields) < 3 or fields[0] != "io.github.keyfire.edtbridge":
                 continue
             if fields[1] != version or jar.name not in fields[2]:
+                if configuration not in user and _awaits_start(configuration, fields[1], fields[2],
+                                                               version, jar):
+                    note(f"{info} still registers {fields[1]} at {fields[2]}: EDT has not started "
+                         f"with this configuration since {jar.name} was installed, and it rewrites "
+                         f"the entry on its next start. After that start, edt-bridge-mcp doctor "
+                         f"shows {version} registered.")
+                    continue
                 stale.append((info, f"{fields[1]} at {fields[2]}"))
         if configuration not in user:
             for source, pinned in stale:

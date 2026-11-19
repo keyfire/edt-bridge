@@ -70,8 +70,11 @@ def test_status_scans_upward_and_pins_the_port_that_answered(monkeypatch):
 
 
 def test_status_is_none_when_nothing_answers(monkeypatch):
+    """Nothing answers and nothing listens, whatever runs on this machine: an EDT with the bridge on
+    8770 would otherwise send is_up to the busy check, which asks /status with a timeout."""
     backend = server.Backend()
-    monkeypatch.setattr(backend, "_status_on", lambda _port: None)
+    monkeypatch.setattr(backend, "_status_on", lambda _port, _timeout=None: None)
+    monkeypatch.setattr(backend, "_listening", lambda _port, timeout=None: False)
     assert backend.status() is None
     assert backend.is_up() is False
 
