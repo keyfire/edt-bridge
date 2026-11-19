@@ -21,6 +21,7 @@ to the code and the reasoning behind it.
   registers the replaced jar right after an update. EDT rewrites that entry on its next start, so
   `doctor` shows it as a note and exits with 0. An entry EDT will not fix stays a problem: the
   same version under another file name, or an old entry after EDT has started since the update.
+  ([#104](https://github.com/keyfire/edt-bridge/pull/104))
 
 ## 2026-11-18 – 0.50.0
 
