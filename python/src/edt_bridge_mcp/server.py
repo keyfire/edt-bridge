@@ -53,7 +53,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
 from . import __version__
-from . import cli, form_run, headless, i18n, job_events, jobs, plugins, scope, toolsets, unit_run
+from . import cli, form_render, form_run, headless, i18n, job_events, jobs, plugins, scope, toolsets, unit_run
 
 PROTOCOL_FALLBACK = "2024-11-05"
 
@@ -1337,6 +1337,9 @@ LOCAL_TOOLS = [
     },
     form_run.DESCRIPTOR,
     unit_run.DESCRIPTOR,
+    # Shadows the bridge's own edt_form_render: the client look is drawn here, from the layout the
+    # bridge hands over, and engine "edt" is passed on to the bridge unchanged.
+    form_render.DESCRIPTOR,
 ]
 LOCAL_TOOL_NAMES = {tool["name"] for tool in LOCAL_TOOLS}
 
@@ -1679,6 +1682,9 @@ class StdioServer:
         if misnamed:
             self._tool_error(req_id, misnamed)
             return
+        if name == form_render.NAME:
+            self._call_form_render(req_id, arguments)
+            return
         runners = {form_run.DESCRIPTOR["name"]: form_run.run_tool, unit_run.DESCRIPTOR["name"]: unit_run.run_tool}
         if name in runners:
             # The form run and the unit tests need the platform, not EDT: they never touch the backend.
@@ -1708,6 +1714,31 @@ class StdioServer:
         self._announced_ready = False
         self._notify_tools_changed()
         threading.Thread(target=self._announce_when_ready, daemon=True).start()
+
+    def _call_form_render(self, req_id, arguments: dict) -> None:
+        """edt_form_render: the layout comes from the bridge, the drawing is made here."""
+        ready, msg = self.backend.ensure(wait=True)
+        if not ready:
+            self._tool_error(req_id, f"edt-bridge backend is unavailable: {msg}. " + self.backend.start_hint())
+            return
+        outside = self._scope_problem()
+        if outside:
+            self._tool_error(req_id, outside)
+            return
+
+        def bridge(tool: str, args: dict):
+            return self.backend.forward({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                                         "params": {"name": tool, "arguments": args}})
+
+        try:
+            report = form_render.run(arguments, bridge)
+        except (form_render.RenderError, ValueError) as exc:
+            self._tool_error(req_id, f"{form_render.NAME}: {exc}")
+            return
+        except (OSError, RuntimeError) as exc:  # Chromium or the file system; the loop must survive it
+            self._tool_error(req_id, f"{form_render.NAME} failed: {exc}")
+            return
+        self._json_result(req_id, report)
 
     def _json_result(self, req_id, answer: dict, is_error: bool = False) -> None:
         body = answer.get("result", answer)

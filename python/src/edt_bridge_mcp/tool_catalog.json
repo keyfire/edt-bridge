@@ -1314,7 +1314,7 @@
     },
     {
       "name": "edt_form_render",
-      "description": "Render a managed form to a PNG via EDT's native offscreen renderer (the form-editor WYSIWYG engine), in the chosen interface variant (TAXI 8.3 / VERSION8_5) and theme (LIGHT/DARK). Returns the saved PNG path + size. For visual review of form layout.",
+      "description": "Render a managed form to a PNG via EDT's native offscreen renderer (the form-editor WYSIWYG engine), in the chosen interface variant (TAXI 8.3 / VERSION8_5) and theme (LIGHT/DARK). Returns the saved PNG path + size. For visual review of form layout. engine \"model\" also returns the client view model; the edt-bridge-mcp wrapper serves this tool and draws the form in the look of the 1C client from it.",
       "descriptionRu": "Отрендерить управляемую форму в PNG через нативный offscreen-рендерер EDT (движок WYSIWYG редактора форм), в выбранном варианте интерфейса (Такси 8.3 / Версия 8.5) и теме (светлая/тёмная). Возвращает путь к PNG и размер. Для визуальной оценки формы.",
       "inputSchema": {
         "type": "object",
@@ -1362,6 +1362,10 @@
           "outPath": {
             "type": "string",
             "description": "Absolute PNG output path (default: <tmp>/edt_form_<...>.png)"
+          },
+          "engine": {
+            "type": "string",
+            "description": "edt (default here): EDT's form editor preview. model: also return the client view model of the form (EDT's layout with titles in the configuration language), which the edt-bridge-mcp wrapper draws in the look of the 1C client. client: drawn by the wrapper only"
           }
         },
         "required": [
@@ -4851,5 +4855,5 @@
       ]
     }
   ],
-  "version": "0.50.1"
+  "version": "0.51.0"
 }

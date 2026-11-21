@@ -728,6 +728,25 @@ def _run(command: str, argv: list[str]) -> int:
         print(f"no bridge to call: {why}", file=sys.stderr)
         return 1
 
+    if command == "call" and args.tool == "edt_form_render":
+        # Drawn here, as in the MCP server: the bridge gives the layout, the wrapper the picture.
+        from . import form_render
+
+        try:
+            if arguments is None:
+                arguments = _tool_arguments(args)
+            report = form_render.run(arguments, lambda name, a: _forward(backend, {
+                "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": name, "arguments": a}}))
+        except (form_render.RenderError, ValueError) as bad:
+            print(f"edt_form_render: {bad}", file=sys.stderr)
+            return 2
+        except OSError as bad:
+            print(f"edt_form_render failed: {bad}", file=sys.stderr)
+            return 1
+        _print_result({"content": [{"type": "text", "text": json.dumps(report, ensure_ascii=False, indent=2)}]},
+                      args.raw)
+        return 0
+
     try:
         if command == "tools":
             answer = _forward(backend, {"jsonrpc": "2.0", "id": 1, "method": "tools/list",

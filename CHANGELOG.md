@@ -13,6 +13,14 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
+## 2026-11-21 – 0.51.0
+
+### Added
+
+- `edt_form_render` saves HTML and PNG previews in "Version 8.5" with a light or dark theme, and in
+  Taxi. Choose a page and supply sample field values, table rows, and messages. Use `engine="edt"`
+  for the EDT form editor preview. ([#106](https://github.com/keyfire/edt-bridge/pull/106))
+
 ## 2026-11-19 – 0.50.1
 
 ### Added

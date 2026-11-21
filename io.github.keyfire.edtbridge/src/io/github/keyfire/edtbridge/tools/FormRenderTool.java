@@ -52,6 +52,9 @@ public final class FormRenderTool {
         props.add("height", intProp("Viewport height px (default 800)"));
         props.add("scale", intProp("Upscale the finished PNG by this percent (>100; default 100 = native size). E.g. 150 to roughly match a 150% display. Raster upscale – the render itself is at 100%."));
         props.add("outPath", strProp("Absolute PNG output path (default: <tmp>/edt_form_<...>.png)"));
+        props.add("engine", strProp("edt (default here): EDT's form editor preview. model: also return the client view "
+                + "model of the form (EDT's layout with titles in the configuration language), which the edt-bridge-mcp "
+                + "wrapper draws in the look of the 1C client. client: drawn by the wrapper only"));
 
         JsonArray req = new JsonArray();
         req.add("projectName");
@@ -67,7 +70,9 @@ public final class FormRenderTool {
         t.addProperty("description",
                 "Render a managed form to a PNG via EDT's native offscreen renderer (the form-editor "
                 + "WYSIWYG engine), in the chosen interface variant (TAXI 8.3 / VERSION8_5) and theme "
-                + "(LIGHT/DARK). Returns the saved PNG path + size. For visual review of form layout.");
+                + "(LIGHT/DARK). Returns the saved PNG path + size. For visual review of form layout. "
+                + "engine \"model\" also returns the client view model; the edt-bridge-mcp wrapper serves this "
+                + "tool and draws the form in the look of the 1C client from it.");
         t.addProperty("descriptionRu",
                 "Отрендерить управляемую форму в PNG через нативный offscreen-рендерер EDT (движок "
                 + "WYSIWYG редактора форм), в выбранном варианте интерфейса (Такси 8.3 / Версия 8.5) и "
@@ -90,12 +95,18 @@ public final class FormRenderTool {
         int height = getInt(args, "height", 0);
         int scale = getInt(args, "scale", 0);
         String outPath = getStr(args, "outPath");
+        String engine = getStr(args, "engine");
+        if ("client".equalsIgnoreCase(engine)) {
+            return McpServer.toolError("edt_form_render with engine \"client\" is drawn by the edt-bridge-mcp wrapper: "
+                    + "call the tool through it (MCP or edt-bridge-mcp call), or use engine \"edt\" for EDT's preview");
+        }
+        boolean wantModel = "model".equalsIgnoreCase(engine);
         if (outPath == null) {
             String safe = fqn.replaceAll("[^A-Za-z0-9._-]", "_");
             outPath = new File(System.getProperty("java.io.tmpdir"), "edt_form_" + safe + ".png").getAbsolutePath();
         }
         try {
-            FormGateway.RenderResult res = gateway.renderForm(project, fqn, variant, theme, density, ratio, width, height, scale, outPath);
+            FormGateway.RenderResult res = gateway.renderForm(project, fqn, variant, theme, density, ratio, width, height, scale, outPath, wantModel);
             JsonObject o = new JsonObject();
             o.addProperty("ok", res.ok);
             o.addProperty("formFqn", res.fqn);
@@ -112,6 +123,9 @@ public final class FormRenderTool {
                 o.addProperty("message", res.message);
             }
             var gson = new GsonBuilder().setPrettyPrinting().create();
+            if (res.layModel != null) {
+                o.add("layModel", res.layModel);
+            }
             if (res.diagnostics != null) {
                 o.add("diagnostics", gson.toJsonTree(res.diagnostics));
             }
