@@ -26,7 +26,7 @@ from . import form_view
 
 ENV_PLATFORM = "EDT_BRIDGE_PLATFORM"
 ENV_CACHE = "EDT_BRIDGE_ASSET_CACHE"
-LAYOUT = 6
+LAYOUT = 7
 #: Symbols the 8.5 drawing uses; a sprite without them is not the client's.
 REQUIRED_SYMBOLS = ("svg_moreTop", "svg_closeBig", "svg_context", "svg_search", "svg_plus", "svg_minus",
                     "svg_cornerBottom", "svg_open", "svg_infoSmall", "svg_checkbox")
@@ -227,7 +227,7 @@ def extract_pictures(resource: bytes) -> str:
 
 
 #: Field buttons of "Taxi" are packed as `_<name>100.png`, command pictures as `_<name>_100.png`.
-TAXI_FIELD_PICTURES = ("editClear", "editDropDown", "editOpen", "editRegDown", "editRegUp")
+TAXI_FIELD_PICTURES = ("editCalendar", "editClear", "editDropDown", "editOpen", "editRegDown", "editRegUp")
 _TAXI_COMMAND_PICTURE = re.compile(rb"_([A-Za-z0-9]+)_100\.png")
 
 

@@ -76,6 +76,7 @@ final class FormClientView {
     private final Map<String, Map<String, String>> written;
     /** Synonyms the configuration gives standard attributes of the form's object (Code shown as "ID"). */
     private Map<String, String> standardTitles = Map.of();
+    private Map<String, String> valueKinds = Map.of();
 
     FormClientView(String language, boolean v85, int maxNodes, Map<String, Map<String, String>> written) {
         this.language = language == null || language.isBlank() ? "ru" : language;
@@ -104,6 +105,12 @@ final class FormClientView {
             }
         }
         standardTitles = found;
+        return this;
+    }
+
+    /** Date kinds of the form's data paths ("date", "dateTime", "time"), given to the fields bound to them. */
+    FormClientView valueKinds(Map<String, String> kinds) {
+        valueKinds = kinds == null ? Map.of() : kinds;
         return this;
     }
 
@@ -213,6 +220,10 @@ final class FormClientView {
             String path = pathOf(((DataItem) e).getDataPath());
             if (path != null) {
                 r.addProperty("dataPath", path);
+                String kind = valueKinds.get(path);
+                if (kind != null) {
+                    r.addProperty("valueKind", kind);
+                }
             }
         }
         if (e instanceof Button) {

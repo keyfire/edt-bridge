@@ -65,10 +65,13 @@ DESCRIPTOR = {
                 "type": "object",
                 "description": (
                     "client engine: sample data. title - the window title; values - {item name or data path: "
-                    "value} for fields (a boolean for a check box, an item title or index for a tumbler or "
-                    "radio buttons); tables - {table name: {rows: [...], current: index}}, a row is a list of "
-                    "cell values in column order or an object by column name, with _level, _open, _check for "
-                    "trees and marks; hidden / shown - item names whose visibility the form code changes"),
+                    "value} for fields (a boolean for a check box, 2 for its third state, an item title or "
+                    "index for a tumbler or radio buttons); tables - {table name: {rows: [...], current: "
+                    "index}}, a row is a list of cell values in column order or an object by column name, "
+                    "with _level, _open, _check for trees and marks; hidden / shown - item names whose "
+                    "visibility the form code changes; messages - [{text, type: info / warning / success / "
+                    "error, group}] important messages the form code puts in a group (none: under the "
+                    "header)"),
             },
             "density": {"type": "string",
                         "description": "client engine: auto (default, the form's own scale variant), normal or "
@@ -99,6 +102,56 @@ _BRIDGE_ARGUMENTS = ("projectName", "formFqn", "fqn", "variant", "theme", "densi
 
 class RenderError(RuntimeError):
     pass
+
+
+#: Library calls in a form module that add what the form as written does not have.
+RUNTIME_ADDITIONS = {
+    "ДобавитьСтатус": "a status in the header", "AddStatus": "a status in the header",
+    "ДобавитьВажноеСообщение": "an important message under the header",
+    "AddImportantMessage": "an important message under the header",
+    "ВставитьВажноеСообщение": "an important message in a group",
+    "InsertImportantMessage": "an important message in a group",
+    "УправлениеСвойствами.ПриСозданииНаСервере": "the additional attributes page",
+    "PropertyManager.OnCreateAtServer": "the additional attributes page",
+    "Элементы.Добавить(": "new items", "Items.Add(": "new items",
+}
+#: Checks a form module makes to lay the form out one way for "Taxi" and another for 8.5.
+INTERFACE_BRANCHES = ("ЭтоВариантИнтерфейса85", "IsInterfaceVariant85", "ВариантИнтерфейсаКлиентскогоПриложения",
+                      "ClientApplicationInterfaceVariant")
+_SET_BY_CODE = re.compile(r"(?:Элементы|Items)\.(\w+)\.(Видимость|Visible|РежимВыбораИзСписка|ListChoiceMode)\s*=")
+
+
+def code_notes(source: str) -> list[str]:
+    """What the drawing cannot show because the form code decides it, named from the module text."""
+    notes = []
+    added = sorted({what for call, what in RUNTIME_ADDITIONS.items() if call in source})
+    if added:
+        notes.append("the form code adds at runtime: " + ", ".join(added)
+                     + " - not drawn unless passed in data (messages for important messages)")
+    if any(marker in source for marker in INTERFACE_BRANCHES):
+        notes.append("the form code lays the form out differently by interface variant: what it changes for "
+                     "one interface is not drawn")
+    found = {"visible": set(), "choice": set()}
+    for match in _SET_BY_CODE.finditer(source):
+        found["visible" if match.group(2) in ("Видимость", "Visible") else "choice"].add(match.group(1))
+    if found["visible"]:
+        notes.append("the form code sets the visibility of: " + ", ".join(sorted(found["visible"]))
+                     + " - pass hidden or shown in data for the case to draw")
+    if found["choice"]:
+        notes.append("the form code turns on choice from a list for: " + ", ".join(sorted(found["choice"]))
+                     + " - their drop-down buttons are not drawn")
+    return notes
+
+
+def _module_source(bridge: Callable[[str, dict], Any], project: str, fqn: str) -> str:
+    """The form module text, or nothing when the bridge cannot give it (an old plugin, no module)."""
+    try:
+        module = _bridge_json(bridge("edt_module_text", {"projectName": project, "fqn": fqn,
+                                                         "includeMethods": False}))
+    except RenderError:
+        return ""
+    text = module.get("text") if isinstance(module, dict) else None
+    return text if isinstance(text, str) else ""
 
 
 def _default_path(fqn: str, interface: str, theme: str, page: str | None) -> Path:
@@ -177,7 +230,7 @@ def run(arguments: dict, bridge: Callable[[str, dict], Any]) -> dict:
         raise RenderError("density must be auto, normal or compact")
     data = arguments.get("data")
     if data is not None and not isinstance(data, dict):
-        raise RenderError("data must be an object: {title, values, tables, hidden, shown}")
+        raise RenderError("data must be an object: {title, values, tables, hidden, shown, messages}")
     if interface == "taxi" and theme == "dark":
         raise RenderError("the platform has no dark theme for Taxi: use theme light, or interface v85")
     page = arguments.get("page")
@@ -217,6 +270,7 @@ def run(arguments: dict, bridge: Callable[[str, dict], Any]) -> dict:
         "pngPath": str(out), "htmlPath": str(html_path), "width": width, "height": height, "scale": scale,
         "assets": assets.source,
     }
+    warnings += code_notes(_module_source(bridge, project, str(fqn)))
     if drawing.warnings or warnings:
         report["warnings"] = warnings + drawing.warnings
     return report

@@ -1161,6 +1161,7 @@ public final class FormGateway {
                         return null;
                     }
                     Map<String, Map<String, String>> written = layModel ? writtenTitles(form) : null;
+                    com.google.gson.JsonObject empty = layModel ? emptyGroups(form) : null;
                     CommandInterfaceMapping cmi = buildCmi(form, model, mm);
                     IHippoLayModelSession session = HippoLayoutService.INSTANCE.createHippoSession(
                             tx, form, ts, rs, fpvc, cmi, variant, theme, targetPlatform, scale,
@@ -1169,7 +1170,7 @@ public final class FormGateway {
                     try {
                         out[0] = session.getFormImageData();
                         if (layModel) {
-                            r.layModel = clientModel(tx, session, cmi, form, mdForm, variant, written);
+                            r.layModel = clientModel(tx, session, cmi, form, mdForm, variant, written, empty);
                         }
                     } finally {
                         session.dispose();
@@ -1246,7 +1247,8 @@ public final class FormGateway {
      * and the form facts a window title is made of.
      */
     private com.google.gson.JsonObject clientModel(IBmTransaction tx, IHippoLayModelSession session, CommandInterfaceMapping cmi,
-            Form form, EObject mdForm, ClientInterfaceVariant variant, Map<String, Map<String, String>> written) {
+            Form form, EObject mdForm, ClientInterfaceVariant variant, Map<String, Map<String, String>> written,
+            com.google.gson.JsonObject emptyGroups) {
         EObject lay = session.getHippoForm();
         String lang = null;
         EStructuralFeature lf = lay == null ? null : lay.eClass().getEStructuralFeature("languageCode");
@@ -1255,12 +1257,14 @@ public final class FormGateway {
         }
         boolean v85 = variant == ClientInterfaceVariant.VERSION8_5;
         FormClientView view = new FormClientView(lang, v85, 40000, written)
-                .standardTitles(mdForm == null ? null : mdForm.eContainer());
+                .standardTitles(mdForm == null ? null : mdForm.eContainer())
+                .valueKinds(valueKinds(form, mdForm == null ? null : mdForm.eContainer()));
         com.google.gson.JsonObject o = new com.google.gson.JsonObject();
         o.addProperty("languageCode", lang == null ? "ru" : lang);
         o.addProperty("interface", v85 ? "v85" : "taxi");
         o.add("form", formFacts(form, mdForm, lang == null ? "ru" : lang));
         o.add("lay", view.view(lay));
+        o.add("emptyGroups", emptyGroups);
         if (cmi != null) {
             try {
                 o.add("commandInterface", new FormClientView(lang, v85, 4000).plain(cmi));
@@ -1341,6 +1345,116 @@ public final class FormGateway {
             items.add(item);
         }
         return items;
+    }
+
+    /**
+     * Groups of the form with no items, which the layout leaves out, and where each stands: its parent
+     * and the item after it. The form code puts what it adds at runtime into such groups (messages).
+     */
+    private static com.google.gson.JsonObject emptyGroups(Form form) {
+        com.google.gson.JsonObject groups = new com.google.gson.JsonObject();
+        for (java.util.Iterator<EObject> it = form.eAllContents(); it.hasNext();) {
+            EObject x = it.next();
+            if (!(x instanceof FormGroup) || !((FormGroup) x).getItems().isEmpty()) {
+                continue;
+            }
+            com.google.gson.JsonObject place = new com.google.gson.JsonObject();
+            EObject parent = x.eContainer();
+            if (parent instanceof FormItem) {
+                place.addProperty("parent", ((FormItem) parent).getName());
+            }
+            if (parent instanceof FormItemContainer) {
+                List<FormItem> siblings = ((FormItemContainer) parent).getItems();
+                int at = siblings.indexOf(x);
+                if (at >= 0 && at + 1 < siblings.size()) {
+                    place.addProperty("before", siblings.get(at + 1).getName());
+                }
+            }
+            groups.add(((FormGroup) x).getName(), place);
+        }
+        return groups;
+    }
+
+    /**
+     * Data paths of the form whose value is a date, with its parts ("date", "dateTime", "time"): the
+     * client puts a calendar button in an editable date field. Form attributes and their columns, and
+     * through the main attribute the owner's attributes, tabular section columns and standard date.
+     */
+    private static Map<String, String> valueKinds(Form form, EObject owner) {
+        Map<String, String> kinds = new java.util.HashMap<>();
+        for (FormAttribute a : form.getAttributes()) {
+            String name = a.getName();
+            putKind(kinds, name, a.getValueType());
+            for (EObject column : eObjects(a, "columns")) {
+                putKind(kinds, name + "." + nameOf(column), typeOf(column, "valueType"));
+            }
+            // The object attribute: the main one, or one of the owner's object type (a form may leave it unmarked).
+            String type = owner == null ? null : GatewaySupport.renderType(a.getValueType());
+            String ownerName = owner == null ? "" : nameOf(owner);
+            if (owner == null || !(a.isMain() || type != null && !ownerName.isEmpty()
+                    && (type.endsWith("Объект." + ownerName) || type.endsWith("Object." + ownerName)))) {
+                continue;
+            }
+            for (EObject attribute : eObjects(owner, "attributes")) {
+                putKind(kinds, name + "." + nameOf(attribute), typeOf(attribute, "type"));
+            }
+            for (EObject section : eObjects(owner, "tabularSections")) {
+                for (EObject attribute : eObjects(section, "attributes")) {
+                    putKind(kinds, name + "." + nameOf(section) + "." + nameOf(attribute), typeOf(attribute, "type"));
+                }
+            }
+            String kind = owner.eClass().getName();
+            if ("Document".equals(kind) || "BusinessProcess".equals(kind) || "Task".equals(kind)) {
+                kinds.put(name + ".Date", "dateTime");
+            }
+        }
+        return kinds;
+    }
+
+    private static void putKind(Map<String, String> kinds, String path,
+            com._1c.g5.v8.dt.mcore.TypeDescription type) {
+        if (type == null || type.getTypes() == null || type.getTypes().size() != 1) {
+            return;
+        }
+        String typeName;
+        try {
+            typeName = com._1c.g5.v8.dt.mcore.util.McoreUtil.getTypeName(type.getTypes().get(0));
+        } catch (RuntimeException e) {
+            return;
+        }
+        if (!"Date".equals(typeName)) {
+            return;
+        }
+        com._1c.g5.v8.dt.mcore.DateQualifiers q = type.getDateQualifiers();
+        com._1c.g5.v8.dt.mcore.DateFractions fractions = q == null ? null : q.getDateFractions();
+        kinds.put(path, fractions == com._1c.g5.v8.dt.mcore.DateFractions.DATE_TIME ? "dateTime"
+                : fractions == com._1c.g5.v8.dt.mcore.DateFractions.TIME ? "time" : "date");
+    }
+
+    private static List<EObject> eObjects(EObject owner, String feature) {
+        EStructuralFeature f = owner.eClass().getEStructuralFeature(feature);
+        Object v = f == null ? null : owner.eGet(f);
+        List<EObject> found = new ArrayList<>();
+        if (v instanceof List) {
+            for (Object x : (List<?>) v) {
+                if (x instanceof EObject) {
+                    found.add((EObject) x);
+                }
+            }
+        }
+        return found;
+    }
+
+    private static String nameOf(EObject o) {
+        EStructuralFeature f = o.eClass().getEStructuralFeature("name");
+        Object v = f == null ? null : o.eGet(f);
+        return v == null ? "" : String.valueOf(v);
+    }
+
+    private static com._1c.g5.v8.dt.mcore.TypeDescription typeOf(EObject o, String feature) {
+        EStructuralFeature f = o.eClass().getEStructuralFeature(feature);
+        Object v = f == null ? null : o.eGet(f);
+        return v instanceof com._1c.g5.v8.dt.mcore.TypeDescription ? (com._1c.g5.v8.dt.mcore.TypeDescription) v : null;
     }
 
     /** Titles of the form's items as written, by item name: taken before the layout fills its defaults. */

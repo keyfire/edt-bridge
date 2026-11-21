@@ -29,9 +29,12 @@ wrapper draws it as an HTML page and saves a PNG made by Chromium. Arguments:
 - `interface` – `v85` ("Version 8.5", the default) or `taxi`; `theme` – `light` or `dark`. The
   platform has no dark theme for Taxi, and the call refuses that pair.
 - `page` – the page to show, by name or title; the answer lists the pages of the form in `pages`.
-- `data` – sample data: `title` for the window, `values` by item name or data path, `tables` with
-  `rows` (lists in column order or objects by column name; `_level`, `_open`, `_check` for trees
-  and marks) and `current`, `hidden` and `shown` for items whose visibility the form code changes.
+- `data` – sample data: `title` for the window, `values` by item name or data path (`2` is the
+  third state of a check box), `tables` with `rows` (lists in column order or objects by column
+  name; `_level`, `_open`, `_check` for trees and marks) and `current`, `hidden` and `shown` for
+  items whose visibility the form code changes, `messages` for important messages the form code
+  shows (`text`, `type` – `info`, `warning`, `success` or `error`, and `group`, the form group the
+  message goes into; without it the message stands under the header).
 - `density` – `auto` (the form's own scale variant), `normal` or `compact`. The client may also
   choose compact for a form whose scale variant is Auto; that choice is made by the server and is
   not in the form, so pass `density="compact"` for such a form.
@@ -50,7 +53,29 @@ then `playwright install chromium`).
 
 Sizes and colors of the drawing were measured on the 8.5.1 web client. A window the client opens
 smaller than the form scrolls; the drawing shows the whole form. Elements the form code adds or
-fills when it opens are data: pass them in `data`.
+fills when it opens are data: pass them in `data`. The wrapper reads the form module and names in
+`warnings` what the code decides: elements it adds at runtime, a layout that differs by interface
+variant, items whose visibility or choice from a list it sets. A read-only field has no drop-down
+or calendar button, and an editable date field gets a calendar.
+
+To save a screenshot in the "Version 8.5" interface, specify the name of an open EDT project and
+the fully qualified name of the form. In PowerShell, pass the arguments in a JSON file.
+
+```powershell
+$argumentsFile = Join-Path $env:TEMP 'edt-form-render.json'
+$arguments = @{
+    projectName = 'Demo'
+    formFqn     = 'Catalog.Products.Form.ItemForm'
+    interface   = 'v85'
+    theme       = 'light'
+    outPath     = Join-Path $env:TEMP 'product-form.png'
+}
+$arguments | ConvertTo-Json | Set-Content -LiteralPath $argumentsFile -Encoding UTF8
+edt-bridge-mcp call edt_form_render --json-file $argumentsFile
+```
+
+The command saves `product-form.png` and `product-form.html` in the temporary directory and
+returns their paths in `pngPath` and `htmlPath`.
 
 `engine="edt"` returns EDT's form editor preview, as before; `variant`, `density`, `ratio`, `width`
 and `height` apply to it. It uses the native EDT renderer for `TAXI` and `VERSION8_5`. Enable native

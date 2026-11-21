@@ -86,6 +86,18 @@ DENSITY = {
     },
 }
 
+#: Important message banners by kind: (ground, mark) in 8.5 light, 8.5 dark and Taxi.
+NOTE_COLORS = {
+    "info": {"light": ("#b8ebff", "#32c1fa"), "dark": ("#2c5b6e", "#64cffa"), "taxi": ("#b8ebff", "#0f77a1")},
+    "warning": {"light": ("#fff1ab", "#ffd500"), "dark": ("#706427", "#ffdd33"), "taxi": ("#fff1ab", "#ffd500")},
+    "success": {"light": ("#abf7be", "#0cdc40"), "dark": ("#256635", "#37dc60"), "taxi": ("#abf7be", "#0cdc40")},
+    "error": {"light": ("#ffbbb8", "#ff3e33"), "dark": ("#70302d", "#ff6e66"), "taxi": ("#ffbbb8", "#ff3e33")},
+}
+NOTE_KINDS = {"информация": "info", "info": "info", "information": "info", "предупреждение": "warning",
+              "warning": "warning", "успех": "success", "success": "success", "ошибка": "error", "error": "error"}
+NOTE_ICONS = {"info": "svg_infoSmall", "warning": "svg_triangleExclamation", "success": "svg_check",
+              "error": "svg_triangleExclamationFill"}
+
 #: Vertical spacing of a group (8.5): the half interval of the compact density is measured, 6px instead of 14px.
 VERTICAL_SPACING = {"None": "0px", "Half": "calc(var(--gap-v) * 3 / 7)", "Double": "calc(var(--gap-v) * 2)"}
 
@@ -167,6 +179,13 @@ body { background: var(--page); font-family: var(--font); color: var(--text); -w
        display: inline-flex; align-items: center; justify-content: center; margin-right: 0; background: var(--field-bg); }
 .chkbox { display: inline-flex; width: 20px; height: 20px; align-items: center; justify-content: center; margin-right: 0; }
 .chk.on { border-color: var(--check); }
+.chk { position: relative; }
+.chk.part { border-color: var(--check); }
+.chk.part::after { content: ""; position: absolute; left: 4px; right: 4px; height: 2px; border-radius: 2px;
+                   background: var(--check); }
+.note { display: flex; align-items: flex-start; gap: 8px; border-radius: 14px; padding: 12px 14px; font-size: 13.333px;
+        line-height: 20px; color: var(--value); white-space: pre-wrap; }
+.note > .ni { display: inline-flex; flex: 0 0 auto; }
 .chk-gap { width: 0; }
 .tumbler { display: inline-flex; background: var(--fill); border-radius: var(--in-r); padding: 2px; gap: 0; align-self: flex-start; }
 .tumbler .ti { font-size: var(--in-fs); line-height: var(--in-lh); color: var(--muted); padding: calc((var(--in-h) - 4px - var(--in-lh)) / 2) 12px;
@@ -324,6 +343,9 @@ table.grid td { border-top: 0.8px solid #e6e6e6; height: 29px; padding: 0 6px; c
 .chk.on { border-color: #a0a0a0; }
 .chk > svg { position: absolute; left: -1px; top: -1px; }
 .chkrow { font-size: 13.333px; line-height: 16px; color: #333333; }
+.chk.part { border-color: #a0a0a0; }
+.chk.part::after { left: 3px; right: 3px; top: 3px; bottom: 3px; height: auto; border-radius: 0.075em; background: #a0a0a0; }
+.note { border-radius: 0; padding: 4px 6px 5px 5px; gap: 5px; line-height: 16px; color: #333333; }
 .rdot { width: 15px; height: 15px; border: 0.8px solid #a0a0a0; }
 .rdot.on { border-color: #a0a0a0; }
 .rdot.on::after { width: 5px; height: 5px; background: #009646; }
@@ -383,6 +405,7 @@ class SampleData:
         self.tables = raw.get("tables") if isinstance(raw.get("tables"), dict) else {}
         self.hidden = set(raw.get("hidden") or [])
         self.shown = set(raw.get("shown") or [])
+        self.messages = [m for m in raw.get("messages") or [] if isinstance(m, dict) and m.get("text")]
         self.used: set[str] = set()
 
     def value(self, keys: list) -> Any:
@@ -441,6 +464,8 @@ class FormHtml:
                  assets: Assets | None, density: str | None = None):
         self.view = view
         self.lay = view.get("lay") or {}
+        #: Groups with no items (the layout leaves them out): {name: {parent, before}}, where messages go.
+        self.empty_groups = view.get("emptyGroups") if isinstance(view.get("emptyGroups"), dict) else {}
         self.form = view.get("form") or {}
         self.interface = interface
         self.v85 = interface == "v85"
@@ -452,6 +477,7 @@ class FormHtml:
         self.pages: list[dict] = []
         self.selected: dict[str, str] = {}
         self.unknown: set[str] = set()
+        self.notes_drawn: set[int] = set()
         scale = str(self.form.get("scaleVariant") or "Auto")
         self.density = density or ("compact" if scale.lower() == "compact" else "normal")
 
@@ -517,6 +543,7 @@ class FormHtml:
                 bars[where] = kid
             else:
                 body.append(self.node(kid))
+        body.insert(0, self.notes(None))
         title = self.title()
         if self.v85:
             window = self.window_v85(title, bars, "".join(body))
@@ -529,6 +556,9 @@ class FormHtml:
         unused = [k for k in unused if k not in self.data.used and not k.startswith("$")]
         if unused:
             self.warnings.append("data keys that match no element of the drawn page: " + ", ".join(unused))
+        lost = [str(m.get("group")) for i, m in enumerate(self.data.messages) if i not in self.notes_drawn]
+        if lost:
+            self.warnings.append("messages whose group is not on the drawn page: " + ", ".join(lost))
         page = next(iter(self.selected.values()), None)
         return Rendered(html=self.page_html(window, title), title=title, pages=self.pages, page=page,
                         density=self.density if self.v85 else "taxi", warnings=self.warnings)
@@ -857,7 +887,12 @@ class FormHtml:
 
     def panel(self, n: dict) -> str:
         grid = "" if self.v85 else " lgrid"
-        return f'<div class="col{grid}">' + "".join(self.node(k) for k in children(n)) + "</div>"
+        if lay_name(n) == "$scrl":
+            inner = "".join(self.notes_at(None, item_name(k)) + self.node(k) for k in children(n))
+            inner += self.notes_at(None, None)
+        else:
+            inner = "".join(self.node(k) for k in children(n))
+        return f'<div class="col{grid}">{inner}</div>'
 
     def wants_width(self, n: dict) -> bool:
         """Whether an element takes spare width in a row: a stretchable field or group, pages, a table."""
@@ -958,6 +993,37 @@ class FormHtml:
             return f'<div class="fld left {stretch}">{label}{inner}</div>'
         return f'<div class="fld {stretch}">{label}{inner}</div>'
 
+    def check_box(self, value: Any) -> str:
+        """A check box as the client draws it: checked, partly checked (a three-state box) or empty."""
+        text = str(value).lower()
+        if value is True or text in ("true", "да", "1", "yes"):
+            mark = (self.icon("svg_checkbox", 20, "var(--check)", "✓") if self.v85
+                    else self.icon("svg_checkbox", 16, "#009646", "✓"))
+            return f'<span class="chk on">{mark}</span>'
+        if text in ("2", "partial", "частично"):
+            return '<span class="chk part"></span>'
+        return '<span class="chk"></span>'
+
+    def notes_at(self, parent: str | None, before: str | None) -> str:
+        """The messages of the empty groups that stand in `parent` just before `before` (None: at its end)."""
+        return "".join(self.notes(name) for name, place in self.empty_groups.items()
+                       if isinstance(place, dict) and place.get("parent") == parent
+                       and (place.get("before") or None) == before)
+
+    def notes(self, group: str | None) -> str:
+        """The important messages the form code puts in a group (or, with no group, under the header)."""
+        parts = []
+        for index, message in enumerate(self.data.messages):
+            if index in self.notes_drawn or (message.get("group") or None) != group:
+                continue
+            self.notes_drawn.add(index)
+            kind = NOTE_KINDS.get(str(message.get("type") or "info").lower(), "info")
+            ground, mark = NOTE_COLORS[kind]["taxi" if not self.v85 else self.theme]
+            icon = self.icon(NOTE_ICONS[kind], 20 if self.v85 else 16, mark, "ⓘ")
+            parts.append(f'<div class="note stretch" style="background:{ground}"><span class="ni">{icon}</span>'
+                         f'<span class="nt">{esc(message.get("text"))}</span></div>')
+        return "".join(parts)
+
     def taxi_cell(self, picture: str, glyph: str) -> str:
         """A field button of "Taxi": the platform picture when the assets have it, a glyph otherwise."""
         if picture in self.assets.taxi_pictures:
@@ -983,10 +1049,15 @@ class FormHtml:
         inner = f'<span class="v">{esc(text)}</span>' if text else (
             f'<span class="v ph">{esc(n.get("inputHint"))}</span>' if n.get("inputHint") else '<span class="v"></span>')
         buttons = ""
+        # A read-only field drops its drop-down and calendar buttons; the open button stays.
+        editable = not (n.get("readOnly") or n.get("groupReadOnly"))
+        dated = editable and model_of(n).get("valueKind") in ("date", "dateTime")
         if not self.v85:
             cells = []
-            if n.get("dropListButton") or (n.get("choiceButton") and n.get("openButton")):
+            if editable and (n.get("dropListButton") or (n.get("choiceButton") and n.get("openButton"))):
                 cells.append(self.taxi_cell("editDropDown", "▼"))
+            elif dated:
+                cells.append(self.taxi_cell("editCalendar", "▦"))
             if n.get("openButton"):
                 cells.append(self.taxi_cell("editOpen", "⧉"))
             spin = n.get("spinButton")
@@ -1003,8 +1074,11 @@ class FormHtml:
             if caption is None and info is None:
                 return f'<div class="fld {stretch}">{box}</div>'
             return self.labeled(box, caption, info, stretch, False, placement)
-        if n.get("dropListButton") or (n.get("choiceButton") and n.get("openButton")):
+        if editable and (n.get("dropListButton") or (n.get("choiceButton") and n.get("openButton"))):
             buttons += '<span class="ib">' + self.icon("svg_cornerBottom", 20, "var(--icon-muted)", "▾") + "</span>"
+        elif dated:
+            symbol = "svg_calendarClock" if model_of(n).get("valueKind") == "dateTime" else "svg_calendar"
+            buttons += '<span class="ib">' + self.icon(symbol, 20, "var(--icon-muted)", "▦") + "</span>"
         outside = ""
         if n.get("openButton"):
             outside += '<span class="openb">' + self.icon("svg_open", 24, "var(--icon-muted)", "↗") + "</span>"
@@ -1025,11 +1099,7 @@ class FormHtml:
         return self.labeled(box, caption, info, stretch, required, placement)
 
     def checkbox(self, n: dict, caption: str | None, info: dict | None = None, stretch: str = "fixed") -> str:
-        value = self.value_of(n)
-        on = value is True or str(value).lower() in ("true", "да", "1", "yes")
-        mark = (self.icon("svg_checkbox", 20, "var(--check)", "✓") if self.v85
-                else self.icon("svg_checkbox", 16, "#009646", "✓")) if on else ""
-        box = f'<span class="chk{" on" if on else ""}">{mark}</span>'
+        box = self.check_box(self.value_of(n))
         if info is None:
             info_html = ""
         elif self.v85:
@@ -1130,7 +1200,16 @@ class FormHtml:
         if horizontal and parts and not any(self.wants_width(k) for k in shown):
             # Nothing in the row stretches: the client gives the spare width to the last element.
             parts[-1] = f'<div class="grow col">{parts[-1]}</div>'
-        inner = "".join(parts)
+        # Messages of the group itself come first, those of an empty group stand where that group is.
+        # cells: (html, notes or not, takes height) in drawing order.
+        cells = [] if horizontal else [(self.notes(item_name(n)), True, False)]
+        for kid, part in zip(shown, parts):
+            if not horizontal:
+                cells.append((self.notes_at(item_name(n), item_name(kid)), True, False))
+            cells.append((part, False, self.wants_height(kid)))
+        if not horizontal:
+            cells.append((self.notes_at(item_name(n), None), True, False))
+        inner = "".join(html for html, _, _ in cells)
         if not inner:
             return ""
         layout = "row" if horizontal else ("col" if self.v85 else "col lgrid")
@@ -1138,11 +1217,13 @@ class FormHtml:
         vgrow = " vgrow" if self.wants_height(n) else ""
         styles = []
         if vgrow and layout == "col lgrid":
-            # One grid row per drawn child: the row of the first that takes height gets the spare height.
-            drawn = [k for k, part in zip(shown, parts) if part]
-            row = next((i for i, k in enumerate(drawn) if self.wants_height(k)), None)
-            if row is not None:
-                styles.append(f"grid-template-rows:{f'repeat({row},auto) ' if row else ''}1fr")
+            # One grid row per drawn child and message: the first child that takes height gets the spare.
+            row = 0
+            for html, is_notes, grows in cells:
+                if grows and html:
+                    styles.append(f"grid-template-rows:{f'repeat({row},auto) ' if row else ''}1fr")
+                    break
+                row += html.count('<div class="note ') if is_notes else (1 if html else 0)
         spacing = VERTICAL_SPACING.get(n.get("verticalSpacing") or "")
         if spacing and self.v85 and not horizontal:
             styles.append(f"gap:{spacing}")
@@ -1202,6 +1283,8 @@ class FormHtml:
         columns = [c for c in columns if c.get("invisible") is not True]
         spec = self.data.table([item_name(n), node_name(n), model_of(n).get("dataPath")])
         current = spec.get("current") if isinstance(spec, dict) else None
+        if current is None and not self.v85:
+            current = 0  # "Taxi" marks the current row even when the table has no focus, the first by default
         rows = self.table_rows(n)
         tree = n.get("representation") == "Tree"
         checks = self.v85 and n.get("rowsSelectionMode") != "SingleRow"
@@ -1228,9 +1311,7 @@ class FormHtml:
                 opened = row.get("_open")
             tr_class = "cur" if current == index or (isinstance(row, dict) and row.get("_current")) else ""
             if checks:
-                on = isinstance(row, dict) and row.get("_check")
-                mark = self.icon("svg_checkbox", 20, "var(--check)", "✓") if on else ""
-                cells.append(f'<td class="sel"><span class="chk{" on" if on else ""}">{mark}</span></td>')
+                cells.append(f'<td class="sel">{self.check_box(row.get("_check") if isinstance(row, dict) else None)}</td>')
             for ci, (c, keys) in enumerate(zip(columns, keys_by_col)):
                 if isinstance(row, (list, tuple)):
                     value = row[ci] if ci < len(row) else ""
@@ -1251,10 +1332,7 @@ class FormHtml:
                                                                           and k in row), ""), "")
                                                            if isinstance(row, dict) else "")
                         if member.get("columnMode") == "Check":
-                            on = mvalue is True or str(mvalue).lower() in ("true", "да", "1")
-                            box = self.icon("svg_checkbox", 20 if self.v85 else 16,
-                                            "var(--check)" if self.v85 else "#009646", "✓") if on else ""
-                            parts.append(f'<span class="chk{" on" if on else ""}">{box}</span>')
+                            parts.append(self.check_box(mvalue))
                         else:
                             parts.append(f'<span>{esc(mvalue)}</span>')
                     cells.append(f'<td><span style="display:inline-flex;align-items:center;gap:10px">{"".join(parts)}</span></td>')

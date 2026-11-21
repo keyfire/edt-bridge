@@ -248,6 +248,82 @@ def test_engine_client_draws_the_model_and_names_what_is_missing(tmp_path, monke
     assert any("no platform here" in w for w in report["warnings"])
 
 
+def test_what_the_form_code_decides_is_named():
+    source = """
+    Процедура ПриСозданииНаСервере(Отказ, СтандартнаяОбработка)
+        ОбщегоНазначения.ВставитьВажноеСообщение(ЭтотОбъект, Текст, "Предупреждение", Элементы.Группа);
+        Если Не ОбщегоНазначенияКлиентСервер.ЭтоВариантИнтерфейса85() Тогда
+            Элементы.Адреса.Видимость = Ложь;
+        КонецЕсли;
+        Элементы.Срок.РежимВыбораИзСписка = Истина;
+    КонецПроцедуры"""
+    notes = form_render.code_notes(source)
+    assert any("an important message in a group" in n for n in notes)
+    assert any("by interface variant" in n for n in notes)
+    assert any(n.startswith("the form code sets the visibility of: Адреса") for n in notes)
+    assert any("choice from a list for: Срок" in n for n in notes)
+    assert form_render.code_notes("Процедура А() КонецПроцедуры") == []
+
+
+def test_messages_are_drawn_where_the_form_code_puts_them():
+    data = {"messages": [{"text": "Адрес без указания разрешен", "type": "Информация", "group": "Адреса"},
+                         {"text": "Запись заблокирована", "type": "Предупреждение"},
+                         {"text": "Не на этой странице", "group": "Нет"}]}
+    drawn = form_view.build(view(), page="Адреса", data=data, assets=ASSETS)
+    assert 'style="background:#b8ebff"' in drawn.html and 'style="background:#fff1ab"' in drawn.html
+    assert drawn.html.index("Запись заблокирована") < drawn.html.index("Адрес без указания разрешен")
+    assert any("messages whose group is not on the drawn page: Нет" in w for w in drawn.warnings)
+    taxi = form_view.build(view(), interface="taxi", page="Адреса", data=data, assets=ASSETS)
+    assert "#0f77a1" in taxi.html
+
+
+def test_a_message_in_an_empty_group_stands_where_the_group_is():
+    model = view()
+    model["emptyGroups"] = {"Контейнер": {"parent": "Адреса", "before": "Адреса"}}
+    find(model["lay"], "Адреса#content")["logFormElementName"] = "Адреса"
+    data = {"messages": [{"text": "Сообщение в контейнере", "group": "Контейнер"}]}
+    drawn = form_view.build(model, page="Адреса", data=data, assets=ASSETS)
+    assert not drawn.warnings
+    assert drawn.html.index("Сообщение в контейнере") < drawn.html.index('class="tblock')
+
+
+@pytest.mark.parametrize("interface", ["v85", "taxi"])
+def test_a_message_in_an_empty_root_group_precedes_its_next_item(interface):
+    model = view()
+    panel = find(model["lay"], "$scrl")
+    panel["children"] = [field("Код", "Код", "Объект.Code"), field("Имя", "Имя", "Объект.Description")]
+    model["emptyGroups"] = {"Контейнер": {"before": "Имя"}}
+    data = {"values": {"Код": "sample-id", "Имя": "sample-name"},
+            "messages": [{"text": "Сообщение в контейнере", "group": "Контейнер"}]}
+    drawn = form_view.build(model, interface=interface, data=data, assets=ASSETS)
+    assert not drawn.warnings
+    assert drawn.html.index("sample-id") < drawn.html.index("Сообщение в контейнере") < drawn.html.index("sample-name")
+
+
+def test_read_only_fields_lose_their_choice_buttons_and_dates_get_a_calendar():
+    model = view()
+    owner = find(model["lay"], "Владелец")
+    owner["readOnly"] = True
+    name = find(model["lay"], "Наименование")
+    name["formModelElement"]["valueKind"] = "dateTime"
+    assets = form_view.Assets(sprite="<svg></svg>", symbols=frozenset({"svg_cornerBottom", "svg_open",
+                                                                      "svg_calendarClock"}))
+    drawn = form_view.build(model, assets=assets)
+    in_field = 'class="ib"><svg width="20" height="20" style="fill:var(--icon-muted);flex:0 0 auto"><use href="#'
+    assert in_field + "svg_cornerBottom" not in drawn.html and "#svg_open" in drawn.html
+    assert "#svg_calendarClock" in drawn.html
+    name["readOnly"] = True
+    assert "#svg_calendarClock" not in form_view.build(model, assets=assets).html
+
+
+def test_a_three_state_box_draws_its_middle_state():
+    model = view()
+    find(model["lay"], "Наименование")["_c"] = "HippoLayCheckBox"
+    for interface in ("v85", "taxi"):
+        drawn = form_view.build(model, interface=interface, data={"values": {"Наименование": 2}}, assets=ASSETS)
+        assert '<span class="chk part"></span>' in drawn.html
+
+
 def test_an_old_plugin_without_the_model_is_named(tmp_path):
     with pytest.raises(form_render.RenderError, match="engine \"model\""):
         form_render.run({"projectName": "P", "formFqn": "CommonForm.F", "outPath": str(tmp_path / "f.png")},
