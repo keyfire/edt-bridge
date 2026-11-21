@@ -13,6 +13,18 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
+## Unreleased
+
+### Added
+
+- `edt_form_render` draws a form the way the 1C client shows it: the "Version 8.5" or Taxi
+  interface, light or dark theme, any page (`page`), sample values and table rows (`data`). Titles
+  are in the language of the configuration, standard commands and standard attributes included;
+  command bars show what the platform puts into them. The bridge hands over EDT's layout of the
+  form (`engine="model"`), the `edt-bridge-mcp` wrapper draws it and saves a PNG with Chromium,
+  with the web client's icons and fonts read from the 1C:Enterprise 8.5 platform installed on the
+  machine. EDT's form editor preview stays available as `engine="edt"`.
+
 ## 2026-11-19 – 0.50.1
 
 ### Added

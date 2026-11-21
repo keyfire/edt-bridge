@@ -11,7 +11,7 @@ spreadsheet documents. Two of them render a form or a spreadsheet template to PN
 
 | Tool | What it returns |
 |------|-----------------|
-| `edt_form_structure` · `edt_form_render` · `edt_picture_export` | Return a managed form's structure, its image, and the content of a configuration picture. The structure includes a tree of fields, groups, tables, buttons, and decorations. Items include data bindings, static visible/enabled/readOnly, event handlers, input-field properties, command-to-button links, and conditional appearance. Form attributes, commands, parameters, and handlers are also returned; a command carries its caption in `title` and its tooltip in `toolTip`. EDT's offscreen renderer renders the form to PNG with a choice of interface variant and theme. For CommonPicture, the content of Picture.zip is returned. |
+| `edt_form_structure` · `edt_form_render` · `edt_picture_export` | Return a managed form's structure, its image, and the content of a configuration picture. The structure includes a tree of fields, groups, tables, buttons, and decorations. Items include data bindings, static visible/enabled/readOnly, event handlers, input-field properties, command-to-button links, and conditional appearance. Form attributes, commands, parameters, and handlers are also returned; a command carries its caption in `title` and its tooltip in `toolTip`. The form is drawn to PNG the way the 1C client shows it, in the "Version 8.5" or Taxi interface, light or dark theme, any page, with sample data; EDT's form editor preview is still available. For CommonPicture, the content of Picture.zip is returned. |
 | `edt_read_html_template` | Exact UTF-8 source and `sourceHash` for one existing common or nested HTML-template locale. Requires explicit `templateFqn` and `language`; returns available languages and the model-resolved file path. |
 | `edt_read_dcs` | Reads the exact source of a data composition schema template - the schema's designer XML - with the path and `sourceHash`. |
 | `edt_read_spreadsheet` | Reads a spreadsheet template - a print form layout - as column widths and named row areas of cells: `text`, `parameter` or `template`, with `bold`, `fontSize`, `align`, `border`, `colspan` and `wrap`. The answer is the input of `edt_write_spreadsheet`; `unsupported` names what the file also has and the description does not carry, such as pictures and colors. |
@@ -22,7 +22,38 @@ the [form write tools](/tools/write-forms).
 
 ## Managed-form preview
 
-`edt_form_render` uses the native EDT renderer for `TAXI` and `VERSION8_5`. Enable native
+`edt_form_render` draws a form the way the 1C client shows it (`engine="client"`, the default). The
+bridge lays the form out with EDT's own engine and hands the result over; the `edt-bridge-mcp`
+wrapper draws it as an HTML page and saves a PNG made by Chromium. Arguments:
+
+- `interface` – `v85` ("Version 8.5", the default) or `taxi`; `theme` – `light` or `dark`. The
+  platform has no dark theme for Taxi, and the call refuses that pair.
+- `page` – the page to show, by name or title; the answer lists the pages of the form in `pages`.
+- `data` – sample data: `title` for the window, `values` by item name or data path, `tables` with
+  `rows` (lists in column order or objects by column name; `_level`, `_open`, `_check` for trees
+  and marks) and `current`, `hidden` and `shown` for items whose visibility the form code changes.
+- `density` – `auto` (the form's own scale variant), `normal` or `compact`. The client may also
+  choose compact for a form whose scale variant is Auto; that choice is made by the server and is
+  not in the form, so pass `density="compact"` for such a form.
+- `scale` – the PNG scale in percent, 150 by default; `outPath` – the PNG path, the HTML page is
+  saved next to it.
+
+Titles are in the language of the configuration, including standard attributes and standard
+commands, with the synonyms the configuration gives them. Command bars show what the platform puts
+into them (`autoCommandBar`), the rest goes to the "more" menu. Icons and fonts are the web
+client's own: the drawing reads them from the 1C:Enterprise 8.5 installation on this machine
+(`platformPath` or `EDT_BRIDGE_PLATFORM` choose one) and keeps them in the user cache; they are not
+part of EDT-Bridge. Without a platform the form is drawn with system fonts and plain marks, and
+`warnings` says so. `warnings` also names element kinds the drawing has no look for yet and `data`
+keys that matched nothing. The PNG needs the `web` extra (`pipx inject edt-bridge-mcp playwright`,
+then `playwright install chromium`).
+
+Sizes and colors of the drawing were measured on the 8.5.1 web client. A window the client opens
+smaller than the form scrolls; the drawing shows the whole form. Elements the form code adds or
+fills when it opens are data: pass them in `data`.
+
+`engine="edt"` returns EDT's form editor preview, as before; `variant`, `density`, `ratio`, `width`
+and `height` apply to it. It uses the native EDT renderer for `TAXI` and `VERSION8_5`. Enable native
 rendering and buffered image capture with the JVM options `-DnativeFormLayoutRender=true` and
 `-DnativeFormBufferedLayoutRender=true`. Headless EDT with GTK also needs a working graphical
 session, for example an X server provided by Xvfb.
