@@ -26,7 +26,7 @@ from . import form_view
 
 ENV_PLATFORM = "EDT_BRIDGE_PLATFORM"
 ENV_CACHE = "EDT_BRIDGE_ASSET_CACHE"
-LAYOUT = 4
+LAYOUT = 6
 #: Symbols the 8.5 drawing uses; a sprite without them is not the client's.
 REQUIRED_SYMBOLS = ("svg_moreTop", "svg_closeBig", "svg_context", "svg_search", "svg_plus", "svg_minus",
                     "svg_cornerBottom", "svg_open", "svg_infoSmall", "svg_checkbox")
@@ -187,9 +187,8 @@ def extract_fonts(resource: bytes) -> dict[tuple[str, int], bytes]:
     return fonts
 
 
-def extract_pictures(resource: bytes) -> str:
-    """Platform pictures of the 8.5 interface as <symbol id="pic_<name>">, fill left to the drawing."""
-    symbols = {}
+def _zip_entries(resource: bytes, accept, limit: int):
+    """(name, content) of the local zip entries packed into a platform resource whose name `accept` takes."""
     for match in re.finditer(rb"PK\x03\x04", resource):
         start = match.start()
         try:
@@ -198,15 +197,25 @@ def extract_pictures(resource: bytes) -> str:
         except struct.error:
             continue
         name = resource[start + 30:start + 30 + name_len]
-        if not (name.startswith(b"_") and name.endswith(b".svg")) or size > 200_000:
-            continue
-        key = name[:-4].decode("ascii", "replace")
-        if key in symbols:
+        if size > limit or not accept(name):
             continue
         body = resource[start + 30 + name_len + extra_len:start + 30 + name_len + extra_len + size]
         try:
-            text = (zlib.decompress(body, -15) if method == 8 else body).decode("utf-8")
-        except (zlib.error, UnicodeDecodeError):
+            yield name, zlib.decompress(body, -15) if method == 8 else body
+        except zlib.error:
+            continue
+
+
+def extract_pictures(resource: bytes) -> str:
+    """Platform pictures of the 8.5 interface as <symbol id="pic_<name>">, fill left to the drawing."""
+    symbols = {}
+    for name, blob in _zip_entries(resource, lambda n: n.startswith(b"_") and n.endswith(b".svg"), 200_000):
+        key = name[:-4].decode("ascii", "replace")
+        if key in symbols:
+            continue
+        try:
+            text = blob.decode("utf-8")
+        except UnicodeDecodeError:
             continue
         view = re.search(r'viewBox="([^"]+)"', text)
         inner = re.search(r"<svg\b[^>]*>(.*)</svg>", text, re.S)
@@ -215,6 +224,22 @@ def extract_pictures(resource: bytes) -> str:
         paths = re.sub(r'\sfill="(?!none)[^"]*"', "", inner.group(1))
         symbols[key] = f'<symbol id="pic{key}" viewBox="{view.group(1)}">{paths.strip()}</symbol>'
     return "".join(symbols[k] for k in sorted(symbols))
+
+
+#: Field buttons of "Taxi" are packed as `_<name>100.png`, command pictures as `_<name>_100.png`.
+TAXI_FIELD_PICTURES = ("editClear", "editDropDown", "editOpen", "editRegDown", "editRegUp")
+_TAXI_COMMAND_PICTURE = re.compile(rb"_([A-Za-z0-9]+)_100\.png")
+
+
+def extract_taxi_pictures(resource: bytes) -> dict[str, str]:
+    """Rasters "Taxi" paints at 100% instead of the SVG: field buttons and command pictures, PNG data URIs by name."""
+    field = {f"_{name}100.png".encode("ascii"): name for name in TAXI_FIELD_PICTURES}
+    found = {}
+    for entry, blob in _zip_entries(resource, lambda n: n in field or _TAXI_COMMAND_PICTURE.fullmatch(n), 50_000):
+        name = field.get(entry) or _TAXI_COMMAND_PICTURE.fullmatch(entry).group(1).decode("ascii")
+        if name not in found and blob.startswith(b"\x89PNG"):
+            found[name] = "data:image/png;base64," + base64.b64encode(blob).decode("ascii")
+    return found
 
 
 def font_css(fonts: dict[tuple[str, int], bytes]) -> str:
@@ -263,12 +288,16 @@ def _load_from(directory: Path, environ) -> form_view.Assets:
         taxi = taxi_path.read_text(encoding="utf-8") if taxi_path.is_file() else None
         return form_view.Assets(sprite=sprite, symbols=frozenset(known.get("symbols") or []), font_css=css,
                                 source=str(directory), taxi_sprite=taxi,
-                                taxi_symbols=frozenset(known.get("taxiSymbols") or []))
+                                taxi_symbols=frozenset(known.get("taxiSymbols") or []),
+                                taxi_pictures=dict(known.get("taxiPictures") or {}))
     resource = srv.read_bytes()
     sprite, symbols = extract_sprite(resource)
     taxi = extract_taxi_sprite(resource)
+    taxi_pictures = {}
     if pictures.is_file():
-        extra = extract_pictures(pictures.read_bytes())
+        raw = pictures.read_bytes()
+        extra = extract_pictures(raw)
+        taxi_pictures = extract_taxi_pictures(raw)
         sprite = sprite.replace("</svg>", extra + "</svg>")
         symbols = sorted(set(symbols) | set(re.findall(r'<symbol id="(pic_[^"]+)"', extra)))
     css = font_css(extract_fonts(core.read_bytes()))
@@ -279,9 +308,11 @@ def _load_from(directory: Path, environ) -> form_view.Assets:
         if taxi:
             (entry / "sprite-taxi.svg").write_text(taxi[0], encoding="utf-8", newline="")
         manifest.write_text(json.dumps({"stamp": stamp, "symbols": symbols,
-                                        "taxiSymbols": taxi[1] if taxi else []}), encoding="utf-8", newline="")
+                                        "taxiSymbols": taxi[1] if taxi else [],
+                                        "taxiPictures": taxi_pictures}), encoding="utf-8", newline="")
     except OSError:
         pass  # the drawing works without a cache, only slower next time
     return form_view.Assets(sprite=sprite, symbols=frozenset(symbols), font_css=css, source=str(directory),
                             taxi_sprite=taxi[0] if taxi else None,
-                            taxi_symbols=frozenset(taxi[1]) if taxi else frozenset())
+                            taxi_symbols=frozenset(taxi[1]) if taxi else frozenset(),
+                            taxi_pictures=taxi_pictures)

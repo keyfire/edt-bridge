@@ -74,7 +74,7 @@ DENSITY = {
         "card-p": "16px", "card-fs": "20px", "card-lh": "32px", "row-h": "40px", "cell-fs": "14.667px",
         "bar-h": "53px", "bar-fs": "14.667px", "btn-h": "40px", "btn-fs": "16px", "tab-fs": "16px",
         "tab-lh": "24px", "chk": "20px", "chk-fs": "16px", "spin": "32px", "radius-win": "16px",
-        "char": "7.7", "char-pad": "21", "line-gap": "12px", "page-top": "20px",
+        "char": "7.7", "char-pad": "21", "line-gap": "12px", "page-top": "20px", "sep-m": "8px", "blink-h": "20px",
     },
     "compact": {
         "lbl-fs": "12px", "lbl-lh": "16px", "in-h": "32px", "in-fs": "13.333px", "in-lh": "20px",
@@ -82,9 +82,12 @@ DENSITY = {
         "card-p": "12px", "card-fs": "16px", "card-lh": "24px", "row-h": "33px", "cell-fs": "12px",
         "bar-h": "44px", "bar-fs": "12px", "btn-h": "32px", "btn-fs": "13.333px", "tab-fs": "13.333px",
         "tab-lh": "20px", "chk": "20px", "chk-fs": "13.333px", "spin": "26px", "radius-win": "16px",
-        "char": "6.4", "char-pad": "18", "line-gap": "6px", "page-top": "16px",
+        "char": "6.4", "char-pad": "18", "line-gap": "6px", "page-top": "16px", "sep-m": "13.5px", "blink-h": "26px",
     },
 }
+
+#: Vertical spacing of a group (8.5): the half interval of the compact density is measured, 6px instead of 14px.
+VERTICAL_SPACING = {"None": "0px", "Half": "calc(var(--gap-v) * 3 / 7)", "Double": "calc(var(--gap-v) * 2)"}
 
 #: Taxi metrics (web client 8.5.1, interface Taxi), CSS pixels.
 TAXI_DENSITY = {
@@ -128,6 +131,8 @@ body { background: var(--page); font-family: var(--font); color: var(--text); -w
 .card.vgrow > .col, .card.vgrow > .row { flex: 1 1 auto; }
 .row > .stretch, .row > .grow { flex: 1 1 auto; }
 .row > .fixed { flex: 0 0 auto; }
+/* A lone text in a row stands level with the middle of a taller neighbour (a button). */
+.row > div:has(> .deco:only-child) { justify-content: center; }
 .col > * { align-self: stretch; }
 .card { border: 0.8px solid var(--line); border-radius: var(--card-r); padding: var(--card-p);
         display: flex; flex-direction: column; gap: var(--gap-v); }
@@ -176,11 +181,11 @@ body { background: var(--page); font-family: var(--font); color: var(--text); -w
 .rdot.on::after { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--check); }
 .deco { font-size: var(--lbl-fs); line-height: var(--lbl-lh); color: var(--text); white-space: pre-wrap; max-width: 760px; }
 .deco.link { color: var(--link); }
-.blink { color: var(--check); font-family: var(--font-medium); font-size: var(--chk-fs); line-height: 20px; white-space: nowrap;
+.blink { color: var(--check); font-family: var(--font-medium); font-size: var(--chk-fs); line-height: var(--blink-h, 20px); white-space: nowrap;
          align-self: center; }
 .pic { min-height: 120px; display: flex; align-items: center; flex: 1 1 auto;
        justify-content: center; color: var(--value); font-size: var(--lbl-fs); padding: 12px; }
-.sep { height: 1px; background: var(--line); margin: 8px 12px; }
+.sep { height: 1px; background: var(--line); margin: var(--sep-m, 8px) 12px; }
 .avatar { width: 56px; height: 56px; border-radius: 50%; background: var(--fill); flex: 0 0 auto; }
 .tabs { display: flex; gap: 4px; border-bottom: 0.8px solid var(--line); }
 .tab { padding: 2px 12px 7px; font-size: var(--tab-fs); line-height: var(--tab-lh); color: var(--muted); white-space: nowrap;
@@ -217,6 +222,12 @@ table.grid tr.fill td { border-top: 0.8px solid var(--row-line); }
 .hide { display: none; }
 .ghost { visibility: hidden; }
 .tblock.vgrow { flex: 1 1 auto; }
+.tbox { min-width: 0; }
+.tblock.vgrow > .tbox { flex: 1 1 auto; }
+.trow { display: flex; gap: 8px; min-width: 0; }
+.trow.vgrow { flex: 1 1 auto; }
+.trow > .tblock { flex: 1 1 auto; }
+.trow > .info, .trow > .help { display: inline-flex; flex: 0 0 auto; align-self: flex-start; margin: 0; }
 .tfit { display: flex; width: 0; min-width: 100%; }
 .tumbler { max-width: 100%; }
 .tumbler .ti { min-width: 0; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; }
@@ -232,7 +243,7 @@ TAXI_CSS = """
 .head { padding: 6px 0 2px; min-height: 40px; gap: 6px; }
 .head .star { display: inline-flex; width: 18px; }
 .head .title { font-size: 20px; line-height: 24px; color: #333333; }
-.head .right { gap: 20px; align-items: center; }
+.head .right { gap: 14px; align-items: center; }
 .tnav { display: flex; align-items: center; gap: 20px; min-height: 28px; margin-top: 0; }
 .tnav .on { background: var(--fill); border-radius: 3px; padding: 6px 10px; color: var(--text); font-size: 13.333px; }
 .tnav { width: 0; min-width: 100%; overflow: hidden; white-space: nowrap; }
@@ -249,6 +260,8 @@ TAXI_CSS = """
 .lgrid { display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: var(--gap-lbl); row-gap: var(--gap-v);
          align-items: center; align-content: start; }
 .lgrid > * { grid-column: 1 / -1; }
+.lgrid > .vgrow { align-self: stretch; }
+.page > .vgrow { flex: 1 1 auto; }
 .lgrid > .fld.left { display: contents; }
 .lgrid > .fld.left > .lbl { grid-column: 1; max-width: 188px; white-space: normal; }
 .lgrid > .fld.left > .lbl .t { white-space: normal; overflow: visible; }
@@ -256,9 +269,9 @@ TAXI_CSS = """
 .inp { border: none; box-shadow: inset 0 0 0 1px var(--field-line); color: var(--value); padding: 0 var(--in-px); }
 .inp.btns { padding-right: 0; }
 .tb { display: inline-flex; align-self: stretch; margin-left: auto; background: var(--field-line); gap: 1px; padding: 1px 1px 1px 1px;
-      border-radius: 0 3px 3px 0; }
-.tb > span { width: 19px; background: #ffffff; display: inline-flex; align-items: center; justify-content: center; color: #4d4d4d;
-             font-size: 9px; }
+      border-radius: 0 3px 3px 0; flex: 0 0 auto; }
+.tb > span { width: 19px; background-color: #ffffff; display: inline-flex; align-items: center; justify-content: center; color: #4d4d4d;
+             font-size: 9px; background-repeat: no-repeat; background-position: 50% 50%; background-size: 16px 16px; }
 .tb.spin2 { flex-direction: column; }
 .tb.spin2 > span { height: 11px; flex: 1 1 auto; font-size: 7px; }
 .card { border: none; padding: 0; gap: var(--gap-v); }
@@ -282,6 +295,7 @@ TAXI_CSS = """
 .tumbler .ti.on::after { box-shadow: none; }
 .tfit.full .tumbler { width: 100%; }
 .tfit.full .tumbler .ti { flex: 1 1 0; }
+.tfit.full .tumbler.fit .ti { min-width: max-content; }
 .help { color: var(--help); font-weight: 700; font-size: 13px; margin: 0 -8px 0 10px; flex: 0 0 auto; }
 .hwrap { display: flex; align-items: center; min-width: 0; }
 .hwrap > :first-child { flex: 1 1 auto; min-width: 0; }
@@ -291,7 +305,16 @@ TAXI_CSS = """
 .cbar { background: transparent; padding: 0; min-height: 27px; gap: 9px; }
 .cbtn { height: 26px; padding: 0 12px; border: 0.8px solid rgba(0,0,0,.3); border-radius: 2px; background: #ffffff;
         box-shadow: 0 1px 0 rgba(0,0,0,.2); }
-table.grid { border: 0.8px solid #b3b3b3; }
+.cbtn.ponly { width: 30px; padding: 0; justify-content: center; }
+.cbtn.ponly + .cbtn.ponly { margin-left: -10px; border-radius: 0 2px 2px 0; }
+.cbtn.ponly:has(+ .cbtn.ponly) { border-radius: 2px 0 0 2px; }
+.tpic { width: 16px; height: 16px; background: no-repeat 50% 50% / contain; flex: 0 0 auto; }
+.cdiv { width: 1px; height: 1px; background: transparent; margin: 0; }
+.cbar .right { gap: 9px; }
+.tsearch { width: 200px; height: 27px; flex: 0 0 auto; border-radius: 3px; }
+.tsearch .ph { color: #b3b3b3; }
+table.grid, .tbox { border: 0.8px solid #b3b3b3; }
+.tbox > table.grid { border: none; }
 table.grid th { background: #f2f2f2; border-right: 0.8px solid #d9d9d9; font-family: var(--font); color: #4d4d4d;
                 height: 29px; padding: 0 6px; font-size: 13.333px; }
 table.grid td { border-top: 0.8px solid #e6e6e6; height: 29px; padding: 0 6px; color: #333; font-size: 13.333px; }
@@ -337,6 +360,7 @@ class Assets:
     source: str | None = None
     taxi_sprite: str | None = None
     taxi_symbols: frozenset = frozenset()
+    taxi_pictures: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -515,7 +539,10 @@ class FormHtml:
         props = ";".join(f"--{k}:{v}" for k, v in {**palette, **metrics}.items())
         font = FONT_STACK if self.v85 else TAXI_FONT_STACK
         medium = FONT_STACK_MEDIUM if self.v85 else TAXI_FONT_STACK
-        css = CSS + ("" if self.v85 else TAXI_CSS)
+        used = set(re.findall(r'class="(?:tpic )?p-([A-Za-z0-9]+)"', window)) if not self.v85 else set()
+        css = CSS + ("" if self.v85 else TAXI_CSS + "".join(
+            f'.p-{name} {{ background-image: url("{uri}"); }}\n'
+            for name, uri in sorted(self.assets.taxi_pictures.items()) if name in used))
         sprite = (self.assets.sprite if self.v85 or not self.assets.taxi_sprite else self.assets.taxi_sprite) or ""
         return ("<!doctype html><html><head><meta charset=\"utf-8\">"
                 f"<title>{esc(title)}</title><style>{self.assets.font_css}\n"
@@ -549,8 +576,8 @@ class FormHtml:
         grey = "#707070"
         head = (f'<div class="head"><span class="star">{self.icon("svg_favorite", 16, grey, "☆")}</span>'
                 f'<span class="title">{esc(title)}</span><span class="right">'
-                f'{self.icon("svg_link", 15, grey)}{self.icon("svg_moreTop", 16, grey, "⋮")}'
-                f'{self.icon("svg_maximize", 10, grey)}{self.icon("svg_closeBig", 10, grey, "✕")}</span></div>')
+                f'{self.icon("svg_link", 16, grey)}{self.icon("svg_moreTop", 16, grey, "⋮")}'
+                f'{self.icon("svg_maximize", 16, grey)}{self.icon("svg_closeBig", 16, grey, "✕")}</span></div>')
         nav = ""
         # The client lists the commands of a navigation group in alphabetical order.
         links = sorted((item.get("title") or item.get("name") for item in self.view.get("navigation") or []
@@ -696,7 +723,7 @@ class FormHtml:
                 search = c
                 continue
             if not self.v85:
-                left.append(f'<span class="cbtn">{esc(self.command_title(c))}</span>')
+                left.append(self.taxi_command(c))
                 continue
             icon, text = self.command_parts(c)
             if node_class(c) == "HippoLaySubMenu":
@@ -723,11 +750,31 @@ class FormHtml:
             if more or True:
                 parts.append('<span class="cbtn more">' + self.icon("svg_context", 20, fallback="⋮") + "</span>")
             right = '<span class="right">' + "".join(parts) + "</span>"
-        elif more:
-            right = '<span class="right"><span class="cbtn">Еще ▾</span></span>'
+        elif search is not None or more:
+            parts = []
+            if search is not None:
+                parts.append('<span class="inp btns tsearch"><span class="v ph">Поиск (Ctrl+F)</span>'
+                             f'<span class="tb">{self.taxi_cell("editClear", "×")}</span></span>')
+            if more:
+                parts.append('<span class="cbtn">Еще ▾</span>')
+            right = '<span class="right">' + "".join(parts) + "</span>"
         if not left and not right:
             return ""
         return f'<div class="cbar">{"".join(left)}{right}</div>'
+
+    def taxi_command(self, c: dict) -> str:
+        """A table bar button of "Taxi": the platform raster alone for a picture command, the title otherwise."""
+        text = self.command_title(c)
+        if node_class(c) == "HippoLaySubMenu":
+            return f'<span class="cbtn">{esc(text)} ▾</span>'
+        picture = (COMMAND_ICONS.get(picture_name(c)) or "").removeprefix("pic_")
+        representation = c.get("representation") or "Auto"
+        if picture in self.assets.taxi_pictures and representation in ("Picture", "PictureAndText"):
+            image = f'<span class="tpic p-{picture}"></span>'
+            if representation == "Picture":
+                return f'<span class="cbtn ponly">{image}</span>'
+            return f'<span class="cbtn">{image}{esc(text)}</span>'
+        return f'<span class="cbtn">{esc(text)}</span>'
 
     # ---- pages ---------------------------------------------------------------------------------
 
@@ -864,13 +911,19 @@ class FormHtml:
                 placement = "Top"
             return self.labeled(inner, caption, info, stretch, required=False, placement=placement)
         if cls == "HippoLayLogicGroup" and element.get("role") == "TableGroupRole":
-            inner = self.table_group(element)
+            mark = ""
+            if info is not None:
+                # The extended tooltip button of a table stands to the right of its command bar.
+                mark = ('<span class="help">?</span>' if not self.v85 else
+                        '<span class="info">' + self.icon("svg_infoSmall", 20, "var(--icon-muted)", "ⓘ") + "</span>")
+            inner = self.table_group(element, mark)
             if caption and self.v85:
                 inner = f'<div class="gtitle">{esc(caption)}</div>' + inner
             elif caption:
                 text = caption if str(caption).endswith(":") else f"{caption}:"
                 inner = f'<div class="lbl" style="margin-bottom:6px"><span class="t">{esc(text)}</span></div>' + inner
-            return f'<div class="col {stretch}">{inner}</div>'
+            vgrow = " vgrow" if self.wants_height(element) else ""
+            return f'<div class="col {stretch}{vgrow}">{inner}</div>'
         inner = "".join(self.node(k) for k in main)
         if caption and cls not in ("HippoLayLogicGroup", "HippoLayPages"):
             return self.labeled(inner, caption, info, stretch, required=False, placement=placement)
@@ -905,6 +958,12 @@ class FormHtml:
             return f'<div class="fld left {stretch}">{label}{inner}</div>'
         return f'<div class="fld {stretch}">{label}{inner}</div>'
 
+    def taxi_cell(self, picture: str, glyph: str) -> str:
+        """A field button of "Taxi": the platform picture when the assets have it, a glyph otherwise."""
+        if picture in self.assets.taxi_pictures:
+            return f'<span class="p-{picture}"></span>'
+        return f"<span>{glyph}</span>"
+
     def edit(self, n: dict, caption: str | None, info: dict | None = None, stretch: str = "fixed",
              placement: str = "Auto") -> str:
         value = self.value_of(n)
@@ -927,14 +986,15 @@ class FormHtml:
         if not self.v85:
             cells = []
             if n.get("dropListButton") or (n.get("choiceButton") and n.get("openButton")):
-                cells.append("<span>▼</span>")
+                cells.append(self.taxi_cell("editDropDown", "▼"))
             if n.get("openButton"):
-                cells.append("<span>⧉</span>")
+                cells.append(self.taxi_cell("editOpen", "⧉"))
             spin = n.get("spinButton")
             if cells or spin:
                 classes.append("btns")
             if spin:
-                buttons = '<span class="tb spin2"><span>▲</span><span>▼</span></span>'
+                buttons = ('<span class="tb spin2">' + self.taxi_cell("editRegUp", "▲")
+                           + self.taxi_cell("editRegDown", "▼") + "</span>")
             elif cells:
                 buttons = '<span class="tb">' + "".join(cells) + "</span>"
             if spin and text:
@@ -990,8 +1050,8 @@ class FormHtml:
         if isinstance(value, bool):
             chosen = 0 if value else min(1, len(items) - 1)
         titles = [str(item.get("title") or "") for item in items]
-        room = self.field_chars(n)
-        if self.v85 and items and sum(len(t) for t in titles) + 2 * len(titles) > room + 4:
+        fits = sum(len(t) for t in titles) + 2 * len(titles) <= self.field_chars(n) + 4
+        if self.v85 and items and not fits:
             # Items that do not fit: the 8.5 client shows the chosen one with a drop-down arrow.
             options = "".join(f'<span class="{"" if i == chosen else "off"}">{esc(t)}</span>' for i, t in enumerate(titles))
             return ('<div class="tdrop"><span class="opts">' + options + "</span>"
@@ -1001,7 +1061,9 @@ class FormHtml:
         parts = "".join(f'<span class="ti{" on" if i == chosen else ""}" style="flex-shrink:{1 if i == longest else 0}">'
                         f'{esc(t)}</span>' for i, t in enumerate(titles))
         full = "" if "columnsCount" in n else " full"
-        return f'<div class="tfit{full}"><div class="tumbler">{parts}</div></div>'
+        # Items share the width equally, but none gets narrower than its title while they all fit.
+        fit = " fit" if fits else ""
+        return f'<div class="tfit{full}"><div class="tumbler{fit}">{parts}</div></div>'
 
     def field_chars(self, n: dict) -> int:
         """Width in characters the column of an element gives it: its widest sibling field, 40 by default."""
@@ -1074,21 +1136,32 @@ class FormHtml:
         layout = "row" if horizontal else ("col" if self.v85 else "col lgrid")
         stretch = self.stretch_class(n) if n.get("horStretchable") is not False else "fixed"
         vgrow = " vgrow" if self.wants_height(n) else ""
+        styles = []
+        if vgrow and layout == "col lgrid":
+            # One grid row per drawn child: the row of the first that takes height gets the spare height.
+            drawn = [k for k, part in zip(shown, parts) if part]
+            row = next((i for i, k in enumerate(drawn) if self.wants_height(k)), None)
+            if row is not None:
+                styles.append(f"grid-template-rows:{f'repeat({row},auto) ' if row else ''}1fr")
+        spacing = VERTICAL_SPACING.get(n.get("verticalSpacing") or "")
+        if spacing and self.v85 and not horizontal:
+            styles.append(f"gap:{spacing}")
+        rows = f' style="{";".join(styles)}"' if styles else ""
         if n.get("showAsCard") and not n.get("showTitle"):
-            return f'<div class="card {stretch}{vgrow}"><div class="{layout}">{inner}</div></div>'
+            return f'<div class="card {stretch}{vgrow}"><div class="{layout}"{rows}>{inner}</div></div>'
         if n.get("showAsCard") and n.get("showTitle"):
             caption = title.get("title") if title else ""
             if self.v85:
                 return (f'<div class="card {stretch}{vgrow}"><div class="ctitle">{esc(caption)}</div>'
-                        f'<div class="{layout}">{inner}</div></div>')
+                        f'<div class="{layout}"{rows}>{inner}</div></div>')
             return (f'<div class="card {stretch}"><div class="ctitle">{esc(caption)}</div>'
-                    f'<div class="{layout}">{inner}</div></div>')
+                    f'<div class="{layout}"{rows}>{inner}</div></div>')
         if n.get("showTitle") and title is not None:
-            inner = f'<div class="gtitle">{esc(title.get("title"))}</div><div class="{layout}">{inner}</div>'
+            inner = f'<div class="gtitle">{esc(title.get("title"))}</div><div class="{layout}"{rows}>{inner}</div>'
             return f'<div class="col {stretch}">{inner}</div>'
-        return f'<div class="{layout} {stretch}{vgrow}">{inner}</div>'
+        return f'<div class="{layout} {stretch}{vgrow}"{rows}>{inner}</div>'
 
-    def table_group(self, n: dict) -> str:
+    def table_group(self, n: dict, mark: str = "") -> str:
         bar, table = None, None
         for kid in children(n):
             if node_class(kid) == "HippoLayCommandBar" and bar is None:
@@ -1099,8 +1172,11 @@ class FormHtml:
         if bar is not None and self.visible(bar):
             parts.append(self.table_bar(bar))
         if table is not None:
-            parts.append(self.table(table))
+            # The box takes the spare height of the page; in "Taxi" its frame goes down with it.
+            parts.append(f'<div class="tbox">{self.table(table)}</div>')
         vgrow = " vgrow" if table is not None and table.get("stretchableMode") in ("Ver", "Any") else ""
+        if mark:
+            return f'<div class="trow stretch{vgrow}"><div class="tblock{vgrow}">{"".join(parts)}</div>{mark}</div>'
         return f'<div class="tblock stretch{vgrow}">{"".join(parts)}</div>'
 
     def table_rows(self, n: dict) -> list:

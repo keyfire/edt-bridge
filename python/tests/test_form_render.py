@@ -64,6 +64,17 @@ def view(scale="Auto"):
             "lay": lay, "navigation": [{"name": "РегистрСведений.Коды.ОткрытьПоЗначению.Клиент", "title": "Коды"}]}
 
 
+def find(node, name):
+    """The laid-out node with the given name, depth first."""
+    if node.get("name") == name:
+        return node
+    for kid in node.get("children") or []:
+        found = find(kid, name)
+        if found is not None:
+            return found
+    return None
+
+
 ASSETS = form_view.Assets(sprite="<svg></svg>", symbols=frozenset({"svg_plus", "pic_plus", "svg_moreTop"}))
 
 
@@ -137,6 +148,61 @@ def test_sprite_and_pictures_are_read_from_resource_bytes():
         z.writestr("_plus.svg", '<svg viewBox="0 0 24 24" fill="none"><path d="M13 5" fill="#404040"/></svg>')
     pictures = client_assets.extract_pictures(b"prefix" + archive.getvalue())
     assert '<symbol id="pic_plus" viewBox="0 0 24 24"><path d="M13 5"/></symbol>' == pictures
+
+
+def test_taxi_buttons_are_the_platform_rasters():
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w", zipfile.ZIP_STORED) as z:
+        z.writestr("_editRegUp.svg", "<svg/>")
+        z.writestr("_editRegUp150.png", b"\x89PNG-150")
+        z.writestr("_editRegUp100.png", b"\x89PNG-100")
+        z.writestr("_editOpen100.png", b"not a png")
+        z.writestr("_arrowUp_125.png", b"\x89PNG-125")
+        z.writestr("_arrowUp_100.png", b"\x89PNG-100")
+    found = client_assets.extract_taxi_pictures(b"prefix" + archive.getvalue())
+    assert sorted(found) == ["arrowUp", "editRegUp"]
+    assert found["editRegUp"].startswith("data:image/png;base64,iVBORy0xMDA")
+    assets = form_view.Assets(taxi_pictures={"editDropDown": "data:image/png;base64,AA", "unused": "data:,"})
+    drawn = form_view.build(view(), interface="taxi", assets=assets)
+    # The owner field has a drop-down and an open button: the first from the platform, the second a glyph.
+    assert '<span class="p-editDropDown"></span><span>⧉</span>' in drawn.html
+    assert '.p-editDropDown { background-image: url("data:image/png;base64,AA"); }' in drawn.html
+    assert ".p-unused" not in drawn.html
+
+
+def test_taxi_table_bar_shows_picture_commands_and_the_search_field():
+    model = view()
+    bar = find(model["lay"], "АдресаКоманднаяПанель")
+    bar["children"].append({"_c": "HippoLayCommand", "name": "АдресаВверх", "title": "Переместить вверх",
+                            "picture": "PlatformPicture:MoveUp", "representation": "Picture",
+                            "locationInCommandBar": "InCommandBar",
+                            "formModelElement": {"_ref": "Button", "command": {"source": "standard", "name": "MoveUp"}}})
+    assets = form_view.Assets(taxi_pictures={"arrowUp": "data:image/png;base64,AA"})
+    drawn = form_view.build(model, interface="taxi", page="Адреса", assets=assets)
+    assert '<span class="cbtn ponly"><span class="tpic p-arrowUp"></span></span>' in drawn.html
+    assert ">Переместить вверх<" not in drawn.html and '<span class="cbtn">Добавить</span>' in drawn.html
+    # Without the raster the title stands in for the picture.
+    plain = form_view.build(model, interface="taxi", page="Адреса", assets=form_view.Assets())
+    assert ">Переместить вверх<" in plain.html
+
+
+def test_a_group_with_half_spacing_draws_its_items_closer_in_v85():
+    model = view()
+    content = find(model["lay"], "Главное#content")
+    content["verticalSpacing"] = "Half"
+    assert 'style="gap:calc(var(--gap-v) * 3 / 7)"' in form_view.build(model, assets=ASSETS).html
+    assert "gap:calc" not in form_view.build(model, interface="taxi", assets=ASSETS).html
+
+
+def test_a_table_with_an_extended_tooltip_has_its_button_beside_the_bar():
+    model = view()
+    rich = find(model["lay"], "Адреса#richGroup")
+    rich["extTooltipPlacement"] = "Right"
+    rich["children"].append({"_c": "HippoLayImage", "name": "Адреса#extTooltipBtn"})
+    taxi = form_view.build(model, interface="taxi", page="Адреса", assets=ASSETS)
+    assert '<div class="trow stretch vgrow">' in taxi.html and '<span class="help">?</span></div>' in taxi.html
+    v85 = form_view.build(model, page="Адреса", assets=ASSETS)
+    assert '<span class="info">' in v85.html.split('<div class="trow', 1)[1]
 
 
 def test_missing_platform_is_explained(tmp_path):
