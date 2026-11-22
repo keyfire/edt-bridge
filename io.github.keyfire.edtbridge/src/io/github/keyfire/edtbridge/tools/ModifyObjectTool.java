@@ -32,22 +32,28 @@ public final class ModifyObjectTool {
     public JsonObject descriptor() {
         JsonObject props = new JsonObject();
         props.add("projectName", ToolJson.strProp("EDT project name"));
-        props.add("fqn", ToolJson.strProp("CommonModule FQN, e.g. CommonModule.Api"));
+        props.add("fqn", ToolJson.strProp("CommonModule or Form FQN, e.g. CommonModule.Api, "
+                + "Catalog.Products.Form.ItemForm, CommonForm.Settings"));
         JsonObject settings = new JsonObject();
         settings.addProperty("type", "object");
-        settings.addProperty("description", "Owned CommonModule properties: global, server, externalConnection, "
-                + "clientManagedApplication, clientOrdinaryApplication, serverCall, privileged (boolean); "
-                + "returnValuesReuse (DontUse, DuringRequest, DuringSession).");
+        settings.addProperty("description", "Typed properties of the target. Owned CommonModule: global, server, "
+                + "externalConnection, clientManagedApplication, clientOrdinaryApplication, serverCall, privileged "
+                + "(boolean); returnValuesReuse (DontUse, DuringRequest, DuringSession). Form: autoTitle, showTitle, "
+                + "showCloseButton, allowFormCustomize (boolean); titleRu (string; empty clears); windowOpeningMode "
+                + "(Independent, LockOwnerWindow, LockWholeInterface); scaleVariant (Auto, Compact, Normal, "
+                + "NormalIfPossible); width, height (nonnegative integer). Call edt_property_reference to inspect.");
         props.add("properties", settings);
         props.add("extendModule", ToolJson.boolProp("true sets the adopted common module control state to "
-                + "Extended; preserves its module body. Default false."));
+                + "Extended; preserves its module body. Default false. CommonModule only."));
         props.add("apply", ToolJson.boolProp("false: validate all properties and show changes without writing; "
                 + "true: commit and export the object."));
-        return ToolJson.descriptor(name(), "WRITE: set typed execution properties of an owned common module, "
+        return ToolJson.descriptor(name(), "WRITE: set typed properties of an owned common module or a managed "
+                + "form (autoTitle, titleRu, windowOpeningMode, scaleVariant, width, height, ...), "
                 + "or enable the module body of an adopted common module. Dry-run by default; "
                 + "every property is validated before writing.",
-                "ЗАПИСЬ: изменить типизированные свойства собственного общего модуля или включить расширение "
-                + "заимствованного модуля. По умолчанию dry-run; все свойства проверяются до записи.",
+                "ЗАПИСЬ: изменить типизированные свойства собственного общего модуля или управляемой формы "
+                + "(autoTitle, titleRu, windowOpeningMode, scaleVariant, width, height и др.), либо включить "
+                + "расширение заимствованного общего модуля. По умолчанию dry-run; все свойства проверяются до записи.",
                 props, "projectName", "fqn");
     }
 
@@ -68,12 +74,13 @@ public final class ModifyObjectTool {
         if (!args.get("properties").isJsonObject()) throw new IllegalArgumentException("properties must be an object");
         for (Map.Entry<String, JsonElement> entry : args.getAsJsonObject("properties").entrySet()) {
             if (!entry.getValue().isJsonPrimitive()) {
-                throw new IllegalArgumentException("Property values must be booleans or enum names");
+                throw new IllegalArgumentException("Property values must be booleans, strings or numbers");
             }
             var value = entry.getValue().getAsJsonPrimitive();
             if (value.isBoolean()) result.put(entry.getKey(), value.getAsBoolean());
             else if (value.isString()) result.put(entry.getKey(), value.getAsString());
-            else throw new IllegalArgumentException("Property values must be booleans or enum names");
+            else if (value.isNumber()) result.put(entry.getKey(), value.getAsBigDecimal());
+            else throw new IllegalArgumentException("Property values must be booleans, strings or numbers");
         }
         return result;
     }

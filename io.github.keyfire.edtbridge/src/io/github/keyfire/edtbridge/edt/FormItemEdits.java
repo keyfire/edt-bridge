@@ -39,7 +39,8 @@ public final class FormItemEdits {
     private static final Set<String> SETTINGS = Set.of("groupDirection", "representation", "showTitle",
             "united", "titleLocation", "maxHeight", "verticalStretch", "fieldType", "choiceList", "width", "height", "horizontalStretch",
             "choiceButton", "clearButton", "textEdit", "listChoiceMode", "choiceFoldersAndItems", "readOnly",
-            "changeRowSet", "autoInsertNewRow", "changeRowOrder");
+            "changeRowSet", "autoInsertNewRow", "changeRowOrder", "selectionMode", "initialTreeView",
+            "defaultButton", "buttonImportance");
 
     /** A zero-based destination index in the sibling list after excluding the moved item. */
     public static final class Position {
@@ -271,9 +272,12 @@ public final class FormItemEdits {
             if (!(info instanceof InputFieldExtInfo)) { throw new IllegalArgumentException(key + " requires an input field"); }
             return info;
         }
-        if (Set.of("changeRowSet", "autoInsertNewRow", "changeRowOrder").contains(key)
-                && !(item instanceof Table)) {
+        if (Set.of("changeRowSet", "autoInsertNewRow", "changeRowOrder", "selectionMode", "initialTreeView")
+                .contains(key) && !(item instanceof Table)) {
             throw new IllegalArgumentException(key + " requires a table");
+        }
+        if (Set.of("defaultButton", "buttonImportance").contains(key) && !(item instanceof Button)) {
+            throw new IllegalArgumentException(key + " requires a button");
         }
         if ("maxHeight".equals(key) || item instanceof FormField
                 && Set.of("width", "height", "horizontalStretch", "verticalStretch").contains(key)) {

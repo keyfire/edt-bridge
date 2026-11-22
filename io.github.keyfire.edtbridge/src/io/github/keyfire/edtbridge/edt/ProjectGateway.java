@@ -685,6 +685,14 @@ public final class ProjectGateway {
     static RefreshResult revalidateObject(IProject project, String fqn, IBmModel model,
             ICheckScheduler scheduler, ICheckRepository repository, IDerivedDataManager derived,
             IProgressMonitor monitor, long timeoutMs) {
+        return revalidateObject(project, fqn, null, null, model, scheduler, repository, derived,
+                monitor, timeoutMs);
+    }
+
+    static RefreshResult revalidateObject(IProject project, String fqn, String modulePath,
+            IResource scopeResource, IBmModel model, ICheckScheduler scheduler,
+            ICheckRepository repository, IDerivedDataManager derived, IProgressMonitor monitor,
+            long timeoutMs) {
         RefreshResult result = new RefreshResult();
         result.validationMode = "objectChecks";
         if (fqn == null || fqn.isBlank() || model == null || scheduler == null
@@ -713,9 +721,10 @@ public final class ProjectGateway {
                                 + " edt_adopt_object first); no whole-project check was requested.";
                         return null;
                     }
+                    java.util.Set<Object> targets = new java.util.LinkedHashSet<>();
+                    FormValidationSupport.collectTargets(project, resolved, modulePath, scopeResource, targets);
                     // An empty check set means all applicable checks, but this target list is never empty.
-                    scheduler.scheduleValidation(project, java.util.Set.of(),
-                            java.util.List.of((Object) Long.valueOf(object.bmGetId())), false,
+                    scheduler.scheduleValidation(project, java.util.Set.of(), java.util.List.copyOf(targets), false,
                             transaction, monitor);
                     result.validationRequested = true;
                     result.validationTargets.add(fqn);
@@ -727,7 +736,9 @@ public final class ProjectGateway {
                 result.validationCompleted = timeoutMs > 0 && derived.waitAllComputations(timeoutMs)
                         && derived.isAllComputed();
                 result.sawValidation = result.validationCompleted;
-                if (!result.validationCompleted) {
+                if (result.validationCompleted) {
+                    FormValidationSupport.acknowledgeForms(project.getName(), java.util.List.of(fqn));
+                } else {
                     result.warning = "The requested object checks did not finish within the validation "
                             + "wait; the problem report is incomplete.";
                 }
@@ -737,6 +748,51 @@ public final class ProjectGateway {
             result.warning = "The object-validation wait was interrupted; the problem report is incomplete.";
         } catch (RuntimeException | LinkageError failure) {
             result.warning = "Object validation failed: " + failureDescription(failure);
+        }
+        return result;
+    }
+
+    private static RefreshResult revalidatePendingForms(IProject project,
+            java.util.Set<String> pendingForms, IBmModel model, ICheckScheduler scheduler,
+            ICheckRepository repository, IDerivedDataManager derived, IProgressMonitor monitor,
+            long timeoutMs) throws InterruptedException {
+        RefreshResult result = new RefreshResult();
+        if (pendingForms.isEmpty() || model == null || scheduler == null || repository == null
+                || derived == null || repository.isMassiveCheckProcessDisabled(project)) {
+            result.validationCompleted = true;
+            return result;
+        }
+        java.util.List<String> scheduled = new ArrayList<>();
+        model.executeReadonlyTask(new AbstractBmTask<Void>("edt-bridge.refresh.validateModifiedForms") {
+            @Override
+            public Void execute(IBmTransaction transaction, IProgressMonitor taskMonitor) {
+                java.util.Set<Object> targets = new java.util.LinkedHashSet<>();
+                for (String formFqn : pendingForms) {
+                    Object resolved = validationObject(transaction, formFqn);
+                    if (resolved instanceof IBmObject bm && bm.bmGetId() != IBmObject.BM_NULL_ID) {
+                        FormValidationSupport.collectTargets(project, resolved, null, null, targets);
+                        scheduled.add(formFqn);
+                    }
+                }
+                if (!targets.isEmpty()) {
+                    scheduler.scheduleValidation(project, java.util.Set.of(), java.util.List.copyOf(targets), false,
+                            transaction, monitor);
+                    result.validationRequested = true;
+                    result.validationTargets.addAll(scheduled);
+                }
+                return null;
+            }
+        });
+        if (!result.validationRequested) {
+            FormValidationSupport.acknowledgeForms(project.getName(), pendingForms);
+            result.validationCompleted = true;
+            return result;
+        }
+        Jobs.stage("waiting for modified form validation");
+        result.validationCompleted = timeoutMs > 0 && derived.waitAllComputations(timeoutMs)
+                && derived.isAllComputed();
+        if (result.validationCompleted) {
+            FormValidationSupport.acknowledgeForms(project.getName(), scheduled);
         }
         return result;
     }
@@ -811,12 +867,13 @@ public final class ProjectGateway {
                 IBmModelManager models = ServiceAccess.get(IBmModelManager.class);
                 IDerivedDataManagerProvider provider =
                         FormWriteGateway.coreService(IDerivedDataManagerProvider.class);
-                ICheckScheduler scheduler = narrowed ? ServiceAccess.get(ICheckScheduler.class) : null;
-                ICheckRepository checks = narrowed ? ServiceAccess.get(ICheckRepository.class) : null;
+                ICheckScheduler scheduler = ServiceAccess.get(ICheckScheduler.class);
+                ICheckRepository checks = ServiceAccess.get(ICheckRepository.class);
                 for (IProject project : projects) {
                     IDerivedDataManager derived = provider == null ? null : provider.get(project);
                     if (narrowed) {
-                        RefreshResult validation = revalidateObject(project, target,
+                        RefreshResult validation = revalidateObject(project, target, modulePath,
+                                scopeResource(project, pathPrefix),
                                 models == null ? null : models.getModel(project), scheduler, checks,
                                 derived, monitor, deadline - System.currentTimeMillis());
                         r.validationRequested |= validation.validationRequested;
@@ -824,6 +881,15 @@ public final class ProjectGateway {
                         r.validationTargets.addAll(validation.validationTargets);
                         if (validation.warning != null) r.warning = appendHint(r.warning, validation.warning);
                     } else {
+                        java.util.Set<String> pendingForms = FormValidationSupport.pendingForms(project.getName());
+                        if (!pendingForms.isEmpty()) {
+                            RefreshResult pending = revalidatePendingForms(project, pendingForms,
+                                    models == null ? null : models.getModel(project), scheduler, checks,
+                                    derived, monitor, deadline - System.currentTimeMillis());
+                            r.validationRequested |= pending.validationRequested;
+                            r.validationCompleted &= pending.validationCompleted;
+                            r.validationTargets.addAll(pending.validationTargets);
+                        }
                         Jobs.stage("waiting for background validation");
                         long remaining = deadline - System.currentTimeMillis();
                         r.validationCompleted &= derived != null && remaining > 0

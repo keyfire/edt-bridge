@@ -69,7 +69,7 @@ RUSSIAN_PAGES = ("ru/**/*.md",)
 LOCALES = {"en": "", "ru": "ru/"}
 
 #: Files under `docs/` that are not site pages: working notes the site config leaves out.
-WORKING_NOTES = ("DESIGN.md",)
+WORKING_NOTES = ("DESIGN.md", "BACKLOG.md")
 
 #: The folder of the tool catalogue inside a language tree, and the page of that tree that
 #: describes every `EDT_BRIDGE_` variable.

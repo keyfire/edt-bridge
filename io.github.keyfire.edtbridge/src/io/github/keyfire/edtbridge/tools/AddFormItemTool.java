@@ -71,7 +71,7 @@ public final class AddFormItemTool {
                 + "itself calls. Naming, ids, a field's actual type and a table's auto-filled columns are "
                 + "decided by EDT, not assembled here. A table bound to a value-table attribute gets its "
                 + "columns filled in. Use decorationType to create a Label or Picture. "
-                + "index/beforeItem/afterItem select an exclusive insertion position. Typed group/field "
+                + "index/beforeItem/afterItem select an exclusive insertion position. Typed group/field/table/button "
                 + "options and scalar choiceList are validated before writing. Dry-run by default. "
                 + "Additive - no force - but requires a token.",
                 "ЗАПИСЬ (Phase 2): добавить элемент управляемой формы - поле, таблицу, кнопку, группу "
@@ -79,7 +79,7 @@ public final class AddFormItemTool {
                 + "редактор форм. Имена, идентификаторы, фактический вид поля и автозаполнение колонок "
                 + "таблицы определяет EDT, а не сборка здесь. Таблица, связанная с реквизитом типа "
                 + "ТаблицаЗначений, получает колонки автоматически. decorationType задает вид декорации Label или Picture. "
-                + "index/beforeItem/afterItem задают одно место вставки. Свойства групп/полей и scalar choiceList проверяются до записи. По умолчанию dry-run. Аддитивно - "
+                + "index/beforeItem/afterItem задают одно место вставки. Свойства групп, полей, таблиц и кнопок и scalar choiceList проверяются до записи. По умолчанию dry-run. Аддитивно - "
                 + "force не нужен - но требует токен.",
                 props, "projectName", "formFqn", "kind");
     }
