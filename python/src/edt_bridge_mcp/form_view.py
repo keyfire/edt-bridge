@@ -42,7 +42,8 @@ PALETTE = {
         "disabled": "#b5b5bd", "line": "#dbdbdb", "row-line": "#ededf2", "field-line": "#999999",
         "field-bg": "#ffffff", "ro-bg": "#f2f2f2", "fill": "#f2f2f2", "btn": "#dbdbdb", "brand": "#ffdd00",
         "brand-text": "#403700", "icon": "#404040", "icon-muted": "#999999", "link": "#007aff",
-        "action": "#278bf9", "check": "#278bf9", "required": "#ff3e33", "badge-bg": "#e5ffec", "badge-text": "#048f27",
+        "action": "#278bf9", "check": "#278bf9", "chk-dis": "#c5c5c5", "chk-dis-on": "#8dc2fb",
+        "required": "#ff3e33", "badge-bg": "#e5ffec", "badge-text": "#048f27",
         "current": "#ededed", "shadow": "rgba(64,64,64,.16)", "tumbler-on": "#ffffff",
     },
     "dark": {
@@ -50,7 +51,8 @@ PALETTE = {
         "disabled": "#525259", "line": "#575757", "row-line": "#3a3a40", "field-line": "#999999",
         "field-bg": "#1a1a1a", "ro-bg": "#404040", "fill": "#404040", "btn": "#575757", "brand": "#ffe433",
         "brand-text": "#403b19", "icon": "#f2f2f2", "icon-muted": "#999999", "link": "#3395ff",
-        "action": "#5aa6f9", "check": "#5aa6f9", "required": "#ff6e66", "badge-bg": "#194023", "badge-text": "#8aeda2",
+        "action": "#5aa6f9", "check": "#5aa6f9", "chk-dis": "#6b6b6b", "chk-dis-on": "#37597e",
+        "required": "#ff6e66", "badge-bg": "#194023", "badge-text": "#8aeda2",
         "current": "#404040", "shadow": "rgba(0,0,0,.5)", "tumbler-on": "#575757",
     },
 }
@@ -73,7 +75,7 @@ DENSITY = {
         "in-r": "8px", "in-px": "11px", "gap-lbl": "3px", "gap-v": "17px", "gap-h": "16px", "lbl-h": "18px", "lbl-hr": "20px", "card-r": "16px",
         "card-p": "16px", "card-fs": "20px", "card-lh": "32px", "row-h": "40px", "cell-fs": "14.667px",
         "bar-h": "53px", "bar-fs": "14.667px", "btn-h": "40px", "btn-fs": "16px", "tab-fs": "16px",
-        "tab-lh": "24px", "chk": "20px", "chk-fs": "16px", "spin": "32px", "radius-win": "16px",
+        "tab-lh": "24px", "chk": "24px", "chk-tbl": "20px", "chk-fs": "16px", "spin": "32px", "radius-win": "16px",
         "char": "7.7", "char-pad": "21", "line-gap": "12px", "page-top": "20px", "sep-m": "8px", "blink-h": "20px",
     },
     "compact": {
@@ -81,7 +83,7 @@ DENSITY = {
         "in-r": "6px", "in-px": "9px", "gap-lbl": "3px", "gap-v": "14px", "gap-h": "12px", "lbl-h": "15px", "lbl-hr": "16px", "card-r": "12px",
         "card-p": "12px", "card-fs": "16px", "card-lh": "24px", "row-h": "33px", "cell-fs": "12px",
         "bar-h": "44px", "bar-fs": "12px", "btn-h": "32px", "btn-fs": "13.333px", "tab-fs": "13.333px",
-        "tab-lh": "20px", "chk": "20px", "chk-fs": "13.333px", "spin": "26px", "radius-win": "16px",
+        "tab-lh": "20px", "chk": "20px", "chk-tbl": "16px", "chk-fs": "13.333px", "spin": "26px", "radius-win": "16px",
         "char": "6.4", "char-pad": "18", "line-gap": "6px", "page-top": "16px", "sep-m": "13.5px", "blink-h": "26px",
     },
 }
@@ -441,14 +443,13 @@ V85_CSS = """
 .v85 .tabs { overflow: auto hidden; }
 .v85 .side-tabs { flex-direction: row; min-height: 0; }
 .v85 .side-tabs > .tabs { flex: 0 0 clamp(9em, 34.3%, 324px); flex-direction: column; gap: 0;
-                         position: relative; border: 0; border-inline-end: 0.8px solid var(--line); overflow: hidden auto;
-                         scrollbar-width: thin; }
+                         position: relative; border: 0; border-inline-end: 0.8px solid var(--line); overflow: hidden auto; }
 .v85 .side-tabs > .tabs > .tab { flex: 0 0 auto; min-height: calc(var(--tab-lh) + 20px); margin: 0;
                                 padding: 8px 10px 8px 0; border: 0; border-inline-end: 3px solid transparent;
                                 white-space: normal; }
 .v85 .side-tabs > .tabs > .tab.on { border-inline-end-color: var(--brand); }
 .v85 .pbody { min-width: 0; grid-template-columns: minmax(0, 1fr); }
-.v85 .side-tabs > .pbody { min-height: 0; padding-inline-start: 24px; overflow: auto; scrollbar-width: thin; }
+.v85 .side-tabs > .pbody { min-height: 0; padding-inline-start: 24px; overflow: auto; }
 .v85 .side-tabs > .pbody > .page { padding-top: 0; }
 .v85.sized-window .side-tabs > .pbody > .page.ghost { display: none; }
 .v85 .badge { min-width: 22px; height: 22px; }
@@ -456,21 +457,40 @@ V85_CSS = """
 .v85 .page-layout > :first-child { flex: 1 1 auto; min-width: 0; }
 .v85 .page-help { display: inline-flex; align-self: flex-start; flex: 0 0 20px; }
 .v85 .row > .grow, .v85 .row > .stretch { flex-basis: 0; min-width: 0; }
-.v85 .row > .fixed:has(.fld), .v85 .row > .chkrow.fixed { flex-shrink: 1; min-width: 0; }
+.v85 .row > .fixed:has(.fld, .chkrow), .v85 .row > .chkrow.fixed { flex-shrink: 1; min-width: 0; }
 .v85 .chkrow .t { min-width: 0; }
 .v85 .fld .lbl, .v85 .chkrow { white-space: normal; }
 .v85 .fld > .lbl { min-height: var(--lbl-h); height: auto; }
 .v85 .fld > .lbl.reqd { min-height: var(--lbl-hr); height: auto; }
 .v85 .gtitle.big { color: var(--text); font-family: var(--font-medium); }
-.v85 .chkrow { min-height: var(--chk); }
+.v85 .chkrow { align-items: flex-start; min-height: var(--chk); line-height: var(--chk); }
+.v85 .chk-info { display: inline-flex; flex: 0 0 auto; margin-left: 6px;
+                 margin-top: calc((var(--chk) - 16px) / 2); }
+.v85 .chk { width: var(--chk); height: var(--chk); border: 0; border-radius: calc(var(--chk) * 0.25);
+            background: transparent; color: var(--icon-muted); }
+.v85 .chk::before { content: ""; position: absolute; inset: 0; border: 2px solid currentColor;
+                    border-radius: inherit; pointer-events: none; }
+.v85 .chk.on, .v85 .chk.part { color: var(--check); }
+.v85 .chk > svg { position: absolute; inset: 0; width: 100%; height: 100%; fill: currentColor; }
+.v85 .chk.part::after { left: calc(var(--chk) * 0.25 + 1px); right: calc(var(--chk) * 0.25 + 1px);
+                        top: 50%; transform: translateY(-50%); height: 2px; border-radius: 2px;
+                        background: currentColor; }
+.v85 table.grid .chk { --chk: var(--chk-tbl); }
+.v85 .switch { position: relative; flex: 0 0 calc(var(--chk) * 2 - 6px); width: calc(var(--chk) * 2 - 6px);
+               height: var(--chk); border: 2px solid currentColor; border-radius: calc(var(--chk) * 2);
+               color: var(--icon-muted); align-self: flex-start; }
+.v85 .switch::before { content: ""; position: absolute; width: calc(var(--chk) * 0.5); height: calc(var(--chk) * 0.5);
+                       top: calc(var(--chk) * 0.25 - 2px); left: calc(var(--chk) * 0.25 - 2px);
+                       background: currentColor; border-radius: 50%; }
+.v85 .switch.on, .v85 .switch.part { color: var(--check); }
+.v85 .switch.on::before { left: auto; right: calc(var(--chk) * 0.25 - 2px); }
+.v85 .switch.part::before { width: 2px; height: calc(var(--chk) * 0.5); border-radius: 0;
+                            top: 50%; left: 50%; right: auto; transform: translate(-50%, -50%); }
 .v85 .chkrow.dis { color: var(--disabled); }
-.v85 .chkrow.dis .chk, .v85 .switch[aria-disabled="true"] { opacity: .5; }
-.v85 .switch { position: relative; flex: 0 0 42px; height: 24px; border: 1.6px solid var(--icon-muted);
-               border-radius: 24px; align-self: flex-start; }
-.v85 .switch::before { content: ""; position: absolute; width: 12px; height: 12px;
-                       top: 4.4px; left: 4px; background: var(--icon-muted); border-radius: 50%; }
-.v85 .switch.on { border-color: var(--check); }
-.v85 .switch.on::before { left: auto; right: 4px; background: var(--check); }
+.v85 .chkrow.dis .chk, .v85 .chkrow.dis .switch, .v85 .switch[aria-disabled="true"] { color: var(--chk-dis); }
+.v85 .chkrow.dis .chk.on, .v85 .chkrow.dis .chk.part,
+.v85 .chkrow.dis .switch.on, .v85 .chkrow.dis .switch.part,
+.v85 .switch.on[aria-disabled="true"], .v85 .switch.part[aria-disabled="true"] { color: var(--chk-dis-on); }
 .v85 .inp.dis { color: var(--value); }
 .v85 .frow:has(.inp.dis) .spin { opacity: .55; }
 .v85 .tags { display: inline-flex; gap: 4px; align-items: center; min-width: 0; max-width: 100%; }
@@ -479,7 +499,12 @@ V85_CSS = """
 .v85 .tag-item { overflow: hidden; text-overflow: ellipsis; }
 .v85 .inp .tag-item::after { content: " ×"; }
 .v85 .tag-more { flex-shrink: 0; }
-.v85 .tbox { overflow-x: auto; scrollbar-width: thin; }
+.v85 .tbox { overflow-x: auto; }
+.v85 .tabs, .v85 .side-tabs > .tabs, .v85 .side-tabs > .pbody,
+.v85.sized-window .win > .body, .v85 .tbox { scrollbar-width: none; }
+.v85 .tabs::-webkit-scrollbar, .v85 .side-tabs > .tabs::-webkit-scrollbar,
+.v85 .side-tabs > .pbody::-webkit-scrollbar, .v85.sized-window .win > .body::-webkit-scrollbar,
+.v85 .tbox::-webkit-scrollbar { display: none; }
 .v85 table.grid th .check-heading { font-size: 21px; line-height: 1; color: var(--icon); }
 .v85 .grid .tcell-members { display: inline-flex; align-items: center; gap: 10px; max-width: 100%; }
 .v85 .grid-empty { display: grid; place-items: center; min-height: calc(3 * var(--row-h)); font-size: var(--cell-fs);
@@ -1272,10 +1297,10 @@ class FormHtml:
         """A check box as the client draws it: checked, partly checked (a three-state box) or empty."""
         text = str(value).lower()
         if value is True or text in ("true", "да", "1", "yes"):
-            mark = (self.icon("svg_checkbox", 20, "var(--check)", "✓") if self.v85
+            mark = (self.icon("svg_checkbox", 24, "currentColor", "✓") if self.v85
                     else self.icon("svg_checkbox", 16, "#009646", "✓"))
             return f'<span class="chk on">{mark}</span>'
-        if text in ("2", "partial", "частично"):
+        if text in ("2", "partial", "частично", "indeterminate", "неопределено"):
             return '<span class="chk part"></span>'
         return '<span class="chk"></span>'
 
@@ -1400,20 +1425,23 @@ class FormHtml:
         if switcher:
             if value is None:
                 value = n.get("value", model_of(n).get("value"))
-            on = str(value).lower() in ("true", "да", "1", "yes")
-            state = "true" if on else "false"
+            text_value = str(value).lower()
+            part = self.v85 and text_value in ("2", "partial", "частично", "indeterminate", "неопределено")
+            on = not part and (value is True or text_value in ("true", "да", "1", "yes"))
+            state = "mixed" if part else ("true" if on else "false")
+            kind = "switch part" if part else ("switch on" if on else "switch")
             disabled_attr = ' aria-disabled="true"' if disabled else ""
-            box = f'<span class="switch{" on" if on else ""}" role="switch" aria-checked="{state}"{disabled_attr}></span>'
+            box = f'<span class="{kind}" role="switch" aria-checked="{state}"{disabled_attr}></span>'
         else:
             box = self.check_box(value)
         if info is None:
             info_html = ""
         elif self.v85:
-            info_html = ('<span style="display:inline-flex;margin-left:6px">'
+            info_html = ('<span class="chk-info">'
                          + self.icon("svg_infoSmall", 16, "var(--icon-muted)", "ⓘ") + "</span>")
         else:
             info_html = '<span class="help" style="margin:0 0 0 8px">?</span>'
-        margin = 8 if switcher and self.v85 else 6 if switcher else 9
+        margin = 9 if self.v85 else 6 if switcher else 9
         text = f'<span class="t" style="margin-left:{margin}px">{esc(caption)}</span>' if caption else ""
         switch_style = " switchrow" if switcher else ""
         disabled_style = " dis" if disabled else ""
