@@ -110,11 +110,95 @@ def test_dark_theme_switches_the_palette():
     assert "--win:#1a1a1a" in drawn.html and "--brand:#ffe433" in drawn.html
 
 
+@pytest.mark.parametrize("interface,theme", [("v85", "light"), ("v85", "dark"), ("taxi", "light")])
+def test_generated_create_command_uses_the_v85_title_action(interface, theme):
+    model = view()
+    model["navigation"] = []
+    model["lay"]["children"].insert(0, {
+        "_c": "HippoLayCommandBar", "location": "FormTop", "children": [
+            {"_c": "HippoLayCommand", "title": "Create", "picture": "PictureRef", "importance": "Supplementary",
+             "locationInCommandBar": "InCommandBar", "formModelElement": {
+                 "generated": True, "command": {"source": "standard", "name": "Create"}}},
+            {"_c": "HippoLayCommand", "title": "Create a template", "locationInCommandBar": "InCommandBar",
+             "formModelElement": {"command": {"source": "form", "name": "Create"}}},
+        ],
+    })
+    drawn = form_view.build(model, interface=interface, theme=theme, data={"title": "Items"}, assets=ASSETS)
+
+    if interface == "v85":
+        assert '<span class="title">Items</span><span class="create-action">' in drawn.html
+        assert 'href="#pic_plus"/></svg>Create</span><span class="right">' in drawn.html
+        assert '<span class="pill">Create a template</span>' in drawn.html
+        assert '<span class="pill">Create</span>' not in drawn.html
+    else:
+        assert '<span class="tbtn">Create</span><span class="tbtn">Create a template</span>' in drawn.html
+
+
 def test_taxi_puts_titles_left_with_a_colon_and_links_the_navigation():
     drawn = form_view.build(view(), interface="taxi", data={"tables": {"Адреса": {"rows": [["x"]]}}}, assets=ASSETS)
     assert ">Наименование:<" in drawn.html and "lgrid" in drawn.html
     assert '<span class="lnk">Коды</span>' in drawn.html
     assert "Адреса (1)" in drawn.html
+
+
+def test_taxi_underlines_hyperlink_decorations():
+    model = view()
+    content = find(model["lay"], "Главное#content")
+    content["children"].append({"_c": "HippoLayStaticText", "name": "Link", "title": "Set a limit",
+                                "hyperlink": True})
+    taxi = form_view.build(model, interface="taxi", assets=ASSETS).html
+    assert '<div class="deco link" style="">Set a limit</div>' in taxi
+    assert ".deco.link { text-decoration: underline; }" in taxi
+
+
+def test_taxi_places_left_tabs_beside_the_page_content():
+    model = view()
+    find(model["lay"], "Страницы")["representation"] = "TabsOnLeftHorizontal"
+    html = form_view.build(model, interface="taxi", page="Адреса", assets=ASSETS).html
+    assert '<div class="pages stretch side-tabs"><div class="tabs">' in html
+    assert '<span class="tab on">Адреса</span></div><div class="pbody">' in html
+    default_html = form_view.build(view(), interface="taxi", assets=ASSETS).html
+    assert '<div class="pages stretch"><div class="tabs">' in default_html
+
+
+def test_taxi_preserves_the_contents_of_a_command_bar_submenu():
+    model = view()
+    model["lay"]["children"].insert(0, {
+        "_c": "HippoLayCommandBar", "location": "FormTop", "children": [
+            {"_c": "HippoLaySubMenu", "title": "Создать на основании", "children": [
+                {"_c": "HippoLayCommand", "name": "CreatePublication", "title": "Публикация: generate"},
+                {"_c": "HippoLayCommand", "name": "Hidden", "title": "Hidden command"},
+            ]},
+        ],
+    })
+    html = form_view.build(model, interface="taxi", assets=ASSETS, data={"hidden": ["Hidden"]}).html
+    assert '<details class="tsubmenu"><summary class="tbtn">Создать на основании ▾</summary>' in html
+    assert '<span class="tmenuitem">Публикация: generate</span>' in html
+    assert "Hidden command" not in html
+
+
+def test_taxi_uses_observed_page_captions_and_window_size():
+    drawn = form_view.build(view(), interface="taxi", page="Адреса", assets=ASSETS, width=800, height=450,
+                            data={"pageTitles": {"Адреса": "Адреса (4)"}})
+    assert drawn.page == "Адреса"
+    assert '<span class="tab on">Адреса (4)</span>' in drawn.html
+    assert ".win { width:800px; min-width:0; min-height:450px; }" in drawn.html
+
+
+def test_taxi_places_generated_create_based_on_before_custom_commands_and_dims_disabled_buttons():
+    model = view()
+    top = {"_c": "HippoLayCommandBar", "location": "FormTop", "children": [
+        {"_c": "HippoLayCommand", "title": "Save", "formModelElement": {"generated": True}},
+        {"_c": "HippoLaySubMenu", "title": "Publication file", "name": "File"},
+        {"_c": "HippoLaySubMenu", "title": "Create based on", "formModelElement": {"generated": True},
+         "children": [{"_c": "HippoLayCommand", "title": "Create publication", "formModelElement": {
+             "command": {"source": "StandardCommand", "name": "CreateBasedOn"}}}]},
+    ]}
+    model["lay"]["children"].insert(0, top)
+    html = form_view.build(model, interface="taxi", assets=ASSETS, data={"disabled": ["File"]}).html
+    bar = html.split('<div class="tbar">', 1)[1].split('<div class="body">', 1)[0]
+    assert bar.index("Save") < bar.index("Create based on") < bar.index("Publication file")
+    assert 'aria-disabled="true">Publication file ▾</span>' in bar
 
 
 def test_taxi_has_no_dark_theme():
@@ -186,6 +270,35 @@ def test_taxi_table_bar_shows_picture_commands_and_the_search_field():
     assert ">Переместить вверх<" in plain.html
 
 
+@pytest.mark.parametrize(("location", "style"), [("form", "tbtn"), ("table", "cbtn")])
+def test_taxi_groups_the_list_search_controls_on_the_right(location, style):
+    model = view()
+    if location == "form":
+        bar = {"_c": "HippoLayCommandBar", "location": "FormTop", "children": []}
+        model["lay"]["children"].insert(0, bar)
+    else:
+        bar = find(model["lay"], "АдресаКоманднаяПанель")
+    bar["children"].extend([
+        {"_c": "HippoLaySubMenu", "title": "Управление поиском", "representation": "Picture", "children": [
+            {"_c": "HippoLayCommand", "formModelElement": {"command": {"source": "standard", "name": name}}}
+            for name in ("Find", "SearchHistory")
+        ]},
+        {"_c": "HippoLayEdit", "name": "СтрокаПоиска"},
+        {"_c": "HippoLaySubMenu", "name": "Создание", "title": "Создать на основании"},
+        {"_c": "HippoLayCommand", "name": "Отчеты", "title": "Отчеты..."},
+        {"_c": "HippoLayCommand", "locationInCommandBar": "InAdditionalSubmenu", "title": "Обновить"},
+        {"_c": "HippoLayCommand", "title": "Справка",
+         "formModelElement": {"command": {"source": "standard", "name": "Help"}}},
+    ])
+    assets = form_view.Assets(symbols=frozenset({"svg_search"}))
+    html = form_view.build(model, interface="taxi", page="Адреса", assets=assets, data={"hidden": ["Отчеты"]}).html
+    left, right = html[html.index(f'<div class="{style[0]}bar">'):].split('<span class="right">', 1)
+    assert f'<span class="{style}">Создать на основании ▾</span>' in left
+    assert "Отчеты..." not in left and "Управление поиском" not in left
+    assert right.index('class="inp btns tsearch"') < right.index('title="Управление поиском"')
+    assert right.index('href="#svg_search"') < right.index("Еще ▾") < right.index(">?</span>")
+
+
 def test_a_group_with_half_spacing_draws_its_items_closer_in_v85():
     model = view()
     content = find(model["lay"], "Главное#content")
@@ -212,6 +325,64 @@ def test_missing_platform_is_explained(tmp_path):
 
 def reply(payload):
     return {"jsonrpc": "2.0", "id": 1, "result": {"content": [{"type": "text", "text": json.dumps(payload)}]}}
+
+
+def test_taxi_renders_command_pictures_in_form_and_table_bars(tmp_path, monkeypatch):
+    model = view()
+    select = {"_c": "HippoLayCommand", "title": "Select", "picture": "CommonPicture:SelectIcon",
+              "formModelElement": {"command": {"representation": "TextPicture"}}}
+    model["lay"]["children"].insert(0, {
+        "_c": "HippoLayCommandBar", "location": "FormTop", "children": [
+            {"_c": "HippoLayCommand", "title": "Copy", "picture": "PlatformPicture:CloneListItem",
+             "representation": "Picture"},
+            select,
+            {**select, "title": "Text only", "picture": "CommonPicture:Unused", "representation": "Text"},
+            {"_c": "HippoLaySubMenu", "title": "Actions"},
+        ],
+    })
+    find(model["lay"], "АдресаКоманднаяПанель")["children"].append(select)
+    pictures = []
+
+    def bridge(name, args):
+        if name == "edt_form_render":
+            return reply({"ok": True, "layModel": model})
+        if name == "edt_picture_export":
+            pictures.append(args)
+            return reply({"contentType": "image/png", "base64": "iVBORw=="})
+        return reply({})
+
+    assets = form_view.Assets(taxi_pictures={"paperDoublePlus": "data:image/png;base64,iVBORw=="})
+    monkeypatch.setattr(client_assets, "load", lambda platform: assets)
+    monkeypatch.setattr(form_render, "shoot", lambda html, png, scale: (100, 50))
+    out = tmp_path / "form.png"
+    form_render.run({"projectName": "P", "formFqn": "CommonForm.F", "interface": "taxi",
+                     "page": "Адреса", "outPath": str(out)}, bridge)
+
+    html = out.with_suffix(".html").read_text(encoding="utf-8")
+    assert '<span class="tbtn ponly"><span class="tpic p-paperDoublePlus"></span></span>' in html
+    assert '<span class="tbtn">Actions ▾</span>' in html
+    assert '<span class="tbtn">Text only</span>' in html
+    assert html.count('<img class="tpic" src="data:image/png;base64,iVBORw==" alt="">Select') == 2
+    assert [request.get("variant") for request in pictures] == [None, "100.png"]
+
+
+def test_taxi_uses_the_ldpi_image_from_a_named_picture_collection():
+    picked = []
+
+    def bridge(name, args):
+        variant = args.get("variant")
+        if variant is None:
+            return reply({"found": True, "recommended": "choice-v85.svg", "variants": [
+                {"name": "choice-v85.svg", "contentType": "image/svg+xml", "screenDensity": "ldpi",
+                 "interfaceVariant": "version8_5"},
+                {"name": "choice-85.png", "contentType": "image/png", "screenDensity": "bldpi"},
+                {"name": "choice-100.png", "contentType": "image/png", "screenDensity": "ldpi"},
+            ]})
+        picked.append(variant)
+        return reply({"contentType": "image/png", "base64": "AQID"}) if variant == "choice-100.png" else reply({})
+
+    assert form_render._taxi_project_picture(bridge, "P", "Choice") == "data:image/png;base64,AQID"
+    assert picked == ["choice-100.png"]
 
 
 def test_engine_edt_is_passed_to_the_bridge_unchanged():
@@ -335,3 +506,170 @@ def test_the_wrapper_serves_edt_form_render_with_its_arguments():
     assert server.unknown_arguments(form_render.NAME, {"projectName": "P", "formFqn": "F", "interface": "v85",
                                                        "theme": "dark", "page": "x", "data": {}}) is None
     assert "unknown argument" in server.unknown_arguments(form_render.NAME, {"projectName": "P", "colour": "x"})
+
+def test_v85_left_tabs_keep_the_observed_count_separate_from_the_caption():
+    model = view()
+    find(model["lay"], "Страницы")["representation"] = "TabsOnLeftHorizontal"
+    drawn = form_view.build(model, page="Адреса", width=900, height=600,
+                            data={"pageTitles": {"Адреса": "Адреса (4)"}})
+    markup = drawn.html.split('<div class="stage">', 1)[1]
+    assert '<div class="pages stretch side-tabs">' in markup
+    assert 'Адреса<span class="badge">4</span>' in markup
+
+
+def test_v85_draws_boolean_switches_and_sample_tags():
+    model = view()
+    content = find(model["lay"], "Главное#content")
+    content["children"].insert(0, {"_c": "HippoLaySwitcher", "name": "Use", "value": True})
+    content["children"].append(field("Issuers", "Issuers", "Object.Issuers", choiceButton=True))
+    drawn = form_view.build(model, data={"values": {"Issuers": {"items": ["Apps"], "more": 1}}})
+    markup = drawn.html.split('<div class="stage">', 1)[1]
+    assert 'role="switch" aria-checked="true"' in markup
+    assert '<span class="tag-item">Apps</span>' in markup
+    assert '<span class="tag-more">+1</span>' in markup
+    assert "items" not in markup
+
+
+def test_v85_preserves_grouped_table_headers_and_runtime_empty_state():
+    model = view()
+    grid = find(model["lay"], "Адреса")
+    table_node = find(grid, "Адреса#group")["children"][1]
+    address = table_node["children"][0]
+    table_node["children"] = [
+        {"_c": "HippoLayTableColumnsGroup", "grouping": "InCell", "children": [
+            {"_c": "HippoLayTableColumn", "name": "Enabled", "columnMode": "Check", "showInHeader": False},
+            address,
+        ]},
+        {"_c": "HippoLayTableColumnsGroup", "title": "Authentication", "grouping": "Horizontal",
+         "showInHeader": True, "children": [
+            {"_c": "HippoLayTableColumn", "name": "Issuer", "title": "Issuer"},
+            {"_c": "HippoLayTableColumn", "name": "Audience", "title": "Audience"},
+        ]},
+    ]
+    drawn = form_view.build(model, page="Адреса", data={"tables": {"Адреса": {"rows": [], "title": "Addresses"}}})
+    markup = drawn.html.split('<div class="stage">', 1)[1]
+    assert '<th rowspan="2">Адрес</th>' in markup
+    assert '<th colspan="2">Authentication</th>' in markup
+    assert '>Список пуст<' in markup
+    assert '>Addresses<' in markup
+    assert '>Список пуст<' not in form_view.build(model, page="Адреса").html
+
+
+def test_v85_disables_toolbar_and_checkbox_controls_and_hides_the_disabled_dropdown():
+    model = view()
+    content = find(model["lay"], "Главное#content")
+    content["children"].append({"_c": "HippoLayCheckBox", "name": "Remember"})
+    assets = form_view.Assets(symbols=frozenset({"svg_cornerBottom", "pic_plus"}))
+    drawn = form_view.build(model, data={"disabled": ["АдресаДобавить", "Владелец", "Remember"]}, assets=assets)
+    markup = drawn.html.split('<div class="stage">', 1)[1]
+    assert '<span class="cbtn dis" aria-disabled="true">' in markup
+    assert 'class="chkrow fixed dis" aria-disabled="true"' in markup
+    assert 'href="#svg_cornerBottom"' not in markup.split('<div class="pages', 1)[1]
+
+
+def test_v85_shows_extended_help_on_the_page():
+    model = view()
+    find(model["lay"], "Главное")["children"] = [{
+        "_c": "HippoLayFormRichElement", "name": "Page#richGroup", "children": [
+            find(model["lay"], "Главное#content"),
+            {"_c": "HippoLayImage", "name": "Главное#extTooltipBtn", "extTooltip": "Page help"},
+        ],
+    }]
+    drawn = form_view.build(model)
+    markup = drawn.html.split('<div class="stage">', 1)[1]
+    assert 'class="page-help" title="Page help"' in markup
+
+
+def test_v85_orders_generated_create_based_on_before_the_custom_menu():
+    model = view()
+    model["lay"]["children"].insert(0, {
+        "_c": "HippoLayCommandBar", "location": "FormTop", "children": [
+            {"_c": "HippoLaySubMenu", "title": "Publication file"},
+            {"_c": "HippoLaySubMenu", "title": "Create based on", "formModelElement": {"generated": True},
+             "children": [{"_c": "HippoLayCommand", "formModelElement": {
+                 "command": {"source": "StandardCommand", "name": "CreateBasedOn"}}}]},
+        ],
+    })
+    markup = form_view.build(model).html.split('<div class="stage">', 1)[1]
+    assert markup.index("Create based on") < markup.index("Publication file")
+
+
+def test_v85_table_submenu_arrow_follows_its_caption_and_header_commands_can_be_disabled():
+    model = view()
+    model["lay"]["children"].insert(0, {
+        "_c": "HippoLayCommandBar", "location": "FormTop", "children": [
+            {"_c": "HippoLayCommand", "name": "Revoke", "title": "Revoke token",
+             "locationInCommandBar": "InCommandBar"},
+        ],
+    })
+    find(model["lay"], "АдресаКоманднаяПанель")["children"].append(
+        {"_c": "HippoLaySubMenu", "name": "ListSettings", "title": "Настройки списка",
+         "locationInCommandBar": "InCommandBar"},
+    )
+    assets = form_view.Assets(symbols=frozenset({"svg_cornerBottom"}))
+    drawn = form_view.build(model, page="Адреса", data={"disabled": ["Revoke"]}, assets=assets)
+    markup = drawn.html.split('<div class="stage">', 1)[1]
+    assert '<span class="pill" aria-disabled="true">Revoke token</span>' in markup
+    assert 'Настройки списка<svg width="16" height="16"' in markup
+
+
+def test_v85_project_picture_prefers_version8_5_variant_for_the_requested_theme():
+    picked = []
+
+    def bridge(name, args):
+        variant = args.get("variant")
+        if variant is None:
+            return reply({"found": True, "variants": [
+                {"name": "choice-taxi.png", "contentType": "image/png", "interfaceVariant": "taxi"},
+                {"name": "choice-v85-light.svg", "contentType": "image/svg+xml",
+                 "interfaceVariant": "version8_5", "theme": "light"},
+                {"name": "choice-v85-dark.svg", "contentType": "image/svg+xml",
+                 "interfaceVariant": "version8_5", "theme": "dark"},
+            ]})
+        picked.append(variant)
+        return reply({"contentType": "image/svg+xml", "base64": "PHN2Zz48L3N2Zz4="})
+
+    assert form_render._project_picture(bridge, "P", "Choice", interface="v85", theme="dark") \
+        == "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4="
+    assert picked == ["choice-v85-dark.svg"]
+
+
+def test_v85_hides_list_settings_and_search_management_submenus_from_table_bar():
+    model = view()
+    bar = find(model["lay"], "АдресаКоманднаяПанель")
+    bar["children"].extend([
+        {"_c": "HippoLaySubMenu", "name": "СписокНастройки", "title": "Настройки списка",
+         "formModelElement": {"generated": True}, "children": [
+             {"_c": "HippoLayCommand", "title": "Настроить список...",
+              "locationInCommandBar": "InAdditionalSubmenu", "important": False},
+         ]},
+        {"_c": "HippoLaySubMenu", "name": "СписокУправлениеПоиском", "title": "Управление поиском",
+         "children": [
+             {"_c": "HippoLayCommand", "formModelElement": {"command": {"source": "standard", "name": name}}}
+             for name in ("Find", "FindByCurrentValue", "SearchHistory")
+         ]},
+        {"_c": "HippoLayEdit", "name": "СтрокаПоиска"},
+    ])
+    markup = form_view.build(model, page="Адреса", assets=ASSETS).html.split('<div class="stage">', 1)[1]
+    assert "Настройки списка" not in markup
+    assert "Управление поиском" not in markup
+    assert "Поиск" in markup
+
+
+def test_tree_indents_the_first_non_check_column():
+    model = view()
+    table = find(model["lay"], "Адреса#group")["children"][1]
+    table["representation"] = "Tree"
+    table["children"].insert(0, {"_c": "HippoLayTableColumn", "name": "Выбрать", "title": "Выбрать",
+                                 "columnMode": "Check"})
+    data = {"tables": {"Адреса": {"rows": [
+        {"Выбрать": False, "Адрес": "Root", "_level": 0, "_open": True},
+        {"Выбрать": True, "Адрес": "Child", "_level": 1},
+    ]}}}
+    assets = form_view.Assets(symbols=frozenset({"svg_cornerBottom", "svg_cornerRight"}))
+    markup = form_view.build(model, page="Адреса", data=data, assets=assets).html.split('<div class="stage">', 1)[1]
+    assert 'style="margin-left:0px"><svg width="16" height="16"' in markup
+    assert 'style="margin-left:28px"></span>Child</td>' in markup
+
+
+

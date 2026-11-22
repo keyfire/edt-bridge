@@ -15,6 +15,8 @@ import json
 import os
 import re
 import tempfile
+from dataclasses import replace
+from functools import cache
 from pathlib import Path
 from typing import Any, Callable
 
@@ -45,7 +47,7 @@ DESCRIPTOR = {
         "1С:Предприятие 8.5, установленной на этой машине; PNG делает Chromium (дополнение "
         "edt-bridge-mcp[web], затем playwright install chromium). Возвращает пути PNG и HTML, страницы формы "
         "и предупреждения о том, что не нарисовано. engine \"edt\": снимок редактора форм EDT, как раньше "
-        "(к нему относятся variant, density, ratio, width, height)."
+        "(параметры variant, density, ratio, width, height)."
     ),
     "inputSchema": {
         "type": "object",
@@ -66,10 +68,12 @@ DESCRIPTOR = {
                 "description": (
                     "client engine: sample data. title - the window title; values - {item name or data path: "
                     "value} for fields (a boolean for a check box, 2 for its third state, an item title or "
-                    "index for a tumbler or radio buttons); tables - {table name: {rows: [...], current: "
-                    "index}}, a row is a list of cell values in column order or an object by column name, "
+                    "index for a tumbler or radio buttons; {items: [display text, ...], more: count} "
+                    "for tokens in a field or table cell); tables - {table name: {rows: [...], current: "
+                    "index, title: caption}}, a row is a list of cell values in column order or an object by column name, "
                     "with _level, _open, _check for trees and marks; hidden / shown - item names whose "
-                    "visibility the form code changes; messages - [{text, type: info / warning / success / "
+                    "visibility the form code changes; disabled - unavailable item and command names; "
+                    "pageTitles - {page name: displayed caption}; messages - [{text, type: info / warning / success / "
                     "error, group}] important messages the form code puts in a group (none: under the "
                     "header)"),
             },
@@ -87,8 +91,11 @@ DESCRIPTOR = {
             "variant": {"type": "string",
                         "description": "edt engine: TAXI or VERSION8_5; also accepted for interface"},
             "ratio": {"type": "integer", "description": "edt engine: interface common ratio in percent"},
-            "width": {"type": "integer", "description": "edt engine: viewport width px (default 1280)"},
-            "height": {"type": "integer", "description": "edt engine: viewport height px (default 800)"},
+            "width": {"type": "integer", "description": "Window width in px before scaling; client default: "
+                                                        "fit the form, edt default: 1280"},
+            "height": {"type": "integer", "description": "Height in px before scaling; client: window height "
+                                                         "(v85) or minimum height (taxi), edt: viewport height "
+                                                         "(default 800)"},
         },
         "required": ["projectName"],
     },
@@ -176,6 +183,55 @@ def _bridge_json(reply: Any) -> dict:
         raise RenderError(f"the bridge answered with something that is not JSON: {text[:200]}") from error
 
 
+def _project_picture(bridge: Callable[[str, dict], Any], project: str, name: str,
+                     interface: str = "taxi", theme: str = "light") -> str:
+    """Select the project's picture matching the interface and theme."""
+    params = {"projectName": project, "fqn": f"CommonPicture.{name}"}
+    supported = ("image/png", "image/svg+xml", "image/gif", "image/jpeg", "image/bmp")
+    try:
+        collection = _bridge_json(bridge("edt_picture_export", params))
+    except RenderError:
+        collection = {}
+    if collection.get("found") is False:
+        return ""
+    if interface == "v85":
+        wanted_variants = ("", "version8_5", "version85", "v85", "8.5")
+        wanted_themes = ("", theme)
+    else:
+        wanted_variants = ("", "taxi", "version8_2")
+        wanted_themes = ("", "light")
+    variants = [v for v in collection.get("variants") or [] if isinstance(v, dict)
+                and isinstance(v.get("name"), str) and v.get("contentType") in supported
+                and (v.get("interfaceVariant") or "").lower() in wanted_variants
+                and (v.get("theme") or "").lower() in wanted_themes]
+    if interface == "v85":
+        variants.sort(key=lambda v: (not v.get("interfaceVariant"), (v.get("theme") or "").lower() != theme,
+                                     v.get("contentType") != "image/svg+xml", v.get("screenDensity") != "ldpi"))
+        fallbacks = ("svg", "best", "100.png", "Picture.png")
+    else:
+        variants.sort(key=lambda v: (not v.get("interfaceVariant"), v.get("screenDensity") != "ldpi",
+                                     v.get("contentType") != "image/png", v.get("name") != "100.png"))
+        fallbacks = ("100.png", "Picture.png", "best")
+    preferred = [v["name"] for v in variants]
+    for variant in dict.fromkeys([*preferred, *fallbacks]):
+        try:
+            image = _bridge_json(bridge("edt_picture_export", {**params, "variant": variant}))
+        except RenderError:
+            return ""
+        if image.get("found") is False:
+            return ""
+        mime, encoded = image.get("contentType"), image.get("base64")
+        if mime in supported and isinstance(encoded, str) \
+                and re.fullmatch(r"[A-Za-z0-9+/]+={0,2}", encoded):
+            return f"data:{mime};base64,{encoded}"
+    return ""
+
+
+def _taxi_project_picture(bridge: Callable[[str, dict], Any], project: str, name: str) -> str:
+    """Select the project's light Taxi picture at the default density."""
+    return _project_picture(bridge, project, name, interface="taxi", theme="light")
+
+
 def shoot(html_path: Path, png_path: Path, scale: int) -> tuple[int, int]:
     """PNG of the window on the page, at `scale` percent. Returns its size in pixels."""
     try:
@@ -189,7 +245,8 @@ def shoot(html_path: Path, png_path: Path, scale: int) -> tuple[int, int]:
         problems = []
         for options in ({}, {"channel": "msedge"}, {"channel": "chrome"}):
             try:
-                browser = playwright.chromium.launch(args=["--no-proxy-server"], **options)
+                browser = playwright.chromium.launch(args=["--no-proxy-server"],
+                                                    ignore_default_args=["--hide-scrollbars"], **options)
                 break
             except Error as error:
                 problems.append(str(error).splitlines()[0])
@@ -253,8 +310,11 @@ def run(arguments: dict, bridge: Callable[[str, dict], Any]) -> dict:
         assets = form_view.Assets()
         warnings.append(f"the web client icons and fonts were not found ({error}); drawn with system fonts "
                         "and plain marks")
+    assets = replace(assets, project_picture=cache(
+        lambda name: _project_picture(bridge, project, name, interface=interface, theme=theme)))
     drawing = form_view.build(model["layModel"], interface=interface, theme=theme, page=page, data=data,
-                              assets=assets, density=None if density == "auto" else density)
+                              assets=assets, density=None if density == "auto" else density,
+                              width=arguments.get("width"), height=arguments.get("height"))
     html_path = out.with_suffix(".html")
     out.parent.mkdir(parents=True, exist_ok=True)
     html_path.write_text(drawing.html, encoding="utf-8", newline="")

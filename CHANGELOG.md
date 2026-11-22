@@ -13,6 +13,32 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
+## Unreleased
+
+### Added
+
+- `edt_form_render` with `engine="client"` supports `width` and `height` (window height with
+  internal scrolling in "Version 8.5", minimum height in Taxi), `data.pageTitles` for page
+  captions and counters, `data.disabled` for unavailable fields, check boxes, switches and
+  commands, `data.tables.<name>.title` for runtime table captions, and `{"items": [...],
+  "more": N}` token chips in fields and table cells.
+- `edt_form_render` renders boolean switches (`HippoLaySwitcher`), left-side tabs with counter
+  badges in "Version 8.5", grouped multi-row table headers and header pictures, the empty-list
+  placeholder in "Version 8.5", page extended-tooltip icons, the "+ Create" header action in
+  "Version 8.5" lists, and project `CommonPicture` command icons in both interfaces (including
+  `PictureRef` and `command.representation` from the EDT layout model).
+
+### Fixed
+
+- `edt_form_render` aligns Taxi field labels and columns without overlapping wrapped captions,
+  keeps tables inside auto-sized Taxi windows without expanding to maximum width, preserves line
+  breaks in multiline input fields, indents tree nodes in the first column without a check box
+  with expand arrows, and keeps disabled field values legible in the "Version 8.5" dark theme.
+- `edt_form_render` orders the generated "Create based on" submenu before custom header commands,
+  hides the generated list settings and search management submenus from "Version 8.5" table
+  command bars, places table submenu arrows after captions, and wraps checkbox labels inside
+  narrow "Version 8.5" rows.
+
 ## 2026-11-21 – 0.51.0
 
 ### Added
