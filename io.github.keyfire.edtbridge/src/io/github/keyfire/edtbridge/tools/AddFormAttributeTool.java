@@ -47,6 +47,7 @@ public final class AddFormAttributeTool {
                 + "attribute carries, the one that reaches the object module. "
                 + "Comma-separate for a composite type."));
         props.add("titleRu", ToolJson.strProp("Russian title. Optional."));
+        props.add("main", ToolJson.boolProp("Mark as the form's main attribute (e.g. Объект on a DataProcessor or ExternalDataProcessor form). Optional, default false; cannot be combined with columnOf."));
         props.add("columnOf", ToolJson.strProp("Work on a COLUMN of this value-table form attribute instead of a form attribute, e.g. columnOf=Курсы addresses the columns of the Курсы attribute. Optional."));
         props.add("apply", ToolJson.boolProp("false (default) = dry-run: validate (form resolves, name "
                 + "free, type parses) and return the plan, write nothing. true = add the attribute and "
@@ -57,7 +58,7 @@ public final class AddFormAttributeTool {
                 + "attribute is indistinguishable from one added in the form editor. Dry-run by default: "
                 + "validates and returns the plan WITHOUT writing. apply=true adds it and serializes "
                 + "Form.form. Additive - no force needed - but requires a configured token.",
-                "ЗАПИСЬ (Phase 2): добавить реквизит управляемой формы. Идентификатор выдаёт штатная "
+                "ЗАПИСЬ (Phase 2): добавить реквизит управляемой формы. Идентификатор выдает штатная "
                 + "служба идентификаторов формы, тип разбирается той же грамматикой, что у "
                 + "edt_add_attribute, поэтому реквизит неотличим от добавленного в редакторе формы. "
                 + "По умолчанию dry-run: проверяет и возвращает план БЕЗ записи. apply=true добавляет "
@@ -75,8 +76,8 @@ public final class AddFormAttributeTool {
         }
         try {
             return McpServer.textResult(ToolJson.render(gateway.addFormAttribute(project, formFqn, name,
-                    type, ToolJson.getStr(args, "titleRu"), ToolJson.getStr(args, "columnOf"),
-                    ToolJson.getBool(args, "apply"))));
+                    type, ToolJson.getStr(args, "titleRu"), ToolJson.getBool(args, "main"),
+                    ToolJson.getStr(args, "columnOf"), ToolJson.getBool(args, "apply"))));
         } catch (Exception e) {
             return McpServer.toolError("edt_add_form_attribute failed: " + e.getMessage());
         }

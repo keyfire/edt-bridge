@@ -140,6 +140,7 @@ public final class FormWriteGateway {
         RU_FORM_TYPES.put("формаобъекта", FormType.OBJECT);
         RU_FORM_TYPES.put("формаэлемента", FormType.OBJECT);
         RU_FORM_TYPES.put("формадокумента", FormType.OBJECT);
+        RU_FORM_TYPES.put("формаобработки", FormType.OBJECT);
         RU_FORM_TYPES.put("формагруппы", FormType.FOLDER);
         RU_FORM_TYPES.put("формасписка", FormType.LIST);
         RU_FORM_TYPES.put("формавыбора", FormType.CHOICE);
@@ -418,6 +419,7 @@ public final class FormWriteGateway {
         boolean exportedOwner = dtProject != null && mm.forceExport(dtProject, ownerFqn);
         boolean exportedForm = dtProject != null && r.formFqn != null
                 && mm.forceExport(dtProject, r.formFqn);
+        FormValidationSupport.afterFormWrite(p, model, ownerFqn + ".Form." + name);
         r.applied = true;
         r.message = "created form " + ownerFqn + ".Form." + name + " [" + type.name() + "]"
                 + ((exportedOwner && exportedForm)
@@ -762,6 +764,7 @@ public final class FormWriteGateway {
         public String plan;
         public String warning;
         public String message;
+        public Map<String, Object> properties = new LinkedHashMap<>();
         public final List<String> members = new ArrayList<>();     // what the form carries now
         public final List<String> boundItems = new ArrayList<>();  // remove: items still bound to it
     }
@@ -775,6 +778,11 @@ public final class FormWriteGateway {
      */
     public FormMemberResult addFormAttribute(String projectName, String formFqn, String name,
             String typeSpec, String titleRu, String columnOf, boolean apply) {
+        return addFormAttribute(projectName, formFqn, name, typeSpec, titleRu, false, columnOf, apply);
+    }
+
+    public FormMemberResult addFormAttribute(String projectName, String formFqn, String name,
+            String typeSpec, String titleRu, boolean main, String columnOf, boolean apply) {
         FormMemberResult r = newResult(projectName, formFqn, name, "attribute");
         r.columnOf = columnOf;
         IProject p = validateBasics(r, projectName, name);
@@ -801,11 +809,19 @@ public final class FormWriteGateway {
             return r;
         }
         final boolean asColumn = columnOf != null && !columnOf.isBlank();
+        if (main && asColumn) {
+            r.message = "main applies to a form attribute, not to a column";
+            return r;
+        }
         final Function<String, EObject> baseReference = baseTypeResolver(p, mm);
         String typeIssue = typeProblem(model, typeSpec, GatewaySupport.projectVersion(p), baseReference);
         r.ok = Boolean.TRUE.equals(r.nameAvailable) && typeIssue == null;
         r.type = typeSpec;
-        r.plan = "Add " + (asColumn ? "column \"" + name + "\" of " + columnOf : "attribute \"" + name + "\"")
+        if (main) {
+            r.properties.put("main", Boolean.TRUE);
+        }
+        r.plan = "Add " + (asColumn ? "column \"" + name + "\" of " + columnOf
+                : (main ? "main attribute \"" : "attribute \"") + name + "\"")
                 + " : " + typeSpec + " to " + formFqn;
         if (!Boolean.TRUE.equals(r.nameAvailable)) {
             r.message = (asColumn ? "the attribute \"" + columnOf + "\" already has a column named \""
@@ -864,6 +880,9 @@ public final class FormWriteGateway {
                     attribute.setValueType(td);
                     attribute.setView(adjustable(true));
                     attribute.setEdit(adjustable(true));
+                    if (main && attribute instanceof FormAttribute formAttribute) {
+                        formAttribute.setMain(true);
+                    }
                     if (titleRu != null && !titleRu.isBlank()) {
                         attribute.getTitle().put("ru", titleRu);
                     }
@@ -879,7 +898,7 @@ public final class FormWriteGateway {
             r.message = "apply failed (nothing committed): " + failure[0];
             return r;
         }
-        finish(r, mm, model, formFqn, "added attribute \"" + name + "\" to ");
+        finish(r, p, mm, model, formFqn, "added attribute \"" + name + "\" to ");
         return r;
     }
 
@@ -994,7 +1013,7 @@ public final class FormWriteGateway {
             r.message = "apply failed (nothing committed): " + failure[0];
             return r;
         }
-        finish(r, mm, model, formFqn, "changed attribute \"" + name + "\" of ");
+        finish(r, p, mm, model, formFqn, "changed attribute \"" + name + "\" of ");
         return r;
     }
 
@@ -1077,7 +1096,7 @@ public final class FormWriteGateway {
             r.message = "apply failed (nothing committed): " + failure[0];
             return r;
         }
-        finish(r, mm, model, formFqn, "removed attribute \"" + name + "\" from ");
+        finish(r, p, mm, model, formFqn, "removed attribute \"" + name + "\" from ");
         return r;
     }
 
@@ -1088,6 +1107,14 @@ public final class FormWriteGateway {
      */
     public FormMemberResult addFormCommand(String projectName, String formFqn, String name,
             String titleRu, String toolTipRu, String handlerName, boolean createHandler, boolean apply) {
+        return addFormCommand(projectName, formFqn, name, titleRu, toolTipRu, handlerName, createHandler,
+                FormCommandEdits.Options.EMPTY, apply);
+    }
+
+    public FormMemberResult addFormCommand(String projectName, String formFqn, String name,
+            String titleRu, String toolTipRu, String handlerName, boolean createHandler,
+            FormCommandEdits.Options options, boolean apply) {
+        FormCommandEdits.Options opts = options == null ? FormCommandEdits.Options.EMPTY : options;
         FormMemberResult r = newResult(projectName, formFqn, name, "command");
         IProject p = validateBasics(r, projectName, name);
         if (p == null) {
@@ -1110,11 +1137,21 @@ public final class FormWriteGateway {
             r.message = "form not found: " + formFqn;
             return r;
         }
-        r.ok = Boolean.TRUE.equals(r.nameAvailable);
-        r.plan = "Add command \"" + name + "\" to " + formFqn + " with handler " + handler + "()"
-                + (createHandler ? " and write its stub into the form module" : "");
-        if (!r.ok) {
+        String optionIssue = validateCommandOptions(model, formFqn, opts);
+        r.ok = Boolean.TRUE.equals(r.nameAvailable) && optionIssue == null;
+        StringBuilder plan = new StringBuilder("Add command \"").append(name).append("\" to ")
+                .append(formFqn).append(" with handler ").append(handler).append("()");
+        if (optionIssue == null) {
+            FormCommandEdits.appendPlan(plan, opts);
+        }
+        if (createHandler) {
+            plan.append(" and write its stub into the form module");
+        }
+        r.plan = plan.toString();
+        if (!Boolean.TRUE.equals(r.nameAvailable)) {
             r.message = "the form already has a command named \"" + name + "\"";
+        } else if (optionIssue != null) {
+            r.message = optionIssue;
         }
         if (!apply) {
             return r;
@@ -1129,6 +1166,7 @@ public final class FormWriteGateway {
             r.message = editorProblem;
             return r;
         }
+        final Version version = GatewaySupport.projectVersion(p);
         final String[] failure = {null};
         try {
             model.execute(new AbstractBmTask<Object>("edt-bridge.addFormCommand.apply") {
@@ -1139,6 +1177,7 @@ public final class FormWriteGateway {
                         failure[0] = "the form disappeared between validation and apply";
                         return null;
                     }
+                    FormCommandEdits.validate(form, opts);
                     FormCommand command = FormFactory.eINSTANCE.createFormCommand();
                     command.setName(name);
                     FormIdentifierService.INSTANCE.clearCaches(form);
@@ -1156,8 +1195,10 @@ public final class FormWriteGateway {
                     commandHandler.setName(handler);
                     action.setHandler(commandHandler);
                     command.setAction(action);
+                    FormCommandEdits.apply(form, command, opts, version);
                     form.getFormCommands().add(command);
                     r.id = Integer.valueOf(command.getId());
+                    r.properties = FormCommandEdits.readProperties(form, command);
                     return null;
                 }
             });
@@ -1177,7 +1218,7 @@ public final class FormWriteGateway {
                         + GatewaySupport.describeCause(ex);
             }
         }
-        finish(r, mm, model, formFqn, "added command \"" + name + "\" to ");
+        finish(r, p, mm, model, formFqn, "added command \"" + name + "\" to ");
         return r;
     }
 
@@ -1311,6 +1352,7 @@ public final class FormWriteGateway {
         String topFqn = formTopFqn(model, formFqn);
         IDtProject dtProject = mm.getDtProject(model);
         boolean exported = dtProject != null && topFqn != null && mm.forceExport(dtProject, topFqn);
+        FormValidationSupport.afterFormWrite(p, model, formFqn);
         r.applied = true;
         r.message = "registered " + r.eventRu + " as " + r.signature + " on " + formFqn
                 + (exported ? " (serialized to Form.form)"
@@ -1470,9 +1512,17 @@ public final class FormWriteGateway {
         return (itemName == null || itemName.isBlank()) ? event : itemName + event;
     }
 
-    /** Change an existing form command's title, tooltip or handler name. */
+    /** Change an existing form command's title, tooltip, handler name or typed command options. */
     public FormMemberResult modifyFormCommand(String projectName, String formFqn, String name,
             String titleRu, String toolTipRu, String handlerName, boolean apply) {
+        return modifyFormCommand(projectName, formFqn, name, titleRu, toolTipRu, handlerName,
+                FormCommandEdits.Options.EMPTY, apply);
+    }
+
+    public FormMemberResult modifyFormCommand(String projectName, String formFqn, String name,
+            String titleRu, String toolTipRu, String handlerName, FormCommandEdits.Options options,
+            boolean apply) {
+        FormCommandEdits.Options opts = options == null ? FormCommandEdits.Options.EMPTY : options;
         FormMemberResult r = newResult(projectName, formFqn, name, "command");
         IProject p = validateBasics(r, projectName, name);
         if (p == null) {
@@ -1481,8 +1531,9 @@ public final class FormWriteGateway {
         boolean wantsTitle = titleRu != null;
         boolean wantsToolTip = toolTipRu != null;
         boolean wantsHandler = handlerName != null && !handlerName.isBlank();
-        if (!wantsTitle && !wantsToolTip && !wantsHandler) {
-            r.message = "nothing to change - pass at least one of titleRu, toolTipRu, handler";
+        if (!wantsTitle && !wantsToolTip && !wantsHandler && opts.isEmpty()) {
+            r.message = "nothing to change - pass at least one of titleRu, toolTipRu, handler, "
+                    + "actionPurpose, associatedTable, currentRowUse, selectedRowsUse";
             return r;
         }
         if (wantsHandler && !IDENT.matcher(handlerName).matches()) {
@@ -1501,7 +1552,8 @@ public final class FormWriteGateway {
             return r;
         }
         r.present = Boolean.valueOf(!Boolean.TRUE.equals(r.nameAvailable));
-        r.ok = Boolean.TRUE.equals(r.present);
+        String optionIssue = validateCommandOptions(model, formFqn, opts);
+        r.ok = Boolean.TRUE.equals(r.present) && optionIssue == null;
         if (wantsHandler) {
             r.handler = handlerName;
         }
@@ -1515,9 +1567,14 @@ public final class FormWriteGateway {
         if (wantsHandler) {
             what.append(" handler -> ").append(handlerName).append("()");
         }
+        if (optionIssue == null) {
+            FormCommandEdits.appendPlan(what, opts);
+        }
         r.plan = "Change command \"" + name + "\" of " + formFqn + ":" + what;
-        if (!r.ok) {
+        if (!Boolean.TRUE.equals(r.present)) {
             r.message = "the form has no command named \"" + name + "\"";
+        } else if (optionIssue != null) {
+            r.message = optionIssue;
         } else if (wantsHandler) {
             r.warning = "the handler procedure itself is not renamed - point the command at a procedure "
                     + "that exists in the form module, or add it with edt_add_method.";
@@ -1529,6 +1586,7 @@ public final class FormWriteGateway {
             r.message = r.message + " - apply refused (nothing written).";
             return r;
         }
+        final Version version = GatewaySupport.projectVersion(p);
         final String[] failure = {null};
         try {
             model.execute(new AbstractBmTask<Object>("edt-bridge.modifyFormCommand.apply") {
@@ -1540,6 +1598,7 @@ public final class FormWriteGateway {
                         failure[0] = "the command disappeared between validation and apply";
                         return null;
                     }
+                    FormCommandEdits.validate(form, opts);
                     if (wantsTitle) {
                         if (titleRu.isBlank()) {
                             command.getTitle().removeKey("ru");
@@ -1567,7 +1626,9 @@ public final class FormWriteGateway {
                         commandHandler.setName(handlerName);
                         command.setAction(action);
                     }
+                    FormCommandEdits.apply(form, command, opts, version);
                     r.id = Integer.valueOf(command.getId());
+                    r.properties = FormCommandEdits.readProperties(form, command);
                     return null;
                 }
             });
@@ -1579,8 +1640,25 @@ public final class FormWriteGateway {
             r.message = "apply failed (nothing committed): " + failure[0];
             return r;
         }
-        finish(r, mm, model, formFqn, "changed command \"" + name + "\" of ");
+        finish(r, p, mm, model, formFqn, "changed command \"" + name + "\" of ");
         return r;
+    }
+
+    private String validateCommandOptions(IBmModel model, String formFqn, FormCommandEdits.Options opts) {
+        if (opts == null || opts.isEmpty()) return null;
+        return model.executeReadonlyTask(new AbstractBmTask<String>("edt-bridge.formCommand.validateOptions") {
+            @Override
+            public String execute(IBmTransaction tx, IProgressMonitor monitor) {
+                Form form = resolveForm(tx, formFqn);
+                if (form == null) return "form not found: " + formFqn;
+                try {
+                    FormCommandEdits.validate(form, opts);
+                    return null;
+                } catch (RuntimeException invalid) {
+                    return GatewaySupport.describeCause(invalid);
+                }
+            }
+        });
     }
 
     /** Remove a form command. Buttons wired to it are reported first; dropping it needs {@code force}. */
@@ -1648,7 +1726,7 @@ public final class FormWriteGateway {
             r.message = "apply failed (nothing committed): " + failure[0];
             return r;
         }
-        finish(r, mm, model, formFqn, "removed command \"" + name + "\" from ");
+        finish(r, p, mm, model, formFqn, "removed command \"" + name + "\" from ");
         return r;
     }
 
@@ -1779,11 +1857,12 @@ public final class FormWriteGateway {
     }
 
     /** Serialize the changed form and fill in the success message. */
-    private static void finish(FormMemberResult r, IBmModelManager mm, IBmModel model, String formFqn,
-            String what) {
+    private static void finish(FormMemberResult r, IProject p, IBmModelManager mm, IBmModel model,
+            String formFqn, String what) {
         String topFqn = formTopFqn(model, formFqn);
         IDtProject dtProject = mm.getDtProject(model);
         boolean exported = dtProject != null && topFqn != null && mm.forceExport(dtProject, topFqn);
+        FormValidationSupport.afterFormWrite(p, model, formFqn);
         r.applied = true;
         r.message = what + formFqn
                 + (exported ? " (serialized to Form.form)"
@@ -2777,6 +2856,9 @@ public final class FormWriteGateway {
             String topFqn = formTopFqn(model, formFqn);
             IDtProject dtProject = mm.getDtProject(model);
             boolean exported = dtProject != null && topFqn != null && mm.forceExport(dtProject, topFqn);
+            if (dtProject != null) {
+                FormValidationSupport.afterFormWrite(dtProject.getWorkspaceProject(), model, formFqn);
+            }
             model.executeReadonlyTask(new AbstractBmTask<Object>("edt-bridge.formItem.readback") {
                 @Override public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
                     Form form = resolveForm(tx, formFqn);

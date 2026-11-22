@@ -50,15 +50,19 @@ public final class ModifyFormItemTool {
         props.add("apply", ToolJson.boolProp("false (default) = dry-run: validate and return the plan, "
                 + "write nothing. true = apply the change and serialize Form.form."));
         return ToolJson.descriptor(name(),
-                "WRITE (Phase 2): rename a form item or change its title, visibility or enabled state. "
+                "WRITE (Phase 2): rename a form item or change its title, visibility, enabled state or typed "
+                + "group/field/table/button options (including defaultButton and buttonImportance on buttons "
+                + "in autoCommandBar, and selectionMode/initialTreeView on tables). "
                 + "Except for the name these are the DESIGN values stored in Form.form - runtime BSL "
                 + "(ПриСозданииНаСервере and friends) can still override them. Dry-run by default; pass "
-                + "at least one of newName/titleRu/visible/enabled or a typed group/field option. Supports fieldType and scalar choiceList replacement. Requires a configured token.",
-                "ЗАПИСЬ (Phase 2): переименовать элемент формы или изменить у него заголовок, "
-                + "видимость и доступность. Кроме имени это ПРОЕКТНЫЕ значения, хранящиеся в Form.form, "
+                + "at least one of newName/titleRu/visible/enabled or a typed option. Supports fieldType and scalar choiceList replacement. Requires a configured token.",
+                "ЗАПИСЬ (Phase 2): переименовать элемент формы или изменить его заголовок, видимость, "
+                + "доступность или типизированные свойства группы, поля, таблицы или кнопки (включая "
+                + "defaultButton и buttonImportance у кнопок в autoCommandBar, selectionMode и initialTreeView "
+                + "у таблиц). Кроме имени это ПРОЕКТНЫЕ значения, хранящиеся в Form.form, "
                 + "- код (ПриСозданииНаСервере и подобные) может переопределить их в рантайме. По "
                 + "умолчанию dry-run; задать нужно хотя бы одно из newName / titleRu / visible / "
-                + "enabled или типизированное свойство группы/поля. Доступны fieldType и замена scalar choiceList. Требует токен.",
+                + "enabled или типизированное свойство. Доступны fieldType и замена scalar choiceList. Требует токен.",
                 props, "projectName", "formFqn", "name");
     }
 

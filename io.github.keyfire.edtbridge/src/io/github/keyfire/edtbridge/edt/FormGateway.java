@@ -198,6 +198,10 @@ public final class FormGateway {
         public String title;      // ru, the caption of the command
         public String toolTip;    // ru, the tooltip, apart from the title
         public String handler;    // BSL action procedure, best-effort
+        public String actionPurpose;
+        public String associatedTable;
+        public String currentRowUse;
+        public String selectedRowsUse;
     }
 
     /** A form parameter. */
@@ -219,6 +223,7 @@ public final class FormGateway {
         public String type;       // eClass of the resolved object
         public String message;    // set when not found / not a form
         public String titleRu;
+        public Boolean autoTitle;
         public int width;
         public int height;
         public boolean truncated; // item-tree node cap reached
@@ -299,6 +304,7 @@ public final class FormGateway {
                 r.type = mdForm.eClass().getName();
                 r.found = true;
                 r.titleRu = ruOf(form.getTitle());
+                r.autoTitle = Boolean.valueOf(form.isAutoTitle());
                 try {
                     r.width = form.getWidth();
                     r.height = form.getHeight();
@@ -309,7 +315,7 @@ public final class FormGateway {
                     r.attributes.add(attributeOf(a, queryLimit));
                 }
                 for (FormCommand c : form.getFormCommands()) {
-                    r.commands.add(commandOf(c));
+                    r.commands.add(commandOf(form, c));
                 }
                 for (FormParameter pm : form.getParameters()) {
                     FormParam fp = new FormParam();
@@ -530,11 +536,29 @@ public final class FormGateway {
      * edt_modify_form_command read back as unchanged.
      */
     FormCmd commandOf(FormCommand c) {
+        return commandOf(null, c);
+    }
+
+    FormCmd commandOf(Form form, FormCommand c) {
         FormCmd fc = new FormCmd();
         fc.name = c.getName();
         fc.title = ruOf(c.getTitle());
         fc.toolTip = ruOf(c.getToolTip());
         fc.handler = handlerOf(c);
+        try {
+            if (c.getActionPurpose() != null && !"Usual".equals(c.getActionPurpose().getLiteral())) {
+                fc.actionPurpose = c.getActionPurpose().getLiteral();
+            }
+            fc.associatedTable = FormCommandEdits.associatedTableName(form, c);
+            if (c.getCurrentRowUse() != null && !"Auto".equals(c.getCurrentRowUse().getLiteral())) {
+                fc.currentRowUse = c.getCurrentRowUse().getLiteral();
+            }
+            if (c.getSelectedRowsUse() != null && !"Auto".equals(c.getSelectedRowsUse().getLiteral())) {
+                fc.selectedRowsUse = c.getSelectedRowsUse().getLiteral();
+            }
+        } catch (RuntimeException ignored) {
+            // command properties are best-effort
+        }
         return fc;
     }
 

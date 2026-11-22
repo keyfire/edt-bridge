@@ -19,7 +19,7 @@ Changes need a token and are returned as a plan until `apply=true` is passed; se
 | `edt_add_attribute` · `edt_modify_attribute` · `edt_remove_attribute` | Adds or changes an attribute, register resource or dimension (`kind`, default `attribute`). Addition checks the name across all three field lists. Changes support the type, Russian synonym and comment. `edt_remove_attribute` removes attributes; use `edt_delete_object` with the member FQN for resources and dimensions. Optional `use=ForFolder\|ForItem\|ForFolderAndItem` applies to hierarchical fields; `multiLine` controls multiline input. Invalid or inapplicable options are rejected before writing. Modification preserves the field UUID; `properties` reports the actual values. |
 | `edt_rename` | Renames a method, metadata object or member and updates references through EDT's refactoring engine. The preview reports known affected files and the completeness of file and edit counts. Requires `force` because external uses of the old name may break. |
 | `edt_adopt_object` | Adopts an object of the base configuration into an extension project through EDT's own `IModelObjectAdopter`. Nothing in an extension can intercept that object until this happens, and it is the step that completes `edt_create_extension`. |
-| `edt_modify_object` · `edt_update_subsystem` | Sets common-module execution flags and result reuse, or adds/removes existing objects from a subsystem. Both validate the whole request before writing and show a plan. Removing members additionally requires `force=true`. `extendModule=true` enables an adopted common module for extension. |
+| `edt_modify_object` · `edt_update_subsystem` | Sets common-module execution flags and result reuse, sets typed root properties of a managed form (`autoTitle`, `titleRu`, `windowOpeningMode`, `scaleVariant`, `width`, `height` and others), or adds/removes existing objects from a subsystem. Both validate the whole request before writing and show a plan. Removing members additionally requires `force=true`. `extendModule=true` enables an adopted common module for extension. |
 | `edt_modify_role_rights` | Sets rights of a role on one object the way the rights editor of EDT does: a value equal to the role's default removes the explicit entry. Exports the role and its `Rights.rights`; a role without its own `Rights.rights` gets one. An unknown right is refused with the rights the object has, and a right with a data access restriction is never changed. In an extension the role and the object must be the extension's own or adopted. Dry-run by default; apply needs a token. |
 | `edt_modify_command_interface` | Changes `CommandInterface.cmi` of a subsystem section: the visibility of a command in common and by role, its group within its panel, the order of a group, or a return to the default. Takes the names `edt_command_interface` prints. An adopted subsystem without its own `CommandInterface.cmi` gets one. Dry-run by default; apply needs a token. |
 
@@ -146,3 +146,10 @@ base configuration's execution flags. Pass `extendModule=true` to `edt_adopt_obj
 `edt_update_subsystem` takes `fqn` and arrays of object FQNs in `add` and `remove`.
 Creating and adopting objects preserve an already alphabetic Configuration list, ignoring case.
 A list in a custom order keeps that order and receives a new object at the end.
+
+`edt_modify_object` also accepts a managed form FQN with `properties`: `autoTitle`, `showTitle`,
+`showCloseButton` and `allowFormCustomize` (booleans), `titleRu` (string, empty clears),
+`windowOpeningMode` (`Independent`, `LockOwnerWindow`, `LockWholeInterface`), `scaleVariant`
+(`Auto`, `Compact`, `Normal`, `NormalIfPossible`), `width` and `height` (nonnegative integers).
+Call `edt_property_reference` on the form FQN to inspect available properties and current values.
+`extendModule` applies to adopted common modules only.

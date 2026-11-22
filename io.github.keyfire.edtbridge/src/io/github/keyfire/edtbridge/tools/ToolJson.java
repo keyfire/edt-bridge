@@ -262,6 +262,9 @@ final class ToolJson {
         if (res.modulePath != null) {
             o.addProperty("modulePath", res.modulePath);
         }
+        if (res.properties != null && !res.properties.isEmpty()) {
+            o.add("properties", new GsonBuilder().create().toJsonTree(res.properties));
+        }
         o.addProperty("formFound", res.formFound);
         o.addProperty("nameValid", res.nameValid);
         if (res.nameAvailable != null) {

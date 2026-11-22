@@ -14,10 +14,12 @@ import com._1c.g5.v8.bm.integration.IBmModel;
 import com._1c.g5.v8.dt.core.platform.IBmModelManager;
 import com._1c.g5.v8.dt.core.platform.IExtensionProject;
 import com._1c.g5.v8.dt.core.platform.IV8ProjectManager;
+import com._1c.g5.v8.dt.form.model.Form;
 import com._1c.g5.v8.dt.metadata.mdclass.CommonModule;
 import com._1c.g5.v8.dt.metadata.mdclass.Configuration;
 import com._1c.g5.v8.dt.metadata.mdclass.MdObject;
 import com._1c.g5.v8.dt.metadata.mdclass.Subsystem;
+import com._1c.g5.v8.dt.platform.version.Version;
 import com._1c.g5.wiring.ServiceAccess;
 
 /** Typed metadata settings and subsystem membership through live BM transactions. */
@@ -63,23 +65,57 @@ public final class MetadataSettingsGateway {
             boolean extendModule, boolean apply) {
         Result result = new Result(); result.project = projectName; result.fqn = fqn;
         try {
-            IBmModel model = model(project(projectName));
+            IProject project = project(projectName);
+            IBmModel model = model(project);
+            boolean use851Title = GatewaySupport.projectVersion(project)
+                    .isGreaterThanOrEquals(new Version(8, 5, 1));
+            final boolean[] isForm = {false};
+            final String[] exportFqn = {fqn};
             model.executeReadonlyTask(new AbstractBmTask<Object>("edt-bridge.metadataSettings.inspect") {
                 @Override public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
                     EObject object = tx.getTopObjectByFqn(fqn);
-                    if (!(object instanceof CommonModule module)) throw new IllegalArgumentException("An existing CommonModule FQN is required");
-                    result.changes = CommonModuleSettings.describe(module, properties, extendModule);
-                    return null;
+                    if (object instanceof CommonModule module) {
+                        result.changes = CommonModuleSettings.describe(module, properties, extendModule);
+                        return null;
+                    }
+                    Form form = FormWriteGateway.resolveForm(tx, fqn);
+                    if (form != null) {
+                        if (extendModule) {
+                            throw new IllegalArgumentException("extendModule applies to an adopted CommonModule, not a Form");
+                        }
+                        isForm[0] = true;
+                        if (form.bmGetFqn() != null) {
+                            exportFqn[0] = form.bmGetFqn();
+                        }
+                        result.changes = FormSettings.describe(form, properties, use851Title);
+                        return null;
+                    }
+                    throw new IllegalArgumentException("An existing CommonModule or Form FQN is required");
                 }
             });
+            String kind = isForm[0] ? "form" : "common-module";
             result.ok = true;
-            result.plan = "Set " + result.changes.size() + " common-module properties on " + fqn;
+            result.plan = "Set " + result.changes.size() + " " + kind + " properties on " + fqn;
             if (!apply || result.changes.isEmpty()) {
                 result.message = result.changes.isEmpty() ? "The requested settings already match" : "dry-run: nothing written";
                 return result;
             }
+            if (isForm[0]) {
+                String editorProblem = FormIdentifiersGateway.editorProblem(model, fqn);
+                if (editorProblem != null) {
+                    result.ok = false;
+                    result.message = editorProblem;
+                    return result;
+                }
+            }
             model.execute(new AbstractBmTask<Object>("edt-bridge.metadataSettings.apply") {
                 @Override public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
+                    if (isForm[0]) {
+                        Form form = FormWriteGateway.resolveForm(tx, fqn);
+                        if (form == null) throw new IllegalArgumentException("The form disappeared");
+                        FormSettings.apply(form, properties, use851Title);
+                        return null;
+                    }
                     EObject object = tx.getTopObjectByFqn(fqn);
                     if (!(object instanceof CommonModule module)) throw new IllegalArgumentException("The common module disappeared");
                     CommonModuleSettings.apply(module, properties, extendModule);
@@ -87,8 +123,11 @@ public final class MetadataSettingsGateway {
                 }
             });
             result.applied = true;
-            export(model, fqn, result);
-            result.message = "Updated common-module properties on " + fqn;
+            export(model, exportFqn[0], result);
+            if (isForm[0]) {
+                FormValidationSupport.afterFormWrite(project, model, fqn);
+            }
+            result.message = "Updated " + kind + " properties on " + fqn;
         } catch (RuntimeException failure) {
             result.ok = false;
             result.message = (result.applied ? "The model changed, but export failed: " : "Nothing written: ")

@@ -11,7 +11,7 @@ spreadsheet documents. Two of them render a form or a spreadsheet template to PN
 
 | Tool | What it returns |
 |------|-----------------|
-| `edt_form_structure` · `edt_form_render` · `edt_picture_export` | Return a managed form's structure, its image, and the content of a configuration picture. The structure includes a tree of fields, groups, tables, buttons, and decorations. Items include data bindings, static visible/enabled/readOnly, event handlers, input-field properties, command-to-button links, and conditional appearance. Form attributes, commands, parameters, and handlers are also returned; a command carries its caption in `title` and its tooltip in `toolTip`. The form is drawn to PNG the way the 1C client shows it, in the "Version 8.5" or Taxi interface, light or dark theme, any page, with sample data; EDT's form editor preview is still available. For CommonPicture, the content of Picture.zip is returned. |
+| `edt_form_structure` · `edt_form_render` · `edt_picture_export` | Return a managed form's structure, its image, and the content of a configuration picture. The structure includes `autoTitle` and a tree of fields, groups, tables, buttons, and decorations. Items include data bindings, static visible/enabled/readOnly, event handlers, input-field properties, command-to-button links, and conditional appearance. Form attributes, commands, parameters, and handlers are also returned; a command carries its caption in `title`, its tooltip in `toolTip`, and non-default `actionPurpose`, `associatedTable`, `currentRowUse` and `selectedRowsUse`. The form is drawn to PNG the way the 1C client shows it, in the "Version 8.5" or Taxi interface, light or dark theme, any page, with sample data; EDT's form editor preview is still available. For CommonPicture, the content of Picture.zip is returned. |
 | `edt_read_html_template` | Exact UTF-8 source and `sourceHash` for one existing common or nested HTML-template locale. Requires explicit `templateFqn` and `language`; returns available languages and the model-resolved file path. |
 | `edt_read_dcs` | Reads the exact source of a data composition schema template - the schema's designer XML - with the path and `sourceHash`. |
 | `edt_read_spreadsheet` | Reads a spreadsheet template - a print form layout - as column widths and named row areas of cells: `text`, `parameter` or `template`, with `bold`, `fontSize`, `align`, `border`, `colspan` and `wrap`. The answer is the input of `edt_write_spreadsheet`; `unsupported` names what the file also has and the description does not carry, such as pictures and colors. |
@@ -29,17 +29,26 @@ wrapper draws it as an HTML page and saves a PNG made by Chromium. Arguments:
 - `interface` – `v85` ("Version 8.5", the default) or `taxi`; `theme` – `light` or `dark`. The
   platform has no dark theme for Taxi, and the call refuses that pair.
 - `page` – the page to show, by name or title; the answer lists the pages of the form in `pages`.
-- `data` – sample data: `title` for the window, `values` by item name or data path (`2` is the
-  third state of a check box), `tables` with `rows` (lists in column order or objects by column
-  name; `_level`, `_open`, `_check` for trees and marks) and `current`, `hidden` and `shown` for
-  items whose visibility the form code changes, `messages` for important messages the form code
-  shows (`text`, `type` – `info`, `warning`, `success` or `error`, and `group`, the form group the
-  message goes into; without it the message stands under the header).
+- `data` provides the sample data:
+  - `title` sets the window title. `pageTitles` maps page names to their displayed titles,
+    including counts calculated by the configuration.
+  - `values` sets values by item name or data path. Use `2` or `"partial"` for the third state of a
+    check box or a "Version 8.5" switch. For selected value tokens, pass an object such as
+    `{"items":["First"],"more":2}`.
+  - `tables` maps table names to their data. `rows` accepts lists in column order or objects
+    keyed by column name. Cells accept the same token format. Use `_level`, `_open` and `_check`
+    for tree nodes and marks, `current` for the current row index and `title` for the table caption.
+  - `hidden` and `shown` list items whose visibility the form code changes. `disabled` lists
+    unavailable fields and commands.
+  - `messages` sets important messages with `text`, `type` (`info`, `warning`, `success` or
+    `error`) and the target group name `group`. Messages without a group appear below the header.
 - `density` – `auto` (the form's own scale variant), `normal` or `compact`. The client may also
   choose compact for a form whose scale variant is Auto; that choice is made by the server and is
   not in the form, so pass `density="compact"` for such a form.
-- `scale` – the PNG scale in percent, 150 by default; `outPath` – the PNG path, the HTML page is
-  saved next to it.
+- `width` sets the window width and `height` sets the window height in "Version 8.5" or minimum
+  height in Taxi, in pixels before scaling. The window is sized to its contents by default.
+- `scale` sets the PNG scale in percent, 150 by default. The HTML file is saved next to the PNG
+  at `outPath`.
 
 Titles are in the language of the configuration, including standard attributes and standard
 commands, with the synonyms the configuration gives them. Command bars show what the platform puts

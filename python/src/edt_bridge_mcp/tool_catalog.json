@@ -775,8 +775,8 @@
     },
     {
       "name": "edt_property_reference",
-      "description": "READ: list editable properties of a common module, external object, extension, field or form item. Returns each property's type, accepted values and current value, and names the tool that takes them. Call it before edt_modify_object, edt_modify_attribute or edt_modify_form_item instead of trying spellings: the list is built by the code that validates the write, for this very object, so a property the object lacks is not listed.",
-      "descriptionRu": "ЧТЕНИЕ: перечислить свойства общего модуля, внешнего объекта, расширения, реквизита или элемента формы. Возвращает тип каждого свойства, допустимые значения и текущее значение, а также имя инструмента, который их принимает. Вызывать перед edt_modify_object, edt_modify_attribute или edt_modify_form_item вместо перебора написаний: перечень строит код, который проверяет запись, для этого же объекта, поэтому отсутствующее у объекта свойство в перечень не попадает.",
+      "description": "READ: list editable properties of a common module, external object, extension, field, form, form item or form command. Returns each property's type, accepted values and current value, and names the tool that takes them. Call it before edt_modify_object, edt_modify_attribute, edt_modify_form_item or edt_modify_form_command instead of trying spellings: the list is built by the code that validates the write, for this very object, so a property the object lacks is not listed.",
+      "descriptionRu": "ЧТЕНИЕ: перечислить свойства общего модуля, внешнего объекта, расширения, реквизита, формы, элемента формы или команды формы. Возвращает тип каждого свойства, допустимые значения и текущее значение, а также имя инструмента, который их принимает. Вызывать перед edt_modify_object, edt_modify_attribute, edt_modify_form_item или edt_modify_form_command вместо перебора написаний: перечень строит код, который проверяет запись, для этого же объекта, поэтому отсутствующее у объекта свойство в перечень не попадает.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -790,7 +790,11 @@
           },
           "item": {
             "type": "string",
-            "description": "Form item name, when fqn is a form. Omitted on a form lists its item names."
+            "description": "Form item name, when fqn is a form. Mutually exclusive with command. Omitted on a form returns the form's own properties plus its item and command names."
+          },
+          "command": {
+            "type": "string",
+            "description": "Form command name, when fqn is a form. Mutually exclusive with item."
           },
           "formFqn": {
             "type": "string",
@@ -1969,7 +1973,7 @@
           },
           "formType": {
             "type": "string",
-            "description": "Form kind. A FormType name - GENERIC, OBJECT, FOLDER, LIST, CHOICE, FOLDER_CHOICE, RECORD, RECORD_SET, REPORT, REPORT_SETTINGS, REPORT_VARIANT, CONSTANTS, SEARCH, SAVE, LOAD, DYNAMIC_LIST - or a Russian alias (ФормаЭлемента, ФормаСписка, ФормаВыбора, ФормаЗаписи, ФормаНабораЗаписей, ФормаОтчета, ПроизвольнаяФорма). Optional - omitted picks the owner's usual kind (Catalog/Document -> OBJECT, InformationRegister -> RECORD, Report -> REPORT, DataProcessor -> GENERIC)."
+            "description": "Form kind. A FormType name - GENERIC, OBJECT, FOLDER, LIST, CHOICE, FOLDER_CHOICE, RECORD, RECORD_SET, REPORT, REPORT_SETTINGS, REPORT_VARIANT, CONSTANTS, SEARCH, SAVE, LOAD, DYNAMIC_LIST - or a Russian alias (ФормаЭлемента, ФормаСписка, ФормаВыбора, ФормаЗаписи, ФормаНабораЗаписей, ФормаОтчета, ФормаОбработки, ПроизвольнаяФорма). Optional - omitted picks the owner's usual kind (Catalog/Document/DataProcessor/ExternalDataProcessor -> OBJECT with the main Объект attribute, InformationRegister -> RECORD, Report/ExternalReport -> REPORT; pass GENERIC for a blank form without a main attribute)."
           },
           "synonymRu": {
             "type": "string",
@@ -2002,7 +2006,7 @@
     {
       "name": "edt_add_form_attribute",
       "description": "WRITE (Phase 2): add an attribute to a managed form. The id comes from EDT's own form identifier service and the type from the same grammar edt_add_attribute uses, so the attribute is indistinguishable from one added in the form editor. Dry-run by default: validates and returns the plan WITHOUT writing. apply=true adds it and serializes Form.form. Additive - no force needed - but requires a configured token.",
-      "descriptionRu": "ЗАПИСЬ (Phase 2): добавить реквизит управляемой формы. Идентификатор выдаёт штатная служба идентификаторов формы, тип разбирается той же грамматикой, что у edt_add_attribute, поэтому реквизит неотличим от добавленного в редакторе формы. По умолчанию dry-run: проверяет и возвращает план БЕЗ записи. apply=true добавляет реквизит и сериализует Form.form. Аддитивно - force не нужен - но требует токен.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): добавить реквизит управляемой формы. Идентификатор выдает штатная служба идентификаторов формы, тип разбирается той же грамматикой, что у edt_add_attribute, поэтому реквизит неотличим от добавленного в редакторе формы. По умолчанию dry-run: проверяет и возвращает план БЕЗ записи. apply=true добавляет реквизит и сериализует Form.form. Аддитивно - force не нужен - но требует токен.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2025,6 +2029,10 @@
           "titleRu": {
             "type": "string",
             "description": "Russian title. Optional."
+          },
+          "main": {
+            "type": "boolean",
+            "description": "Mark as the form's main attribute (e.g. Объект on a DataProcessor or ExternalDataProcessor form). Optional, default false; cannot be combined with columnOf."
           },
           "columnOf": {
             "type": "string",
@@ -2200,8 +2208,8 @@
     },
     {
       "name": "edt_add_form_command",
-      "description": "WRITE (Phase 2): add a command to a managed form. The id comes from EDT's own form identifier service and the action is wired to a handler procedure in the form module; createHandler=true also writes that procedure's stub, creating the module file when the form has none. Note the command still needs a button to be reachable in the UI. Dry-run by default. Additive - no force needed - but requires a configured token.",
-      "descriptionRu": "ЗАПИСЬ (Phase 2): добавить команду управляемой формы. Идентификатор выдаёт штатная служба идентификаторов формы, действие связывается с процедурой-обработчиком модуля формы; createHandler=true дополнительно пишет заготовку этой процедуры, создавая файл модуля, если его у формы ещё нет. Учтите: чтобы команда была доступна в интерфейсе, ей нужна кнопка. По умолчанию dry-run. Аддитивно - force не нужен - но требует токен.",
+      "description": "WRITE (Phase 2): add a command to a managed form. The id comes from EDT's own form identifier service and the action is wired to a handler procedure in the form module; createHandler=true also writes that procedure's stub, creating the module file when the form has none. Accepts optional actionPurpose, associatedTable, currentRowUse and selectedRowsUse. Note the command still needs a button to be reachable in the UI. Dry-run by default. Additive - no force needed - but requires a configured token.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): добавить команду управляемой формы. Идентификатор выдает штатная служба идентификаторов формы, действие связывается с процедурой-обработчиком модуля формы; createHandler=true дополнительно пишет заготовку этой процедуры, создавая файл модуля, если его у формы еще нет. Поддерживаются необязательные actionPurpose, associatedTable, currentRowUse и selectedRowsUse. Учтите: чтобы команда была доступна в интерфейсе, ей нужна кнопка. По умолчанию dry-run. Аддитивно - force не нужен - но требует токен.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2232,6 +2240,38 @@
           "createHandler": {
             "type": "boolean",
             "description": "Also write the handler procedure's stub into the form module, creating the module file when the form has none. Optional, default false - a command pointing at a missing procedure is flagged by EDT validation."
+          },
+          "actionPurpose": {
+            "type": "string",
+            "description": "Command action purpose (Version 8.5): Usual (alias Normal), Create or Finish. Optional.",
+            "enum": [
+              "Usual",
+              "Normal",
+              "Create",
+              "Finish"
+            ]
+          },
+          "associatedTable": {
+            "type": "string",
+            "description": "Name of the form Table item associated with this command. Optional."
+          },
+          "currentRowUse": {
+            "type": "string",
+            "description": "Current-row usage of a table command: Use, DontUse or Auto. Optional.",
+            "enum": [
+              "Use",
+              "DontUse",
+              "Auto"
+            ]
+          },
+          "selectedRowsUse": {
+            "type": "string",
+            "description": "Selected-rows usage of a table command: Use, DontUse or Auto. Optional.",
+            "enum": [
+              "Use",
+              "DontUse",
+              "Auto"
+            ]
           },
           "apply": {
             "type": "boolean",
@@ -2336,8 +2376,8 @@
     },
     {
       "name": "edt_modify_form_command",
-      "description": "WRITE (Phase 2): change an existing form command - title, tooltip or the handler procedure its action points at. Re-pointing the handler does not rename the procedure: aim it at one that exists in the form module, or add it with edt_add_method. Dry-run by default; pass at least one of titleRu / toolTipRu / handler. Requires a token.",
-      "descriptionRu": "ЗАПИСЬ (Phase 2): изменить существующую команду формы - заголовок, подсказку или процедуру-обработчик, на которую указывает действие. Перенацеливание обработчика не переименовывает процедуру: указывайте на существующую в модуле формы либо добавьте её через edt_add_method. По умолчанию dry-run; задать нужно хотя бы одно из titleRu / toolTipRu / handler. Требует токен.",
+      "description": "WRITE (Phase 2): change an existing form command - title, tooltip, handler procedure, actionPurpose, associatedTable, currentRowUse or selectedRowsUse. Re-pointing the handler does not rename the procedure: aim it at one that exists in the form module, or add it with edt_add_method. Dry-run by default; pass at least one property to change. Requires a token.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): изменить существующую команду формы - заголовок, подсказку, процедуру-обработчик, actionPurpose, associatedTable, currentRowUse или selectedRowsUse. Перенацеливание обработчика не переименовывает процедуру: указывайте на существующую в модуле формы либо добавьте ее через edt_add_method. По умолчанию dry-run; задать нужно хотя бы одно изменяемое свойство. Требует токен.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2364,6 +2404,38 @@
           "handler": {
             "type": "string",
             "description": "Handler procedure the command should call. Optional. The procedure itself is not renamed - point it at one that exists in the form module."
+          },
+          "actionPurpose": {
+            "type": "string",
+            "description": "Command action purpose (Version 8.5): Usual (alias Normal), Create or Finish. Optional.",
+            "enum": [
+              "Usual",
+              "Normal",
+              "Create",
+              "Finish"
+            ]
+          },
+          "associatedTable": {
+            "type": "string",
+            "description": "Name of the form Table item associated with this command; an empty string clears it. Optional."
+          },
+          "currentRowUse": {
+            "type": "string",
+            "description": "Current-row usage of a table command: Use, DontUse or Auto. Optional.",
+            "enum": [
+              "Use",
+              "DontUse",
+              "Auto"
+            ]
+          },
+          "selectedRowsUse": {
+            "type": "string",
+            "description": "Selected-rows usage of a table command: Use, DontUse or Auto. Optional.",
+            "enum": [
+              "Use",
+              "DontUse",
+              "Auto"
+            ]
           },
           "apply": {
             "type": "boolean",
@@ -2460,8 +2532,8 @@
     },
     {
       "name": "edt_add_form_item",
-      "description": "WRITE (Phase 2): add a visual item to a managed form - field, table, button, group or decoration - through EDT's own IFormItemManagementService, the service the form editor itself calls. Naming, ids, a field's actual type and a table's auto-filled columns are decided by EDT, not assembled here. A table bound to a value-table attribute gets its columns filled in. Use decorationType to create a Label or Picture. index/beforeItem/afterItem select an exclusive insertion position. Typed group/field options and scalar choiceList are validated before writing. Dry-run by default. Additive - no force - but requires a token.",
-      "descriptionRu": "ЗАПИСЬ (Phase 2): добавить элемент управляемой формы - поле, таблицу, кнопку, группу или декорацию - через штатный IFormItemManagementService, тот самый, который вызывает редактор форм. Имена, идентификаторы, фактический вид поля и автозаполнение колонок таблицы определяет EDT, а не сборка здесь. Таблица, связанная с реквизитом типа ТаблицаЗначений, получает колонки автоматически. decorationType задает вид декорации Label или Picture. index/beforeItem/afterItem задают одно место вставки. Свойства групп/полей и scalar choiceList проверяются до записи. По умолчанию dry-run. Аддитивно - force не нужен - но требует токен.",
+      "description": "WRITE (Phase 2): add a visual item to a managed form - field, table, button, group or decoration - through EDT's own IFormItemManagementService, the service the form editor itself calls. Naming, ids, a field's actual type and a table's auto-filled columns are decided by EDT, not assembled here. A table bound to a value-table attribute gets its columns filled in. Use decorationType to create a Label or Picture. index/beforeItem/afterItem select an exclusive insertion position. Typed group/field/table/button options and scalar choiceList are validated before writing. Dry-run by default. Additive - no force - but requires a token.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): добавить элемент управляемой формы - поле, таблицу, кнопку, группу или декорацию - через штатный IFormItemManagementService, тот самый, который вызывает редактор форм. Имена, идентификаторы, фактический вид поля и автозаполнение колонок таблицы определяет EDT, а не сборка здесь. Таблица, связанная с реквизитом типа ТаблицаЗначений, получает колонки автоматически. decorationType задает вид декорации Label или Picture. index/beforeItem/afterItem задают одно место вставки. Свойства групп, полей, таблиц и кнопок и scalar choiceList проверяются до записи. По умолчанию dry-run. Аддитивно - force не нужен - но требует токен.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2621,6 +2693,36 @@
             "type": "boolean",
             "description": "Allow changing table row order. Optional; table only."
           },
+          "selectionMode": {
+            "type": "string",
+            "description": "Table row selection mode: SingleRow or MultiRow. Optional; table only.",
+            "enum": [
+              "SingleRow",
+              "MultiRow"
+            ]
+          },
+          "initialTreeView": {
+            "type": "string",
+            "description": "Initial expansion of a tree table: NoExpand, ExpandTopLevel or ExpandAllLevels. Optional; table only.",
+            "enum": [
+              "NoExpand",
+              "ExpandTopLevel",
+              "ExpandAllLevels"
+            ]
+          },
+          "defaultButton": {
+            "type": "boolean",
+            "description": "Mark as the form's default button. Optional; button only (including buttons in autoCommandBar)."
+          },
+          "buttonImportance": {
+            "type": "string",
+            "description": "Button importance: Main, Normal or Supplementary. Optional; button only (including buttons in autoCommandBar).",
+            "enum": [
+              "Main",
+              "Normal",
+              "Supplementary"
+            ]
+          },
           "choiceList": {
             "type": "array",
             "description": "Replace the InputField/RadioButtonField choice list. Entries have a scalar string/number/boolean value and optional titleRu. Enum/reference/object values are not supported. An empty array clears the list.",
@@ -2682,8 +2784,8 @@
     },
     {
       "name": "edt_modify_form_item",
-      "description": "WRITE (Phase 2): rename a form item or change its title, visibility or enabled state. Except for the name these are the DESIGN values stored in Form.form - runtime BSL (ПриСозданииНаСервере and friends) can still override them. Dry-run by default; pass at least one of newName/titleRu/visible/enabled or a typed group/field option. Supports fieldType and scalar choiceList replacement. Requires a configured token.",
-      "descriptionRu": "ЗАПИСЬ (Phase 2): переименовать элемент формы или изменить у него заголовок, видимость и доступность. Кроме имени это ПРОЕКТНЫЕ значения, хранящиеся в Form.form, - код (ПриСозданииНаСервере и подобные) может переопределить их в рантайме. По умолчанию dry-run; задать нужно хотя бы одно из newName / titleRu / visible / enabled или типизированное свойство группы/поля. Доступны fieldType и замена scalar choiceList. Требует токен.",
+      "description": "WRITE (Phase 2): rename a form item or change its title, visibility, enabled state or typed group/field/table/button options (including defaultButton and buttonImportance on buttons in autoCommandBar, and selectionMode/initialTreeView on tables). Except for the name these are the DESIGN values stored in Form.form - runtime BSL (ПриСозданииНаСервере and friends) can still override them. Dry-run by default; pass at least one of newName/titleRu/visible/enabled or a typed option. Supports fieldType and scalar choiceList replacement. Requires a configured token.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): переименовать элемент формы или изменить его заголовок, видимость, доступность или типизированные свойства группы, поля, таблицы или кнопки (включая defaultButton и buttonImportance у кнопок в autoCommandBar, selectionMode и initialTreeView у таблиц). Кроме имени это ПРОЕКТНЫЕ значения, хранящиеся в Form.form, - код (ПриСозданииНаСервере и подобные) может переопределить их в рантайме. По умолчанию dry-run; задать нужно хотя бы одно из newName / titleRu / visible / enabled или типизированное свойство. Доступны fieldType и замена scalar choiceList. Требует токен.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2813,6 +2915,36 @@
           "changeRowOrder": {
             "type": "boolean",
             "description": "Allow changing table row order. Optional; table only."
+          },
+          "selectionMode": {
+            "type": "string",
+            "description": "Table row selection mode: SingleRow or MultiRow. Optional; table only.",
+            "enum": [
+              "SingleRow",
+              "MultiRow"
+            ]
+          },
+          "initialTreeView": {
+            "type": "string",
+            "description": "Initial expansion of a tree table: NoExpand, ExpandTopLevel or ExpandAllLevels. Optional; table only.",
+            "enum": [
+              "NoExpand",
+              "ExpandTopLevel",
+              "ExpandAllLevels"
+            ]
+          },
+          "defaultButton": {
+            "type": "boolean",
+            "description": "Mark as the form's default button. Optional; button only (including buttons in autoCommandBar)."
+          },
+          "buttonImportance": {
+            "type": "string",
+            "description": "Button importance: Main, Normal or Supplementary. Optional; button only (including buttons in autoCommandBar).",
+            "enum": [
+              "Main",
+              "Normal",
+              "Supplementary"
+            ]
           },
           "choiceList": {
             "type": "array",
@@ -3484,8 +3616,8 @@
     },
     {
       "name": "edt_modify_object",
-      "description": "WRITE: set typed execution properties of an owned common module, or enable the module body of an adopted common module. Dry-run by default; every property is validated before writing.",
-      "descriptionRu": "ЗАПИСЬ: изменить типизированные свойства собственного общего модуля или включить расширение заимствованного модуля. По умолчанию dry-run; все свойства проверяются до записи.",
+      "description": "WRITE: set typed properties of an owned common module or a managed form (autoTitle, titleRu, windowOpeningMode, scaleVariant, width, height, ...), or enable the module body of an adopted common module. Dry-run by default; every property is validated before writing.",
+      "descriptionRu": "ЗАПИСЬ: изменить типизированные свойства собственного общего модуля или управляемой формы (autoTitle, titleRu, windowOpeningMode, scaleVariant, width, height и др.), либо включить расширение заимствованного общего модуля. По умолчанию dry-run; все свойства проверяются до записи.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -3495,15 +3627,15 @@
           },
           "fqn": {
             "type": "string",
-            "description": "CommonModule FQN, e.g. CommonModule.Api"
+            "description": "CommonModule or Form FQN, e.g. CommonModule.Api, Catalog.Products.Form.ItemForm, CommonForm.Settings"
           },
           "properties": {
             "type": "object",
-            "description": "Owned CommonModule properties: global, server, externalConnection, clientManagedApplication, clientOrdinaryApplication, serverCall, privileged (boolean); returnValuesReuse (DontUse, DuringRequest, DuringSession)."
+            "description": "Typed properties of the target. Owned CommonModule: global, server, externalConnection, clientManagedApplication, clientOrdinaryApplication, serverCall, privileged (boolean); returnValuesReuse (DontUse, DuringRequest, DuringSession). Form: autoTitle, showTitle, showCloseButton, allowFormCustomize (boolean); titleRu (string; empty clears); windowOpeningMode (Independent, LockOwnerWindow, LockWholeInterface); scaleVariant (Auto, Compact, Normal, NormalIfPossible); width, height (nonnegative integer). Call edt_property_reference to inspect."
           },
           "extendModule": {
             "type": "boolean",
-            "description": "true sets the adopted common module control state to Extended; preserves its module body. Default false."
+            "description": "true sets the adopted common module control state to Extended; preserves its module body. Default false. CommonModule only."
           },
           "apply": {
             "type": "boolean",
@@ -4855,5 +4987,5 @@
       ]
     }
   ],
-  "version": "0.51.0"
+  "version": "0.52.0"
 }

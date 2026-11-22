@@ -65,6 +65,16 @@ final class FormItemToolOptions {
         props.add("changeRowSet", ToolJson.boolProp("Allow adding and deleting table rows. Optional; table only."));
         props.add("autoInsertNewRow", ToolJson.boolProp("Automatically insert a new table row. Optional; table only."));
         props.add("changeRowOrder", ToolJson.boolProp("Allow changing table row order. Optional; table only."));
+        JsonObject selectionMode = ToolJson.strProp("Table row selection mode: SingleRow or MultiRow. Optional; table only.");
+        JsonArray selectionModes = new JsonArray(); selectionModes.add("SingleRow"); selectionModes.add("MultiRow");
+        selectionMode.add("enum", selectionModes); props.add("selectionMode", selectionMode);
+        JsonObject initialTreeView = ToolJson.strProp("Initial expansion of a tree table: NoExpand, ExpandTopLevel or ExpandAllLevels. Optional; table only.");
+        JsonArray treeViews = new JsonArray(); treeViews.add("NoExpand"); treeViews.add("ExpandTopLevel"); treeViews.add("ExpandAllLevels");
+        initialTreeView.add("enum", treeViews); props.add("initialTreeView", initialTreeView);
+        props.add("defaultButton", ToolJson.boolProp("Mark as the form's default button. Optional; button only (including buttons in autoCommandBar)."));
+        JsonObject importance = ToolJson.strProp("Button importance: Main, Normal or Supplementary. Optional; button only (including buttons in autoCommandBar).");
+        JsonArray importances = new JsonArray(); importances.add("Main"); importances.add("Normal"); importances.add("Supplementary");
+        importance.add("enum", importances); props.add("buttonImportance", importance);
         JsonObject choices = new JsonObject(); choices.addProperty("type", "array");
         choices.addProperty("description", "Replace the InputField/RadioButtonField choice list. Entries have a scalar string/number/boolean value and optional titleRu. Enum/reference/object values are not supported. An empty array clears the list.");
         JsonObject entry = new JsonObject(); entry.addProperty("type", "object"); entry.addProperty("additionalProperties", false);
@@ -84,7 +94,7 @@ final class FormItemToolOptions {
         Map<String, Object> result = new LinkedHashMap<>();
         if (args.has("group") && args.has("groupDirection")) { throw new IllegalArgumentException("group and groupDirection are aliases; pass one"); }
         for (String key : List.of("groupDirection", "group", "representation", "showTitle", "united", "titleLocation", "maxHeight", "verticalStretch", "fieldType", "choiceList", "width", "height", "horizontalStretch", "choiceButton",
-                "clearButton", "textEdit", "listChoiceMode", "choiceFoldersAndItems", "readOnly", "changeRowSet", "autoInsertNewRow", "changeRowOrder")) {
+                "clearButton", "textEdit", "listChoiceMode", "choiceFoldersAndItems", "readOnly", "changeRowSet", "autoInsertNewRow", "changeRowOrder", "selectionMode", "initialTreeView", "defaultButton", "buttonImportance")) {
             if (args.has(key)) {
                 result.put("group".equals(key) ? "groupDirection" : key, value(args.get(key)));
             }

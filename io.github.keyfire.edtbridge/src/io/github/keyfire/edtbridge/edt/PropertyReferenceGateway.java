@@ -32,7 +32,10 @@ import com._1c.g5.v8.bm.core.IBmTransaction;
 import com._1c.g5.v8.bm.integration.AbstractBmTask;
 import com._1c.g5.v8.bm.integration.IBmModel;
 import com._1c.g5.v8.dt.core.platform.IBmModelManager;
+import com._1c.g5.v8.dt.form.model.CommandHandler;
+import com._1c.g5.v8.dt.form.model.CommandHandlerContainer;
 import com._1c.g5.v8.dt.form.model.Form;
+import com._1c.g5.v8.dt.form.model.FormCommand;
 import com._1c.g5.v8.dt.form.model.FormItem;
 import com._1c.g5.v8.dt.metadata.mdclass.BasicFeature;
 import com._1c.g5.v8.dt.metadata.mdclass.CommonModule;
@@ -55,7 +58,8 @@ public final class PropertyReferenceGateway {
         public String project;
         public String fqn;
         public String item;
-        /** commonModule, externalObject, field, formItem, form or object. */
+        public String command;
+        /** commonModule, externalObject, field, formItem, formCommand, form or object. */
         public String kind;
         public String objectType;
         /** The write tool that takes the listed properties. */
@@ -65,15 +69,25 @@ public final class PropertyReferenceGateway {
         public List<Map<String, Object>> properties = new ArrayList<>();
         /** Item names of the form, when the form was addressed without an item or the item was not found. */
         public List<String> items;
+        /** Command names of the form, when the form was addressed or a command was not found. */
+        public List<String> commands;
         public String message;
     }
 
     public Result reference(String projectName, String fqn, String itemName) {
+        return reference(projectName, fqn, itemName, null);
+    }
+
+    public Result reference(String projectName, String fqn, String itemName, String commandName) {
         Result result = new Result();
         result.project = projectName; result.fqn = fqn;
         result.item = itemName == null || itemName.isBlank() ? null : itemName;
+        result.command = commandName == null || commandName.isBlank() ? null : commandName;
         try {
             if (fqn == null || fqn.isBlank()) throw new IllegalArgumentException("fqn is required");
+            if (result.item != null && result.command != null) {
+                throw new IllegalArgumentException("pass either item or command, not both");
+            }
             IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
             if (!project.exists() || !project.isOpen()) {
                 throw new IllegalArgumentException("project not found or closed: " + projectName);
@@ -109,9 +123,26 @@ public final class PropertyReferenceGateway {
             FormItem item = FormItemEdits.findUnique(form, result.item);
             if (item == null) {
                 result.items = itemNames(form);
-                throw new IllegalArgumentException("form item not found: " + result.item + "; the form's items are listed in items");
+                result.commands = commandNames(form);
+                throw new IllegalArgumentException("form item not found: " + result.item
+                        + "; the form's items are listed in items (use command for a form command)");
             }
             formItem(item, result);
+            return;
+        }
+        if (result.command != null) {
+            Form form = FormWriteGateway.resolveForm(tx, fqn);
+            if (form == null) {
+                throw new IllegalArgumentException("form not found: " + fqn
+                        + "; command needs the FQN of a form, e.g. Catalog.Products.Form.ItemForm");
+            }
+            FormCommand command = findCommand(form, result.command);
+            if (command == null) {
+                result.commands = commandNames(form);
+                throw new IllegalArgumentException("form command not found: " + result.command
+                        + "; the form's commands are listed in commands");
+            }
+            formCommand(form, command, result);
             return;
         }
         for (String segment : List.of("Attribute", "Resource", "Dimension")) {
@@ -170,17 +201,52 @@ public final class PropertyReferenceGateway {
         Form form = FormWriteGateway.resolveForm(tx, fqn);
         if (form != null) {
             result.kind = "form"; result.objectType = "Form";
+            result.tool = "edt_modify_object";
+            result.usage = "pass the listed names inside the properties argument of edt_modify_object; "
+                    + "pass item for a form item (edt_modify_form_item) or command for a form command (edt_modify_form_command)";
+            result.properties = FormSettings.reference(form);
             result.items = itemNames(form);
-            result.message = "pass item to list the settings of one form item (edt_modify_form_item). "
-                    + "A form attribute takes type, titleRu and main (edt_modify_form_attribute); "
-                    + "a form command takes titleRu, toolTipRu and handler (edt_modify_form_command).";
+            result.commands = commandNames(form);
             return;
         }
         if (object == null) throw new IllegalArgumentException("object not found: " + fqn);
         result.kind = "object"; result.objectType = object.eClass().getName();
-        result.message = "The bridge sets typed properties of common modules, of fields and of form items. "
+        result.message = "The bridge sets typed properties of common modules, of forms, of fields, of form items and of form commands. "
                 + "For a field of this object pass its FQN, e.g. " + fqn + ".Attribute.Name; "
-                + "for a form item pass the form FQN, e.g. " + fqn + ".Form.FormName, together with item.";
+                + "for a form, its item or its command pass the form FQN, e.g. " + fqn + ".Form.FormName, optionally with item or command.";
+    }
+
+    private static void formCommand(Form form, FormCommand command, Result result) {
+        result.kind = "formCommand"; result.objectType = command.eClass().getName();
+        result.tool = "edt_modify_form_command";
+        result.usage = "pass the listed names as arguments next to projectName, formFqn and name";
+        result.properties = FormCommandEdits.reference(form, command, commandHandler(command));
+    }
+
+    private static FormCommand findCommand(Form form, String name) {
+        for (FormCommand command : form.getFormCommands()) {
+            if (command.getName() != null && command.getName().equalsIgnoreCase(name)) return command;
+        }
+        return null;
+    }
+
+    private static List<String> commandNames(Form form) {
+        List<String> names = new ArrayList<>();
+        for (FormCommand command : form.getFormCommands()) {
+            if (command.getName() != null) names.add(command.getName());
+        }
+        return names;
+    }
+
+    private static String commandHandler(FormCommand command) {
+        CommandHandlerContainer action = command.getAction();
+        if (action == null) return null;
+        for (EObject child : action.eContents()) {
+            if (child instanceof CommandHandler handler && handler.getName() != null && !handler.getName().isBlank()) {
+                return handler.getName();
+            }
+        }
+        return null;
     }
 
     private static void formItem(FormItem item, Result result) {

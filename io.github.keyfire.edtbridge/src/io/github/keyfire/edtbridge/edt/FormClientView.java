@@ -38,6 +38,7 @@ import com._1c.g5.v8.dt.form.model.Button;
 import com._1c.g5.v8.dt.form.model.DataItem;
 import com._1c.g5.v8.dt.form.model.FormStandardCommand;
 import com._1c.g5.v8.dt.form.model.Titled;
+import com._1c.g5.v8.dt.mcore.PictureRef;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
@@ -252,6 +253,10 @@ final class FormClientView {
                     if (title != null) {
                         cmd.addProperty("title", title);
                     }
+                    String representation = stringFeature(c, "representation");
+                    if (representation != null) {
+                        cmd.addProperty("representation", representation);
+                    }
                 }
                 r.add("command", cmd);
             }
@@ -456,6 +461,9 @@ final class FormClientView {
                 return new JsonPrimitive(raw);
             }
             EObject mp = p.getPicture();
+            if (mp instanceof PictureRef) {
+                mp = ((PictureRef) mp).getPicture();
+            }
             if (mp != null) {
                 String name = stringFeature(mp, "name");
                 return new JsonPrimitive(mp.eClass().getName() + (name == null ? "" : ":" + name));

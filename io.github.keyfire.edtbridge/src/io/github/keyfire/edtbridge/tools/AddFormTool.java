@@ -52,9 +52,10 @@ public final class AddFormTool {
         props.add("formType", strProp("Form kind. A FormType name - GENERIC, OBJECT, FOLDER, LIST, CHOICE, "
                 + "FOLDER_CHOICE, RECORD, RECORD_SET, REPORT, REPORT_SETTINGS, REPORT_VARIANT, CONSTANTS, "
                 + "SEARCH, SAVE, LOAD, DYNAMIC_LIST - or a Russian alias (ФормаЭлемента, ФормаСписка, "
-                + "ФормаВыбора, ФормаЗаписи, ФормаНабораЗаписей, ФормаОтчета, ПроизвольнаяФорма). "
-                + "Optional - omitted picks the owner's usual kind (Catalog/Document -> OBJECT, "
-                + "InformationRegister -> RECORD, Report -> REPORT, DataProcessor -> GENERIC)."));
+                + "ФормаВыбора, ФормаЗаписи, ФормаНабораЗаписей, ФормаОтчета, ФормаОбработки, ПроизвольнаяФорма). "
+                + "Optional - omitted picks the owner's usual kind (Catalog/Document/DataProcessor/"
+                + "ExternalDataProcessor -> OBJECT with the main Объект attribute, InformationRegister -> RECORD, "
+                + "Report/ExternalReport -> REPORT; pass GENERIC for a blank form without a main attribute)."));
         props.add("synonymRu", strProp("Russian synonym. Optional."));
         props.add("defaultForm", boolProp("Also make it the owner's default form. Optional, default false."));
         props.add("columnCount", intProp("Column count passed to the generator (EDT's wizard default is 1). "

@@ -17,7 +17,7 @@ accepts and the platform Syntax Helper.
 | `edt_compare_configurations` · `edt_comparison_details` | Compare open configuration projects or their Git revisions using EDT. Includes an optional common ancestor, counts, changed objects and details down to BSL methods. |
 | `edt_check_info` | Returns a validation check's description, non-compliant and compliant examples, and links to 1C development standards in Russian or English. It complements `edt_project_errors`, which identifies the triggered check. Search by check ID or by title. A short code such as `SU68` is resolved to its check when `projectName` names the project that reported the problem. |
 | `edt_tool_help` | Lists active tools with short descriptions when `tool` is omitted. With `tool` set, reports its description, schema and availability. `brief=true` returns a signature with names and types. An asterisk marks a required argument. |
-| `edt_property_reference` | Lists editable properties of a common module, external object, extension, field or form item, with each property's type, the accepted values and the current value, and names the tool that takes them. A form FQN without `item` returns the form's item names. The list comes from the validation code of the write, so a property the object lacks is not listed. |
+| `edt_property_reference` | Lists editable properties of a common module, external object, extension, field, managed form, form item or form command, with each property's type, accepted values and current value, and names the tool that takes them. A form FQN without `item` or `command` returns the form's own properties plus its `items` and `commands`. Pass `command` to inspect a form command. The list comes from the validation code of the write, so a property the object lacks is not listed. |
 | `edt_platform_help` | Search the 1C:Enterprise platform Syntax Helper supplied with EDT by name or read a page as text. The Russian and English API reference covers objects, methods, properties, and events. |
 
 ## Project and runtime diagnostics
@@ -50,9 +50,12 @@ Under heavy calls `/status` waits no longer than 1.5 s for the model state, the 
 ## Validation of one object
 
 With exact `fqn` or `modulePath`, `edt_project_errors` and `refresh=true` explicitly schedule
-applicable checks for that BM object. Unresolved or conflicting addresses never expand this request
-to the whole project. `validationRequested` and `validationCompleted` report scheduling and
-completion. Uninspected count-only or truncated snapshots cannot establish marker freshness.
+applicable checks for that BM object and its BSL modules, including the module of a managed form.
+Unresolved or conflicting addresses never expand this request to the whole project. Form-model
+edits through the bridge also schedule module revalidation and are rechecked on the next unnarrowed
+`refresh=true`, so BSL checks such as `SU243` reflect the updated `Form.form`. `validationRequested`
+and `validationCompleted` report scheduling and completion. Uninspected count-only or truncated
+snapshots cannot establish marker freshness.
 
 ## Validation snapshots
 
