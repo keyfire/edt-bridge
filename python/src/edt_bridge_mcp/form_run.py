@@ -49,9 +49,13 @@ DESCRIPTOR = {
         "one that fails does not hide the others. The scenarios of one call share one copy of the "
         "infobase: what one writes the next sees; a scenario that needs a clean copy goes to a call "
         "of its own. The configured infobase itself is never changed. Served by the wrapper; no EDT "
-        "needed. Pass webClient=true with EDT_BRIDGE_PII enabled to get a masked screenshot from the "
-        "web client. In that mode use path and button or steps for an external file, or navigationLink "
-        "and steps for a stored document or catalog item."
+        "needed. webClient=true runs the form in the web client and adds webForm, the form after the last "
+        "step as text for a model without vision: one line per visible item (name | kind | title | value | "
+        "x,y wxh | flags, e.g. clipped for cut text, cut or offscreen for an item out of the window, "
+        "current for the open page), the rows of form tables, the panel messages and the names of hidden "
+        "items. With EDT_BRIDGE_PII its values pass the filter and the answer adds a masked screenshot; "
+        "screenshot=false leaves the image out. In that mode use path and button or steps for an external "
+        "file, or navigationLink and steps for a stored document or catalog item."
     ),
     "descriptionRu": (
         "Запустить основную форму собранного .epf или .erf в свежей копии тестовой базы "
@@ -73,9 +77,13 @@ DESCRIPTOR = {
         "отказ одного не скрывает остальные. Сценарии одного вызова работают в одной копии базы: "
         "записанное одним видит следующий; сценарий, которому нужна чистая копия, запускается "
         "отдельным вызовом. Настроенная база не меняется. Обслуживает обвязка, EDT не нужна. "
-        "Чтобы получить снимок веб-клиента с маской, передайте webClient=true при включенном "
-        "EDT_BRIDGE_PII. Для внешнего файла укажите path и button или steps. Для существующего "
-        "документа или элемента справочника укажите navigationLink и steps."
+        "webClient=true запускает форму в веб-клиенте и добавляет webForm - форму после последнего шага "
+        "текстом для модели без зрения: строка на каждый видимый элемент (name | kind | title | value | "
+        "x,y wxh | flags, например clipped для обрезанного текста, cut или offscreen для элемента за "
+        "краем окна, current для открытой страницы), строки таблиц формы, сообщения панели и имена "
+        "скрытых элементов. При EDT_BRIDGE_PII значения проходят фильтр, а ответ добавляет снимок с "
+        "маской; screenshot=false убирает изображение. Для внешнего файла укажите path и button или "
+        "steps. Для существующего документа или элемента справочника укажите navigationLink и steps."
     ),
     "inputSchema": {
         "type": "object",
@@ -83,7 +91,11 @@ DESCRIPTOR = {
             "path": {"type": "string",
                      "description": "Absolute path of the built .epf or .erf"},
             "webClient": {"type": "boolean",
-                          "description": "Use the web client with a masked screenshot. Pass button or steps"},
+                          "description": "Use the web client: the answer adds webForm, the form as text, and with "
+                                         "EDT_BRIDGE_PII a masked screenshot. Pass button or steps"},
+            "screenshot": {"type": "boolean",
+                           "description": "With webClient: return the masked screenshot as an image (default "
+                                          "true). Pass false for a model without vision"},
             "navigationLink": {"type": "string",
                                "description": "Internal e1cib/data link to the stored document or catalog item "
                                               "in the test infobase. Pass with webClient=true and steps"},
@@ -153,7 +165,7 @@ VERDICTS = frozenset({"scenario_completed", "command_completed"}) | native_repor
 _ANSWER_KEYS = ("ok", "status", "error", "stage", "step", "assertions", "reads", "messages", "dialog",
                 "observedFields", "matchedButtons", "observedButtons", "matchedFields", "observedForms",
                 "observedTitles", "defaultForm", "scenarios", "summary", "piiFilter", "clientType",
-                "screenshotMasked", "screenshotWithheld", "screenshotData")
+                "webForm", "webFormError", "screenshotMasked", "screenshotWithheld", "screenshotData")
 
 
 def _refusal(status: str, message: str) -> dict:
@@ -252,17 +264,22 @@ def run_tool(arguments: dict, *, runner=native_form.run, environ=os.environ, on_
             form_title=None if arguments.get("formTitle") is None else str(arguments["formTitle"]),
             button=button, scenario=scenario,
             expect_message=arguments.get("expectMessage"), user=environ.get(ENV_USER),
-            output_dir=root / "output", timeout=timeout, _on_stage=on_stage)
+            output_dir=root / "output", timeout=timeout, _on_stage=on_stage,
+            web_screenshot=arguments.get("screenshot") is not False)
         report = runner(args)
-        if web_client and report.get("screenshotMasked") is True and isinstance(report.get("screenshot"), str):
+        if (web_client and arguments.get("screenshot") is not False and report.get("screenshotMasked") is True
+                and isinstance(report.get("screenshot"), str)):
             screenshot = Path(report["screenshot"]).resolve()
             if screenshot.is_relative_to(args.output_dir.resolve()):
                 try:
                     report["screenshotData"] = base64.b64encode(screenshot.read_bytes()).decode("ascii")
                 except OSError:
                     report["screenshotWithheld"] = True
+        if web_client:
             for phase in report.get("phases", []):
                 phase.pop("screenshot", None)
+            if report.get("ok") and report.get("webFormError") and "screenshotData" not in report:
+                report.update(ok=False, status="form_text_failed", error=report["webFormError"])
     # The paths point into the copy that is gone now; the caller has no use for them.
     for key in ("testInfobase", "outputDir", "reports"):
         report.pop(key, None)

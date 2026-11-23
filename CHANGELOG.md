@@ -13,6 +13,14 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
+## Unreleased
+
+### Added
+
+- The web client of `edt_test_form` and `test-form --web-client` returns `webForm`, a text
+  snapshot with item positions, table rows, spreadsheet cells and panel messages. The personal
+  data filter is optional. With it enabled, MCP can still return a masked screenshot.
+
 ## 2026-11-23 – 0.53.0
 
 ### Added
