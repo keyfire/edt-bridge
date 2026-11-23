@@ -11,7 +11,7 @@ spreadsheet documents. Two of them render a form or a spreadsheet template to PN
 
 | Tool | What it returns |
 |------|-----------------|
-| `edt_form_structure` · `edt_form_render` · `edt_picture_export` | Return a managed form's structure, its image, and the content of a configuration picture. The structure includes `autoTitle` and a tree of fields, groups, tables, buttons, and decorations. Items include data bindings, static visible/enabled/readOnly, event handlers, input-field properties, command-to-button links, and conditional appearance. Form attributes, commands, parameters, and handlers are also returned; a command carries its caption in `title`, its tooltip in `toolTip`, and non-default `actionPurpose`, `associatedTable`, `currentRowUse` and `selectedRowsUse`. The form is drawn to PNG the way the 1C client shows it, in the "Version 8.5" or Taxi interface, light or dark theme, any page, with sample data; EDT's form editor preview is still available. For CommonPicture, the content of Picture.zip is returned. |
+| `edt_form_structure` · `edt_form_render` · `edt_picture_export` | Return a managed form's structure, its image, and the content of a configuration picture. The structure includes `autoTitle` and a tree of fields, groups, tables, buttons, and decorations. Items include data bindings, static visible/enabled/readOnly, event handlers, input-field properties, command-to-button links, and conditional appearance. Form attributes, commands, parameters, and handlers are also returned; a command carries its caption in `title`, its tooltip in `toolTip`, and non-default `actionPurpose`, `associatedTable`, `currentRowUse` and `selectedRowsUse`. The form is drawn to PNG the way the 1C client shows it, in the "Version 8.5" or Taxi interface, light or dark theme, any page, with sample data; EDT's form editor preview is still available. For `CommonPicture`, the tool reads `Picture.zip` or a standalone `Picture.svg`. |
 | `edt_read_html_template` | Exact UTF-8 source and `sourceHash` for one existing common or nested HTML-template locale. Requires explicit `templateFqn` and `language`; returns available languages and the model-resolved file path. |
 | `edt_read_dcs` | Reads the exact source of a data composition schema template - the schema's designer XML - with the path and `sourceHash`. |
 | `edt_read_spreadsheet` | Reads a spreadsheet template - a print form layout - as column widths and named row areas of cells: `text`, `parameter` or `template`, with `bold`, `fontSize`, `align`, `border`, `colspan` and `wrap`. The answer is the input of `edt_write_spreadsheet`; `unsupported` names what the file also has and the description does not carry, such as pictures and colors. |
@@ -28,7 +28,8 @@ wrapper draws it as an HTML page and saves a PNG made by Chromium. Arguments:
 
 - `interface` – `v85` ("Version 8.5", the default) or `taxi`; `theme` – `light` or `dark`. The
   platform has no dark theme for Taxi, and the call refuses that pair.
-- `page` – the page to show, by name or title; the answer lists the pages of the form in `pages`.
+- `page` selects a page by name or title. Selecting a nested page also opens its parent pages.
+  The response lists the form's pages in `pages`.
 - `data` provides the sample data:
   - `title` sets the window title. `pageTitles` maps page names to their displayed titles,
     including counts calculated by the configuration.
@@ -40,6 +41,9 @@ wrapper draws it as an HTML page and saves a PNG made by Chromium. Arguments:
     for tree nodes and marks, `current` for the current row index and `title` for the table caption.
   - `hidden` and `shown` list items whose visibility the form code changes. `disabled` lists
     unavailable fields and commands.
+  - `statuses` displays statuses below the header. Each entry has `text` and an optional `picture`
+    with the name of a common picture in the configuration, for example
+    `{"text":"Active","picture":"ReadyIcon"}`.
   - `messages` sets important messages with `text`, `type` (`info`, `warning`, `success` or
     `error`) and the target group name `group`. Messages without a group appear below the header.
 - `density` – `auto` (the form's own scale variant), `normal` or `compact`. The client may also
