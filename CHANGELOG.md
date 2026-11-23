@@ -13,6 +13,15 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
+## Unreleased
+
+### Added
+
+- `edt_add_template` creates an HTML template, `templateType=HTMLDocument`, and a text template,
+  `templateType=TextDocument`. An HTML template gets one page in the language EDT edits the
+  project in, and its `sourceHash` goes to `edt_replace_html_template`. A text template gets its
+  `Template.txt`. The new `text` sets the starting text of either.
+
 ## 2026-11-22 – 0.52.0
 
 ### Added
