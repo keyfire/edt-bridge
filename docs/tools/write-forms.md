@@ -48,6 +48,12 @@ vertical. Unknown enums and settings for the wrong item type are refused. `field
 }
 ```
 
+A field bound to a table column can stand outside the table, for example in a panel that shows
+the current row: pass `edt_add_form_item` the column's `dataPath`, such as `Orders.Customer`, and
+a usual group outside the table as `parent`. `edt_move_form_item` does not move a column across the
+border of its table, because that would change its data binding: remove the column and add the
+field again.
+
 Choice values can be strings, numbers or booleans; references and enum values are not supported.
 An empty list clears the choices. `edt_form_structure` returns item IDs and properties for checking
 the result. A dynamic-list attribute also returns `customQuery`, `mainTable` and `queryText` under
