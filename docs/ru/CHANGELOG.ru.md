@@ -19,6 +19,7 @@
   `templateType=TextDocument`. HTML-макет получает одну страницу на языке, на котором EDT
   редактирует проект, а его `sourceHash` подходит для `edt_replace_html_template`. Текстовый
   макет получает свой `Template.txt`. Новый параметр `text` задает начальный текст обоих.
+  ([#108](https://github.com/keyfire/edt-bridge/pull/108))
 
 ## 22.11.2026 – 0.52.0
 

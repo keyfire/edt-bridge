@@ -21,6 +21,7 @@ to the code and the reasoning behind it.
   `templateType=TextDocument`. An HTML template gets one page in the language EDT edits the
   project in, and its `sourceHash` goes to `edt_replace_html_template`. A text template gets its
   `Template.txt`. The new `text` sets the starting text of either.
+  ([#108](https://github.com/keyfire/edt-bridge/pull/108))
 
 ## 2026-11-22 – 0.52.0
 
