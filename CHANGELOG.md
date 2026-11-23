@@ -32,6 +32,9 @@ to the code and the reasoning behind it.
   method appended to a region used to get three blank lines before `#КонецОбласти`, and one put
   before another method got two blank lines above it.
   ([#111](https://github.com/keyfire/edt-bridge/pull/111))
+- `edt_replace_module_fragment` writes the replacement with the line breaks of the module. A
+  one-line `oldText` in a CRLF module used to bring the LF breaks of `newText` into it; a fragment
+  of several lines was adapted already.
 
 ## 2026-11-23 – 0.53.0
 
