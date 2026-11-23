@@ -21,3 +21,12 @@ def test_a_column_group_layout_is_described_on_both_item_tools():
         properties = tools[name]["inputSchema"]["properties"]
         assert "InCell" in properties["groupDirection"]["description"], name
         assert "column group" in properties["showTitle"]["description"], name
+
+
+def test_both_command_tools_take_a_picture_by_the_names_form_form_stores():
+    tools = _tools()
+    for name in ("edt_add_form_command", "edt_modify_form_command"):
+        picture = tools[name]["inputSchema"]["properties"]["picture"]
+        assert picture["type"] == "string", name
+        assert "StdPicture." in picture["description"] and "CommonPicture." in picture["description"], name
+    assert "removes it" in tools["edt_modify_form_command"]["inputSchema"]["properties"]["picture"]["description"]

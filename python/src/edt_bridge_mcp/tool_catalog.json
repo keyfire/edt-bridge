@@ -2208,8 +2208,8 @@
     },
     {
       "name": "edt_add_form_command",
-      "description": "WRITE (Phase 2): add a command to a managed form. The id comes from EDT's own form identifier service and the action is wired to a handler procedure in the form module; createHandler=true also writes that procedure's stub, creating the module file when the form has none. Accepts optional actionPurpose, associatedTable, currentRowUse and selectedRowsUse. Note the command still needs a button to be reachable in the UI. Dry-run by default. Additive - no force needed - but requires a configured token.",
-      "descriptionRu": "ЗАПИСЬ (Phase 2): добавить команду управляемой формы. Идентификатор выдает штатная служба идентификаторов формы, действие связывается с процедурой-обработчиком модуля формы; createHandler=true дополнительно пишет заготовку этой процедуры, создавая файл модуля, если его у формы еще нет. Поддерживаются необязательные actionPurpose, associatedTable, currentRowUse и selectedRowsUse. Учтите: чтобы команда была доступна в интерфейсе, ей нужна кнопка. По умолчанию dry-run. Аддитивно - force не нужен - но требует токен.",
+      "description": "WRITE (Phase 2): add a command to a managed form. The id comes from EDT's own form identifier service and the action is wired to a handler procedure in the form module; createHandler=true also writes that procedure's stub, creating the module file when the form has none. Accepts optional actionPurpose, associatedTable, currentRowUse, selectedRowsUse and picture. Note the command still needs a button to be reachable in the UI. Dry-run by default. Additive - no force needed - but requires a configured token.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): добавить команду управляемой формы. Идентификатор выдает штатная служба идентификаторов формы, действие связывается с процедурой-обработчиком модуля формы; createHandler=true дополнительно пишет заготовку этой процедуры, создавая файл модуля, если его у формы еще нет. Поддерживаются необязательные actionPurpose, associatedTable, currentRowUse, selectedRowsUse и picture. Учтите: чтобы команда была доступна в интерфейсе, ей нужна кнопка. По умолчанию dry-run. Аддитивно - force не нужен - но требует токен.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2272,6 +2272,10 @@
               "DontUse",
               "Auto"
             ]
+          },
+          "picture": {
+            "type": "string",
+            "description": "Picture of the command: StdPicture.<Name> of the platform, such as StdPicture.Post, CommonPicture.<Name> of the configuration, or БиблиотекаКартинок.<Name>. Optional."
           },
           "apply": {
             "type": "boolean",
@@ -2376,8 +2380,8 @@
     },
     {
       "name": "edt_modify_form_command",
-      "description": "WRITE (Phase 2): change an existing form command - title, tooltip, handler procedure, actionPurpose, associatedTable, currentRowUse or selectedRowsUse. Re-pointing the handler does not rename the procedure: aim it at one that exists in the form module, or add it with edt_add_method. Dry-run by default; pass at least one property to change. Requires a token.",
-      "descriptionRu": "ЗАПИСЬ (Phase 2): изменить существующую команду формы - заголовок, подсказку, процедуру-обработчик, actionPurpose, associatedTable, currentRowUse или selectedRowsUse. Перенацеливание обработчика не переименовывает процедуру: указывайте на существующую в модуле формы либо добавьте ее через edt_add_method. По умолчанию dry-run; задать нужно хотя бы одно изменяемое свойство. Требует токен.",
+      "description": "WRITE (Phase 2): change an existing form command - title, tooltip, handler procedure, actionPurpose, associatedTable, currentRowUse, selectedRowsUse or picture. Re-pointing the handler does not rename the procedure: aim it at one that exists in the form module, or add it with edt_add_method. Dry-run by default; pass at least one property to change. Requires a token.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): изменить существующую команду формы - заголовок, подсказку, процедуру-обработчик, actionPurpose, associatedTable, currentRowUse, selectedRowsUse или picture. Перенацеливание обработчика не переименовывает процедуру: указывайте на существующую в модуле формы либо добавьте ее через edt_add_method. По умолчанию dry-run; задать нужно хотя бы одно изменяемое свойство. Требует токен.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2436,6 +2440,10 @@
               "DontUse",
               "Auto"
             ]
+          },
+          "picture": {
+            "type": "string",
+            "description": "Picture of the command: StdPicture.<Name> of the platform, such as StdPicture.Post, CommonPicture.<Name> of the configuration, or БиблиотекаКартинок.<Name>; an empty string removes it. Optional."
           },
           "apply": {
             "type": "boolean",

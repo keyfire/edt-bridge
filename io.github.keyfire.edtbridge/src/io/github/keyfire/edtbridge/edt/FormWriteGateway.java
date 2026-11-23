@@ -1137,7 +1137,7 @@ public final class FormWriteGateway {
             r.message = "form not found: " + formFqn;
             return r;
         }
-        String optionIssue = validateCommandOptions(model, formFqn, opts);
+        String optionIssue = validateCommandOptions(model, GatewaySupport.projectVersion(p), formFqn, opts);
         r.ok = Boolean.TRUE.equals(r.nameAvailable) && optionIssue == null;
         StringBuilder plan = new StringBuilder("Add command \"").append(name).append("\" to ")
                 .append(formFqn).append(" with handler ").append(handler).append("()");
@@ -1177,7 +1177,7 @@ public final class FormWriteGateway {
                         failure[0] = "the form disappeared between validation and apply";
                         return null;
                     }
-                    FormCommandEdits.validate(form, opts);
+                    FormCommandEdits.validate(form, opts, raw -> FormPictures.reference(tx, raw, version));
                     FormCommand command = FormFactory.eINSTANCE.createFormCommand();
                     command.setName(name);
                     FormIdentifierService.INSTANCE.clearCaches(form);
@@ -1195,7 +1195,8 @@ public final class FormWriteGateway {
                     commandHandler.setName(handler);
                     action.setHandler(commandHandler);
                     command.setAction(action);
-                    FormCommandEdits.apply(form, command, opts, version);
+                    FormCommandEdits.apply(form, command, opts, version,
+                            raw -> FormPictures.reference(tx, raw, version));
                     form.getFormCommands().add(command);
                     r.id = Integer.valueOf(command.getId());
                     r.properties = FormCommandEdits.readProperties(form, command);
@@ -1552,7 +1553,7 @@ public final class FormWriteGateway {
             return r;
         }
         r.present = Boolean.valueOf(!Boolean.TRUE.equals(r.nameAvailable));
-        String optionIssue = validateCommandOptions(model, formFqn, opts);
+        String optionIssue = validateCommandOptions(model, GatewaySupport.projectVersion(p), formFqn, opts);
         r.ok = Boolean.TRUE.equals(r.present) && optionIssue == null;
         if (wantsHandler) {
             r.handler = handlerName;
@@ -1598,7 +1599,7 @@ public final class FormWriteGateway {
                         failure[0] = "the command disappeared between validation and apply";
                         return null;
                     }
-                    FormCommandEdits.validate(form, opts);
+                    FormCommandEdits.validate(form, opts, raw -> FormPictures.reference(tx, raw, version));
                     if (wantsTitle) {
                         if (titleRu.isBlank()) {
                             command.getTitle().removeKey("ru");
@@ -1626,7 +1627,8 @@ public final class FormWriteGateway {
                         commandHandler.setName(handlerName);
                         command.setAction(action);
                     }
-                    FormCommandEdits.apply(form, command, opts, version);
+                    FormCommandEdits.apply(form, command, opts, version,
+                            raw -> FormPictures.reference(tx, raw, version));
                     r.id = Integer.valueOf(command.getId());
                     r.properties = FormCommandEdits.readProperties(form, command);
                     return null;
@@ -1644,7 +1646,8 @@ public final class FormWriteGateway {
         return r;
     }
 
-    private String validateCommandOptions(IBmModel model, String formFqn, FormCommandEdits.Options opts) {
+    private String validateCommandOptions(IBmModel model, Version version, String formFqn,
+            FormCommandEdits.Options opts) {
         if (opts == null || opts.isEmpty()) return null;
         return model.executeReadonlyTask(new AbstractBmTask<String>("edt-bridge.formCommand.validateOptions") {
             @Override
@@ -1652,7 +1655,7 @@ public final class FormWriteGateway {
                 Form form = resolveForm(tx, formFqn);
                 if (form == null) return "form not found: " + formFqn;
                 try {
-                    FormCommandEdits.validate(form, opts);
+                    FormCommandEdits.validate(form, opts, raw -> FormPictures.reference(tx, raw, version));
                     return null;
                 } catch (RuntimeException invalid) {
                     return GatewaySupport.describeCause(invalid);

@@ -20,6 +20,9 @@ to the code and the reasoning behind it.
 - `edt_add_form_item` and `edt_modify_form_item` set `groupDirection` (`Horizontal`, `Vertical`
   or `InCell`) and `showTitle` of a column group of a table. Both used to be refused with
   "requires a usual group", and a column group stayed vertical, as EDT creates it.
+- `edt_add_form_command` and `edt_modify_form_command` set the command picture: `picture` takes
+  `StdPicture.<Name>`, `CommonPicture.<Name>` or `БиблиотекаКартинок.<Name>`, and an empty string
+  removes it. The answer and `edt_property_reference` report it.
 
 ### Fixed
 

@@ -31,31 +31,50 @@ import com._1c.g5.v8.dt.form.model.FormPackage;
 import com._1c.g5.v8.dt.form.model.SelectedRowsUse;
 import com._1c.g5.v8.dt.form.model.Table;
 import com._1c.g5.v8.dt.mcore.McoreFactory;
+import com._1c.g5.v8.dt.mcore.Picture;
 import com._1c.g5.v8.dt.mcore.StringValue;
 import com._1c.g5.v8.dt.mcore.Value;
 import com._1c.g5.v8.dt.platform.version.Version;
 import io.github.keyfire.edtbridge.core.AllowedValues;
 import io.github.keyfire.edtbridge.core.FormPropertyValues;
+import io.github.keyfire.edtbridge.core.PictureNames;
 
 /** Validated command-property edits shared by form-command writes, reads and property reference. */
 public final class FormCommandEdits {
     private static final Version TABLE_NAME_VERSION = new Version(8, 3, 15);
 
-    /** Optional typed properties of a {@link FormCommand}. */
+    /** Optional typed properties of a {@link FormCommand}; an empty picture clears it. */
     public record Options(String actionPurpose, String associatedTable, String currentRowUse,
-            String selectedRowsUse) {
-        public static final Options EMPTY = new Options(null, null, null, null);
+            String selectedRowsUse, String picture) {
+        public static final Options EMPTY = new Options(null, null, null, null, null);
+
+        public Options(String actionPurpose, String associatedTable, String currentRowUse, String selectedRowsUse) {
+            this(actionPurpose, associatedTable, currentRowUse, selectedRowsUse, null);
+        }
 
         public boolean isEmpty() {
             return actionPurpose == null && associatedTable == null && currentRowUse == null
-                    && selectedRowsUse == null;
+                    && selectedRowsUse == null && picture == null;
         }
+    }
+
+    /** Finds the picture a name stands for in the project; the model is needed for that. */
+    @FunctionalInterface
+    interface Pictures {
+        Picture find(String name);
     }
 
     private FormCommandEdits() { }
 
     static void validate(Form form, Options options) {
+        validate(form, options, null);
+    }
+
+    static void validate(Form form, Options options, Pictures pictures) {
         if (options == null || options.isEmpty()) return;
+        if (options.picture() != null && PictureNames.parse(options.picture()) != null) {
+            requirePictures(pictures).find(options.picture());
+        }
         if (options.actionPurpose() != null) parseActionPurpose(options.actionPurpose());
         if (options.currentRowUse() != null) parseCurrentRowUse(options.currentRowUse());
         if (options.selectedRowsUse() != null) parseSelectedRowsUse(options.selectedRowsUse());
@@ -65,7 +84,15 @@ public final class FormCommandEdits {
     }
 
     static void apply(Form form, FormCommand command, Options options, Version version) {
+        apply(form, command, options, version, null);
+    }
+
+    static void apply(Form form, FormCommand command, Options options, Version version, Pictures pictures) {
         if (options == null || options.isEmpty()) return;
+        if (options.picture() != null) {
+            command.setPicture(PictureNames.parse(options.picture()) == null ? null
+                    : requirePictures(pictures).find(options.picture()));
+        }
         if (options.actionPurpose() != null) {
             command.setActionPurpose(parseActionPurpose(options.actionPurpose()));
         }
@@ -123,7 +150,16 @@ public final class FormCommandEdits {
         if (command.getSelectedRowsUse() != null) {
             out.put("selectedRowsUse", command.getSelectedRowsUse().getLiteral());
         }
+        String picture = command.getPicture() == null ? null : FormPictures.name(command.getPicture());
+        if (picture != null) {
+            out.put("picture", picture);
+        }
         return out;
+    }
+
+    private static Pictures requirePictures(Pictures pictures) {
+        if (pictures == null) throw new IllegalStateException("a command picture is looked up in the project model");
+        return pictures;
     }
 
     static List<Map<String, Object>> reference(Form form, FormCommand command, String handler) {
@@ -145,6 +181,9 @@ public final class FormCommandEdits {
         out.add(entry("selectedRowsUse", "enum",
                 command.getSelectedRowsUse() == null ? null : command.getSelectedRowsUse().getLiteral(),
                 null, literals(SelectedRowsUse.VALUES)));
+        out.add(entry("picture", "string", command.getPicture() == null ? null : FormPictures.name(command.getPicture()),
+                "StdPicture.<Name> of the platform, CommonPicture.<Name> of the configuration or "
+                        + "БиблиотекаКартинок.<Name>; an empty string clears it", null));
         return out;
     }
 
@@ -167,6 +206,10 @@ public final class FormCommandEdits {
         }
         if (options.selectedRowsUse() != null) {
             what.append(" selectedRowsUse -> ").append(parseSelectedRowsUse(options.selectedRowsUse()).getLiteral());
+        }
+        if (options.picture() != null) {
+            PictureNames.Name name = PictureNames.parse(options.picture());
+            what.append(" picture -> ").append(name == null ? "none" : options.picture().strip());
         }
     }
 
