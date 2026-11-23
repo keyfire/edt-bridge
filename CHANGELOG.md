@@ -13,21 +13,25 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
-## Unreleased
+## 2026-11-23 – 0.53.0
 
 ### Added
 
 - `edt_form_render` displays sample statuses below the form header. Each status can use a common
   picture from the configuration.
+  ([#110](https://github.com/keyfire/edt-bridge/pull/110))
 - `edt_picture_export` reads standalone SVG files as well as picture archives.
+  ([#110](https://github.com/keyfire/edt-bridge/pull/110))
 
 ### Fixed
 
 - The form renderer opens parent tabs when selecting a nested page and draws calendar buttons
   for date fields bound to register resources or dimensions.
+  ([#110](https://github.com/keyfire/edt-bridge/pull/110))
 - In "Version 8.5", the renderer respects input width limits, aligns related fields and
   check boxes, and stretches eligible table columns. Both interfaces respect the table's
   horizontal-line setting.
+  ([#110](https://github.com/keyfire/edt-bridge/pull/110))
 
 ## 2026-11-22 – 0.52.0
 
