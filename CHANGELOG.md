@@ -28,6 +28,9 @@ to the code and the reasoning behind it.
 - `edt_add_form_item` and `edt_modify_form_item` set `multiLine` and `wrap` of an input field, so
   that together with `height` the field shows several lines. Both arguments used to be refused as
   unknown.
+- `edt_add_form_item` and `edt_modify_form_item` set the picture of a picture decoration with
+  `picture`, by the same names as a command picture. A decoration of type `Picture` used to be
+  created without a picture, and the argument was refused.
 
 ### Fixed
 

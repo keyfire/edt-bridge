@@ -56,6 +56,18 @@ final class FormPictures {
         return reference;
     }
 
+    /**
+     * The settings of a form item with its {@code picture} looked up in the project: the name becomes
+     * the reference to store. Other settings, and an empty name, stay as they are.
+     */
+    static java.util.Map<String, Object> resolve(java.util.Map<String, Object> settings, IBmTransaction tx,
+            Version version) {
+        if (settings == null || !(settings.get("picture") instanceof String raw) || raw.isBlank()) return settings;
+        java.util.Map<String, Object> resolved = new java.util.LinkedHashMap<>(settings);
+        resolved.put("picture", reference(tx, raw, version));
+        return resolved;
+    }
+
     /** How a stored picture is named back, the way {@link #reference} takes it. */
     static String name(Picture stored) {
         Picture target = stored instanceof PictureRef reference ? reference.getPicture() : stored;

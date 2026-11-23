@@ -38,3 +38,11 @@ def test_both_item_tools_make_an_input_field_multi_line():
         properties = tools[name]["inputSchema"]["properties"]
         assert properties["multiLine"]["type"] == "boolean", name
         assert properties["wrap"]["type"] == "boolean", name
+
+
+def test_both_item_tools_take_a_picture_for_a_picture_decoration():
+    tools = _tools()
+    for name in ("edt_add_form_item", "edt_modify_form_item"):
+        picture = tools[name]["inputSchema"]["properties"]["picture"]
+        assert picture["type"] == "string", name
+        assert "StdPicture." in picture["description"] and "decoration" in picture["description"], name
