@@ -172,7 +172,7 @@ def test_taxi_preserves_the_contents_of_a_command_bar_submenu():
         ],
     })
     html = form_view.build(model, interface="taxi", assets=ASSETS, data={"hidden": ["Hidden"]}).html
-    assert '<details class="tsubmenu"><summary class="tbtn">Создать на основании ▾</summary>' in html
+    assert '<details class="tsubmenu"><summary class="tbtn tdrop">Создать на основании</summary>' in html
     assert '<span class="tmenuitem">Публикация: generate</span>' in html
     assert "Hidden command" not in html
 
@@ -198,7 +198,7 @@ def test_taxi_places_generated_create_based_on_before_custom_commands_and_dims_d
     html = form_view.build(model, interface="taxi", assets=ASSETS, data={"disabled": ["File"]}).html
     bar = html.split('<div class="tbar">', 1)[1].split('<div class="body">', 1)[0]
     assert bar.index("Save") < bar.index("Create based on") < bar.index("Publication file")
-    assert 'aria-disabled="true">Publication file ▾</span>' in bar
+    assert 'class="tbtn tdrop" aria-disabled="true">Publication file</span>' in bar
 
 
 def test_taxi_has_no_dark_theme():
@@ -293,10 +293,10 @@ def test_taxi_groups_the_list_search_controls_on_the_right(location, style):
     assets = form_view.Assets(symbols=frozenset({"svg_search"}))
     html = form_view.build(model, interface="taxi", page="Адреса", assets=assets, data={"hidden": ["Отчеты"]}).html
     left, right = html[html.index(f'<div class="{style[0]}bar">'):].split('<span class="right">', 1)
-    assert f'<span class="{style}">Создать на основании ▾</span>' in left
+    assert f'<span class="{style} tdrop">Создать на основании</span>' in left
     assert "Отчеты..." not in left and "Управление поиском" not in left
     assert right.index('class="inp btns tsearch"') < right.index('title="Управление поиском"')
-    assert right.index('href="#svg_search"') < right.index("Еще ▾") < right.index(">?</span>")
+    assert right.index('href="#svg_search"') < right.index('tdrop">Еще<') < right.index(">?</span>")
 
 
 def test_a_group_with_half_spacing_draws_its_items_closer_in_v85():
@@ -360,7 +360,7 @@ def test_taxi_renders_command_pictures_in_form_and_table_bars(tmp_path, monkeypa
 
     html = out.with_suffix(".html").read_text(encoding="utf-8")
     assert '<span class="tbtn ponly"><span class="tpic p-paperDoublePlus"></span></span>' in html
-    assert '<span class="tbtn">Actions ▾</span>' in html
+    assert '<span class="tbtn tdrop">Actions</span>' in html
     assert '<span class="tbtn">Text only</span>' in html
     assert html.count('<img class="tpic" src="data:image/png;base64,iVBORw==" alt="">Select') == 2
     assert [request.get("variant") for request in pictures] == [None, "100.png"]
@@ -530,6 +530,21 @@ def test_v85_draws_boolean_switches_and_sample_tags():
     assert "items" not in markup
 
 
+def test_v85_large_left_tab_form_uses_dialog_bounds_by_default():
+    model = view()
+    model["lay"].update(width=1800, height=950)
+    find(model["lay"], "Страницы")["representation"] = "TabsOnLeftHorizontal"
+
+    automatic = form_view.build(model).html
+    explicit = form_view.build(model, width=900, height=600).html
+
+    assert 'class="v85 light bounded-window"' in automatic
+    assert 'width:min(1380px, calc(100vw - 36px))' in automatic
+    assert 'height:min(818px, calc(100vh - 36px))' in automatic
+    assert '.win { width:900px; min-width:0; height:600px; }' in explicit
+    assert 'class="v85 light sized-window"' in explicit
+
+
 def test_v85_preserves_grouped_table_headers_and_runtime_empty_state():
     model = view()
     grid = find(model["lay"], "Адреса")
@@ -562,7 +577,8 @@ def test_v85_disables_toolbar_and_checkbox_controls_and_hides_the_disabled_dropd
     assets = form_view.Assets(symbols=frozenset({"svg_cornerBottom", "pic_plus"}))
     drawn = form_view.build(model, data={"disabled": ["АдресаДобавить", "Владелец", "Remember"]}, assets=assets)
     markup = drawn.html.split('<div class="stage">', 1)[1]
-    assert '<span class="cbtn dis" aria-disabled="true">' in markup
+    assert '<span class="cbtn" aria-disabled="true">' in markup
+    assert '<span class="cbtn-label">Добавить</span>' in markup
     assert 'class="chkrow fixed dis" aria-disabled="true"' in markup
     assert 'href="#svg_cornerBottom"' not in markup.split('<div class="pages', 1)[1]
 
@@ -610,7 +626,7 @@ def test_v85_table_submenu_arrow_follows_its_caption_and_header_commands_can_be_
     drawn = form_view.build(model, page="Адреса", data={"disabled": ["Revoke"]}, assets=assets)
     markup = drawn.html.split('<div class="stage">', 1)[1]
     assert '<span class="pill" aria-disabled="true">Revoke token</span>' in markup
-    assert 'Настройки списка<svg width="16" height="16"' in markup
+    assert 'Настройки списка</span><svg width="16" height="16"' in markup
 
 
 def test_v85_project_picture_prefers_version8_5_variant_for_the_requested_theme():
@@ -673,3 +689,45 @@ def test_tree_indents_the_first_non_check_column():
 
 
 
+
+
+@pytest.mark.parametrize("interface, theme", [("taxi", "light"), ("v85", "light"), ("v85", "dark")])
+def test_draws_runtime_statuses_with_configuration_pictures(interface, theme):
+    picture = "data:image/png;base64,AA"
+    pictures = {"ReadyStatus": picture}
+    statuses = [{"text": "Ready & active", "picture": "ReadyStatus"}, {"text": "Text only"}]
+    drawn = form_view.build(view(), interface=interface, theme=theme,
+                           assets=form_view.Assets(project_picture=pictures.get), data={"statuses": statuses})
+
+    assert '<div class="form-statuses card">' in drawn.html
+    assert f'<img src="{picture}" alt="">' in drawn.html
+    assert drawn.html.index("Ready &amp; active") < drawn.html.index("Text only")
+    assert drawn.html.index('<div class="form-statuses card">') < drawn.html.index('class="fld')
+
+
+def test_selecting_a_nested_page_opens_its_parent():
+    model = view()
+    outer = find(model["lay"], "Страницы")
+    inner = {"_c": "HippoLayPages", "name": "AuthenticationPages", "children": [
+        page("Provider", "Provider", [field("Endpoint", "Endpoint", "Endpoint")]),
+        page("Blocking", "Blocking", []),
+    ]}
+    outer["children"][1]["children"].append(inner)
+
+    drawn = form_view.build(model, page="Provider", data={"values": {"Endpoint": "example.test"}})
+
+    assert drawn.page == "Provider"
+    assert '<span class="tab on">Адреса' in drawn.html
+    assert '<span class="tab on">Provider</span>' in drawn.html
+
+
+def test_a_page_group_without_tabs_draws_only_the_active_page():
+    model = view()
+    find(model["lay"], "Страницы")["representation"] = "None"
+
+    drawn = form_view.build(model, page="Адреса")
+
+    assert drawn.page == "Адреса"
+    assert '<div class="tabs">' not in drawn.html
+    assert '<div class="page ghost">' not in drawn.html
+    assert '<div class="page">' in drawn.html

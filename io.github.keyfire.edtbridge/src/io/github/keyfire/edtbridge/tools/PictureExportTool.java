@@ -23,7 +23,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 
 /**
- * MCP tool: edt_picture_export - READ. The content of a CommonPicture from its Picture.zip: the list
+ * MCP tool: edt_picture_export - READ. The content of a CommonPicture from Picture.zip or Picture.svg: the list
  * of variants from the manifest (DPI / interface variant 8.2 vs 8.5 / theme / isTemplate / glyph
  * size) and, when {@code variant} is given, that variant's bytes as base64. Saves going to disk and
  * unzipping Picture.zip by hand. {@code variant} accepts an exact entry name, or "svg" (the vector
@@ -57,12 +57,12 @@ public final class PictureExportTool {
         JsonObject t = new JsonObject();
         t.addProperty("name", name());
         t.addProperty("description",
-                "READ: a CommonPicture's content from its Picture.zip. Without variant: lists the "
+                "READ: a CommonPicture's content from Picture.zip or Picture.svg. Without variant: lists the "
                 + "variants (DPI / interface variant version8_2 vs version8_5 / theme / isTemplate / "
                 + "glyph size) + a recommended pick. With variant: that entry's bytes as base64 + "
                 + "contentType. Avoids going to disk and unzipping Picture.zip by hand.");
         t.addProperty("descriptionRu",
-                "ЧТЕНИЕ: содержимое CommonPicture из Picture.zip. Без variant – перечень вариантов "
+                "ЧТЕНИЕ: содержимое CommonPicture из Picture.zip или Picture.svg. Без variant – перечень вариантов "
                 + "(DPI / вариант интерфейса version8_2 или version8_5 / тема / isTemplate / размер "
                 + "глифа) + рекомендуемый. С variant – байты этого варианта в base64 + contentType. "
                 + "Избавляет от ручной распаковки Picture.zip с диска.");

@@ -365,8 +365,8 @@
     },
     {
       "name": "edt_picture_export",
-      "description": "READ: a CommonPicture's content from its Picture.zip. Without variant: lists the variants (DPI / interface variant version8_2 vs version8_5 / theme / isTemplate / glyph size) + a recommended pick. With variant: that entry's bytes as base64 + contentType. Avoids going to disk and unzipping Picture.zip by hand.",
-      "descriptionRu": "ЧТЕНИЕ: содержимое CommonPicture из Picture.zip. Без variant – перечень вариантов (DPI / вариант интерфейса version8_2 или version8_5 / тема / isTemplate / размер глифа) + рекомендуемый. С variant – байты этого варианта в base64 + contentType. Избавляет от ручной распаковки Picture.zip с диска.",
+      "description": "READ: a CommonPicture's content from Picture.zip or Picture.svg. Without variant: lists the variants (DPI / interface variant version8_2 vs version8_5 / theme / isTemplate / glyph size) + a recommended pick. With variant: that entry's bytes as base64 + contentType. Avoids going to disk and unzipping Picture.zip by hand.",
+      "descriptionRu": "ЧТЕНИЕ: содержимое CommonPicture из Picture.zip или Picture.svg. Без variant – перечень вариантов (DPI / вариант интерфейса version8_2 или version8_5 / тема / isTemplate / размер глифа) + рекомендуемый. С variant – байты этого варианта в base64 + contentType. Избавляет от ручной распаковки Picture.zip с диска.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -4991,5 +4991,5 @@
       ]
     }
   ],
-  "version": "0.52.0"
+  "version": "0.53.0"
 }
