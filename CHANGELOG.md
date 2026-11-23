@@ -13,6 +13,14 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
+## Unreleased
+
+### Fixed
+
+- `edt_add_method` and `edt_move_method` leave one blank line on each side of the method. A
+  method appended to a region used to get three blank lines before `#КонецОбласти`, and one put
+  before another method got two blank lines above it.
+
 ## 2026-11-23 – 0.53.0
 
 ### Added

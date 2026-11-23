@@ -96,4 +96,45 @@ public final class BslPlacement {
         }
         return parent == null ? region.name() : path(parent, regions) + "/" + region.name();
     }
+
+    /**
+     * The text that goes in at {@code position}: the method with one blank line on each side,
+     * counting the line breaks already there, so that a blank line before {@code #EndRegion} or
+     * before the next method is not doubled. Nothing goes before a method at the start of the text,
+     * and a method at the end is followed by one line break. Blank lines that are already there stay.
+     */
+    public static String block(String text, int position, String method, String eol) {
+        int before = position == 0 ? 2 : breaksBefore(text, position) + leadingBreaks(method);
+        boolean atEnd = text.substring(position).isBlank();
+        int after = breaksAfter(text, position) + trailingBreaks(method);
+        return eol.repeat(Math.max(0, 2 - before)) + method + eol.repeat(Math.max(0, (atEnd ? 1 : 2) - after));
+    }
+
+    private static int breaksBefore(String text, int position) {
+        int breaks = 0;
+        for (int i = position - 1; i >= 0 && isSpace(text.charAt(i)); i--) {
+            if (text.charAt(i) == '\n') breaks++;
+        }
+        return breaks;
+    }
+
+    private static int breaksAfter(String text, int position) {
+        int breaks = 0;
+        for (int i = position; i < text.length() && isSpace(text.charAt(i)); i++) {
+            if (text.charAt(i) == '\n') breaks++;
+        }
+        return breaks;
+    }
+
+    private static int leadingBreaks(String method) {
+        return breaksAfter(method, 0);
+    }
+
+    private static int trailingBreaks(String method) {
+        return breaksBefore(method, method.length());
+    }
+
+    private static boolean isSpace(char c) {
+        return c == ' ' || c == '\t' || c == '\r' || c == '\n';
+    }
 }

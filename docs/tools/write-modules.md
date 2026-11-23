@@ -27,6 +27,9 @@ Changes need a token and are returned as a plan until `apply=true` is passed; se
 path such as `Public/Helpers`; a short name must be unique. A neighbor must belong directly to the
 selected scope. A missing or ambiguous target is refused. The plan returns `insertLine`,
 `previousMethod` and `nextMethod`. `edt_move_method` uses the same destination options.
+Both leave one blank line on each side of the method, counting the line breaks already there: a
+method appended to a region is followed by one blank line before `#EndRegion` (`#КонецОбласти`).
+Blank lines that are already there stay.
 For the first method of an existing empty model module, pass its `fqn`. The bridge creates the
 missing `.bsl` only on apply after checking the owner and module type; dry-run creates no file.
 This applies to any typed module of an existing object, such as `ObjectModule` and
