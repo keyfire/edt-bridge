@@ -75,6 +75,16 @@ EDT initializes its `HtmlFieldExtInfo` and preserves the data path when changing
 The `properties` map contains the observed design-time values after apply. Runtime code may override them.
 Invalid options are validated as a set before any setting is assigned. Unlimited `Строка` types include an explicit empty string qualifier.
 
+## A form changed on disk
+
+A form edited outside EDT, for example `Form.form` changed by hand, reaches the model only after
+EDT has noticed the change and loaded the file. A form write that came in between started from
+the old model, and its export put the old form back over the edit. Now every tool on this page
+that changes an existing form, and `edt_modify_object` with a form FQN, first refreshes
+`Form.form` and waits until EDT has synchronized the project model with its files. The preview
+reads the form the same way. When EDT does not get there in 30 s, nothing is written and the
+message asks to repeat the call.
+
 ## Duplicate form IDs
 
 For duplicate form IDs, audit first and select paths from `audit.items`. Leave one

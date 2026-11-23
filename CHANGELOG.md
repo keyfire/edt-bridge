@@ -20,6 +20,9 @@ to the code and the reasoning behind it.
 - `edt_add_form_handler` writes the stub of `OnGetDataAtServer` of a dynamic list
   (`ПриПолученииДанныхНаСервере`) as the platform help asks: `&НаСервереБезКонтекста` with
   `ИмяЭлемента, Настройки, Строки`. It used to write `&НаСервере` and an extra `Элемент` first.
+- A form write no longer puts the old form back over `Form.form` changed on disk a moment
+  before. The form tools and `edt_modify_object` with a form FQN refresh the file and wait until
+  EDT has loaded it into the model. If that takes more than 30 s, nothing is written.
 
 ## 2026-11-22 – 0.52.0
 

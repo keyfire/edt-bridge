@@ -67,6 +67,12 @@ public final class MetadataSettingsGateway {
         try {
             IProject project = project(projectName);
             IBmModel model = model(project);
+            String diskProblem = FormFileSync.settle(project, model, fqn);
+            if (diskProblem != null) {
+                result.ok = false;
+                result.message = diskProblem;
+                return result;
+            }
             boolean use851Title = GatewaySupport.projectVersion(project)
                     .isGreaterThanOrEquals(new Version(8, 5, 1));
             final boolean[] isForm = {false};

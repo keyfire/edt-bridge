@@ -799,6 +799,11 @@ public final class FormWriteGateway {
             r.message = "no BM model for project: " + projectName;
             return r;
         }
+        String diskProblem = FormFileSync.settle(p, model, formFqn);
+        if (diskProblem != null) {
+            r.message = diskProblem;
+            return r;
+        }
         inspectForm(model, r, formFqn, name, true, columnOf);
         if (!r.formFound) {
             r.message = "form not found: " + formFqn;
@@ -927,6 +932,11 @@ public final class FormWriteGateway {
             r.message = "no BM model for project: " + projectName;
             return r;
         }
+        String diskProblem = FormFileSync.settle(p, model, formFqn);
+        if (diskProblem != null) {
+            r.message = diskProblem;
+            return r;
+        }
         inspectForm(model, r, formFqn, name, true, columnOf);
         if (!r.formFound) {
             r.message = "form not found: " + formFqn;
@@ -1035,6 +1045,11 @@ public final class FormWriteGateway {
             r.message = "no BM model for project: " + projectName;
             return r;
         }
+        String diskProblem = FormFileSync.settle(p, model, formFqn);
+        if (diskProblem != null) {
+            r.message = diskProblem;
+            return r;
+        }
         inspectForm(model, r, formFqn, name, true, columnOf);
         if (!r.formFound) {
             r.message = "form not found: " + formFqn;
@@ -1130,6 +1145,11 @@ public final class FormWriteGateway {
         IBmModel model = (mm == null) ? null : mm.getModel(p);
         if (model == null) {
             r.message = "no BM model for project: " + projectName;
+            return r;
+        }
+        String diskProblem = FormFileSync.settle(p, model, formFqn);
+        if (diskProblem != null) {
+            r.message = diskProblem;
             return r;
         }
         inspectForm(model, r, formFqn, name, false, null);
@@ -1258,6 +1278,11 @@ public final class FormWriteGateway {
         IBmModel model = (mm == null) ? null : mm.getModel(p);
         if (model == null) {
             r.message = "no BM model for project: " + projectName;
+            return r;
+        }
+        String diskProblem = FormFileSync.settle(p, model, formFqn);
+        if (diskProblem != null) {
+            r.message = diskProblem;
             return r;
         }
         boolean russian = scriptVariantOf(p) == ScriptVariant.RUSSIAN;
@@ -1566,6 +1591,11 @@ public final class FormWriteGateway {
             r.message = "no BM model for project: " + projectName;
             return r;
         }
+        String diskProblem = FormFileSync.settle(p, model, formFqn);
+        if (diskProblem != null) {
+            r.message = diskProblem;
+            return r;
+        }
         inspectForm(model, r, formFqn, name, false, null);
         if (!r.formFound) {
             r.message = "form not found: " + formFqn;
@@ -1693,6 +1723,11 @@ public final class FormWriteGateway {
         IBmModel model = (mm == null) ? null : mm.getModel(p);
         if (model == null) {
             r.message = "no BM model for project: " + projectName;
+            return r;
+        }
+        String diskProblem = FormFileSync.settle(p, model, formFqn);
+        if (diskProblem != null) {
+            r.message = diskProblem;
             return r;
         }
         inspectForm(model, r, formFqn, name, false, null);
@@ -2249,6 +2284,11 @@ public final class FormWriteGateway {
             r.message = "no BM model for project: " + projectName;
             return r;
         }
+        String diskProblem = FormFileSync.settle(p, model, formFqn);
+        if (diskProblem != null) {
+            r.message = diskProblem;
+            return r;
+        }
 
         final String[] problem = {null};
         final String[] placement = {null};
@@ -2524,6 +2564,8 @@ public final class FormWriteGateway {
         IBmModelManager manager = ServiceAccess.get(IBmModelManager.class);
         IBmModel model = manager == null ? null : manager.getModel(project);
         if (model == null) { result.message = "no BM model for project: " + projectName; return result; }
+        String diskProblem = FormFileSync.settle(project, model, formFqn);
+        if (diskProblem != null) { result.message = diskProblem; return result; }
         try {
             model.executeReadonlyTask(new AbstractBmTask<Object>("edt-bridge.moveFormItem.validate") {
                 @Override public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
@@ -2634,6 +2676,11 @@ public final class FormWriteGateway {
         IBmModel model = (mm == null) ? null : mm.getModel(p);
         if (model == null) {
             r.message = "no BM model for project: " + projectName;
+            return r;
+        }
+        String diskProblem = FormFileSync.settle(p, model, formFqn);
+        if (diskProblem != null) {
+            r.message = diskProblem;
             return r;
         }
         inspectItem(model, r, formFqn, name);
@@ -2772,6 +2819,11 @@ public final class FormWriteGateway {
         IBmModel model = (mm == null) ? null : mm.getModel(p);
         if (model == null) {
             r.message = "no BM model for project: " + projectName;
+            return r;
+        }
+        String diskProblem = FormFileSync.settle(p, model, formFqn);
+        if (diskProblem != null) {
+            r.message = diskProblem;
             return r;
         }
         inspectItem(model, r, formFqn, name);
