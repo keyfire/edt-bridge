@@ -30,3 +30,11 @@ def test_both_command_tools_take_a_picture_by_the_names_form_form_stores():
         assert picture["type"] == "string", name
         assert "StdPicture." in picture["description"] and "CommonPicture." in picture["description"], name
     assert "removes it" in tools["edt_modify_form_command"]["inputSchema"]["properties"]["picture"]["description"]
+
+
+def test_both_item_tools_make_an_input_field_multi_line():
+    tools = _tools()
+    for name in ("edt_add_form_item", "edt_modify_form_item"):
+        properties = tools[name]["inputSchema"]["properties"]
+        assert properties["multiLine"]["type"] == "boolean", name
+        assert properties["wrap"]["type"] == "boolean", name

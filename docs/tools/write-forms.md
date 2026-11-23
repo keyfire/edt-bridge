@@ -30,8 +30,9 @@ item. An omitted `parent` keeps its parent; `parent=""` selects the form root. A
 support `groupDirection` (alias `group`), `representation`, `showTitle`, `united`, `titleLocation`,
 `maxHeight` and `verticalStretch` where the item type supports them. A column group of a table
 takes `groupDirection` (`Horizontal`, `Vertical` or `InCell`) and `showTitle`; EDT creates it
-vertical. Unknown enums and settings for the wrong item type are refused. `fieldType` selects `InputField`, `RadioButtonField` or
-`CheckBoxField`. `choiceList` replaces the choices of an input or radio field:
+vertical. An input field becomes multi-line with `multiLine` together with a `height` of two lines
+or more, and `wrap` wraps its text. Unknown enums and settings for the wrong item type are
+refused. `fieldType` selects `InputField`, `RadioButtonField` or `CheckBoxField`. `choiceList` replaces the choices of an input or radio field:
 
 ```json
 {

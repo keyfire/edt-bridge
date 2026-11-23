@@ -40,7 +40,7 @@ public final class FormItemEdits {
             "united", "titleLocation", "maxHeight", "verticalStretch", "fieldType", "choiceList", "width", "height", "horizontalStretch",
             "choiceButton", "clearButton", "textEdit", "listChoiceMode", "choiceFoldersAndItems", "readOnly",
             "changeRowSet", "autoInsertNewRow", "changeRowOrder", "selectionMode", "initialTreeView",
-            "defaultButton", "buttonImportance");
+            "defaultButton", "buttonImportance", "multiLine", "wrap");
 
     /** A zero-based destination index in the sibling list after excluding the moved item. */
     public static final class Position {
@@ -276,7 +276,8 @@ public final class FormItemEdits {
             if (!(info instanceof UsualGroupExtInfo)) { throw new IllegalArgumentException(key + " requires a usual group"); }
             return info;
         }
-        if (Set.of("choiceButton", "clearButton", "textEdit", "listChoiceMode", "choiceFoldersAndItems").contains(key)) {
+        if (Set.of("choiceButton", "clearButton", "textEdit", "listChoiceMode", "choiceFoldersAndItems",
+                "multiLine", "wrap").contains(key)) {
             if (!(info instanceof InputFieldExtInfo)) { throw new IllegalArgumentException(key + " requires an input field"); }
             return info;
         }

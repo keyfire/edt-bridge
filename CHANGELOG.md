@@ -25,6 +25,9 @@ to the code and the reasoning behind it.
   `StdPicture.<Name>`, `CommonPicture.<Name>` or `БиблиотекаКартинок.<Name>`, and an empty string
   removes it. The answer and `edt_property_reference` report it.
   ([#111](https://github.com/keyfire/edt-bridge/pull/111))
+- `edt_add_form_item` and `edt_modify_form_item` set `multiLine` and `wrap` of an input field, so
+  that together with `height` the field shows several lines. Both arguments used to be refused as
+  unknown.
 
 ### Fixed
 

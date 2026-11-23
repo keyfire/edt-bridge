@@ -131,6 +131,20 @@ class FormItemEditingTest {
         FormItemEdits.applySettings(group,Map.of("showTitle",false),type->{},true);
         assertFalse(info.isShowTitle()); assertEquals("false",info.getShowTitle851().toString());
     }
+    @Test void anInputFieldBecomesMultiLineAndWrapsItsText() {
+        FormField field=FormFactory.eINSTANCE.createFormField(); field.setName("Comment");
+        field.setType(ManagedFormFieldType.INPUT_FIELD); field.setExtInfo(FormFactory.eINSTANCE.createInputFieldExtInfo());
+        FormItemEdits.applySettings(field,Map.of("multiLine",true,"wrap",true,"height",3),type->{},false);
+        InputFieldExtInfo info=(InputFieldExtInfo)field.getExtInfo();
+        assertEquals(Boolean.TRUE,info.getMultiLine()); assertTrue(info.isWrap()); assertEquals(3,info.getHeight());
+        Map<String,Object> read=FormItemEdits.readSettings(field);
+        assertEquals(Boolean.TRUE,read.get("multiLine")); assertEquals(Boolean.TRUE,read.get("wrap"));
+        FormField check=FormFactory.eINSTANCE.createFormField(); check.setName("Flag");
+        check.setType(ManagedFormFieldType.CHECK_BOX_FIELD); check.setExtInfo(FormFactory.eINSTANCE.createCheckBoxFieldExtInfo());
+        var error=assertThrows(IllegalArgumentException.class,
+                ()->FormItemEdits.applySettings(check,Map.of("multiLine",true),type->{},false));
+        assertTrue(error.getMessage().contains("requires an input field"),error.getMessage());
+    }
     @Test void aColumnGroupTakesItsOwnLayoutAndTitle() {
         FormGroup group=FormFactory.eINSTANCE.createFormGroup(); group.setName("Columns");
         group.setType(ManagedFormGroupType.COLUMN_GROUP); group.setExtInfo(FormFactory.eINSTANCE.createColumnGroupExtInfo());

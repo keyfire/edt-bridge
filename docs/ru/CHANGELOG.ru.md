@@ -23,6 +23,8 @@
   принимает `StdPicture.<Имя>`, `CommonPicture.<Имя>` или `БиблиотекаКартинок.<Имя>`, пустая
   строка убирает картинку. Ответ и `edt_property_reference` ее сообщают.
   ([#111](https://github.com/keyfire/edt-bridge/pull/111))
+- `edt_add_form_item` и `edt_modify_form_item` задают `multiLine` и `wrap` поля ввода, и вместе с
+  `height` поле показывает несколько строк. Раньше оба аргумента отклонялись как неизвестные.
 
 ### Исправлено
 
