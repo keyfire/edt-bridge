@@ -13,6 +13,15 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
+## 2026-11-24 – 0.54.0
+
+### Added
+
+- `edt_test_form` with `webClient=true` and `test-form --web-client` return the form as text
+  after the check. The output includes element positions, table rows, spreadsheet cells and panel
+  messages. With personal data filtering enabled, MCP can also return a masked screenshot.
+  ([#112](https://github.com/keyfire/edt-bridge/pull/112))
+
 ## 2026-11-23 – 0.53.0
 
 ### Added
