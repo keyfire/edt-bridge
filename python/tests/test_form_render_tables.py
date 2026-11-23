@@ -11,14 +11,84 @@ def group(*children, **layout):
     return {"_c": "HippoLayTableColumnsGroup", "children": list(children), **layout}
 
 
-def render_table(*columns, data=None, caption=None):
+def render_table(*columns, data=None, caption=None, interface="taxi", commands=None, **layout):
     title = [{"_c": "HippoLayStaticText", "name": "Lines#title", "title": caption}] if caption else []
     grid = {"_c": "HippoLayTable", "name": "Lines", "width": 40, "rowsSelectionMode": "SingleRow",
-            "height": 1, "stretchableMode": "Any", "children": list(columns)}
-    table_group = {"_c": "HippoLayLogicGroup", "role": "TableGroupRole", "children": [grid]}
+            "height": 1, "stretchableMode": "Any", "children": list(columns), **layout}
+    bar = [{"_c": "HippoLayCommandBar", "children": commands}] if commands else []
+    table_group = {"_c": "HippoLayLogicGroup", "role": "TableGroupRole", "children": [*bar, grid]}
     rich = {"_c": "HippoLayFormRichElement", "name": "Lines#richGroup", "children": title + [table_group]}
     view = {"lay": {"_c": "HippoLayForm", "children": [rich]}}
-    return form_view.build(view, interface="taxi", data={"tables": {"Lines": data or {}}}).html
+    return form_view.build(view, interface=interface, data={"tables": {"Lines": data or {}}}).html
+
+
+def test_v85_table_uses_column_size_hints_and_a_stretchable_empty_body():
+    html = render_table(column("Enabled", columnMode="Check"),
+                        column("Name", "Name", width=10, defaultHeaderFooterWidth=20,
+                               autoWidthInTable="ByDataAndTitle"),
+                        column("Visible", "Visibility", columnMode="Check"),
+                        data={"rows": []}, interface="v85")
+
+    assert '<colgroup><col style="width:40px"><col style="width:237px"><col style="width:110px"></colgroup>' in html
+    assert '</table><div class="grid-empty">Список пуст</div></div>' in html
+
+
+def test_v85_expands_a_single_stretchable_text_column_to_the_table_width():
+    name = column("Name", "Name", width=10, defaultHeaderFooterWidth=8,
+                  autoWidthInTable="ByDataAndTitle", stretchableMode="Hor")
+    table = render_table(name, data={"rows": [{"Name": "Sample"}]}, interface="v85")
+    assert 'class="grid col-widths single-column" style="min-width:369px"><colgroup><col></colgroup>' in table
+    assert ">Sample</td>" in table
+    assert "table.grid.single-column { width: auto; width: stretch; }" in table
+
+    check = render_table(column("Enabled", columnMode="Check", stretchableMode="Hor"), interface="v85")
+    assert '<colgroup><col style="width:40px"></colgroup>' in check
+    assert 'class="grid col-widths single-column"' not in check
+
+    fixed = render_table({**name, "stretchableMode": "None"}, interface="v85")
+    assert '<colgroup><col style="width:106px"></colgroup>' in fixed
+    assert 'class="grid col-widths single-column"' not in fixed
+
+
+def test_v85_stretches_text_columns_without_widening_checks_and_line_numbers():
+    cols = [
+        column("Selected", columnMode="Check", stretchableMode="Hor"),
+        column("LineNumber", "N", width=4, defaultHeaderFooterWidth=5,
+               autoWidthInTable="ByDataAndTitle", stretchableMode="Hor"),
+        column("Name", "Name", width=40, defaultHeaderFooterWidth=20,
+               autoWidthInTable="ByDataAndTitle", stretchableMode="Hor"),
+        column("Code", "Code", width=10, defaultHeaderFooterWidth=10,
+               autoWidthInTable="ByDataAndTitle", stretchableMode="Hor"),
+    ]
+    html = render_table(*cols, interface="v85")
+
+    assert 'contain-intrinsic-inline-size:479px' in html
+    assert '<col style="width:40px"><col style="width:74px">' in html
+    assert 'calc(237px + max(0px, (100cqw - 479px) / 2))' in html
+    assert 'calc(128px + max(0px, (100cqw - 479px) / 2))' in html
+
+
+def test_table_preserves_disabled_horizontal_lines_in_both_interfaces():
+    name = column("Name", "Name", stretchableMode="Hor")
+    for interface in ("v85", "taxi"):
+        hidden = render_table(name, interface=interface, showHorLines=False)
+        assert '<table class="grid no-row-lines' in hidden
+        visible = render_table(name, interface=interface, showHorLines=True)
+        assert '<table class="grid no-row-lines' not in visible
+
+
+def test_v85_custom_actions_precede_the_generated_move_buttons():
+    def command(name, standard=False):
+        binding = {"name": name, "source": "standard" if standard else "FormCommand"}
+        return {"_c": "HippoLayCommand", "name": name, "title": name,
+                "formModelElement": {"command": binding, "generated": standard}}
+
+    html = render_table(column("Name", "Name"), interface="v85",
+                        commands=[command("Add", True), command("MoveUp", True), command("MoveDown", True),
+                                  command("Mark all"), command("Unmark all")])
+    captions = [html.index(f'>{name}</span>') for name in ("Add", "Mark all", "Unmark all", "MoveUp", "MoveDown")]
+
+    assert captions == sorted(captions)
 
 
 def test_taxi_table_headers_follow_visible_column_groups():
