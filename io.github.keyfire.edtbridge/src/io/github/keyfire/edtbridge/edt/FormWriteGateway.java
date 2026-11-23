@@ -1459,10 +1459,14 @@ public final class FormWriteGateway {
         return null;
     }
 
-    /** Handler parameters include the implicit item before the event's declared parameters. */
+    /**
+     * Handler parameters include the implicit item before the event's declared parameters. An event
+     * whose handler runs on the server without the form context, such as OnGetDataAtServer of a
+     * dynamic list, gets no item: the handler cannot receive form objects.
+     */
     private static List<String> parameterNames(Event event, boolean russian, boolean item) {
         List<String> names = new ArrayList<>();
-        if (item) names.add(russian ? "Элемент" : "Item");
+        if (item && !withoutContext(event)) names.add(russian ? "Элемент" : "Item");
         List<ParamSet> sets = event.getParamSet();
         if (sets.isEmpty()) {
             return names;
@@ -1487,8 +1491,14 @@ public final class FormWriteGateway {
      * the client environments as well (they describe where the event is AVAILABLE, which is the form
      * itself), so an environment test called every event a client one. The platform names a server
      * event by its suffix, and that suffix is the same rule a person applies.
+     *
+     * <p>An event the platform calls without the form context needs a server handler without
+     * context; see {@link #withoutContext(Event)}.
      */
     private static String directiveOf(Event event, boolean russian) {
+        if (withoutContext(event)) {
+            return russian ? "&НаСервереБезКонтекста" : "&AtServerNoContext";
+        }
         String name = event.getName() == null ? "" : event.getName();
         String nameRu = event.getNameRu() == null ? "" : event.getNameRu();
         boolean server = name.endsWith("AtServer") || nameRu.endsWith("НаСервере");
@@ -1504,6 +1514,16 @@ public final class FormWriteGateway {
             return russian ? "&НаСервере" : "&AtServer";
         }
         return russian ? "&НаКлиенте" : "&AtClient";
+    }
+
+    /**
+     * Whether the platform calls the handler on the server without the form context. The platform
+     * help asks that of OnGetDataAtServer of a dynamic list: {@code &AtServerNoContext} and the
+     * parameters ItemName, Settings and Rows, with no item. The model has a flag for such events, but
+     * on EDT 2026.2.2 it is not set for this one, so the event is also known by its name.
+     */
+    static boolean withoutContext(Event event) {
+        return event.isServerCallWithContextNotAllowed() || "OnGetDataAtServer".equals(event.getName());
     }
 
     /** What to call the procedure when the caller did not say: the form editor's own convention. */
