@@ -773,7 +773,8 @@ public final class FormGateway {
      * interface variant / theme / isTemplate) and, when {@code variant} is given, return that entry's
      * bytes as base64. {@code variant} accepts an exact entry name, or "svg" (the vector master) /
      * "best" (svg else the largest PNG). Resolves CommonPicture.&lt;name&gt; to
-     * &lt;project&gt;/src/CommonPictures/&lt;name&gt;/Picture.zip. Read-only; never throws.
+     * &lt;project&gt;/src/CommonPictures/&lt;name&gt;. A standalone Picture.svg has one variant.
+     * Read-only; never throws.
      */
     public PictureResult exportPicture(String projectName, String fqn, String variant) {
         PictureResult r = new PictureResult();
@@ -796,26 +797,34 @@ public final class FormGateway {
                 return r;
             }
             String src = p.getFolder("src").exists() ? "src/" : "";
-            IFile zip = p.getFile(src + "CommonPictures/" + name + "/Picture.zip");
-            if (!zip.exists() || zip.getLocation() == null) {
-                r.message = "Picture.zip not found for CommonPicture." + name;
-                return r;
-            }
-            r.zipPath = zip.getProjectRelativePath().toString();
+            String picturePath = src + "CommonPictures/" + name + "/";
+            IFile zip = p.getFile(picturePath + "Picture.zip");
             Map<String, byte[]> entries = new java.util.LinkedHashMap<>();
             String manifestXml = null;
-            try (java.util.zip.ZipFile zf = new java.util.zip.ZipFile(zip.getLocation().toFile())) {
-                java.util.Enumeration<? extends java.util.zip.ZipEntry> en = zf.entries();
-                while (en.hasMoreElements()) {
-                    java.util.zip.ZipEntry ze = en.nextElement();
-                    if (ze.isDirectory()) {
-                        continue;
+            if (zip.exists() && zip.getLocation() != null) {
+                r.zipPath = zip.getProjectRelativePath().toString();
+                try (java.util.zip.ZipFile zf = new java.util.zip.ZipFile(zip.getLocation().toFile())) {
+                    java.util.Enumeration<? extends java.util.zip.ZipEntry> en = zf.entries();
+                    while (en.hasMoreElements()) {
+                        java.util.zip.ZipEntry ze = en.nextElement();
+                        if (ze.isDirectory()) {
+                            continue;
+                        }
+                        byte[] bytes = zf.getInputStream(ze).readAllBytes();
+                        entries.put(ze.getName(), bytes);
+                        if (ze.getName().equalsIgnoreCase("manifest.xml")) {
+                            manifestXml = new String(bytes, StandardCharsets.UTF_8);
+                        }
                     }
-                    byte[] bytes = zf.getInputStream(ze).readAllBytes();
-                    entries.put(ze.getName(), bytes);
-                    if (ze.getName().equalsIgnoreCase("manifest.xml")) {
-                        manifestXml = new String(bytes, StandardCharsets.UTF_8);
-                    }
+                }
+            } else {
+                IFile svg = p.getFile(picturePath + "Picture.svg");
+                if (!svg.exists() || svg.getLocation() == null) {
+                    r.message = "Picture.zip or Picture.svg not found for CommonPicture." + name;
+                    return r;
+                }
+                try (java.io.InputStream input = svg.getContents()) {
+                    entries.put(svg.getName(), input.readAllBytes());
                 }
             }
             parsePictureManifest(manifestXml, entries, r);
@@ -1402,7 +1411,7 @@ public final class FormGateway {
     /**
      * Data paths of the form whose value is a date, with its parts ("date", "dateTime", "time"): the
      * client puts a calendar button in an editable date field. Form attributes and their columns, and
-     * through the main attribute the owner's attributes, tabular section columns and standard date.
+     * through the main attribute the owner's fields, tabular section columns and standard date.
      */
     private static Map<String, String> valueKinds(Form form, EObject owner) {
         Map<String, String> kinds = new java.util.HashMap<>();
@@ -1419,8 +1428,10 @@ public final class FormGateway {
                     && (type.endsWith("Объект." + ownerName) || type.endsWith("Object." + ownerName)))) {
                 continue;
             }
-            for (EObject attribute : eObjects(owner, "attributes")) {
-                putKind(kinds, name + "." + nameOf(attribute), typeOf(attribute, "type"));
+            for (String feature : List.of("attributes", "dimensions", "resources")) {
+                for (EObject attribute : eObjects(owner, feature)) {
+                    putKind(kinds, name + "." + nameOf(attribute), typeOf(attribute, "type"));
+                }
             }
             for (EObject section : eObjects(owner, "tabularSections")) {
                 for (EObject attribute : eObjects(section, "attributes")) {

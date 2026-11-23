@@ -73,7 +73,8 @@ DESCRIPTOR = {
                     "index, title: caption}}, a row is a list of cell values in column order or an object by column name, "
                     "with _level, _open, _check for trees and marks; hidden / shown - item names whose "
                     "visibility the form code changes; disabled - unavailable item and command names; "
-                    "pageTitles - {page name: displayed caption}; messages - [{text, type: info / warning / success / "
+                    "pageTitles - {page name: displayed caption}; statuses - [{text, optional picture: common "
+                    "picture name}] under the header; messages - [{text, type: info / warning / success / "
                     "error, group}] important messages the form code puts in a group (none: under the "
                     "header)"),
             },
@@ -287,7 +288,7 @@ def run(arguments: dict, bridge: Callable[[str, dict], Any]) -> dict:
         raise RenderError("density must be auto, normal or compact")
     data = arguments.get("data")
     if data is not None and not isinstance(data, dict):
-        raise RenderError("data must be an object: {title, values, tables, hidden, shown, messages}")
+        raise RenderError("data must be an object: {title, values, tables, hidden, shown, disabled, pageTitles, statuses, messages}")
     if interface == "taxi" and theme == "dark":
         raise RenderError("the platform has no dark theme for Taxi: use theme light, or interface v85")
     page = arguments.get("page")
