@@ -76,7 +76,12 @@ DENSITY = {
         "card-p": "16px", "card-fs": "20px", "card-lh": "32px", "row-h": "40px", "cell-fs": "14.667px",
         "bar-h": "53px", "bar-fs": "14.667px", "btn-h": "40px", "btn-fs": "16px", "tab-fs": "16px",
         "tab-lh": "24px", "chk": "24px", "chk-tbl": "20px", "chk-fs": "16px", "spin": "32px", "radius-win": "16px",
-        "char": "7.7", "char-pad": "21", "line-gap": "12px", "page-top": "20px", "sep-m": "8px", "blink-h": "20px",
+        # char/char-pad measured on the live 8.5 web client: the slot an N-character field
+        # occupies is N*7.83+56 px (label.field); the visible box is the slot minus 14 px of
+        # frame chrome and minus the controls (choice/calendar 22 in frame, picture 26,
+        # open 32 and spin pair 61 outside). Same in both scale variants: the web client
+        # keeps the 13.33px field font even in scaleNormal.
+        "char": "7.83", "char-pad": "56", "line-gap": "12px", "page-top": "20px", "sep-m": "8px", "blink-h": "20px",
     },
     "compact": {
         "lbl-fs": "12px", "lbl-lh": "16px", "in-h": "32px", "in-fs": "13.333px", "in-lh": "20px",
@@ -84,7 +89,8 @@ DENSITY = {
         "card-p": "12px", "card-fs": "16px", "card-lh": "24px", "row-h": "33px", "cell-fs": "12px",
         "bar-h": "44px", "bar-fs": "12px", "btn-h": "32px", "btn-fs": "13.333px", "tab-fs": "13.333px",
         "tab-lh": "20px", "chk": "20px", "chk-tbl": "16px", "chk-fs": "13.333px", "spin": "26px", "radius-win": "16px",
-        "char": "6.4", "char-pad": "18", "line-gap": "6px", "page-top": "16px", "sep-m": "13.5px", "blink-h": "26px",
+        # Same measurement as normal: field slots do not change between scale variants.
+        "char": "7.83", "char-pad": "56", "line-gap": "6px", "page-top": "16px", "sep-m": "13.5px", "blink-h": "26px",
     },
 }
 
@@ -493,6 +499,13 @@ V85_CSS = """
 .v85 .switch.on[aria-disabled="true"], .v85 .switch.part[aria-disabled="true"] { color: var(--chk-dis-on); }
 .v85 .inp.dis { color: var(--value); }
 .v85 .frow:has(.inp.dis) .spin { opacity: .55; }
+.v85 .inp.btns { padding-right: 4px; }
+/* The natural width of a field: a zero-height placeholder of the exact width feeds the
+   shrink-wrapped window measurement; a percentage min-width on the box does not. */
+.tedit { display: grid; grid-template-columns: minmax(0,1fr); min-width: 0; }
+.tedit.compact { justify-self: start; width: var(--field-w); max-width: 100%; }
+.tedit::before, .tedit > .inp { grid-area: 1 / 1; }
+.tedit::before { content: ""; width: var(--field-w); max-width: 100%; height: 0; }
 .v85 .tags { display: inline-flex; gap: 4px; align-items: center; min-width: 0; max-width: 100%; }
 .v85 .tag-item, .v85 .tag-more { padding: 0 5px; border: 0.8px solid var(--line); border-radius: 4px;
                                 background: var(--fill); font-size: var(--cell-fs); line-height: 24px; }
@@ -1352,11 +1365,13 @@ class FormHtml:
         disabled = self.disabled(n) or n.get("groupEnabled") is False
         if disabled:
             classes.append("dis")
-        width = self.char_px(n.get("width") or 20)
-        style = f"min-width:min(100%,{width}px)" if self.v85 else ""
+        # EDT fills width=40 into the lay model for every field left at "auto"; the live client
+        # sizes an auto field the same way, so the fallback is 40 as well.
+        width = self.char_px(n.get("width") or 40)
+        style = ""
         if lines > 1:
             classes.append("multi")
-            style += f"{';' if style else ''}height:calc(var(--in-h) + {lines - 1} * var(--in-lh))"
+            style += f"height:calc(var(--in-h) + {lines - 1} * var(--in-lh))"
         if n.get("passwordMode") and text:
             text = "●" * min(len(text), 8) if len(text) > 1 else "●"
         if tags is not None:
@@ -1406,14 +1421,25 @@ class FormHtml:
         if n.get("spinButton"):
             outside += ('<span class="spins"><span class="spin">' + self.icon("svg_minus", 24, "var(--icon-muted)", "−")
                         + '</span><span class="spin">' + self.icon("svg_plus", 24, "var(--icon-muted)", "+") + "</span></span>")
-        if outside:
-            # The width the platform gives a field covers its buttons outside the box as well.
-            width = style.split(";")[0]
-            style = ";".join(["min-width:0"] + style.split(";")[1:])
-            box = f'<div class="{" ".join(classes)}" style="{style}">{inner}{buttons}</div>'
-            box = f'<div class="frow" style="{width}">{box}{outside}</div>'
+        # The live 8.5 client sizes a field slot as N*7.83+56; the visible box is the slot
+        # minus 14 px of frame chrome minus the controls: a choice/calendar button or a
+        # picture inside the frame (-22 / -26), open and spin controls outside (-32 / -61).
+        # The slot covers the outside controls, and a field never grows past its slot.
+        chrome = 14
+        if buttons:
+            taken = chrome + 22
+            classes.append("btns")
+        elif n.get("picture"):
+            taken = chrome + 26
         else:
-            box = f'<div class="{" ".join(classes)}" style="{style}">{inner}{buttons}</div>'
+            taken = chrome
+        if outside:
+            taken += 61 if n.get("spinButton") else 32
+        style += f"{';' if style else ''}max-width:{int(width - taken)}px"
+        box = f'<div class="{" ".join(classes)}" style="{style}">{inner}{buttons}</div>'
+        if outside:
+            box = f'<div class="frow">{box}{outside}</div>'
+        box = f'<div class="tedit compact" style="--field-w:{width}px">{box}</div>'
         required = bool(n.get("markRequiredComplete"))
         if caption is None and info is None:
             return f'<div class="fld {stretch}">{box}</div>'
