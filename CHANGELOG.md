@@ -20,15 +20,18 @@ to the code and the reasoning behind it.
 - `edt_add_form_item` and `edt_modify_form_item` set `groupDirection` (`Horizontal`, `Vertical`
   or `InCell`) and `showTitle` of a column group of a table. Both used to be refused with
   "requires a usual group", and a column group stayed vertical, as EDT creates it.
+  ([#111](https://github.com/keyfire/edt-bridge/pull/111))
 - `edt_add_form_command` and `edt_modify_form_command` set the command picture: `picture` takes
   `StdPicture.<Name>`, `CommonPicture.<Name>` or `БиблиотекаКартинок.<Name>`, and an empty string
   removes it. The answer and `edt_property_reference` report it.
+  ([#111](https://github.com/keyfire/edt-bridge/pull/111))
 
 ### Fixed
 
 - `edt_add_method` and `edt_move_method` leave one blank line on each side of the method. A
   method appended to a region used to get three blank lines before `#КонецОбласти`, and one put
   before another method got two blank lines above it.
+  ([#111](https://github.com/keyfire/edt-bridge/pull/111))
 
 ## 2026-11-23 – 0.53.0
 
