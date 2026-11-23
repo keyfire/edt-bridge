@@ -2465,6 +2465,8 @@ public final class FormWriteGateway {
                 group.setType(groupType);
                 if (groupType == ManagedFormGroupType.USUAL_GROUP) {
                     group.setExtInfo(FormFactory.eINSTANCE.createUsualGroupExtInfo());
+                } else if (groupType == ManagedFormGroupType.COLUMN_GROUP) {
+                    group.setExtInfo(FormFactory.eINSTANCE.createColumnGroupExtInfo());
                 }
                 return group;
             case "button": return FormFactory.eINSTANCE.createButton();

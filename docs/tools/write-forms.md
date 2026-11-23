@@ -28,8 +28,9 @@ Changes need a token and are returned as a plan until `apply=true` is passed; se
 (zero-based), `beforeItem` or `afterItem`. A move calculates the index after excluding the moved
 item. An omitted `parent` keeps its parent; `parent=""` selects the form root. Add and modify
 support `groupDirection` (alias `group`), `representation`, `showTitle`, `united`, `titleLocation`,
-`maxHeight` and `verticalStretch` where the item type supports them. Unknown enums and settings
-for the wrong item type are refused. `fieldType` selects `InputField`, `RadioButtonField` or
+`maxHeight` and `verticalStretch` where the item type supports them. A column group of a table
+takes `groupDirection` (`Horizontal`, `Vertical` or `InCell`) and `showTitle`; EDT creates it
+vertical. Unknown enums and settings for the wrong item type are refused. `fieldType` selects `InputField`, `RadioButtonField` or
 `CheckBoxField`. `choiceList` replaces the choices of an input or radio field:
 
 ```json

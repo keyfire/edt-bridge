@@ -13,6 +13,13 @@
 
 ## Не выпущено
 
+### Добавлено
+
+- `edt_add_form_item` и `edt_modify_form_item` задают `groupDirection` (`Horizontal`, `Vertical`
+  или `InCell`) и `showTitle` группы колонок таблицы. Раньше оба свойства отклонялись с
+  сообщением "requires a usual group", и группа колонок оставалась вертикальной, как ее создает
+  EDT.
+
 ### Исправлено
 
 - `edt_add_method` и `edt_move_method` оставляют по одной пустой строке с каждой стороны метода.

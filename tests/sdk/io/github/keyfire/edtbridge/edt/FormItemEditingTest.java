@@ -131,6 +131,31 @@ class FormItemEditingTest {
         FormItemEdits.applySettings(group,Map.of("showTitle",false),type->{},true);
         assertFalse(info.isShowTitle()); assertEquals("false",info.getShowTitle851().toString());
     }
+    @Test void aColumnGroupTakesItsOwnLayoutAndTitle() {
+        FormGroup group=FormFactory.eINSTANCE.createFormGroup(); group.setName("Columns");
+        group.setType(ManagedFormGroupType.COLUMN_GROUP); group.setExtInfo(FormFactory.eINSTANCE.createColumnGroupExtInfo());
+        ColumnGroupExtInfo info=(ColumnGroupExtInfo)group.getExtInfo();
+        FormItemEdits.applySettings(group,Map.of("groupDirection","Horizontal","showTitle",true),type->{},false);
+        assertEquals(ColumnGrouping.HORIZONTAL,info.getGroup()); assertTrue(info.isShowTitle());
+        FormItemEdits.applySettings(group,Map.of("groupDirection","InCell"),type->{},false);
+        assertEquals(ColumnGrouping.IN_CELL,info.getGroup());
+        FormItemEdits.applySettings(group,Map.of("showTitle",true),type->{},true);
+        assertEquals("true",info.getShowTitle851().toString()); assertFalse(info.isShowTitle());
+        var usualOnly=assertThrows(IllegalArgumentException.class,
+                ()->FormItemEdits.applySettings(group,Map.of("groupDirection","AlwaysHorizontal"),type->{},false));
+        assertTrue(usualOnly.getMessage().contains("InCell"),usualOnly.getMessage());
+        var united=assertThrows(IllegalArgumentException.class,
+                ()->FormItemEdits.applySettings(group,Map.of("united",true),type->{},false));
+        assertTrue(united.getMessage().contains("requires a usual group"),united.getMessage());
+        assertTrue(FormItemEdits.describeSettings(group).stream().anyMatch(s->"groupDirection".equals(s.get("name"))));
+    }
+    @Test void aGroupWithoutExtInfoIsRefusedWithBothKindsNamed() {
+        FormGroup group=FormFactory.eINSTANCE.createFormGroup(); group.setName("Popup");
+        group.setType(ManagedFormGroupType.POPUP);
+        var error=assertThrows(IllegalArgumentException.class,
+                ()->FormItemEdits.applySettings(group,Map.of("groupDirection","Horizontal"),type->{},false));
+        assertTrue(error.getMessage().contains("a usual group or a column group"),error.getMessage());
+    }
     private static FormGroup group(String name) {
         FormGroup group=FormFactory.eINSTANCE.createFormGroup(); group.setName(name);
         group.setType(ManagedFormGroupType.USUAL_GROUP); group.setExtInfo(FormFactory.eINSTANCE.createUsualGroupExtInfo()); return group;

@@ -2596,7 +2596,7 @@
           },
           "groupDirection": {
             "type": "string",
-            "description": "Usual-group child layout: Auto, Horizontal, Vertical, HorizontalIfPossible or AlwaysHorizontal. Optional."
+            "description": "Layout of a group's children: Auto, Horizontal, Vertical, HorizontalIfPossible or AlwaysHorizontal for a usual group; Horizontal, Vertical or InCell for a column group of a table. Optional."
           },
           "group": {
             "type": "string",
@@ -2608,7 +2608,7 @@
           },
           "showTitle": {
             "type": "boolean",
-            "description": "Show the usual group's title. Optional."
+            "description": "Show the title of a usual group or a column group. Optional."
           },
           "united": {
             "type": "boolean",
@@ -2819,7 +2819,7 @@
           },
           "groupDirection": {
             "type": "string",
-            "description": "Usual-group child layout: Auto, Horizontal, Vertical, HorizontalIfPossible or AlwaysHorizontal. Optional."
+            "description": "Layout of a group's children: Auto, Horizontal, Vertical, HorizontalIfPossible or AlwaysHorizontal for a usual group; Horizontal, Vertical or InCell for a column group of a table. Optional."
           },
           "group": {
             "type": "string",
@@ -2831,7 +2831,7 @@
           },
           "showTitle": {
             "type": "boolean",
-            "description": "Show the usual group's title. Optional."
+            "description": "Show the title of a usual group or a column group. Optional."
           },
           "united": {
             "type": "boolean",

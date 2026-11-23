@@ -15,6 +15,12 @@ to the code and the reasoning behind it.
 
 ## Unreleased
 
+### Added
+
+- `edt_add_form_item` and `edt_modify_form_item` set `groupDirection` (`Horizontal`, `Vertical`
+  or `InCell`) and `showTitle` of a column group of a table. Both used to be refused with
+  "requires a usual group", and a column group stayed vertical, as EDT creates it.
+
 ### Fixed
 
 - `edt_add_method` and `edt_move_method` leave one blank line on each side of the method. A

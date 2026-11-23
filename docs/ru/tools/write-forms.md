@@ -30,7 +30,9 @@ sidebar:
 переносимого элемента. Без `parent` сохраняется текущий родитель; `parent=""` выбирает корень
 формы. Добавление и изменение поддерживают `groupDirection` (синоним `group`), `representation`,
 `showTitle`, `united`, `titleLocation`, `maxHeight` и `verticalStretch`, если свойство применимо
-к этому виду элемента. Неизвестные значения перечислений и неприменимые свойства отклоняются.
+к этому виду элемента. Группа колонок таблицы принимает `groupDirection` (`Horizontal`,
+`Vertical` или `InCell`) и `showTitle`; EDT создает ее вертикальной. Неизвестные значения
+перечислений и неприменимые свойства отклоняются.
 `fieldType` задает `InputField`, `RadioButtonField` или `CheckBoxField`. `choiceList` заменяет
 список выбора поля ввода или переключателя:
 

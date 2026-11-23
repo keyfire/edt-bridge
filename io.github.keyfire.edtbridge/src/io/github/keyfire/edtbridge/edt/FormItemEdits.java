@@ -262,7 +262,15 @@ public final class FormItemEdits {
         return key;
     }
     private static EObject propertyTarget(FormItem item, EObject info, String key) {
-        if (Set.of("groupDirection", "showTitle", "united").contains(key)
+        // A column group lays out its columns and shows its title through the same two properties
+        // as a usual group, with its own values of the layout: Horizontal, Vertical or InCell.
+        if (Set.of("groupDirection", "showTitle").contains(key)) {
+            if (!(info instanceof UsualGroupExtInfo) && !(info instanceof ColumnGroupExtInfo)) {
+                throw new IllegalArgumentException(key + " requires a usual group or a column group");
+            }
+            return info;
+        }
+        if ("united".equals(key)
                 || "representation".equals(key) && item instanceof FormGroup
                 || "titleLocation".equals(key) && item instanceof FormGroup) {
             if (!(info instanceof UsualGroupExtInfo)) { throw new IllegalArgumentException(key + " requires a usual group"); }

@@ -37,10 +37,10 @@ final class FormItemToolOptions {
         if (move) { props.add("parent", ToolJson.strProp("Destination container. Omitted keeps the current parent; an empty string selects the form root. Moves that would change the item kind or table data binding are refused.")); }
     }
     static void settingsProps(JsonObject props) {
-        props.add("groupDirection", ToolJson.strProp("Usual-group child layout: Auto, Horizontal, Vertical, HorizontalIfPossible or AlwaysHorizontal. Optional."));
+        props.add("groupDirection", ToolJson.strProp("Layout of a group's children: Auto, Horizontal, Vertical, HorizontalIfPossible or AlwaysHorizontal for a usual group; Horizontal, Vertical or InCell for a column group of a table. Optional."));
         props.add("group", ToolJson.strProp("Alias of groupDirection. Do not combine the two names."));
         props.add("representation", ToolJson.strProp("Representation enum supported by the current group or button, e.g. None/WeakSeparation/StrongSeparation for a usual group. Optional."));
-        props.add("showTitle", ToolJson.boolProp("Show the usual group's title. Optional."));
+        props.add("showTitle", ToolJson.boolProp("Show the title of a usual group or a column group. Optional."));
         props.add("united", ToolJson.boolProp("Keep usual-group children united. Optional."));
         props.add("titleLocation", ToolJson.strProp("Field title location (Auto/Left/Right/Top/Bottom/None), or usual-group child title location. The value must exist in the target EDT enum. Optional."));
         JsonObject maxHeight = new JsonObject(); maxHeight.addProperty("type", "integer"); maxHeight.addProperty("minimum", 0);
