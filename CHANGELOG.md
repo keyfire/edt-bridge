@@ -43,7 +43,7 @@ to the code and the reasoning behind it.
   one-line `oldText` in a CRLF module used to bring the LF breaks of `newText` into it; a fragment
   of several lines was adapted already. ([#114](https://github.com/keyfire/edt-bridge/pull/114))
 
-## 2026-11-24 – 0.54.0, 0.55.0
+## 2026-11-24 – 0.54.0, 0.55.0, 0.55.1
 
 ### Added
 
@@ -55,6 +55,17 @@ to the code and the reasoning behind it.
   after the check. The output includes element positions, table rows, spreadsheet cells and panel
   messages. With personal data filtering enabled, MCP can also return a masked screenshot.
   ([#112](https://github.com/keyfire/edt-bridge/pull/112))
+
+### Fixed
+
+- The headless start now finds the JDK components of the 1C installer even when the MCP client
+  launches the server without `ProgramFiles`; the bridge reads the directory from the Windows
+  registry. Previously EDT took the older Java from `PATH` and stopped at its modal Java version
+  dialog.
+  ([#115](https://github.com/keyfire/edt-bridge/pull/115))
+- If no suitable Java is found, the bridge refuses the headless start and reports the required
+  version and the one on `PATH`. Previously EDT started anyway and waited on the same dialog.
+  ([#115](https://github.com/keyfire/edt-bridge/pull/115))
 
 ## 2026-11-23 – 0.53.0
 
