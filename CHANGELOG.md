@@ -20,8 +20,10 @@ to the code and the reasoning behind it.
 - The headless start finds the JDK components of the 1C installer when the MCP client starts the
   server without `ProgramFiles`: the directory is taken from the Windows registry. Before, EDT got
   the older Java from `PATH` and waited on its modal Java version dialog.
+  ([#115](https://github.com/keyfire/edt-bridge/pull/115))
 - When no suitable Java is found, the headless start is refused with the required version and the
   version on `PATH` named, instead of starting EDT that waits on the dialog.
+  ([#115](https://github.com/keyfire/edt-bridge/pull/115))
 
 ## 2026-11-24 – 0.54.0, 0.55.0
 
