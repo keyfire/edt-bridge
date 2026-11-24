@@ -1348,7 +1348,7 @@ public final class MetadataWriteGateway {
         model.executeReadonlyTask(new AbstractBmTask<Object>("edt-bridge.delete.build") {
             @Override
             public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
-                MdObject md = resolveDeleteTarget(tx, targetFqn);
+                MdObject md = resolveMetadataTarget(tx, targetFqn);
                 if (md == null) {
                     r.message = "target not found: " + targetFqn;
                     return null;
@@ -1475,7 +1475,7 @@ public final class MetadataWriteGateway {
             r.targetStillPresent = model.executeReadonlyTask(new AbstractBmTask<Boolean>("edt-bridge.delete.verify") {
                 @Override
                 public Boolean execute(IBmTransaction transaction, IProgressMonitor monitor) {
-                    return resolveDeleteTarget(transaction, targetFqn) != null;
+                    return resolveMetadataTarget(transaction, targetFqn) != null;
                 }
             });
             r.deletionConfirmed = Boolean.FALSE.equals(r.targetStillPresent);
@@ -1514,7 +1514,7 @@ public final class MetadataWriteGateway {
                 && result.items.stream().anyMatch(item -> item.checked);
     }
 
-    static MdObject resolveDeleteTarget(IBmTransaction transaction, String targetFqn) {
+    static MdObject resolveMetadataTarget(IBmTransaction transaction, String targetFqn) {
         String[] segments = targetFqn.split("\\.", -1);
         for (String segment : segments) {
             if (segment.isBlank() || !segment.equals(segment.strip())) return null;
@@ -1551,7 +1551,7 @@ public final class MetadataWriteGateway {
                     }
                 }
             }
-            if (matches.size() > 1) throw new IllegalArgumentException("ambiguous delete target: " + targetFqn);
+            if (matches.size() > 1) throw new IllegalArgumentException("ambiguous metadata target: " + targetFqn);
             if (matches.isEmpty()) return null;
             current = matches.get(0);
         }
@@ -2411,7 +2411,7 @@ public final class MetadataWriteGateway {
             return top;
         }
         try {
-            return resolveDeleteTarget(tx, fqn);
+            return resolveMetadataTarget(tx, fqn);
         } catch (IllegalArgumentException ambiguous) {
             return null;
         }

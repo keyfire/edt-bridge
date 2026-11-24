@@ -22,6 +22,49 @@ Changes need a token and are returned as a plan until `apply=true` is passed; se
 | `edt_modify_object` · `edt_update_subsystem` | Sets common-module execution flags and result reuse, sets typed root properties of a managed form (`autoTitle`, `titleRu`, `windowOpeningMode`, `scaleVariant`, `width`, `height` and others), or adds/removes existing objects from a subsystem. Both validate the whole request before writing and show a plan. Removing members additionally requires `force=true`. `extendModule=true` enables an adopted common module for extension. |
 | `edt_modify_role_rights` | Sets rights of a role on one object the way the rights editor of EDT does: a value equal to the role's default removes the explicit entry. Exports the role and its `Rights.rights`; a role without its own `Rights.rights` gets one. An unknown right is refused with the rights the object has, and a right with a data access restriction is never changed. In an extension the role and the object must be the extension's own or adopted. Dry-run by default; apply needs a token. |
 | `edt_modify_command_interface` | Changes `CommandInterface.cmi` of a subsystem section: the visibility of a command in common and by role, its group within its panel, the order of a group, or a return to the default. Takes the names `edt_command_interface` prints. An adopted subsystem without its own `CommandInterface.cmi` gets one. Dry-run by default; apply needs a token. |
+| `edt_enable_configuration_editing` | Enables edits in a project on full support. Objects of suppliers converted from full support start locked. |
+| `edt_modify_configuration_support` | Changes support rules for selected objects of a connected supplier. |
+
+## Configuration support
+
+Use `edt_configuration_support` with `projectName` to find the connected suppliers
+and their IDs. Add `fqns` to see the supplier's rule and the project's support mode
+for each object under that supplier. `edt_support_status` checks whether EDT allows direct editing.
+
+For example, to prepare a configuration based on a library, pass these arguments
+to `edt_modify_configuration_support`. Replace the supplier ID and module name
+with values from your project.
+
+```json
+{
+  "projectName": "DemoConfiguration",
+  "supplierId": "9140cba5-822d-4bed-89ba-f631781a0773",
+  "fqns": ["Configuration", "CommonModule.PrintingOverrides"],
+  "mode": "CHANGES_ALLOWED"
+}
+```
+
+The preview lists the old and new rule for each affected object and flags a
+supplier warning when present. Add `"apply": true` to the JSON object to apply the
+changes. `applied` confirms the model update. `exportScheduled` confirms EDT
+accepted the request to write the settings to disk. Select `CANCELLED` to remove
+selected objects from support when their supplier allows it.
+
+For a project on full support, preview and apply `edt_enable_configuration_editing`
+with `projectName`. Add `"apply": true` to perform the transition. EDT starts
+objects of the converted suppliers in `CHANGES_NOT_ALLOWED` mode. Use the example above to enable
+editing for the objects you need.
+
+To restore `CHANGES_NOT_ALLOWED`, use the same tool with that mode. The bridge
+compares each selected top-level object with the recorded supplier release in
+EDT's library repository. It checks metadata and module contents. The check
+allows the presence of a supply or support rule on only one side when the object
+contents match. If EDT reports a change in any object or the supplier release is
+unavailable, the entire request is rejected. Apply runs a fresh comparison and
+writes only the support rules.
+
+Save the object's editors first. If EDT requires changing child objects
+together with the selected object, the tool rejects the request.
 
 ## Deleting an object
 

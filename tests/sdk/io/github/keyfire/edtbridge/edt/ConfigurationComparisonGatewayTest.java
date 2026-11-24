@@ -1,6 +1,8 @@
 package io.github.keyfire.edtbridge.edt;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 import java.lang.reflect.Proxy;
 import java.util.List;
@@ -14,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import com._1c.g5.v8.dt.compare.core.IComparisonSession;
 import com._1c.g5.v8.dt.compare.model.ComparisonFlags;
 import com._1c.g5.v8.dt.compare.model.ComparisonNode;
+import com._1c.g5.v8.dt.compare.model.ComparisonNodeStatus;
 import com._1c.g5.v8.dt.compare.model.ComparisonSide;
 import com._1c.g5.v8.dt.compare.model.RootComparisonNode;
 import com._1c.g5.v8.dt.md.compare.DistributionSettingsComparisonNode;
@@ -26,6 +29,29 @@ class ConfigurationComparisonGatewayTest {
     private static final ComparisonSide MAIN = ComparisonSide.MAIN;
     private static final ComparisonSide OTHER = ComparisonSide.OTHER;
     private static final ComparisonSide ANCESTOR = ComparisonSide.COMMON_ANCESTOR;
+
+    @Test
+    void supplierMatchIgnoresSupportRulesButDetectsContentChanges() {
+        var difference = new ComparisonFlags();
+        difference.setHasChanged(MAIN, OTHER);
+        var onlyOnOneSide = new ComparisonFlags();
+        onlyOnOneSide.setOnOneSide(MAIN, OTHER);
+        var combined = new ComparisonFlags();
+        combined.addFlags(difference);
+        combined.addFlags(onlyOnOneSide);
+        var rule = node(SupportSettingsComparisonNode.class, 1, null, onlyOnOneSide);
+        var text = node(ComparisonNode.class, 2, null, difference);
+        var unchanged = node(MdObjectComparisonNode.class, 3, "CommonModule.Settings", onlyOnOneSide, rule);
+        var edited = node(MdObjectComparisonNode.class, 4, "CommonModule.Settings", combined, rule, text);
+        var unexplained = node(MdObjectComparisonNode.class, 5, "CommonModule.Settings", combined, rule);
+        var changedRule = node(SupportSettingsComparisonNode.class, 6, null, difference);
+        var ambiguous = node(MdObjectComparisonNode.class, 7, "CommonModule.Settings", difference, changedRule);
+        assertNull(ConfigurationComparisonGateway.supplierContentDifference(unchanged));
+        assertNotNull(ConfigurationComparisonGateway.supplierContentDifference(edited));
+        assertNotNull(ConfigurationComparisonGateway.supplierContentDifference(unexplained));
+        assertNotNull(ConfigurationComparisonGateway.supplierContentDifference(text));
+        assertNotNull(ConfigurationComparisonGateway.supplierContentDifference(ambiguous));
+    }
 
     @Test
     void includesObjectsChangedOnlyInSupportOrDistributionOptions() throws Exception {
@@ -83,6 +109,7 @@ class ConfigurationComparisonGatewayTest {
                     case "getChildren" -> new BasicEList<>(List.of(children));
                     case "getMainSymlink", "getOtherSymlink", "getCommonAncestorSymlink" -> name;
                     case "getComparisonFlags" -> flags;
+                    case "getComparisonStatus" -> ComparisonNodeStatus.FINISHED;
                     case "bmGetId" -> id;
                     case "eClass" -> eClass;
                     default -> throw new UnsupportedOperationException(method.getName());
