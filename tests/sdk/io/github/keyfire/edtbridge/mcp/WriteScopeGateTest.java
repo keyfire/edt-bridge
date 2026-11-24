@@ -111,6 +111,37 @@ class WriteScopeGateTest {
     }
 
     @Test
+    void configurationSupportRulesRequireWritableProject() throws Exception {
+        System.setProperty(WriteScope.WRITE_PROPERTY, "Own");
+        System.setProperty(WriteScope.READ_PROPERTY, "Base");
+        JsonObject edit = new JsonObject();
+        edit.addProperty("projectName", "Base");
+        edit.addProperty("apply", true);
+        assertTrue(text(call("edt_modify_configuration_support", edit))
+                .contains("projects open for writing: Own"));
+    }
+
+    @Test
+    void enableConfigurationEditingRequiresWritableProject() throws Exception {
+        System.setProperty(WriteScope.WRITE_PROPERTY, "Own");
+        System.setProperty(WriteScope.READ_PROPERTY, "Base");
+        JsonObject request = new JsonObject();
+        request.addProperty("projectName", "Base");
+        request.addProperty("apply", true);
+        assertTrue(text(call("edt_enable_configuration_editing", request)).contains("projects open for writing: Own"));
+    }
+
+    @Test
+    void configurationSupportReadRequiresReadableProject() throws Exception {
+        System.setProperty(WriteScope.WRITE_PROPERTY, "Own");
+        System.setProperty(WriteScope.READ_PROPERTY, "Base");
+        JsonObject request = new JsonObject();
+        request.addProperty("projectName", "Other");
+        assertTrue(text(call("edt_configuration_support", request))
+                .contains("readable projects: Own, Base"));
+    }
+
+    @Test
     void theStatusShowsTheScope() throws Exception {
         JsonObject inactive = (JsonObject) invoke("scopeStatus");
         assertFalse(inactive.get("active").getAsBoolean());

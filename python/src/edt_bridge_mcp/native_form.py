@@ -390,6 +390,15 @@ def _interaction(data):
     return dict(data, scenarios=parts)
 
 
+def _observed_title(report):
+    """The window title of the form the test manager worked with, from its result or its last progress."""
+    for key in ("interaction", "lastInteraction"):
+        data = report.get(key)
+        if isinstance(data, dict) and isinstance(data.get("observedTitle"), str):
+            return data["observedTitle"]
+    return ""
+
+
 def _run_session(args, base, external, output, root, manager_base, manager_env, enterprise,
                  xvfb, deadline, steps, launch_external=None, scenarios=None):
     report = {"ok": False, "stage": "client_startup"}
@@ -405,6 +414,10 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
     client = None
     manager = None
     page = None
+    web_observations = {}
+    web_title = ""
+    layout_error = False
+    screenshot_required = True
     pause = time.sleep
     with contextlib.ExitStack() as stack:
         try:
@@ -413,6 +426,7 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
                 client, page, client_id = native_web.start(
                     stack, args._web_paths, Path(enterprise[0]).parent, args.navigation_link, external, args.user,
                     args._web_language, deadline, _spawn, _free_port, _owns_listener)
+                screenshot_required = getattr(args, "web_screenshot", True)
                 port = native_web.TEST_PORT
                 pause = lambda seconds: native_web.wait_for_browser(page, seconds)
             else:
@@ -440,7 +454,7 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
                            maxColumns=native_scenario.MAX_COLUMNS, maxItems=native_scenario.MAX_ITEMS,
                            maxListed=native_scenario.MAX_LISTED)
             if page is not None:
-                payload["clientId"] = client_id
+                payload.update(clientId=client_id, webLayout=native_web.WEB_OBSERVATION_LIMITS)
             if steps is not None:
                 payload["steps"] = steps
             if scenarios is not None:
@@ -468,6 +482,9 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
                 if not isinstance(data, dict) or not isinstance(data.get("status"), str):
                     raise _CheckError("driver_failed", "The test manager returned an invalid result.")
                 marks = data.pop("timingMarks", None)
+                web_observations = data.pop("webLayout", {})
+                web_title = data.pop("webFormTitle", "")
+                layout_error = data.pop("webLayoutError", False)
                 report.update(interaction=_interaction(data), status=data["status"])
                 if isinstance(data.get("observedFields"), dict):
                     # A selector that missed: the fields of the open form, where the caller looks first.
@@ -540,7 +557,23 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
                             last = _interaction(last)
                     report["lastInteraction"] = last
         finally:
-            if client is not None:
+            if client is not None and page is not None:
+                timeline.enter("formText")
+                try:
+                    # The form the test manager found, by its window title; the window in front without it.
+                    columns = {item["name"]: item["columns"] for item in web_observations.get("tables", [])}
+                    web_form = report["webForm"] = native_web.read_form(
+                        page, args._web_filter, web_title or _observed_title(report),
+                        sheets=web_observations.get("spreadsheets", ()), table_columns=columns,
+                        panel_messages=web_observations.get("panelMessages", ()),
+                        panel_truncated=web_observations.get("panelTruncated", False))
+                    if web_observations.get("spreadsheetsTruncated"):
+                        web_form["spreadsheetsTruncated"] = True
+                    if layout_error:
+                        web_form["spreadsheetsError"] = "The test manager could not read spreadsheets or column names."
+                except native_web.WebError as error:
+                    report["webFormError"] = str(error)
+            if client is not None and screenshot_required:
                 timeline.enter("screenshot")
                 try:
                     if page is None:
@@ -570,7 +603,7 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
                 cause = _startup_cause(root / "client-display/xvfb.log", client_process_log)
                 if cause:
                     report["error"] = f"{report.get('error', '').rstrip('.')}: {cause}"
-            if report["ok"] and "screenshot" not in report:
+            if report["ok"] and screenshot_required and "screenshot" not in report:
                 report.update(ok=False, status="screenshot_failed")
     total, stages = timeline.close()
     timings = {"seconds": total, **stages}
@@ -1087,8 +1120,7 @@ def run(args):
             raise _CheckError("invalid_input", str(error)) from error
         base, external, destination = _validated_paths(args)
         if getattr(args, "web_client", False):
-            if not flt.active:
-                raise _CheckError("invalid_input", "The web client requires EDT_BRIDGE_PII.")
+            # Without EDT_BRIDGE_PII the filter is off: the form text and the screenshot carry the values as is.
             args._web_filter = flt
         args._scenario = native_scenario.load(args.scenario) if args.scenario else None
         if args._web_filter is not None and args._scenario and "scenarios" in args._scenario:
