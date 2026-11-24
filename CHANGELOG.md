@@ -27,10 +27,11 @@ to the code and the reasoning behind it.
   ([#111](https://github.com/keyfire/edt-bridge/pull/111))
 - `edt_add_form_item` and `edt_modify_form_item` set `multiLine` and `wrap` of an input field, so
   that together with `height` the field shows several lines. Both arguments used to be refused as
-  unknown.
+  unknown. ([#114](https://github.com/keyfire/edt-bridge/pull/114))
 - `edt_add_form_item` and `edt_modify_form_item` set the picture of a picture decoration with
   `picture`, by the same names as a command picture. A decoration of type `Picture` used to be
   created without a picture, and the argument was refused.
+  ([#114](https://github.com/keyfire/edt-bridge/pull/114))
 
 ### Fixed
 
@@ -40,7 +41,7 @@ to the code and the reasoning behind it.
   ([#111](https://github.com/keyfire/edt-bridge/pull/111))
 - `edt_replace_module_fragment` writes the replacement with the line breaks of the module. A
   one-line `oldText` in a CRLF module used to bring the LF breaks of `newText` into it; a fragment
-  of several lines was adapted already.
+  of several lines was adapted already. ([#114](https://github.com/keyfire/edt-bridge/pull/114))
 
 ## 2026-11-24 – 0.54.0, 0.55.0
 

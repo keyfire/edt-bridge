@@ -25,9 +25,10 @@
   ([#111](https://github.com/keyfire/edt-bridge/pull/111))
 - `edt_add_form_item` и `edt_modify_form_item` задают `multiLine` и `wrap` поля ввода, и вместе с
   `height` поле показывает несколько строк. Раньше оба аргумента отклонялись как неизвестные.
+  ([#114](https://github.com/keyfire/edt-bridge/pull/114))
 - `edt_add_form_item` и `edt_modify_form_item` задают картинку декорации вида `Picture` через
   `picture`, по тем же именам, что и картинку команды. Раньше декорация создавалась без картинки, а
-  аргумент отклонялся.
+  аргумент отклонялся. ([#114](https://github.com/keyfire/edt-bridge/pull/114))
 
 ### Исправлено
 
@@ -37,7 +38,7 @@
   ([#111](https://github.com/keyfire/edt-bridge/pull/111))
 - `edt_replace_module_fragment` записывает замену с переводами строк модуля. Однострочный
   `oldText` в модуле с CRLF раньше вносил в него переводы строк LF из `newText`; фрагмент из
-  нескольких строк подгонялся и раньше.
+  нескольких строк подгонялся и раньше. ([#114](https://github.com/keyfire/edt-bridge/pull/114))
 
 ## 24.11.2026 – 0.54.0, 0.55.0
 
