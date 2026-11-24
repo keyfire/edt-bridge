@@ -96,8 +96,10 @@ MESSAGES = {
         "en": "test infobase user name for a login that does not require a password",
     },
     "test-form.web-client": {
-        "ru": "открыть форму в веб-клиенте и сохранить снимок с маской при EDT_BRIDGE_PII",
-        "en": "open the form in the web client and save a masked screenshot with EDT_BRIDGE_PII",
+        "ru": "открыть форму в веб-клиенте: описать ее текстом в webForm и сохранить снимок, с маской при "
+              "EDT_BRIDGE_PII",
+        "en": "open the form in the web client: describe it as text in webForm and save a screenshot, masked "
+              "with EDT_BRIDGE_PII",
     },
     "test-form.output-dir": {
         "ru": "новый каталог для отчета JSON и снимка PNG; недостающие родительские каталоги создаются",

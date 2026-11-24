@@ -42,6 +42,19 @@ to the code and the reasoning behind it.
   one-line `oldText` in a CRLF module used to bring the LF breaks of `newText` into it; a fragment
   of several lines was adapted already.
 
+## 2026-11-24 – 0.54.0, 0.55.0
+
+### Added
+
+- EDT-Bridge can read supplier support rules, enable editing for a fully supported configuration,
+  and change the rules for selected objects. It restores a read-only rule only when EDT confirms
+  that the object matches the recorded supplier release.
+  ([#113](https://github.com/keyfire/edt-bridge/pull/113))
+- `edt_test_form` with `webClient=true` and `test-form --web-client` return the form as text
+  after the check. The output includes element positions, table rows, spreadsheet cells and panel
+  messages. With personal data filtering enabled, MCP can also return a masked screenshot.
+  ([#112](https://github.com/keyfire/edt-bridge/pull/112))
+
 ## 2026-11-23 – 0.53.0
 
 ### Added
