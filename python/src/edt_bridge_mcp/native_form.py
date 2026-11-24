@@ -122,6 +122,7 @@ def _platform_failure_status(interaction_error, logs, *, connecting=False):
 def _record_error(report, error, fallback):
     status = "access_denied" if isinstance(error, PermissionError) else getattr(error, "status", fallback)
     report.update(ok=False, status=status, error=str(error))
+    report.update(getattr(error, "details", None) or {})
 
 
 def _is_regular_file(path):
@@ -423,9 +424,12 @@ def _run_session(args, base, external, output, root, manager_base, manager_env, 
         try:
             if getattr(args, "_web_filter", None):
                 report.update(stage="web_publication", clientType="web")
-                client, page, client_id = native_web.start(
+                client, page, client_id, answered = native_web.start(
                     stack, args._web_paths, Path(enterprise[0]).parent, args.navigation_link, external, args.user,
                     args._web_language, deadline, _spawn, _free_port, _owns_listener)
+                if answered:
+                    # Windows of the configuration over the main window that the bridge answered before File - Open.
+                    report["answeredWindows"] = answered
                 screenshot_required = getattr(args, "web_screenshot", True)
                 port = native_web.TEST_PORT
                 pause = lambda seconds: native_web.wait_for_browser(page, seconds)
