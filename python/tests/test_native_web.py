@@ -366,3 +366,138 @@ def test_mcp_web_external_form_uses_private_runner_copy(tmp_path):
          "webClient": True, "steps": [{"action": "read_form"}]},
         runner=run, environ={form_run.ENV_INFOBASE: str(tmp_path), form_run.ENV_PLATFORM: str(tmp_path)})
     assert answer["ok"] is True
+
+
+class _Refused(Exception):
+    """The Playwright error a fake page raises."""
+
+
+class _StartPage:
+    """A web client page with windows over the main window, as File - Open meets them.
+
+    windows lists the windows from the top: each is a dict with the title and the answer caption it has. covered
+    makes the first click on an answer fail, as when a list a navigation link opened lies over the window.
+    """
+
+    def __init__(self, windows=(), covered=False, refuse_menu=0):
+        self.windows, self.covered, self.refuse_menu = [dict(window) for window in windows], covered, refuse_menu
+        self.actions, self.uploaded = [], None
+        self.keyboard = self
+
+    def press(self, key):
+        self.actions.append(("press", key))
+        if key == "Escape" and self.covered:
+            self.covered = False
+
+    def wait_for_timeout(self, milliseconds):
+        self.actions.append(("wait", milliseconds))
+
+    def evaluate(self, script):
+        assert script == native_web._WINDOWS
+        return [window["title"] for window in self.windows]
+
+    def get_by_title(self, caption, exact):
+        assert exact is True
+        return _Answer(self, caption)
+
+    def locator(self, selector):
+        return _Element(self, selector)
+
+
+class _Answer:
+    def __init__(self, page, caption):
+        self.page, self.caption = page, caption
+        self.first = self
+
+    def count(self):
+        return int(any(window.get("answer") == self.caption for window in self.page.windows[:1]))
+
+    def click(self, timeout):
+        self.page.actions.append(("answer", self.caption))
+        if self.page.covered:
+            raise _Refused("<div> from <div id=ps1win> subtree intercepts pointer events")
+        self.page.windows.pop(0)
+
+
+class _Element:
+    def __init__(self, page, selector):
+        self.page, self.selector = page, selector
+
+    def is_visible(self):
+        if self.selector == "#modalSurface":
+            return bool(self.page.windows)
+        return self.selector == "#fileSelectDialogOk"
+
+    def click(self, timeout):
+        self.page.actions.append(("click", self.selector))
+        if self.page.windows or (self.selector == "#captionbarMore" and self.page.refuse_menu):
+            if self.selector == "#captionbarMore" and self.page.refuse_menu:
+                self.page.refuse_menu -= 1
+            raise _Refused("<div id=modalSurface> intercepts pointer events")
+
+    def hover(self, timeout):
+        self.page.actions.append(("hover", self.selector))
+
+    def set_input_files(self, path, timeout):
+        self.page.uploaded = path
+
+
+def _clicks(page):
+    return [action for action in page.actions if action[0] in ("answer", "click", "press")]
+
+
+_MOVED = {"title": "Информационная база была перемещена или восстановлена из резервной копии",
+          "answer": "Это копия информационной базы"}
+
+
+def test_the_window_of_a_moved_infobase_is_answered_before_file_open(tmp_path):
+    page = _StartPage([_MOVED])
+    answered = native_web._open_external(page, tmp_path / "Sample.epf", time.monotonic() + 60, _Refused)
+    assert answered == [_MOVED["title"]]
+    assert _clicks(page) == [("answer", "Это копия информационной базы"), ("click", "#captionbarMore"),
+                             ("click", "#fileOpen"), ("click", "#fileSelectDialogOk")]
+    assert page.uploaded == str(tmp_path / "Sample.epf")
+
+
+def test_a_window_over_the_answer_is_closed_with_escape_first(tmp_path):
+    page = _StartPage([_MOVED], covered=True)
+    answered = native_web._open_external(page, tmp_path / "Sample.epf", time.monotonic() + 60, _Refused)
+    assert answered == [_MOVED["title"]]
+    assert _clicks(page)[:3] == [("answer", "Это копия информационной базы"), ("press", "Escape"),
+                                 ("answer", "Это копия информационной базы")]
+
+
+def test_the_english_caption_answers_the_window_too(tmp_path):
+    window = {"title": "The infobase was moved or restored from a backup", "answer": "This is a copy of the infobase"}
+    page = _StartPage([window])
+    assert native_web._open_external(page, tmp_path / "Sample.epf", time.monotonic() + 60, _Refused) == [
+        window["title"]]
+
+
+def test_a_window_without_an_answer_stops_the_run_with_its_title(tmp_path):
+    page = _StartPage([{"title": "Unexpected question"}])
+    with pytest.raises(native_web.WebError) as raised:
+        native_web._open_external(page, tmp_path / "Sample.epf", time.monotonic() + 600, _Refused)
+    assert raised.value.status == "web_start_window"
+    assert "Unexpected question" in str(raised.value)
+    assert raised.value.details == {"blockingWindows": ["Unexpected question"], "answeredWindows": []}
+    # The run waits a few seconds for a short window, not until its time limit.
+    waits = [action for action in page.actions if action[0] == "wait"]
+    assert len(waits) == native_web.UNKNOWN_WINDOW_SECONDS
+    assert not [action for action in page.actions if action == ("click", "#captionbarMore")]
+
+
+def test_a_menu_refused_once_is_tried_again_after_escape(tmp_path):
+    page = _StartPage(refuse_menu=1)
+    assert native_web._open_external(page, tmp_path / "Sample.epf", time.monotonic() + 60, _Refused) == []
+    assert _clicks(page)[:3] == [("click", "#captionbarMore"), ("press", "Escape"), ("click", "#captionbarMore")]
+    assert page.uploaded == str(tmp_path / "Sample.epf")
+
+
+def test_the_details_of_a_web_error_reach_the_report():
+    from edt_bridge_mcp import native_form
+
+    report = {}
+    native_form._record_error(report, native_web.WebError("web_start_window", "Blocked.",
+                                                          {"blockingWindows": ["Question"]}), "driver_failed")
+    assert report == {"ok": False, "status": "web_start_window", "error": "Blocked.", "blockingWindows": ["Question"]}
