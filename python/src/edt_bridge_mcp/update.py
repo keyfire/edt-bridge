@@ -177,6 +177,46 @@ def _java_launcher(home: Path) -> bool:
     return (home / "bin" / ("javaw.exe" if os.name == "nt" else "java")).exists()
 
 
+def _registry_program_files() -> str:
+    """ProgramFilesDir of the Windows registry; empty elsewhere or when it cannot be read."""
+    if os.name != "nt":
+        return ""
+    try:
+        import winreg
+
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion") as key:
+            return str(winreg.QueryValueEx(key, "ProgramFilesDir")[0])
+    except OSError:
+        return ""
+
+
+def _program_files(environ) -> str:
+    """The Program Files directory. An MCP host may start the server with a short list of variables
+    and no ProgramFiles among them; the registry still names the directory."""
+    return _env(environ, "ProgramFiles") or _env(environ, "ProgramW6432") or _registry_program_files()
+
+
+def _required_java(edt_dir: Path) -> int | None:
+    """The Java feature version 1cedt.ini requires; None when the ini names its own `-vm` or no version."""
+    try:
+        ini = (Path(edt_dir) / "1cedt.ini").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    if any(line.strip() == "-vm" for line in ini.splitlines()):
+        return None
+    match = _REQUIRED_JAVA.search(ini)
+    return int(match[1]) if match else None
+
+
+def _path_java(environ) -> tuple[Path, int | None] | None:
+    """The JDK of the java on PATH and its feature version; None without a java on PATH."""
+    on_path = shutil.which("javaw" if os.name == "nt" else "java", path=_env(environ, "PATH"))
+    if not on_path:
+        return None
+    home = Path(on_path).resolve().parent.parent
+    return home, _java_major(home)
+
+
 def edt_java(edt_dir: Path, environ=None) -> Path | None:
     """The JDK to put first on PATH for this EDT, or None when EDT will find a suitable one itself.
 
@@ -188,25 +228,16 @@ def edt_java(edt_dir: Path, environ=None) -> Path | None:
     1C installer keeps next to EDT, the required feature version first.
     """
     environ = os.environ if environ is None else environ
-    try:
-        ini = (Path(edt_dir) / "1cedt.ini").read_text(encoding="utf-8", errors="replace")
-    except OSError:
+    required = _required_java(edt_dir)
+    if required is None:
         return None
-    if any(line.strip() == "-vm" for line in ini.splitlines()):
+    current = _path_java(environ)
+    if current and current[1] is not None and current[1] >= required:
         return None
-    match = _REQUIRED_JAVA.search(ini)
-    if not match:
-        return None
-    required = int(match[1])
-    on_path = shutil.which("javaw" if os.name == "nt" else "java", path=_env(environ, "PATH"))
-    if on_path:
-        major = _java_major(Path(on_path).resolve().parent.parent)
-        if major is not None and major >= required:
-            return None
     home = _env(environ, "JAVA_HOME").strip()
     if home and _java_launcher(Path(home)) and (_java_major(Path(home)) or 0) >= required:
         return Path(home)
-    programs = _env(environ, "ProgramFiles")
+    programs = _program_files(environ)
     if not programs:
         return None
     suitable = []
@@ -215,6 +246,24 @@ def edt_java(edt_dir: Path, environ=None) -> Path | None:
         if major is not None and major >= required and _java_launcher(candidate):
             suitable.append((major != required, -major, candidate.name, candidate))
     return min(suitable)[3] if suitable else None
+
+
+def java_problem(edt_dir: Path, environment) -> str | None:
+    """Why EDT would stop at its Java version dialog in this environment, or None.
+
+    The dialog is modal, and on a headless start nobody sees it: the start hangs instead of
+    failing. The check speaks only when the outcome is known - the ini names no `-vm`, requires
+    a version, and the java on PATH reports an older one. Pass the environment the EDT process
+    gets, after with_edt_java.
+    """
+    required = _required_java(edt_dir)
+    current = _path_java(environment) if required is not None else None
+    if not current or current[1] is None or current[1] >= required:
+        return None
+    home, major = current
+    return (f"EDT in {edt_dir} requires Java {required}, but the java on PATH is Java {major} ({home}), "
+            f"and no JDK {required} or newer was found in JAVA_HOME or among the JDK components of "
+            f"the 1C installer. Set JAVA_HOME to such a JDK, or name it with -vm in 1cedt.ini.")
 
 
 def with_edt_java(environment: dict, edt_dir: Path) -> dict:
