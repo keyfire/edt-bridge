@@ -8,13 +8,16 @@ import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.BiFunction;
 
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.emf.ecore.EClass;
 import org.eclipse.emf.ecore.EStructuralFeature;
 import org.eclipse.egit.core.RepositoryCache;
 import org.eclipse.jgit.lib.Constants;
@@ -38,9 +41,15 @@ import com._1c.g5.v8.dt.compare.datasource.V8ProjectComparisonDataSourceDescript
 import com._1c.g5.v8.dt.compare.matching.MatchingStrategy;
 import com._1c.g5.v8.dt.compare.model.ComparisonFlags;
 import com._1c.g5.v8.dt.compare.model.ComparisonNode;
+import com._1c.g5.v8.dt.compare.model.ComparisonNodeStatus;
 import com._1c.g5.v8.dt.compare.model.ComparisonSide;
 import com._1c.g5.v8.dt.compare.model.ExternalPropertyComparisonNode;
+import com._1c.g5.v8.dt.compare.model.TopComparisonNode;
+import com._1c.g5.v8.dt.compare.model.UnsupportedObjectComparisonNode;
+import com._1c.g5.v8.dt.md.compare.DistributionSettingsComparisonNode;
 import com._1c.g5.v8.dt.md.compare.MdObjectComparisonNode;
+import com._1c.g5.v8.dt.md.compare.SupportSettingsComparisonNode;
+import com._1c.g5.v8.dt.metadata.mdclass.MdObject;
 
 import com._1c.g5.v8.dt.core.platform.IConfigurationProject;
 import com._1c.g5.v8.dt.core.platform.IV8ProjectManager;
@@ -55,13 +64,15 @@ public final class ConfigurationComparisonGateway {
     private static final ComparisonSide MAIN = ComparisonSide.MAIN;
     private static final ComparisonSide OTHER = ComparisonSide.OTHER;
     private static final ComparisonSide ANCESTOR = ComparisonSide.COMMON_ANCESTOR;
-    private final ReentrantLock comparisonLock = new ReentrantLock();
+    private static final ReentrantLock COMPARISON_LOCK = new ReentrantLock();
 
     public record Source(String projectName, String revision) { }
 
+    record SupplierTarget(String fqn, EClass type, UUID userId, UUID supplierId) { }
+
     public ConfigurationComparison compare(Source main, Source other, Source ancestor,
             MatchingStrategy matching, int waitSeconds) throws Exception {
-        if (!comparisonLock.tryLock()) {
+        if (!COMPARISON_LOCK.tryLock()) {
             throw new IllegalStateException("Another bridge configuration comparison is running. Retry after it finishes.");
         }
         try {
@@ -80,10 +91,92 @@ public final class ConfigurationComparisonGateway {
             }
             var settings = ComparisonProcessSettings.builder(matching).parseBslModuleStructure(true).build();
             return run(manager, handle, new CompareMergeProcessBatch(new CompareMergeProcessDescriptor(handle, settings)),
-                    waitSeconds);
+                    waitSeconds, ConfigurationComparisonGateway::snapshot);
         } finally {
-            comparisonLock.unlock();
+            COMPARISON_LOCK.unlock();
         }
+    }
+
+    static void requireSupplierMatch(String projectName, IComparisonDataSourceDescriptor supplier,
+            List<SupplierTarget> targets) throws Exception {
+        if (!COMPARISON_LOCK.tryLock()) {
+            throw new IllegalStateException("Another bridge configuration comparison is running. Retry after it finishes.");
+        }
+        try {
+            var manager = ServiceAccess.get(IComparisonManager.class);
+            if (manager == null) throw new IllegalStateException("EDT's comparison service is unavailable");
+            var fqns = targets.stream().map(SupplierTarget::fqn).toList();
+            var scope = new ComparisonScope(fqns, fqns);
+            var handle = new ComparisonProcessHandle(descriptor(new Source(projectName, null)), supplier, scope);
+            if (manager.getComparisonSession(handle) != null) {
+                throw new IllegalStateException("EDT already has a comparison session for these sources");
+            }
+            var settings = ComparisonProcessSettings.builder(MatchingStrategy.UUID_THEN_NAME)
+                    .parseBslModuleStructure(false).build();
+            run(manager, handle, new CompareMergeProcessBatch(new CompareMergeProcessDescriptor(handle, settings)),
+                    120, (session, monitor) -> {
+                        for (SupplierTarget target : targets) {
+                            requireMatchingObject(session, target);
+                        }
+                        return null;
+                    });
+        } finally {
+            COMPARISON_LOCK.unlock();
+        }
+    }
+
+    private static void requireMatchingObject(IComparisonSession session, SupplierTarget target) {
+        var node = session.getTopNode(target.fqn(), MAIN);
+        if (node == null || !session.isInInputScope(node) || node.getComparisonStatus() != ComparisonNodeStatus.FINISHED
+                || node.getMainSymlink() == null || node.getOtherSymlink() == null) {
+            throw new IllegalArgumentException("EDT did not finish comparing both versions of " + target.fqn());
+        }
+        var main = session.getDataSource(MAIN);
+        var other = session.getDataSource(OTHER);
+        var left = main.beginTransaction();
+        try {
+            var right = other.beginTransaction();
+            try {
+                var user = main.getTopLevelObject(node.getMainSymlink(), target.type());
+                var parent = other.getTopLevelObject(node.getOtherSymlink(), target.type());
+                if (!(user instanceof MdObject userObject) || !target.userId().equals(userObject.getUuid())
+                        || !(parent instanceof MdObject supplierObject) || !target.supplierId().equals(supplierObject.getUuid())) {
+                    throw new IllegalArgumentException("EDT did not match the recorded supplier object for " + target.fqn());
+                }
+            } finally {
+                if (right != null) right.close();
+            }
+        } finally {
+            if (left != null) left.close();
+        }
+        var difference = supplierContentDifference(node);
+        if (difference != null) {
+            var property = session.getRelatedFeature(difference);
+            String detail = property == null ? difference.eClass().getName() : property.getName();
+            throw new IllegalArgumentException("Object differs from the supplier version: " + target.fqn()
+                    + " (" + detail + ")");
+        }
+    }
+
+    /** A rule present on only one side may contribute its presence flags to the owning object. */
+    static ComparisonNode supplierContentDifference(ComparisonNode node) {
+        if (node instanceof UnsupportedObjectComparisonNode) return node;
+        if (node instanceof SupportSettingsComparisonNode || node instanceof DistributionSettingsComparisonNode) return null;
+        if (node instanceof TopComparisonNode top && top.getComparisonStatus() != ComparisonNodeStatus.FINISHED) return node;
+        if (node instanceof MdObjectComparisonNode object
+                && (object.getMainSymlink() == null || object.getOtherSymlink() == null)) return node;
+        ComparisonFlags flags = node.getComparisonFlags();
+        if (flags == null || flags.hasOrderChanged(MAIN, OTHER)) return node;
+        ComparisonFlags childFlags = new ComparisonFlags();
+        for (ComparisonNode child : node.getChildren()) {
+            var difference = supplierContentDifference(child);
+            if (difference != null) return difference;
+            if (child.getComparisonFlags() != null) childFlags.addFlags(child.getComparisonFlags());
+        }
+        if (flags.hasChanged(MAIN, OTHER)
+                || (flags.isOnOneSide(MAIN, OTHER) && !childFlags.isOnOneSide(MAIN, OTHER))
+                || (flags.isOnOneSide(OTHER, MAIN) && !childFlags.isOnOneSide(OTHER, MAIN))) return node;
+        return null;
     }
 
     private static IComparisonDataSourceDescriptor descriptor(Source source) throws IOException {
@@ -121,8 +214,8 @@ public final class ConfigurationComparisonGateway {
         }
     }
 
-    private static ConfigurationComparison run(IComparisonManager manager, ComparisonProcessHandle handle,
-            CompareMergeProcessBatch batch, int waitSeconds) throws Exception {
+    private static <T> T run(IComparisonManager manager, ComparisonProcessHandle handle,
+            CompareMergeProcessBatch batch, int waitSeconds, BiFunction<IComparisonSession, IProgressMonitor, T> read) throws Exception {
         CountDownLatch finished = new CountDownLatch(1);
         var listener = new IComparisonManager.ICompareMergeStatusListener() {
             @Override public void statusChanged(ComparisonProcessHandle updated, ComparisonProcessStatus status) {
@@ -156,12 +249,12 @@ public final class ConfigurationComparisonGateway {
                 throw new IllegalStateException("EDT did not produce a completed comparison session");
             }
             Jobs.stage("reading configuration differences");
-            return session.runComparisonTreeReadonlyTask(new IBmTask<ConfigurationComparison>() {
+            return session.runComparisonTreeReadonlyTask(new IBmTask<T>() {
                 @Override public String getName() { return "Read configuration comparison"; }
                 @Override public Object getId() { return this; }
                 @Override public Object getServiceId() { return ConfigurationComparisonGateway.class; }
-                @Override public ConfigurationComparison execute(IBmTransaction transaction, IProgressMonitor monitor) {
-                    return snapshot(session, monitor);
+                @Override public T execute(IBmTransaction transaction, IProgressMonitor monitor) {
+                    return read.apply(session, monitor);
                 }
             });
         } finally {

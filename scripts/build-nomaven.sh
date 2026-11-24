@@ -148,6 +148,9 @@ need=(
   org.eclipse.ui.workbench.texteditor
   org.eclipse.ui.forms
   com.e1c.g5.v8.dt.check
+  com.e1c.g5.v8.dt.distribution
+  com.e1c.g5.v8.dt.distribution.model
+  com._1c.g5.v8.dt.common
   org.eclipse.equinox.registry
   com.google.gson
   org.eclipse.emf.ecore

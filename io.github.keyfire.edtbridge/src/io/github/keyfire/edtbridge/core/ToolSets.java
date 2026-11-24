@@ -137,6 +137,9 @@ public final class ToolSets {
             "edt_outgoing_structures",
             // Metadata of a configuration: objects, their attributes, subsystems, HTTP routes and
             // renaming belong to a configuration job, which has no set yet.
+            "edt_configuration_support",
+            "edt_modify_configuration_support",
+            "edt_enable_configuration_editing",
             "edt_create_object",
             "edt_modify_object",
             "edt_add_attribute",

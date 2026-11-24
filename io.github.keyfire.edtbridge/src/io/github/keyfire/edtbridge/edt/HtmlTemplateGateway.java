@@ -455,7 +455,7 @@ public final class HtmlTemplateGateway {
         }
         EObject indexed = transaction.getTopObjectByFqn(fqn);
         if (indexed instanceof BasicTemplate template && !template.eIsProxy()) return template;
-        var object = MetadataWriteGateway.resolveDeleteTarget(transaction, fqn);
+        var object = MetadataWriteGateway.resolveMetadataTarget(transaction, fqn);
         if (!(object instanceof BasicTemplate template) || template.eIsProxy()) {
             throw new IllegalArgumentException("existing common or nested template not found: " + fqn);
         }
