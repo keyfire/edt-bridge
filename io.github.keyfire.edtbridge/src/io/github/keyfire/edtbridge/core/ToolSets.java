@@ -82,6 +82,7 @@ public final class ToolSets {
             "edt_add_form_command",
             "edt_add_form_handler",
             "edt_add_form_item",
+            "edt_copy_form",
             "edt_modify_form_attribute",
             "edt_modify_form_command",
             "edt_modify_form_item",

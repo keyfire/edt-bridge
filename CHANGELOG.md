@@ -13,6 +13,18 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
+## Unreleased
+
+### Added
+
+- `edt_copy_form` copies a managed form, with its items, attributes, commands, handlers and module,
+  to another object of the same project, configuration or extension, or to the same object under
+  another name. In an object of the same kind, references to the source object's types and
+  attributes move to the target's namesakes, so the main attribute becomes the target's object.
+  The plan lists the references the target cannot take. A form copied into an adopted object of
+  an extension gets the extension prefix. A form used to be moved by creating an empty one and
+  copying `Form.form` and the module on disk.
+
 ## 2026-11-24 – 0.54.0, 0.55.0
 
 ### Added

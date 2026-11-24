@@ -479,7 +479,7 @@ public final class FormWriteGateway {
     }
 
     /** Create every missing folder above {@code file} (EDT's FileUtil equivalent, kept dependency-free). */
-    private static void createParentFolders(IFile file) throws Exception {
+    static void createParentFolders(IFile file) throws Exception {
         IContainer parent = file.getParent();
         List<IFolder> missing = new ArrayList<>();
         while (parent instanceof IFolder && !parent.exists()) {
@@ -564,7 +564,7 @@ public final class FormWriteGateway {
      * The owner's containment list of forms. In EDT's mdclass model a form is owned by its metadata
      * object, so this is a containment reference whose type derives from {@code BasicForm}.
      */
-    private static EReference findFormsFeature(EClass ownerClass) {
+    static EReference findFormsFeature(EClass ownerClass) {
         EClass basicForm = MdClassPackage.Literals.BASIC_FORM;
         EReference exact = null;
         for (EReference ref : ownerClass.getEAllReferences()) {
@@ -586,7 +586,7 @@ public final class FormWriteGateway {
     }
 
     @SuppressWarnings("unchecked")
-    private static List<BasicForm> formsOf(EObject owner, EReference feature) {
+    static List<BasicForm> formsOf(EObject owner, EReference feature) {
         Object value = owner.eGet(feature);
         return (value instanceof List) ? (List<BasicForm>) value : new ArrayList<>();
     }
@@ -633,7 +633,7 @@ public final class FormWriteGateway {
         return "ru";
     }
 
-    private static IProjectFileSystemSupportProvider fileSystemSupportProvider() {
+    static IProjectFileSystemSupportProvider fileSystemSupportProvider() {
         return coreService(IProjectFileSystemSupportProvider.class);
     }
 
