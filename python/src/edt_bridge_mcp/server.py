@@ -980,8 +980,19 @@ class Backend:
             if not turn or headless.lock_held(lock):
                 return self._wait_for_other_headless(
                     "another edt-bridge-mcp is starting a headless EDT for this workspace – waiting for it")
+            from . import update
+
+            java = update.edt_java(cli.parent)
+            environment = update.with_edt_java(os.environ.copy(), cli.parent)
+            # Started with an older Java, EDT waits on a modal dialog nobody sees: refuse instead.
+            problem = update.java_problem(cli.parent, environment)
+            if problem:
+                log(problem)
+                return False, problem
             log(f"starting headless EDT: {cli} -data {ws}"
                 + (f" with {' '.join(options)}" if options else ""))
+            if java is not None:
+                log(f"EDT needs a newer Java than the one on PATH - starting it with {java}")
             try:
                 folder = Path(tempfile.mkdtemp(prefix="edtbridge-headless-"))
                 self._headless_state = folder / "state.json"
@@ -991,12 +1002,6 @@ class Backend:
                            "--output", str(self._headless_output), "--lock", str(lock),
                            "--", str(cli), "-data", str(ws), "-nl", "en_US",
                            "-vmargs", f"-Dedt.bridge.port={self.port}", *options]
-                from . import update
-
-                java = update.edt_java(cli.parent)
-                environment = update.with_edt_java(os.environ.copy(), cli.parent)
-                if java is not None:
-                    log(f"EDT needs a newer Java than the one on PATH - starting it with {java}")
                 if self.token:
                     environment["EDT_BRIDGE_TOKEN"] = self.token
                 options = ({"creationflags": subprocess.CREATE_NO_WINDOW
