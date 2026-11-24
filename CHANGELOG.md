@@ -13,21 +13,7 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
-## Unreleased
-
-### Fixed
-
-- `edt_test_form` with `webClient=true` opens an external file in a copy of an infobase built on the
-  Standard Subsystems Library. The library opens a window about a moved infobase over the main
-  window of every copy, and the check waited for File – Open until its time limit. Now the bridge
-  answers "This is a copy of the infobase" and names the window in `answeredWindows`.
-  ([#117](https://github.com/keyfire/edt-bridge/pull/117))
-- A web check stops after 15 seconds with `web_start_window` when a window it has no answer for
-  stays over the main window. A failed upload dialog names the windows over the main window in
-  `blockingWindows`.
-  ([#117](https://github.com/keyfire/edt-bridge/pull/117))
-
-## 2026-11-24 – 0.54.0, 0.55.0, 0.55.1
+## 2026-11-24 – 0.54.0, 0.55.0, 0.55.1, 0.55.2
 
 ### Added
 
@@ -42,6 +28,15 @@ to the code and the reasoning behind it.
 
 ### Fixed
 
+- `edt_test_form` with `webClient=true` opens an external file in a copy of an infobase built on the
+  Standard Subsystems Library. The library opens a window about a moved infobase over the main
+  window of every copy, and the check waited for File – Open until its time limit. Now the bridge
+  answers "This is a copy of the infobase" and names the window in `answeredWindows`.
+  ([#117](https://github.com/keyfire/edt-bridge/pull/117))
+- A web check stops after 15 seconds with `web_start_window` when a window it has no answer for
+  stays over the main window. A failed upload dialog names the windows over the main window in
+  `blockingWindows`.
+  ([#117](https://github.com/keyfire/edt-bridge/pull/117))
 - The headless start now finds the JDK components of the 1C installer even when the MCP client
   launches the server without `ProgramFiles`; the bridge reads the directory from the Windows
   registry. Previously EDT took the older Java from `PATH` and stopped at its modal Java version
