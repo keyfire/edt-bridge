@@ -1012,6 +1012,12 @@ def test_windows_installs_fall_back_to_the_name_on_an_unreadable_build(monkeypat
     assert update.windows_installs() == [newer, older]
 
 
+@pytest.fixture(autouse=True)
+def _no_registry_program_files(monkeypatch):
+    """The Program Files of the machine that runs the tests must not reach them through the registry."""
+    monkeypatch.setattr(update, "_registry_program_files", lambda: "")
+
+
 def _jdk(home, version):
     (home / "bin").mkdir(parents=True)
     for name in ("java", "javaw", "java.exe", "javaw.exe"):
@@ -1091,6 +1097,42 @@ def test_edt_java_without_a_suitable_jdk_changes_nothing(monkeypatch, tmp_path):
 
     assert update.edt_java(edt) is None
     assert update.with_edt_java({"PATH": "unchanged"}, edt) == {"PATH": "unchanged"}
+
+
+def test_edt_java_finds_the_components_when_the_host_passes_no_program_files(monkeypatch, tmp_path):
+    """An MCP host may start the server with a fixed set of variables and no ProgramFiles among them."""
+    old = _jdk(tmp_path / "old-jdk", "17.0.16")
+    components = _java_roots(monkeypatch, tmp_path, old)
+    monkeypatch.setenv("JAVA_HOME", str(old))
+    required = _jdk(components / "axiom-jdk-full-25.0.2+12-x86_64", "25.0.2")
+    edt = _ini(tmp_path / "edt", "-vmargs", "-Dosgi.requiredJavaVersion=25")
+    monkeypatch.delenv("ProgramFiles", raising=False)
+    monkeypatch.delenv("ProgramW6432", raising=False)
+    monkeypatch.setattr(update, "_registry_program_files", lambda: str(tmp_path / "programs"))
+
+    assert update.edt_java(edt) == required
+    assert update.java_problem(edt, update.with_edt_java(dict(os.environ), edt)) is None
+
+
+def test_java_problem_names_both_versions_when_no_jdk_suits(monkeypatch, tmp_path):
+    old = _jdk(tmp_path / "old-jdk", "17.0.16")
+    _java_roots(monkeypatch, tmp_path, old)
+    edt = _ini(tmp_path / "edt", "-vmargs", "-Dosgi.requiredJavaVersion=25")
+
+    problem = update.java_problem(edt, update.with_edt_java(dict(os.environ), edt))
+
+    assert "requires Java 25" in problem and "Java 17" in problem and str(old.resolve()) in problem
+
+
+def test_java_problem_is_silent_when_the_outcome_is_unknown(tmp_path):
+    edt = _ini(tmp_path / "edt", "-vmargs", "-Dosgi.requiredJavaVersion=25")
+    old = _jdk(tmp_path / "old-jdk", "17.0.16")
+    named = _ini(tmp_path / "named", "-vm", "C:/jdk/bin/javaw.exe", "-vmargs", "-Dosgi.requiredJavaVersion=25")
+
+    # No java on PATH: the launcher may still find one of its own.
+    assert update.java_problem(edt, {"PATH": str(tmp_path / "no-java")}) is None
+    # The ini names its Java: the PATH is not used.
+    assert update.java_problem(named, {"PATH": str(old / "bin")}) is None
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows launcher script")
