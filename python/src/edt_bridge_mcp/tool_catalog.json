@@ -3832,6 +3832,106 @@
       ]
     },
     {
+      "name": "edt_configuration_support",
+      "description": "READ: list connected suppliers and read their support rules for selected objects.",
+      "descriptionRu": "ЧТЕНИЕ: показать подключенных поставщиков и их правила поддержки для выбранных объектов.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "Name of the open EDT project"
+          },
+          "supplierId": {
+            "type": "string",
+            "description": "Supplier UUID from edt_configuration_support"
+          },
+          "fqns": {
+            "type": "array",
+            "description": "Exact metadata FQNs. Use Configuration for the root.",
+            "items": {
+              "type": "string",
+              "description": "Metadata object FQN"
+            }
+          }
+        },
+        "required": [
+          "projectName"
+        ]
+      },
+      "toolsets": []
+    },
+    {
+      "name": "edt_modify_configuration_support",
+      "description": "WRITE: preview or change the support rules of selected objects for a connected supplier. CHANGES_NOT_ALLOWED requires a matching top-level object in EDT's comparison with the recorded supplier release. A write token and apply=true are required to write.",
+      "descriptionRu": "ЗАПИСЬ: показать или изменить правила поддержки выбранных объектов подключенного поставщика. Режим CHANGES_NOT_ALLOWED требует совпадения объекта верхнего уровня при сравнении в EDT с указанным в настройках релизом поставщика. Для записи нужны токен и apply=true.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "Name of the open EDT project"
+          },
+          "supplierId": {
+            "type": "string",
+            "description": "Supplier UUID from edt_configuration_support"
+          },
+          "fqns": {
+            "type": "array",
+            "description": "Exact metadata FQNs. Use Configuration for the root.",
+            "items": {
+              "type": "string",
+              "description": "Metadata object FQN"
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "mode": {
+            "type": "string",
+            "description": "New user support mode",
+            "enum": [
+              "CHANGES_ALLOWED",
+              "CANCELLED",
+              "CHANGES_NOT_ALLOWED"
+            ]
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default): preview. true: apply the proposed rules."
+          }
+        },
+        "required": [
+          "projectName",
+          "supplierId",
+          "fqns",
+          "mode"
+        ]
+      },
+      "toolsets": []
+    },
+    {
+      "name": "edt_enable_configuration_editing",
+      "description": "WRITE: enable editing for a project on full support through EDT. Locks objects of suppliers converted from full support. Change individual rules afterward. A write token and apply=true are required.",
+      "descriptionRu": "ЗАПИСЬ: включить возможность изменения проекта на полной поддержке через EDT. Правила объектов поставщиков, переведенных с полной поддержки, запрещают редактирование. Изменить их можно отдельным вызовом. Для записи нужны токен и apply=true.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "Name of the open EDT project"
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default): preview. true: enable editing."
+          }
+        },
+        "required": [
+          "projectName"
+        ]
+      },
+      "toolsets": []
+    },
+    {
       "name": "edt_modify_role_rights",
       "description": "WRITE: set rights of a role on one object through the live model, the way the rights editor of EDT does: a value equal to the role's default for the object removes the explicit entry. An unknown right is refused with the rights the object has; a right with a data access restriction (RLS) is never changed. Dry-run by default.",
       "descriptionRu": "ЗАПИСЬ: задать права роли на один объект через живую модель так, как это делает редактор прав EDT: значение, равное значению по умолчанию для объекта, убирает явную запись. Неизвестное право отклоняется с перечнем прав объекта; право с ограничением доступа к данным (RLS) не меняется. По умолчанию dry-run.",
@@ -4991,5 +5091,5 @@
       ]
     }
   ],
-  "version": "0.53.0"
+  "version": "0.55.0"
 }
