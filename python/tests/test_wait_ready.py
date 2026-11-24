@@ -82,6 +82,23 @@ def test_a_bad_heap_refuses_the_start_and_launches_nothing(monkeypatch, tmp_path
     assert not ok and "EDT_BRIDGE_HEAP" in message
 
 
+def test_an_older_java_refuses_the_start_and_launches_nothing(monkeypatch, tmp_path):
+    """EDT with too old a Java waits on a modal dialog; the start reports the Java instead."""
+    from edt_bridge_mcp import update
+
+    backend = server.Backend()
+    backend.workspace = str(tmp_path / "ws")
+    for name, value in (("_headless_cli_running", False), ("_workspace_owner", None),
+                        ("_workspace_locked", False), ("_gui_edt_running", False)):
+        monkeypatch.setattr(backend, name, lambda value=value: value)
+    monkeypatch.setattr(backend, "_find_cli", lambda: tmp_path / "1cedtcli")
+    monkeypatch.setattr(backend, "_ensure_plugin_jar", lambda path: (True, "present"))
+    monkeypatch.setattr(update, "java_problem", lambda edt_dir, environment: "EDT requires Java 25")
+    monkeypatch.setattr(server.subprocess, "Popen", lambda *args, **kwargs: pytest.fail("nothing may start"))
+
+    assert backend._launch_headless() == (False, "EDT requires Java 25")
+
+
 def test_the_flags_reach_the_environment_the_backend_reads(monkeypatch):
     monkeypatch.delenv("EDT_BRIDGE_HEAP", raising=False)
     monkeypatch.delenv("EDT_BRIDGE_VMARGS", raising=False)
