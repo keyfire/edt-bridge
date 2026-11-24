@@ -24,6 +24,7 @@ to the code and the reasoning behind it.
   The plan lists the references the target cannot take. A form copied into an adopted object of
   an extension gets the extension prefix. A form used to be moved by creating an empty one and
   copying `Form.form` and the module on disk.
+  ([#116](https://github.com/keyfire/edt-bridge/pull/116))
 
 ## 2026-11-24 – 0.54.0, 0.55.0
 
