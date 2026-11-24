@@ -1,4 +1,4 @@
-﻿#If ThickClientManagedApplication Then
+#If ThickClientManagedApplication Then
 
 #Region EventHandlers
 
@@ -54,9 +54,47 @@ Procedure RunCheck(Request, Report)
     EndIf;
     If Request.Property("steps") Then
         RunScenario(Application, Target, MessageWindow, Request, Request.steps, Report, Report);
-        Return;
+    Else
+        CheckButton(Application, Target, MessageWindow, Request, Report);
     EndIf;
+    If Request.Property("webLayout")
+        And (Report.status = "scenario_observed" Or Report.status = "command_observed"
+            Or Report.status = "command_completed" Or Report.status = "message_not_found") Then
+        Try
+            Snapshot = New Structure("fields,tables,spreadsheets,truncated", New Array, New Array, New Array, False);
+            Snapshot.Insert("spreadsheetsTruncated", False);
+            Report.Insert("webFormTitle", Target.TitleText);
+            CollectItems(Target.GetChildObjects(), Snapshot, Request.webLayout, True);
+            Report.Insert("webLayout", Snapshot);
+            AppendWebPanelMessages(Snapshot, MessageWindow, Request.webLayout, Report);
+        Except
+            Report.Insert("webLayoutError", True);
+        EndTry;
+    EndIf;
+EndProcedure
 
+Procedure AppendWebPanelMessages(Snapshot, MessageWindow, Limits, Report)
+    Messages = Undefined;
+    If Not Report.Property("messages", Messages) Then
+        Messages = VisibleMessages(MessageWindow, Report, "afterMessagePanel");
+    EndIf;
+    PanelMessages = New Array;
+    Snapshot.Insert("panelMessages", PanelMessages);
+    Snapshot.Insert("panelTruncated", False);
+    For Each Text In Messages Do
+        If PanelMessages.Count() >= Limits.maxMessages Then
+            Snapshot.panelTruncated = True;
+            Break;
+        EndIf;
+        If StrLen(Text) > Limits.maxMessageLength Then
+            Snapshot.panelTruncated = True;
+        Else
+            PanelMessages.Add(Text);
+        EndIf;
+    EndDo;
+EndProcedure
+
+Procedure CheckButton(Application, Target, MessageWindow, Request, Report)
     MarkTime(Report, "command");
     Report.stage = "button_lookup";
     Buttons = Target.FindObjects(Type("TestedFormButton"), Request.button);
@@ -831,7 +869,7 @@ Function ReadForm(Target, Request)
     Return Result;
 EndFunction
 
-Procedure CollectItems(Items, Result, Request)
+Procedure CollectItems(Items, Result, Request, WebLayout = False)
     For Each Item In Items Do
         If Result.fields.Count() + Result.tables.Count() + Result.spreadsheets.Count() >= Request.maxItems Then
             Result.truncated = True;
@@ -840,7 +878,14 @@ Procedure CollectItems(Items, Result, Request)
         ItemType = TypeOf(Item);
         If ItemType = Type("TestedFormTable") Then
             If Item.CurrentVisible() Then
-                FormTable = ReadFormTable(Item, Request, True);
+                If WebLayout Then
+                    Columns = New Array;
+                    State = New Structure("truncated", False);
+                    CollectColumns(Item.GetChildObjects(), Columns, Request, True, State);
+                    FormTable = New Structure("columns", Columns);
+                Else
+                    FormTable = ReadFormTable(Item, Request, True);
+                EndIf;
                 FormTable.Insert("name", Item.Name);
                 FormTable.Insert("title", Item.TitleText);
                 Result.tables.Add(FormTable);
@@ -849,12 +894,21 @@ Procedure CollectItems(Items, Result, Request)
             If Not Item.CurrentVisible() Then
                 Continue;
             EndIf;
-            If Item.Type = FormFieldType.SpreadsheetDocumentField Then
-                Sheet = ReadSheet(Item, Request);
+            IsSheet = Item.Type = FormFieldType.SpreadsheetDocumentField;
+            If IsSheet Then
+                If WebLayout Then
+                    If Result.spreadsheets.Count() >= Request.sheets.maxFields Then
+                        Result.spreadsheetsTruncated = True;
+                        Continue;
+                    EndIf;
+                    Sheet = ReadSheet(Item, Request.sheets);
+                Else
+                    Sheet = ReadSheet(Item, Request);
+                EndIf;
                 Sheet.Insert("name", Item.Name);
                 Sheet.Insert("title", Item.TitleText);
                 Result.spreadsheets.Add(Sheet);
-            Else
+            ElsIf Not WebLayout Then
                 Field = New Structure("name,title", Item.Name, Item.TitleText);
                 Try
                     Field.Insert("presentation", Item.GetDataPresentation());
@@ -865,7 +919,7 @@ Procedure CollectItems(Items, Result, Request)
             EndIf;
         ElsIf ItemType = Type("TestedFormGroup") Then
             If Item.CurrentVisible() Then
-                CollectItems(Item.GetChildObjects(), Result, Request);
+                CollectItems(Item.GetChildObjects(), Result, Request, WebLayout);
             EndIf;
         EndIf;
     EndDo;
@@ -875,15 +929,25 @@ EndProcedure
 Function ReadSheet(Field, Request)
     RowCount = Field.GetDocumentDataAreaVerticalSize();
     ColumnCount = Field.GetDocumentDataAreaHorizontalSize();
+    Truncated = RowCount > Request.maxRows Or ColumnCount > Request.maxColumns;
+    MaxCellLength = 0;
+    If Request.Property("maxCellLength") Then
+        MaxCellLength = Request.maxCellLength;
+    EndIf;
     Rows = New Array;
     For Row = 1 To Min(RowCount, Request.maxRows) Do
         Cells = New Array;
         For Column = 1 To Min(ColumnCount, Request.maxColumns) Do
-            Cells.Add(Field.GetAreaText("R" + String(Row) + "C" + String(Column)));
+            CellText = Field.GetAreaText("R" + String(Row) + "C" + String(Column));
+            If MaxCellLength > 0 And StrLen(CellText) > MaxCellLength Then
+                Truncated = True;
+                CellText = "";
+            EndIf;
+            Cells.Add(CellText);
         EndDo;
         Rows.Add(Cells);
     EndDo;
-    Return New Structure("rows,truncated", Rows, RowCount > Request.maxRows Or ColumnCount > Request.maxColumns);
+    Return New Structure("rows,truncated", Rows, Truncated);
 EndFunction
 
 // A form table read row by row through the test client. The columns are its visible fields, and a cell is

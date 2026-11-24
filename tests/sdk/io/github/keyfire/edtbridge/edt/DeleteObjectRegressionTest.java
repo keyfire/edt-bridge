@@ -35,19 +35,19 @@ class DeleteObjectRegressionTest {
                 (proxy, method, args) -> method.getName().equals("getTopObjectByFqn")
                         && args[0].equals("InformationRegister.Versions") ? owner : null);
         String fqn = "InformationRegister.Versions.Resource.Version";
-        assertSame(resource, MetadataWriteGateway.resolveDeleteTarget(transaction, fqn));
-        assertNull(MetadataWriteGateway.resolveDeleteTarget(transaction, "InformationRegister.Versions.Dimension.Version"));
-        assertNull(MetadataWriteGateway.resolveDeleteTarget(transaction, "InformationRegister.Versions.Unknown.Version"));
-        assertNull(MetadataWriteGateway.resolveDeleteTarget(transaction, "InformationRegister.Versions.ce.Version"));
-        assertNull(MetadataWriteGateway.resolveDeleteTarget(transaction, "InformationRegister.Versions.MdObject.Version"));
-        assertNull(MetadataWriteGateway.resolveDeleteTarget(transaction, fqn + "."));
+        assertSame(resource, MetadataWriteGateway.resolveMetadataTarget(transaction, fqn));
+        assertNull(MetadataWriteGateway.resolveMetadataTarget(transaction, "InformationRegister.Versions.Dimension.Version"));
+        assertNull(MetadataWriteGateway.resolveMetadataTarget(transaction, "InformationRegister.Versions.Unknown.Version"));
+        assertNull(MetadataWriteGateway.resolveMetadataTarget(transaction, "InformationRegister.Versions.ce.Version"));
+        assertNull(MetadataWriteGateway.resolveMetadataTarget(transaction, "InformationRegister.Versions.MdObject.Version"));
+        assertNull(MetadataWriteGateway.resolveMetadataTarget(transaction, fqn + "."));
         var duplicate = MdClassFactory.eINSTANCE.createInformationRegisterResource();
         duplicate.setName("Version");
         owner.getResources().add(duplicate);
-        assertThrows(IllegalArgumentException.class, () -> MetadataWriteGateway.resolveDeleteTarget(transaction, fqn));
+        assertThrows(IllegalArgumentException.class, () -> MetadataWriteGateway.resolveMetadataTarget(transaction, fqn));
         owner.getResources().clear();
-        assertNull(MetadataWriteGateway.resolveDeleteTarget(transaction, fqn));
-        assertSame(owner, MetadataWriteGateway.resolveDeleteTarget(transaction, "InformationRegister.Versions"));
+        assertNull(MetadataWriteGateway.resolveMetadataTarget(transaction, fqn));
+        assertSame(owner, MetadataWriteGateway.resolveMetadataTarget(transaction, "InformationRegister.Versions"));
     }
 
     @Test void emptyUncheckedIncompleteAndBlockedNativePlansCannotAuthorizeDelete() {
@@ -92,11 +92,11 @@ class DeleteObjectRegressionTest {
                 (proxy, method, args) -> method.getName().equals("getTopObjectByFqn")
                         ? owners.get(args[0]) : null);
 
-        assertSame(processorForm, MetadataWriteGateway.resolveDeleteTarget(transaction, processorFqn + ".Form.Temporary"));
-        assertSame(reportForm, MetadataWriteGateway.resolveDeleteTarget(transaction, reportFqn + ".Form.Temporary"));
-        assertNull(MetadataWriteGateway.resolveDeleteTarget(transaction, processorFqn + ".Attribute.Temporary"));
-        assertNull(MetadataWriteGateway.resolveDeleteTarget(transaction, reportFqn + ".Form.Missing"));
+        assertSame(processorForm, MetadataWriteGateway.resolveMetadataTarget(transaction, processorFqn + ".Form.Temporary"));
+        assertSame(reportForm, MetadataWriteGateway.resolveMetadataTarget(transaction, reportFqn + ".Form.Temporary"));
+        assertNull(MetadataWriteGateway.resolveMetadataTarget(transaction, processorFqn + ".Attribute.Temporary"));
+        assertNull(MetadataWriteGateway.resolveMetadataTarget(transaction, reportFqn + ".Form.Missing"));
         processor.getForms().remove(processorForm);
-        assertNull(MetadataWriteGateway.resolveDeleteTarget(transaction, processorFqn + ".Form.Temporary"));
+        assertNull(MetadataWriteGateway.resolveMetadataTarget(transaction, processorFqn + ".Form.Temporary"));
     }
 }

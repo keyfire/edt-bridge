@@ -1,4 +1,4 @@
-"""An isolated Apache publication and a Chromium screenshot with DOM masks."""
+"""An isolated Apache publication, form layout and Chromium screenshots."""
 from __future__ import annotations
 
 import os
@@ -17,6 +17,19 @@ ENV_HTTPD = "EDT_BRIDGE_TEST_WEB_HTTPD"
 TEST_PORT = 1538
 COPY_PREFIX = "edt-bridge-web-"
 _FIELD = re.compile(r"form[0-9]+_(.+?)(?:_[a-z][0-9]+)?$")
+#: What one text of the web form holds at most: items, rows and columns of a table, characters of a value.
+LAYOUT_LIMITS = {"maxItems": 300, "maxRows": 30, "maxColumns": 30, "maxValueLength": 2048, "maxRawLength": 512_000}
+MAX_TEXT = 200
+MAX_FORM_TEXT = 48_000
+WEB_OBSERVATION_LIMITS = {
+    "maxItems": 64, "maxColumns": 30,
+    "maxMessages": 30, "maxMessageLength": 2048,
+    "sheets": {"maxFields": 4, "maxRows": 30, "maxColumns": 15, "maxCellLength": 512},
+}
+#: The names of hidden items one text lists at most.
+MAX_HIDDEN = 100
+#: The fields of an item line of the web form text.
+LEGEND = "name | kind | title | value | x,y wxh | flags"
 _TAG = "data-edt-bridge-mask"
 _MASK_STYLE = """
 html, html * { background-image: none !important; border-image-source: none !important;
@@ -63,6 +76,236 @@ tag => {
         rows.push([id, text, control]);
     }
     return rows;
+}
+"""
+
+
+# The form as text for a model without vision. The web client names the parts of an item by suffixes of
+# its id: form3_Number is the item, form3_Number_i0 its input, form3_Number#title_text its title. Some
+# captions are drawn from data attributes by CSS, so innerText misses them: window titles and page tabs
+# are read from those attributes.
+_LAYOUT = r"""
+({title: wanted, maxItems, maxRows, maxColumns, maxValueLength, maxRawLength, sheetNames = []}) => {
+    const clean = text => String(text || "").replace(/\s+/g, " ").trim();
+    let rawLength = 0, rawTruncated = false;
+    const readText = text => {
+        const value = String(text ?? "");
+        if (value.length > maxValueLength || rawLength + value.length > maxRawLength) {
+            rawTruncated = true;
+            return "";
+        }
+        rawLength += value.length;
+        return value;
+    };
+    const shown = node => {
+        if (!node || !node.isConnected) return false;
+        const style = getComputedStyle(node);
+        return style.display !== "none" && style.visibility === "visible" && node.getClientRects().length > 0;
+    };
+    const rect = node => {
+        const box = node.getBoundingClientRect();
+        return [box.left, box.top, box.width, box.height];
+    };
+    const overflows = node => Boolean(node) && (node.scrollWidth > node.clientWidth + 1
+                                                || node.scrollHeight > node.clientHeight + 1);
+    const selected = node => Boolean(node) && (node.classList.contains("select") || node.classList.contains("checked")
+                                               || node.getAttribute("aria-checked") === "true");
+    const windowTitle = node => {
+        for (let scope = node; scope; scope = scope.parentElement) {
+            const caption = scope.querySelector("[id$=headerTopLine_title]");
+            if (caption) {
+                return caption.getAttribute("title") || caption.parentElement.dataset.title || caption.innerText;
+            }
+        }
+        return "";
+    };
+    // Every form on the screen: the one in the main window and those in the floating windows over it.
+    const forms = [...document.querySelectorAll("[id^=form][id$=_mainGroup]")].filter(shown).map(group => {
+        const floating = group.closest("[id^=ps][id$=win]");
+        return {group, floating, prefix: group.id.slice(0, -"mainGroup".length), title: windowTitle(group),
+                z: floating ? Number(getComputedStyle(floating).zIndex) || 0 : -1,
+                area: floating ? floating.querySelector("[id$=formContent]") || floating : group};
+    });
+    if (!forms.length) return null;
+    // The title of a modified object ends with an asterisk that the test manager does not report.
+    const normal = text => clean(text).replace(/\s*\*$/, "").toLowerCase();
+    const named = forms.filter(form => wanted && normal(form.title) === normal(wanted));
+    const target = named.length === 1 ? named[0] : [...forms].sort((a, b) => b.z - a.z)[0];
+    const origin = rect(target.group);
+    const view = rect(target.area);
+    // The share of a box inside the window and its scrolled containers: an item can lie in the form and still
+    // be out of sight, past the window edge or below a scrolled panel.
+    const visibleShare = node => {
+        let [left, top, width, height] = rect(node);
+        let right = left + width, bottom = top + height;
+        const area = width * height;
+        if (!area) return 1;
+        const clip = (x, y, w, h) => {
+            left = Math.max(left, x); top = Math.max(top, y);
+            right = Math.min(right, x + w); bottom = Math.min(bottom, y + h);
+        };
+        clip(...view);
+        clip(0, 0, innerWidth, innerHeight);
+        for (let scope = node.parentElement; scope && scope !== target.area; scope = scope.parentElement) {
+            if (getComputedStyle(scope).overflow !== "visible") clip(...rect(scope));
+        }
+        return Math.max(0, right - left) * Math.max(0, bottom - top) / area;
+    };
+    const place = node => {
+        const [left, top, width, height] = rect(node);
+        return `${Math.round(left - origin[0])},${Math.round(top - origin[1])} ${Math.round(width)}x${Math.round(height)}`;
+    };
+    // The parts of one item: form3_Number is the item, form3_Number_div its frame, form3_Number_i0 its input,
+    // form3_Number#title_text its title, form3_Number_CB a button of the input.
+    const part = /^(.*?)(#.*|_div|_i[0-9]+|_DLB|_CB|_OB|_CLR|_container|_right|_search|_col_[0-9]+|_cmd_[0-9_]+)$/;
+    // Not items of the form layout: the entries of submenus and context menus, the editors of table columns.
+    const service = /^(popup_|allActions)|_(all_)?sub(_submenu)?$|_submenu$|_preloader$/;
+    const items = new Map();
+    const pages = new Map();
+    for (const node of target.area.querySelectorAll("[id]")) {
+        if (node.id.startsWith("thpage_" + target.prefix)) {
+            pages.set(node.id.slice(("thpage_" + target.prefix).length), node);
+            continue;
+        }
+        if (!node.id.startsWith(target.prefix)) continue;
+        const id = node.id.slice(target.prefix.length);
+        const match = part.exec(id);
+        const name = match ? match[1] : id;
+        if (!name || name.startsWith("$") || name === "mainGroup" || service.test(name)) continue;
+        if (node.parentElement.closest(".grid, [id$=_submenu], .submenu")) continue;
+        if (!items.has(name)) items.set(name, {});
+        items.get(name)[match ? match[2] : ""] = node;
+    }
+    const lines = [], hidden = [], tables = [];
+    let truncated = false;
+    const describe = (name, kind, title, value, box, extra, options = []) => {
+        if (lines.length >= maxItems) {
+            truncated = true;
+            return;
+        }
+        const flags = extra.filter(Boolean);
+        const share = visibleShare(box);
+        if (share === 0) flags.push("offscreen");
+        else if (share < 0.98) flags.push("cut");
+        lines.push([name, kind, readText(title), readText(value), place(box), flags, options.map(readText)]);
+    };
+    const describePages = (group) => {
+        for (const [page, header] of pages) {
+            if (header.closest(".frameTabs") !== group) continue;
+            const content = document.getElementById(target.prefix + page + "_div");
+            const label = header.querySelector("[data-content]");
+            const text = label ? label.dataset.content : header.innerText;
+            if (shown(header)) {
+                describe(page, "page", text, "", header, [selected(header) && "current"]);
+            } else if (shown(content)) {
+                // Pages shown without tabs: the page in view is the current one.
+                describe(page, "page", text, "", content, ["current"]);
+            } else {
+                hidden.push(page);
+            }
+        }
+    };
+    const describeTable = (name, main) => {
+        const grid = document.getElementById("grid_" + target.prefix + name) || main;
+        const indexed = cells => new Map([...cells].filter(shown).map(
+            (cell, position) => [Number(cell.getAttribute("colindex") ?? position), cell.innerText]));
+        const headers = indexed(grid.querySelectorAll(".gridHead:not(.gridFoot) .gridBox"));
+        const body = grid.querySelector(".gridBody");
+        const rows = [...grid.querySelectorAll(".gridBody .gridLine")].filter(shown);
+        const sample = rows.slice(0, maxRows);
+        const cells = sample.map(row => indexed(row.querySelectorAll(".gridBox")));
+        const indexes = new Set(headers.keys());
+        for (const row of cells) {
+            for (const index of row.keys()) indexes.add(index);
+        }
+        const columns = [...indexes].sort((a, b) => a - b).slice(0, maxColumns);
+        tables.push({name, columns: columns.map(index => readText(headers.get(index))), current: sample.findIndex(selected),
+                     rows: cells.map(row => columns.map(index => readText(row.get(index)))),
+                     more: rows.length > maxRows || indexes.size > maxColumns || overflows(body)});
+    };
+    for (const [name, parts] of items) {
+        const main = parts[""] || parts["#text"] || parts["#image"];
+        const caption = parts["#title_text"];
+        const input = parts["_i0"];
+        const box = [main, parts["_div"], parts["#text_div"], parts["#image_div"], input].find(shown);
+        if (box && !(box.getBoundingClientRect().width && box.getBoundingClientRect().height)) continue;
+        if (!box) {
+            if (main && (parts["_div"] || parts["#text_div"])) hidden.push(name);
+            continue;
+        }
+        const has = name => Boolean(main) && main.classList.contains(name);
+        // A button of the form body wraps its press in a frame; a button of a command bar is the press itself.
+        const press = has("press") ? main : main && main.querySelector(":scope > a.press");
+        let title = caption && shown(caption) ? caption.innerText : "";
+        let kind, value = "", extra = [], options = [];
+        if (named.length === 1 && sheetNames.includes(name)) {
+            kind = "spreadsheet";
+        } else if (input || has("field")) {
+            kind = "input";
+            value = input && input.type !== "password" ? String(input.value ?? "") : "";
+            // An empty date or number shows its input mask, which is not a value.
+            if (!/[^\s._:\-/()]/.test(value)) value = "";
+            const hint = main && main.querySelector(".inputHint");
+            if (!title && !value && hint && shown(hint)) {
+                title = hint.innerText;
+                extra.push("hint");
+            }
+            extra.push(input && input.disabled && "disabled",
+                       ((input && input.readOnly) || has("fieldReadOnly")) && "readonly",
+                       overflows(input) && "clipped", input && document.activeElement === input && "focus");
+        } else if (has("checkbox")) {
+            kind = "check";
+            value = selected(main) ? "on" : "off";
+        } else if (has("switch")) {
+            kind = "switch";
+            value = selected(main) ? "on" : "off";
+        } else if (has("frameTumbler") || has("frameRadio")) {
+            kind = "choice";
+            const nodes = [...main.querySelectorAll(".tumblerItem, .radioItem")].filter(shown);
+            value = nodes.filter(selected).map(option => option.innerText).join(", ");
+            options = nodes.slice(0, maxColumns).map(option => option.innerText);
+        } else if (press) {
+            kind = "button";
+            value = press.innerText.trim() ? press.innerText : press.getAttribute("title") || main.getAttribute("title");
+            const state = name => press.classList.contains(name);
+            extra.push(state("pressDisabled") && "disabled", state("pressDefault") && "default",
+                       overflows(press) && "clipped");
+        } else if (has("staticText")) {
+            kind = has("staticTextHyper") ? "link" : "text";
+            value = main.innerText;
+            extra.push(overflows(main) && "clipped");
+        } else if (has("frameTabs")) {
+            kind = "pages";
+        } else if (has("grid")) {
+            kind = "table";
+        } else if (main && main.querySelector(":scope > .imageContainer")) {
+            kind = "picture";
+        } else if (has("frameCommand")) {
+            continue;
+        } else if (title) {
+            kind = "group";
+        } else {
+            continue;
+        }
+        if (title && overflows(caption) && !extra.includes("clipped")) extra.push("clipped");
+        describe(name, kind, title, value, box, extra, options);
+        if (kind === "pages") describePages(main);
+        if (kind === "table") describeTable(name, main);
+        if (truncated) break;
+    }
+    // A window over the form: a warning, a question or an error the form did not expect.
+    const over = forms.filter(form => form.z > target.z)
+        .sort((a, b) => b.z - a.z).map(form => form.title || form.group.innerText);
+    const others = forms.filter(form => form !== target && form.z <= target.z).map(form => form.title)
+        .filter(Boolean);
+    const panel = document.getElementById((target.floating ? target.floating.id.slice(0, -3) : "") + "messageCell");
+    const messages = shown(panel) ? [...panel.querySelectorAll(".gridBody .gridLine")].filter(shown)
+        .map(line => line.innerText).filter(Boolean) : [];
+    const limited = values => values.slice(0, maxRows).map(readText);
+    return {title: readText(target.title), matchedTitle: named.length === 1,
+            size: `${Math.round(origin[2])}x${Math.round(origin[3])}`, items: lines, tables, hidden,
+            messages: limited(messages), over: limited(over), others: limited(others),
+            truncated: truncated || rawTruncated || [messages, over, others].some(values => values.length > maxRows)};
 }
 """
 
@@ -261,23 +504,160 @@ def start(stack, paths, platform, navigation_link, external, user, language, dea
     return process, page, client_id
 
 
-def capture(page, output, flt, deadline):
-    """Save only the pixels from the Chromium capture with the field masks applied."""
+def _freeze(page):
+    # Chromium leaves DevTools evaluation enabled while application scripts are suspended.
+    # An application callback cannot change the form between reading it and the capture.
+    page.context.new_cdp_session(page).send("Emulation.setScriptExecutionDisabled", {"value": True})
+
+
+def form_text(raw, flt, *, sheets=(), table_columns=None):
+    """The form read from the DOM as lines for a model, with the values passed through the filter.
+
+    A value whose field name or title names personal data is replaced whole, other text by its shape, the
+    same rules as in the other answers. Lines keep the answer compact: a JSON object per item would take
+    several times the tokens."""
+    remaining = MAX_FORM_TEXT
+    limit_reached = False
+
+    def shortened(text):
+        flat = " ".join(text.split())
+        return (flt.text(flat) if flat != text else text)[:MAX_TEXT]
+
+    def caption(text):
+        return shortened(flt.text(text))
+
+    def value(name, title, text):
+        return shortened(flt.named(name if flt.kind_of(name) else title, text))
+
+    def line(fields, flags=()):
+        return " | ".join(fields) + (" | " + " ".join(flags) if flags else "")
+
+    def fits(text):
+        nonlocal remaining, limit_reached
+        if len(text) > remaining:
+            limit_reached = True
+            return False
+        remaining -= len(text) + 1
+        return True
+
+    def bounded(lines):
+        result = []
+        for text in lines:
+            if not fits(text):
+                break
+            result.append(text)
+        return result
+
+    items = []
+    for name, kind, title, text, box, flags, options in raw.get("items") or []:
+        if options:
+            labels = "/".join(value(name, title, option) for option in options)
+            flags = [*flags, "options=" + labels[:MAX_TEXT]]
+        item = line([name, kind, caption(title), value(name, title, text), box], flags)
+        if not fits(item):
+            break
+        items.append(item)
+    tables = []
+    for table in raw.get("tables") or []:
+        name = table["name"]
+        columns = table.get("columns") or []
+        by_title = {}
+        for column in (table_columns or {}).get(name, []):
+            key = " ".join(column["title"].split()).casefold()
+            by_title.setdefault(key, []).append(column["name"])
+        keys = [" ".join(title.split()).casefold() for title in columns]
+        owners = [by_title[key][0] if keys.count(key) == 1 and len(by_title.get(key, ())) == 1 else ""
+                  for key in keys]
+        header = line(caption(title) for title in columns)
+        if not fits(header):
+            break
+        raw_rows = table.get("rows") or []
+        withheld = False
+
+        def table_cell(index, cell):
+            nonlocal withheld
+            owner = owners[index] if index < len(owners) else ""
+            title = columns[index] if index < len(columns) else ""
+            if cell and flt.active and not owner and not flt.kind_of(title):
+                withheld = True
+                return "[withheld]"
+            return value(owner, title, cell)
+
+        rows = bounded(line(table_cell(index, cell) for index, cell in enumerate(row)) for row in raw_rows)
+        entry = {"name": name, "columns": header, "rows": rows}
+        if withheld:
+            entry["withheld"] = True
+        current = table.get("current", -1)
+        if 0 <= current < len(rows):
+            entry["currentRow"] = current + 1
+        if table.get("more") or len(rows) < len(raw_rows):
+            entry["more"] = True
+        tables.append(entry)
+    spreadsheets = []
+    for sheet in sheets:
+        name, title = sheet["name"], sheet["title"]
+        header = caption(title)
+        if not fits(header):
+            break
+        rows = bounded(line(value(name, title, cell) for cell in row) for row in sheet["rows"])
+        entry = {"name": name, "title": header, "rows": rows}
+        if sheet.get("truncated") or len(rows) < len(sheet["rows"]):
+            entry["more"] = True
+        spreadsheets.append(entry)
+    text = {"title": caption(raw.get("title") or ""), "size": raw.get("size", ""), "legend": LEGEND,
+            "items": items}
+    for key, found in (("tables", tables), ("spreadsheets", spreadsheets),
+                       ("messages", [caption(item) for item in raw.get("messages") or []]),
+                       ("overForm", [caption(item) for item in raw.get("over") or []]),
+                       ("otherWindows", [caption(item) for item in raw.get("others") or []])):
+        if found:
+            text[key] = found
+    hidden = list(dict.fromkeys(raw.get("hidden") or []))
+    if hidden:
+        # A large configuration hides dozens of items by its options; the first ones are enough to tell
+        # a hidden item from an absent one.
+        more = len(hidden) - MAX_HIDDEN
+        text["hidden"] = ", ".join(hidden[:MAX_HIDDEN]) + (f" and {more} more" if more > 0 else "")
+    if raw.get("truncated") or limit_reached:
+        text["truncated"] = True
+    return text
+
+
+def read_form(page, flt, title, *, sheets=(), table_columns=None, panel_messages=(), panel_truncated=False):
+    """The form in front, or the one titled `title`, as text; see form_text."""
     from playwright.sync_api import Error
 
     try:
-        devtools = page.context.new_cdp_session(page)
-        # Chromium leaves DevTools evaluation enabled while application scripts are suspended.
-        # An application callback cannot change a protected field between analysis and capture.
-        devtools.send("Emulation.setScriptExecutionDisabled", {"value": True})
-        rows = page.evaluate(_SNAPSHOT, _TAG)
-        if not rows:
-            raise WebError("screenshot_failed", "No visible DOM content was available for filtering.")
-        masked = [page.locator(f'[{_TAG}~="{index}"]') for index in mask_indexes(rows, flt)]
-        png = page.screenshot(mask=masked, mask_color="#202020", style=_MASK_STYLE,
-                              animations="disabled", caret="hide", timeout=_milliseconds(deadline))
+        _freeze(page)
+        raw = page.evaluate(_LAYOUT, dict(LAYOUT_LIMITS, title=title or "",
+                                          sheetNames=[sheet["name"] for sheet in sheets]))
+    except Error as error:
+        raise WebError("form_text_failed", "Chromium could not read the form from the DOM.") from error
+    if not raw:
+        raise WebError("form_text_failed", "The web client shows no form.")
+    if not raw.get("matchedTitle"):
+        return form_text(raw, flt)
+    if not raw.get("messages"):
+        raw = dict(raw, messages=panel_messages, truncated=raw.get("truncated") or panel_truncated)
+    return form_text(raw, flt, sheets=sheets, table_columns=table_columns)
+
+
+def capture(page, output, flt, deadline):
+    """Save the Chromium capture: with the field masks applied when the personal data filter is on."""
+    from playwright.sync_api import Error
+
+    try:
+        _freeze(page)
+        options = {"animations": "disabled", "caret": "hide", "timeout": _milliseconds(deadline)}
+        if flt.active:
+            rows = page.evaluate(_SNAPSHOT, _TAG)
+            if not rows:
+                raise WebError("screenshot_failed", "No visible DOM content was available for filtering.")
+            masked = [page.locator(f'[{_TAG}~="{index}"]') for index in mask_indexes(rows, flt)]
+            options.update(mask=masked, mask_color="#202020", style=_MASK_STYLE)
+        png = page.screenshot(**options)
     except Error as error:
         raise WebError("screenshot_failed", "Chromium could not capture the masked DOM.") from error
     destination = output / "screenshot.png"
     destination.write_bytes(png)
-    return {"screenshot": str(destination), "screenshotMasked": True}
+    return {"screenshot": str(destination), "screenshotMasked": flt.active}

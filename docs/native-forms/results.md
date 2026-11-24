@@ -39,10 +39,14 @@ and the CI reports. `piiFilter` shows the mode and the number of replacements. T
 the original values. The desktop client's screenshot is withheld and the report sets
 `screenshotWithheld` in place of its path. See [Personal data](/personal-data).
 
-## Masked web client screenshots
+<a id="masked-web-client-screenshots"></a>
 
-To capture a masked screenshot, set `EDT_BRIDGE_PII` to `redact` or `pseudonym` and pass
-`--web-client` to `test-form` or `webClient=true` to `edt_test_form`.
+## Web client
+
+`--web-client` of `test-form` and `webClient=true` of `edt_test_form` open the form in the web
+client of a temporary publication. The result describes the form as text in `webForm` and keeps
+a screenshot. `EDT_BRIDGE_PII` is optional: with it set to `redact` or `pseudonym`, the values in
+`webForm` pass the filter and the screenshot is masked.
 
 - For an external `.epf` or `.erf`, supply the file path, the form name and a button or a
   single scenario. Use the desktop client for a batch of named scenarios.
@@ -53,6 +57,7 @@ To capture a masked screenshot, set `EDT_BRIDGE_PII` to `redact` or `pseudonym` 
    `wsap24.so` module. `EDT_BRIDGE_TEST_WEB_HTTPD` selects Apache and defaults to
    `/usr/local/apache2/bin/httpd`. When the runner uses root, Apache needs a `www-data` worker account.
 2. Install `edt-bridge-mcp[web]` and run `python -m playwright install chromium` in that environment.
+   Add `--with-deps` on a minimal Linux image to install Chromium's system libraries.
    Keep TCP ports 1538–1539 free and private to the runner. The bridge binds HTTP to loopback;
    the platform's test listener binds to the runner's network interfaces.
 3. Run the check. The wrapper publishes a private copy of `1Cv8.1CD` in a temporary Apache
@@ -63,11 +68,68 @@ prompt for the file unanswered. To prepare the runner for unattended checks of t
 files, use a test user with the appropriate platform setting or scope
 `DisableUnsafeActionProtection` to the temporary copies with `.*/edt-bridge-web-.*`.
 
-The web client masks visible DOM content matched by the field and value rules. It hides
-tables, embedded images, canvas and frames before capture. A saved screenshot sets `screenshotMasked`
-and appears in `result.json` and the Allure attachments. The MCP tool returns the final
-screenshot as image content. If Chromium cannot analyze or capture the DOM, the report
-sets `screenshotWithheld` and gives the reason in `screenshotError`.
+### Form as text
+
+`webForm` describes the form for a model without vision. It is read from the page after the
+last step of the scenario or after the click of a button check, right before the screenshot.
+The tool matches the form by the window title reported by the test manager. If the title
+is missing or ambiguous, it reads the front window. Each item takes one line.
+
+| Field | Content |
+| --- | --- |
+| `title`, `size` | The window title and the size of the form area in pixels. |
+| `legend` | The fields of an item line: `name \| kind \| title \| value \| x,y wxh \| flags`. |
+| `items` | The visible items in the order of the form, up to 300. |
+| `tables` | Each form table has `name`, `columns`, up to 30 DOM `rows` and 30 columns, and `currentRow` (numbered from 1) when the selected row is included. `more` marks additional content. With the filter enabled, `withheld` marks a table with cells hidden because their column could not be identified. |
+| `spreadsheets` | The test manager reads up to four visible spreadsheet fields after a completed sequence of actions. Each entry has `name`, `title` and `rows` with up to 30 rows and 15 columns. `more` marks additional cells. |
+| `spreadsheetsTruncated`, `spreadsheetsError` | The spreadsheet field limit was reached, or the test manager could not read spreadsheets or column names. |
+| `messages` | Up to 30 lines from the message panel. The test manager supplies them when the browser DOM has no visible messages for the matched form. |
+| `overForm` | The windows over the form, such as a warning or an error window: the title, or the text of a window without one. |
+| `otherWindows` | The titles of the other windows under the form. |
+| `hidden` | Up to 100 names of hidden items that the client keeps in the DOM. |
+| `truncated` | `true` when the client omits items, text or messages due to a limit. Items, table headers and rows share a 48,000-character limit. |
+
+`name` is the item name from the id of its web client element, `title` its caption, and
+`value` the text the client shows: the content of an input, a decoration or a button, the state
+of a check box. `x,y` counts pixels from the top left corner of the form area, `wxh` is the size.
+Titles and values are limited to 200 characters after filtering.
+
+| Kind | Item |
+| --- | --- |
+| `input` | An input field. |
+| `check`, `switch` | A check box or a switch, with the value `on` or `off`. |
+| `choice` | A tumbler or radio buttons: the selected option, and all options in the `options=` flag. |
+| `button`, `link` | A button, a hyperlink or a decoration that acts as one. |
+| `text`, `picture` | A label or a picture decoration. |
+| `table` | A form table; its rows are in `tables`. |
+| `spreadsheet` | A spreadsheet document field. Its cells are in `spreadsheets`. |
+| `pages`, `page` | A group of pages and each of its pages. |
+| `group` | A group with a visible caption. |
+
+| Flag | Meaning |
+| --- | --- |
+| `clipped` | The caption or the value does not fit the item. |
+| `cut` | Part of the item lies outside the window or a scrolled panel. |
+| `offscreen` | The whole item lies outside the visible area: past the window edge or below a scrolled panel. |
+| `current` | The open page. |
+| `readonly`, `disabled` | The item accepts no input or click. |
+| `default` | The default button. |
+| `focus` | The input has the focus. |
+| `hint` | The field is empty, and `title` holds its input hint. |
+
+An item line looks like `Customer | input | Customer: | Sample LLC | 93,73 399x25 | focus`.
+If Chromium cannot read the form, `webFormError` gives the reason. If MCP has no screenshot to
+return either, a successful check returns `form_text_failed`.
+
+### Screenshot
+
+With `EDT_BRIDGE_PII` set, the web client masks visible DOM content matched by the field and
+value rules. It hides tables, embedded images, canvas and frames before capture. A saved
+screenshot sets `screenshotMasked` and appears in `result.json` and the Allure attachments. The
+MCP tool returns the final masked screenshot as image content. Set `screenshot=false` to skip
+capture. With the filter off, the CLI saves an unmasked screenshot and sets `screenshotMasked`
+to `false`. MCP sends images only with the filter enabled. If capture fails, the report sets
+`screenshotWithheld` and gives the reason in `screenshotError`.
 
 | Result | Meaning |
 | --- | --- |
@@ -110,8 +172,9 @@ it, the same for every run of a platform build), `targetMetadata` and `reportLau
 target needs), `phases`, `cleanup` (stopping the processes and removing the temporary directory)
 and `eventLog`. `edt_test_form` adds `infobaseCopy`, the copy of the test infobase. Each entry of
 `timings.phases` has the phase `name`, its `seconds` and their parts: `clientStart`, `manager` (from
-the start of the test manager to its result, earlier connection attempts included), `screenshot`
-and `cleanup`. `driver` holds what the test manager measured itself: `connect`, `formLookup`, the
+the start of the test manager to its result, earlier connection attempts included), `formText`
+(reading the web form as text), `screenshot` and `cleanup`. `driver` holds what the test manager
+measured itself: `connect`, `formLookup`, the
 `command` of a button check or `steps` with the `seconds` of each scenario step, and `total`;
 `managerStartup` is the rest of `manager`, the start of the manager's platform. When the
 first connection to the client failed, the manager is started again, and `connectRetries` holds
