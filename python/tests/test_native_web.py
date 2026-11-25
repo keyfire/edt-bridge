@@ -501,3 +501,126 @@ def test_the_details_of_a_web_error_reach_the_report():
     native_form._record_error(report, native_web.WebError("web_start_window", "Blocked.",
                                                           {"blockingWindows": ["Question"]}), "driver_failed")
     assert report == {"ok": False, "status": "web_start_window", "error": "Blocked.", "blockingWindows": ["Question"]}
+
+
+# A spreadsheet field as the web client 8.5 draws it (series probe of a label print form): cells in a same-origin
+# frame, a narrow cell with a value next to it cuts its text, a long text runs on over empty neighbours.
+_SHEET_FRAME = """
+<style>
+body { margin: 0; overflow: hidden; font-family: Arial; font-size: 9.7pt; }
+div { position: absolute; padding-left: 2px; padding-right: 2px; box-sizing: content-box; line-height: 1.2em; }
+.R0 { left: 0; right: 0; top: 0; height: 24px; }
+.R0C0 { width: 50px; height: 22px; font-size: 13.5pt; font-weight: bold; border: 1px solid #000; }
+.R1 { left: 0; right: 0; top: 23px; height: 17px; }
+.R1C0 { width: 15px; height: 16px; border: 1px solid #000; overflow: hidden; }
+.R1C1 { left: 21px; width: 30px; height: 16px; border: 1px solid #000; }
+.R2 { left: 0; right: 0; top: 42px; height: 22px; }
+.R2C0 { width: 100px; height: 20px; overflow: hidden; }
+.R3 { left: 0; right: 0; top: 64px; height: 18px; visibility: hidden; }
+.R4 { left: 0; right: 0; top: 83px; height: 19px; }
+.R4C0 { width: 85px; height: 18px; border-right: 5px solid #000; overflow: hidden; }
+</style>
+<div class="fullSize" style="overflow: hidden;"><div style="width: 1399px; height: 953px;">
+<div class="R0" y="0"><div class="R0C0" x="0" cs="2"><span style="left: 4px; right: -232px; position: absolute;">Sample product with a long name</span></div></div>
+<div class="R1" y="1"><div class="R1C0" x="0"><span style="left: 3px; right: -43px; position: absolute;">Article:</span><span style="display: none;">Hidden note</span><span style="visibility: hidden;">Private memo</span></div>
+<div class="R1C1" x="1"><span style="left: 3px; right: -55px; position: absolute;">AB-01-LONG-CODE</span></div></div>
+<div class="R2" y="2"><div class="R2C0" x="0"><span style="top: 12px; position: absolute;">Lower edge</span></div></div>
+<div class="R3" y="3"><div class="R1C0" x="0"><span style="position: absolute;">Hidden cell</span></div></div>
+<div class="R4" y="4"><div class="R4C0" x="0"><span style="right: -3px; position: absolute;">Border</span></div></div>
+</div></div>
+"""
+
+
+def test_read_form_finds_text_clipped_in_the_spreadsheet_frame():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as playwright:
+        try:
+            browser = playwright.chromium.launch()
+        except sync_api.Error:
+            pytest.skip("no Chromium for Playwright")
+        try:
+            page = browser.new_page()
+            page.set_content('''
+                <section>
+                    <div id="form6_headerTopLine_title">Preview</div>
+                    <div id="form6_mainGroup">
+                        <div id="form6_Labels" class="moxelContainer">
+                            <iframe style="width: 600px; height: 200px;"></iframe>
+                        </div>
+                    </div>
+                </section>
+            ''')
+            page.evaluate("html => { const doc = document.querySelector('iframe').contentDocument;"
+                          " doc.open(); doc.write(html); doc.close(); }", _SHEET_FRAME)
+            sheets = [{"name": "Labels", "title": "Labels", "rows": [["Article:", "AB-01-LONG-CODE"]]},
+                      {"name": "Missing", "title": "Missing", "rows": []}]
+            report = native_web.read_form(page, pii.Filter(), "Preview", sheets=sheets)
+        finally:
+            browser.close()
+    sheet, missing = report["spreadsheets"]
+    clipped = [cell.split(" | ") for cell in sheet["clipped"]]
+    assert [fields[:2] for fields in clipped] == [["R2C1", "Article:"], ["R3C1", "Lower edge"], ["R5C1", "Border"]]
+    width, cell_width = map(int, clipped[0][2].removesuffix(" px").split("/"))
+    assert width > cell_width
+    assert clipped[1][2].endswith(" px high")
+    assert "clippedMore" not in sheet
+    assert "clipped" not in missing
+
+
+def test_form_text_lists_the_clipped_cells_of_a_spreadsheet():
+    sheets = [{"name": "Labels", "title": "Labels", "rows": [["Article:", "AB-01"]]}]
+    clips = {"Labels": {"cells": [[2, 1, "Article:", 52, 22, 16, 16, False],
+                                  [5, 3, "Total:", 40, 30, 32, 16, True]], "more": True}}
+    text = native_web.form_text({"items": []}, pii.Filter(), sheets=sheets, clips=clips)
+    sheet = text["spreadsheets"][0]
+    assert sheet["clipped"] == ["R2C1 | Article: | 52/22 px", "R5C3 | Total: | 40/30 px, 32/16 px high"]
+    assert sheet["clippedMore"] is True
+    plain = native_web.form_text({"items": []}, pii.Filter(), sheets=sheets)
+    assert "clipped" not in plain["spreadsheets"][0]
+
+
+def test_clipped_cells_use_the_budget_after_spreadsheet_rows(monkeypatch):
+    monkeypatch.setattr(native_web, "MAX_FORM_TEXT", 65)
+    last_row = "The second sheet keeps its full row"
+    sheets = [
+        {"name": "First", "title": "First", "rows": [["First row"]]},
+        {"name": "Second", "title": "Second", "rows": [[last_row]]},
+    ]
+    clips = {"First": {"cells": [[1, 1, "Sample label", 300, 20, 16, 16, False]], "more": False}}
+    report = native_web.form_text({"items": []}, pii.Filter(), sheets=sheets, clips=clips)
+    first, second = report["spreadsheets"]
+    assert second["rows"] == [last_row]
+    assert first["clipped"] == []
+    assert first["clippedMore"] is True
+
+
+def test_read_form_asks_for_the_cut_cells_of_the_spreadsheets_of_its_form():
+    pytest.importorskip("playwright.sync_api")
+
+    class Page(_Page):
+        def evaluate(self, script, argument):
+            self.calls.append(("evaluate", argument))
+            if script == native_web._SHEET_CLIPS:
+                return {"Report": {"cells": [[1, 1, "Long title", 90, 40, 16, 16, False]], "more": False}}
+            return dict(_RAW_FORM, matchedTitle=True, prefix="form3_")
+
+    page = Page()
+    sheets = [{"name": "Report", "title": "", "rows": [["Long title"]]}]
+    text = native_web.read_form(page, pii.Filter(), "Order", sheets=sheets)
+    assert text["spreadsheets"][0]["clipped"] == ["R1C1 | Long title | 90/40 px"]
+    assert ("evaluate", {"prefix": "form3_", "names": ["Report"], "limit": native_web.MAX_CLIPPED}) in page.calls
+
+
+def test_read_form_keeps_the_cells_when_the_check_of_the_cut_text_fails():
+    sync_api = pytest.importorskip("playwright.sync_api")
+
+    class Page(_Page):
+        def evaluate(self, script, argument):
+            if script == native_web._SHEET_CLIPS:
+                raise sync_api.Error("Frame was detached")
+            return dict(_RAW_FORM, matchedTitle=True, prefix="form3_")
+
+    sheets = [{"name": "Report", "title": "", "rows": [["Long title"]]}]
+    text = native_web.read_form(Page(), pii.Filter(), "Order", sheets=sheets)
+    assert text["spreadsheets"][0]["name"] == "Report"
+    assert "clipped" not in text["spreadsheets"][0]

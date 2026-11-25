@@ -13,10 +13,14 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
-## 2026-11-25 – 0.56.0
+## 2026-11-25 – 0.56.0, 0.57.0
 
 ### Added
 
+- `edt_test_form` with `webClient=true` lists spreadsheet cells with clipped text in
+  `webForm.spreadsheets[].clipped`. Each entry shows the cell address and the widths of the
+  text and cell.
+  ([#119](https://github.com/keyfire/edt-bridge/pull/119))
 - `edt_create_object` creates HTTP services, subsystems and scheduled jobs with their initial
   settings.
   ([#118](https://github.com/keyfire/edt-bridge/pull/118))
