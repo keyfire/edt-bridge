@@ -2025,6 +2025,49 @@
       ]
     },
     {
+      "name": "edt_copy_form",
+      "description": "WRITE: copy a managed form - items, attributes, commands, handlers and its module - to another object of the same project, configuration or extension, or to the same object under another name. Into an object of the same kind (catalog to catalog, data processor to data processor), references to the source object's types and attributes move to the target's namesakes, so the main attribute becomes the target's object. References the target cannot take, and the main table of a dynamic list copied to another object, are listed in the plan. Data paths, handler names and the module text are copied as they are. Dry-run by default; apply=true writes the copy. Additive - no force needed - but requires a configured token. To bring a base configuration form into an extension, adopt it with edt_adopt_object instead.",
+      "descriptionRu": "ЗАПИСЬ: скопировать управляемую форму - элементы, реквизиты, команды, обработчики и модуль - в другой объект того же проекта, конфигурации или расширения, либо в тот же объект под другим именем. При копии в объект того же вида (справочник в справочник, обработка в обработку) ссылки на типы и реквизиты исходного объекта переходят на одноименные у целевого, и основной реквизит становится объектом целевого. Ссылки, которым у целевого объекта нет пары, и основная таблица динамического списка при копии в другой объект перечисляются в плане. Пути к данным, имена обработчиков и текст модуля копируются как есть. По умолчанию dry-run; apply=true записывает копию. Аддитивно - force не нужен - но требует токен. Чтобы перенести форму основной конфигурации в расширение, заимствуйте ее через edt_adopt_object.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "description": "EDT project name: the configuration or the extension that holds both the source form and the target object."
+          },
+          "sourceFormFqn": {
+            "type": "string",
+            "description": "The form to copy, with an English type prefix: <Type>.<Owner>.Form.<Name>, e.g. DataProcessor.ПодачаЗаявки.Form.Форма, or CommonForm.<Name>. A managed form; an adopted form of an extension is refused."
+          },
+          "targetOwnerFqn": {
+            "type": "string",
+            "description": "The object that gets the copy, e.g. DataProcessor.Заявки, Catalog.Контрагенты. It may be the source form's own object when the copy takes another name."
+          },
+          "name": {
+            "type": "string",
+            "description": "Name of the copy (a valid 1C identifier). Optional - omitted keeps the source form's name. In an extension, a form added to an adopted object gets the extension prefix."
+          },
+          "synonymRu": {
+            "type": "string",
+            "description": "Russian synonym of the copy. Optional - omitted keeps the source synonyms."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "false (default) = dry-run: validate, copy the content in memory and return the plan with the references that move to the target and the ones that keep pointing into the source object; nothing is written. true = write the copy (owner .mdo gains the form, Form.form and Module.bsl are written). Verify edt_support_status EDITABLE first."
+          }
+        },
+        "required": [
+          "projectName",
+          "sourceFormFqn",
+          "targetOwnerFqn"
+        ]
+      },
+      "toolsets": [
+        "processor",
+        "report"
+      ]
+    },
+    {
       "name": "edt_add_form_attribute",
       "description": "WRITE (Phase 2): add an attribute to a managed form. The id comes from EDT's own form identifier service and the type from the same grammar edt_add_attribute uses, so the attribute is indistinguishable from one added in the form editor. Dry-run by default: validates and returns the plan WITHOUT writing. apply=true adds it and serializes Form.form. Additive - no force needed - but requires a configured token.",
       "descriptionRu": "ЗАПИСЬ (Phase 2): добавить реквизит управляемой формы. Идентификатор выдает штатная служба идентификаторов формы, тип разбирается той же грамматикой, что у edt_add_attribute, поэтому реквизит неотличим от добавленного в редакторе формы. По умолчанию dry-run: проверяет и возвращает план БЕЗ записи. apply=true добавляет реквизит и сериализует Form.form. Аддитивно - force не нужен - но требует токен.",

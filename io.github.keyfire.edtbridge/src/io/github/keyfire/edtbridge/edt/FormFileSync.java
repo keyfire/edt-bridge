@@ -16,6 +16,9 @@
  */
 package io.github.keyfire.edtbridge.edt;
 
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
@@ -24,6 +27,7 @@ import org.eclipse.core.runtime.NullProgressMonitor;
 import com._1c.g5.v8.bm.core.IBmTransaction;
 import com._1c.g5.v8.bm.integration.AbstractBmTask;
 import com._1c.g5.v8.bm.integration.IBmModel;
+import com._1c.g5.v8.bm.integration.IBmWorkspaceSynchronizationListener;
 import com._1c.g5.v8.dt.core.platform.IBmModelManager;
 import com._1c.g5.v8.dt.core.platform.IResourceLookup;
 import com._1c.g5.v8.dt.form.model.Form;
@@ -68,14 +72,37 @@ final class FormFileSync {
         String path = file.getProjectRelativePath().toPortableString();
         boolean changed = false;
         try {
-            if (!file.isSynchronized(IResource.DEPTH_ZERO)) {
-                file.refreshLocal(IResource.DEPTH_ZERO, new NullProgressMonitor());
-                changed = true;
+            long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(WAIT_MS);
+            CountDownLatch imported = new CountDownLatch(1);
+            IBmWorkspaceSynchronizationListener listener = new IBmWorkspaceSynchronizationListener() {
+                @Override public void resourceSynchronized(IFile resource) {
+                    if (file.equals(resource)) imported.countDown();
+                }
+
+                @Override public void resourceDeleted(IFile resource) {
+                    if (file.equals(resource)) imported.countDown();
+                }
+            };
+            boolean importFinished = true;
+            model.addResourceSyncListener(listener);
+            try {
+                changed = !file.isSynchronized(IResource.DEPTH_ZERO);
+                if (changed) {
+                    file.refreshLocal(IResource.DEPTH_ZERO, new NullProgressMonitor());
+                    // A queued background import does not count as active in waitModelSynchronization yet.
+                    importFinished = imported.await(deadline - System.nanoTime(), TimeUnit.NANOSECONDS);
+                }
+            } finally {
+                model.removeResourceSyncListener(listener);
             }
-            if (BoundedWait.within(() -> manager.waitModelSynchronization(project), WAIT_MS, "edt-bridge-model-sync")) {
+            long remaining = deadline - System.nanoTime();
+            if (importFinished && remaining > 0 && BoundedWait.within(
+                    () -> manager.waitModelSynchronization(project),
+                    Math.max(1, TimeUnit.NANOSECONDS.toMillis(remaining)), "edt-bridge-model-sync")) {
                 return null;
             }
         } catch (Exception failure) {
+            if (failure instanceof InterruptedException) Thread.currentThread().interrupt();
             return "nothing written: could not load " + path + " from disk into the model: "
                     + GatewaySupport.describeCause(failure);
         }

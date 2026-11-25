@@ -81,6 +81,7 @@ import io.github.keyfire.edtbridge.tools.AddFormItemTool;
 import io.github.keyfire.edtbridge.tools.ModifyFormItemTool;
 import io.github.keyfire.edtbridge.tools.RemoveFormItemTool;
 import io.github.keyfire.edtbridge.tools.AddFormTool;
+import io.github.keyfire.edtbridge.tools.CopyFormTool;
 import io.github.keyfire.edtbridge.tools.ModifyFormAttributeTool;
 import io.github.keyfire.edtbridge.tools.ModifyFormCommandTool;
 import io.github.keyfire.edtbridge.tools.RemoveFormAttributeTool;
@@ -371,6 +372,7 @@ applyI18n();loadStatus();loadTools();
     private final AddAttributeTool addAttribute = new AddAttributeTool();
     private final AddRouteTool addRoute = new AddRouteTool();
     private final AddFormTool addForm = new AddFormTool();
+    private final CopyFormTool copyForm = new CopyFormTool();
     private final AddFormAttributeTool addFormAttribute = new AddFormAttributeTool();
     private final ModifyFormAttributeTool modifyFormAttribute = new ModifyFormAttributeTool();
     private final RemoveFormAttributeTool removeFormAttribute = new RemoveFormAttributeTool();
@@ -925,6 +927,7 @@ applyI18n();loadStatus();loadTools();
         tools.add(infobaseMaintenance.descriptor());
         tools.add(updateDatabaseConfig.descriptor());
         tools.add(addForm.descriptor());
+        tools.add(copyForm.descriptor());
         tools.add(addFormAttribute.descriptor());
         tools.add(modifyFormAttribute.descriptor());
         tools.add(removeFormAttribute.descriptor());
@@ -1302,6 +1305,10 @@ applyI18n();loadStatus();loadTools();
         if (addForm.name().equals(name)) {
             JsonObject denied = writeTokenGate(addForm.isWrite(), name);
             return denied != null ? denied : addForm.call(args);
+        }
+        if (copyForm.name().equals(name)) {
+            JsonObject denied = writeTokenGate(copyForm.isWrite(), name);
+            return denied != null ? denied : copyForm.call(args);
         }
         if (addFormAttribute.name().equals(name)) {
             JsonObject denied = writeTokenGate(addFormAttribute.isWrite(), name);

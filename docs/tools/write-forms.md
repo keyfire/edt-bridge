@@ -6,8 +6,8 @@ sidebar:
   order: 6
 ---
 
-These tools add managed forms and change their attributes, commands, event handlers and
-items. `edt_form_identifiers` audits the visual IDs of a form and renumbers duplicates.
+These tools add and copy managed forms and change their attributes, commands, event handlers
+and items. `edt_form_identifiers` audits the visual IDs of a form and renumbers duplicates.
 
 Changes need a token and are returned as a plan until `apply=true` is passed; see
 [Plan and apply](/tools#plan-and-apply).
@@ -15,6 +15,7 @@ Changes need a token and are returned as a plan until `apply=true` is passed; se
 | Write tool | What it does |
 |------------|--------------|
 | `edt_add_form` | Adds a managed form to a metadata object through EDT's own form generator, the engine behind the "New form" wizard. The generator creates the form, its items and its module. For `DataProcessor` and `ExternalDataProcessor`, omitted `formType` selects `OBJECT` (alias `ФормаОбработки`) with the main `Объект` attribute; pass `GENERIC` for a blank form. With `defaultForm=true`, the form kind selects its own default slot, for example `defaultObjectForm` or `defaultFolderForm` for a catalog. Unsupported slots fail during preflight. `defaultForm` confirms an applied assignment; `defaultFormProperty` names its slot. |
+| `edt_copy_form` | Copies a managed form – items, attributes, commands, handlers and module – to another object of the same project, or to the same object under another name. See [Copying a form](#copying-a-form). |
 | `edt_add_form_attribute` · `edt_modify_form_attribute` · `edt_remove_form_attribute` | Adds, changes and removes a form attribute, or a column of a value-table attribute when you pass `columnOf`. Ids come from EDT's form identifier service. Pass `main=true` on `edt_add_form_attribute` to mark the form's main attribute (not combined with `columnOf`). Besides the metadata type grammar these take the platform types a form may hold (`ТаблицаЗначений`, `СписокЗначений` and so on) and the object types `ВнешняяОбработкаОбъект.X` and `СправочникОбъект.X`, which can be used for the main attribute. Removal lists the items bound to the attribute and needs `force`. |
 | `edt_add_form_command` · `edt_modify_form_command` · `edt_remove_form_command` | Adds, changes and removes a form command, including `actionPurpose` (`Usual`, alias `Normal`, `Create` or `Finish`), `associatedTable`, `currentRowUse`, `selectedRowsUse` (`Use`, `DontUse` or `Auto`) and `picture`: `StdPicture.<Name>` of the platform, `CommonPicture.<Name>` of the configuration or `БиблиотекаКартинок.<Name>`, an empty string removes it. Adding can write the handler procedure's stub into the form module as well, creating that module when the form has none. Removal lists the buttons wired to the command and needs `force`. |
 | `edt_add_form_handler` | Registers an event handler on a form or on one of its items. This creates the `handlers` entry in `Form.form`. Without it, the platform does not call the procedure and validation does not report an error. The allowed events come from EDT itself, so a misspelled one is refused with the list attached. It can also write the stub, with the signature the event declares and the directive the event needs. For `OnGetDataAtServer` of a dynamic list (`ПриПолученииДанныхНаСервере`) the stub is `&НаСервереБезКонтекста` with `ИмяЭлемента, Настройки, Строки`, as the platform help asks, without the item parameter. |
@@ -111,6 +112,27 @@ that changes an existing form, and `edt_modify_object` with a form FQN, first re
 `Form.form` and waits until EDT has synchronized the project model with its files. The preview
 reads the form the same way. When EDT does not get there in 30 s, nothing is written and the
 message asks to repeat the call.
+
+## Copying a form
+
+`edt_copy_form` takes the form as `sourceFormFqn`, `<Type>.<Owner>.Form.<Name>` or
+`CommonForm.<Name>` with English type names, and the object that gets the copy as
+`targetOwnerFqn`. Both belong to one project, a configuration or an extension. Without `name` the
+copy keeps the source name, so a copy into the same object needs one.
+You can pass the `formFqn` returned by `edt_add_form` directly.
+
+The copy carries the form content and the module as they are. In an object of the same kind –
+catalog to catalog, data processor to data processor – references to the source object move to
+the target: to the types it produces, so the main `Объект` attribute becomes the target's object,
+and to its attributes, tabular sections, table fields and forms with the same names. A reference
+without a pair stays with the source object, and the plan lists it in `leftovers`. So does the main
+table of a dynamic list copied to another object. The text of data paths, handler names and the module are
+not rewritten, so run `edt_project_errors` on the copy.
+
+In an extension, a form copied into an adopted object belongs to the extension and gets its name
+prefix; a form in an own object does not. An adopted form is not copied: its content is the
+extension's version of a base form. To bring a base configuration form into an extension, adopt it
+with `edt_adopt_object`.
 
 ## Duplicate form IDs
 
