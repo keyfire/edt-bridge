@@ -194,6 +194,7 @@ need=(
   org.eclipse.ltk.core.refactoring
   org.eclipse.xtext.ui
   com._1c.g5.v8.dt.import
+  com._1c.g5.v8.dt.xml
   com._1c.g5.v8.dt.platform.services.core
   com._1c.g5.v8.dt.platform.services.model
   com._1c.g5.designer.ssh.client

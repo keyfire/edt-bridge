@@ -50,8 +50,9 @@ public final class AddFormHandlerTool {
                 + "event name for a form event and to itemName + event name for an item's."));
         props.add("createHandler", ToolJson.boolProp("Also write the procedure's stub into the form "
                 + "module, creating the module file when the form has none. Optional, default false. "
-                + "The stub carries the signature the event declares and the directive its "
-                + "environments imply."));
+                + "The stub carries the signature the event declares and the directive the event "
+                + "needs: OnGetDataAtServer of a dynamic list gets &AtServerNoContext and no item "
+                + "parameter."));
         props.add("apply", ToolJson.boolProp("false (default) = dry-run: validate (form, item, event, "
                 + "and that the event is not handled already) and return the plan, write nothing. "
                 + "true = register the handler and serialize Form.form."));

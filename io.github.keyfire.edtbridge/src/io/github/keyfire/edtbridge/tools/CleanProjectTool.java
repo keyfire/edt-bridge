@@ -45,34 +45,21 @@ public final class CleanProjectTool {
         props.add("rebuild", ToolJson.boolProp("Also run a full build after cleaning - what the Clean "
                 + "dialog does when auto-build is off. Default true; without it a project with "
                 + "auto-build off is left unbuilt and reports no problems at all."));
-        props.add("waitSeconds", ToolJson.intProp("How long to wait for validation to settle. Default "
-                + "120. Big projects need more."));
-        props.add("apply", ToolJson.boolProp("false (default) = dry-run: report the current problem "
-                + "count and whether auto-build is on, change nothing. true = clean, rebuild and wait "
-                + "for the problem count to settle."));
+        props.add("waitSeconds", ToolJson.intProp("Time budget in seconds for project services, build jobs "
+                + "and validation to settle. Default 120. A synchronous build can exceed this budget."));
+        props.add("apply", ToolJson.boolProp("false (default) reports the current problem count and auto-build state. "
+                + "true waits for project services, cleans the project, and waits for validation when a build runs."));
         return ToolJson.descriptor(name(),
-                "WRITE (Phase 2): discard a project's build results and let them be recomputed - the "
-                + "programmatic equivalent of EDT's \"Clean\" dialog. EDT hangs its checks off the "
-                + "build, so this is what makes validation actually run again: a marker can otherwise "
-                + "survive long after the code that caused it was fixed, and reading a stale marker is "
-                + "worse than reading none. Reports the problem count before and after, waiting until "
-                + "it stops changing. Sources are untouched, so no force is needed - but it does need a "
-                + "configured token. Use it before trusting edt_project_errors after an edit – or, for one "
-                + "module changed on disk, pass refresh=true to edt_project_errors instead: an incremental "
-                + "build plus active checks of the resolved object. A failure reports its stage, completed "
-                + "stages, cancellation and bounded job/status diagnostics. applied=true may mean the clean "
-                + "finished before a later rebuild or wait failed.",
-                "ЗАПИСЬ (Phase 2): сбросить результаты сборки проекта и дать пересчитать их заново - "
-                + "программный аналог диалога \"Очистить\" в EDT. Проверки EDT висят на сборке, поэтому "
-                + "именно это заставляет валидацию отработать снова: иначе замечание может пережить "
-                + "исправление кода, а читать устаревший маркер хуже, чем не читать вовсе. Возвращает "
-                + "число замечаний до и после, дождавшись, пока оно перестанет меняться. Исходники не "
-                + "трогаются, force не нужен - но нужен токен. Вызывать перед тем, как доверять "
-                + "edt_project_errors после правок, – либо, для одного модуля, изменённого на диске, "
-                + "передать edt_project_errors refresh=true: инкрементальная сборка и применимые проверки "
-                + "разрешенного объекта. При сбое возвращаются этап, завершенные этапы, отмена и ограниченная "
-                + "диагностика jobs/status. applied=true может означать, что очистка выполнена, а последующая "
-                + "пересборка или ожидание завершились ошибкой.",
+                "WRITE (Phase 2): discard a project's build results so EDT can run validation again. "
+                + "Waits for project services to restart before cleaning and after the build. Returns the "
+                + "problem counts before and after. Treat the final count as settled only when settled=true. "
+                + "A failure includes its stage, completed stages, and job diagnostics. applied=true means "
+                + "the clean finished, even if a later rebuild or wait failed. Requires a configured token.",
+                "ЗАПИСЬ (Phase 2): сбросить результаты сборки проекта, чтобы EDT запустила проверки заново. "
+                + "Ожидает перезапуска служб проекта перед очисткой и после сборки. Возвращает число "
+                + "замечаний до и после. Итоговый счет стабилен при settled=true. При сбое возвращает "
+                + "текущий этап, завершенные этапы и диагностику фоновых заданий. applied=true означает, "
+                + "что очистка выполнена, даже если пересборка или ожидание завершились ошибкой. Нужен токен.",
                 props, "projectName");
     }
 

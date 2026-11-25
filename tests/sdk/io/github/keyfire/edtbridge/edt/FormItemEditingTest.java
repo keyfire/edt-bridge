@@ -131,6 +131,71 @@ class FormItemEditingTest {
         FormItemEdits.applySettings(group,Map.of("showTitle",false),type->{},true);
         assertFalse(info.isShowTitle()); assertEquals("false",info.getShowTitle851().toString());
     }
+    @Test void pageAndUsualGroupAcceptLayoutAndScrolling() {
+        FormGroup page = FormWriteGateway.groupPrototype(ManagedFormGroupType.PAGE);
+        PageGroupExtInfo pageInfo = (PageGroupExtInfo) page.getExtInfo();
+        Map<String, Object> layout = Map.of("groupDirection", "HorizontalIfPossible", "scrollOnCompress", true);
+        FormItemEdits.applySettings(page, layout, type -> {}, false);
+        assertTrue(pageInfo.isScrollOnCompress());
+        FormItemEdits.applySettings(page, layout, type -> {}, true);
+        assertFalse(pageInfo.isScrollOnCompress());
+        assertEquals(Boolean.TRUE, pageInfo.getScrollOnCompress851());
+        layout.forEach((key, value) -> assertEquals(value, FormItemEdits.readSettings(page).get(key), key));
+        FormGroup usual = group("Usual");
+        settings(usual, layout);
+        layout.forEach((key, value) -> assertEquals(value, FormItemEdits.readSettings(usual).get(key), key));
+    }
+
+    @Test void inputFormatsPreserveOtherLanguagesAndCanBeCleared() {
+        FormField field = FormFactory.eINSTANCE.createFormField();
+        field.setType(ManagedFormFieldType.INPUT_FIELD);
+        InputFieldExtInfo info = FormFactory.eINSTANCE.createInputFieldExtInfo();
+        field.setExtInfo(info);
+        info.getFormat().put("en", "NFD=2");
+        Map<String, Object> values = Map.of("format", "ЧДЦ=2", "editFormat", "ЧДЦ=3", "autoMaxWidth", false,
+                "horizontalStretch", true);
+        settings(field, values);
+        values.forEach((key, value) -> assertEquals(value, FormItemEdits.readSettings(field).get(key), key));
+        assertEquals("NFD=2", info.getFormat().get("en"));
+        settings(field, Map.of("format", ""));
+        assertNull(info.getFormat().get("ru"));
+        assertEquals("NFD=2", info.getFormat().get("en"));
+    }
+
+    @Test void generatedListReferenceIsHiddenAndAlwaysAvailableWithoutDuplicates() {
+        Form form = FormFactory.eINSTANCE.createForm();
+        FormAttribute attribute = FormFactory.eINSTANCE.createFormAttribute();
+        attribute.setName("Список");
+        attribute.setMain(true);
+        attribute.setExtInfo(FormFactory.eINSTANCE.createDynamicListExtInfo());
+        form.getAttributes().add(attribute);
+        Table table = FormFactory.eINSTANCE.createTable();
+        DataPath tablePath = FormFactory.eINSTANCE.createDataPath();
+        tablePath.getSegments().add(attribute.getName());
+        table.setDataPath(tablePath);
+        form.getItems().add(table);
+
+        FormWriteGateway.ensureListReference(form, (parent, path) -> {
+            assertSame(table, parent);
+            assertEquals(List.of("Список", "Ref"), path.getSegments());
+            FormField column = FormFactory.eINSTANCE.createFormField();
+            column.setDataPath(path);
+            parent.getItems().add(column);
+            return column;
+        });
+        FormWriteGateway.ensureListReference(form, (parent, path) -> {
+            throw new AssertionError("the reference column already exists");
+        });
+        assertEquals(1, table.getItems().size());
+        Visible visibility = (Visible) table.getItems().get(0);
+        assertFalse(visibility.isVisible());
+        assertNotNull(visibility.getUserVisible());
+        assertFalse(visibility.getUserVisible().isCommon());
+        assertEquals(1, attribute.getNotDefaultUseAlwaysAttributes().size());
+        assertEquals(List.of("Список", "Ref"),
+                attribute.getNotDefaultUseAlwaysAttributes().get(0).getSegments());
+    }
+
     @Test void anInputFieldBecomesMultiLineAndWrapsItsText() {
         FormField field=FormFactory.eINSTANCE.createFormField(); field.setName("Comment");
         field.setType(ManagedFormFieldType.INPUT_FIELD); field.setExtInfo(FormFactory.eINSTANCE.createInputFieldExtInfo());
@@ -167,6 +232,7 @@ class FormItemEditingTest {
         var error=assertThrows(IllegalArgumentException.class,()->FormItemEdits.validateSettings(label,Map.of("picture","")));
         assertTrue(error.getMessage().contains("requires a picture decoration"),error.getMessage());
     }
+
     @Test void aColumnGroupTakesItsOwnLayoutAndTitle() {
         FormGroup group=FormFactory.eINSTANCE.createFormGroup(); group.setName("Columns");
         group.setType(ManagedFormGroupType.COLUMN_GROUP); group.setExtInfo(FormFactory.eINSTANCE.createColumnGroupExtInfo());
@@ -190,7 +256,7 @@ class FormItemEditingTest {
         group.setType(ManagedFormGroupType.POPUP);
         var error=assertThrows(IllegalArgumentException.class,
                 ()->FormItemEdits.applySettings(group,Map.of("groupDirection","Horizontal"),type->{},false));
-        assertTrue(error.getMessage().contains("a usual group or a column group"),error.getMessage());
+        assertTrue(error.getMessage().contains("a usual group, a page or a column group"),error.getMessage());
     }
     private static FormGroup group(String name) {
         FormGroup group=FormFactory.eINSTANCE.createFormGroup(); group.setName(name);

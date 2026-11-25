@@ -165,7 +165,8 @@ VERDICTS = frozenset({"scenario_completed", "command_completed"}) | native_repor
 _ANSWER_KEYS = ("ok", "status", "error", "stage", "step", "assertions", "reads", "messages", "dialog",
                 "observedFields", "matchedButtons", "observedButtons", "matchedFields", "observedForms",
                 "observedTitles", "defaultForm", "scenarios", "summary", "piiFilter", "clientType",
-                "webForm", "webFormError", "screenshotMasked", "screenshotWithheld", "screenshotData")
+                "webForm", "webFormError", "answeredWindows", "screenshotMasked", "screenshotWithheld",
+                "screenshotData")
 
 
 def _refusal(status: str, message: str) -> dict:

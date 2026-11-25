@@ -73,9 +73,8 @@ public final class HtmlTemplateGateway {
     static final String SPREADSHEET = "spreadsheet";
 
     /**
-     * How long the first resolve of a schema or a spreadsheet waits for its content file. EDT answers
-     * edt_add_template before its export has written Template.dcs or Template.mxlx, so a read or a
-     * replacement sent right after the creation can find the template in the model and no file yet.
+     * How long the first resolve waits for the files of a template EDT has just created.
+     * An accepted export runs asynchronously, so the model may contain the template before the files appear.
      */
     static final long CONTENT_FILE_WAIT_MS = 15_000;
     private static final long CONTENT_FILE_POLL_MS = 250;
@@ -380,12 +379,11 @@ public final class HtmlTemplateGateway {
     }
 
     /**
-     * The first resolve of a read or a replacement. For a schema or a spreadsheet that edt_add_template has
-     * just created and whose file is not in the workspace yet it repeats until the file appears or the wait
-     * ends. Every other refusal, a template that does not exist among them, is returned at once.
+     * The first resolve of a read or a replacement. For a template that edt_add_template just created,
+     * retry a missing resource until it appears or the wait ends. Return other refusals immediately.
      */
     private Target resolveFirst(String projectName, String fqn, String language) throws Exception {
-        boolean content = (SCHEMA.equals(language) || SPREADSHEET.equals(language)) && recentlyCreated(projectName, fqn);
+        boolean content = recentlyCreated(projectName, fqn);
         long started = System.nanoTime();
         while (true) {
             try {
