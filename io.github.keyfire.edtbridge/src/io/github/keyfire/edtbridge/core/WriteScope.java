@@ -210,7 +210,9 @@ public final class WriteScope {
         String created = CREATES.get(tool);
         if (created != null) {
             String name = arguments.get(created);
-            boolean importing = "edt_import_project".equals(tool);
+            String importMode = arguments.getOrDefault("mode", "").strip();
+            boolean importing = "edt_import_project".equals(tool)
+                    && (importMode.isEmpty() || "existing".equalsIgnoreCase(importMode));
             if (name == null || name.isBlank()) {
                 return tool + " under a write scope needs " + created + ": the project it "
                         + (importing ? "registers" : "creates") + " must be one of " + allowed(importing);

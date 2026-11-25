@@ -75,6 +75,27 @@ Check `countIsLowerBound`, errors and samples before deciding to force deletion.
 and `retainedFormControls` report the observed remaining uses and controls with cleared data paths;
 the response states the limits of the export wait and after-audit.
 
+## Metadata objects and members
+
+`edt_create_object` accepts `HTTPService`, `Subsystem` and `ScheduledJob`. Pass
+`rootURL`, `includeInCommandInterface` or `methodName` in `properties` for the
+corresponding kind. Add routes with `edt_add_route` and subsystem members with
+`edt_update_subsystem`.
+
+Use `edt_add_attribute` with `kind=enumValue` and `ownerFqn=Enum.OrderState`
+to add an enumeration value. Use `kind=tabularSection` with a catalog or
+document as the owner to add a tabular section. Both take `name` and optionally
+`synonymRu`. To add a column, pass the section as the owner, for example
+`Document.Order.TabularSection.Lines`, and specify the column type.
+`edt_metadata_details` on the enumeration or document shows the new members.
+Attributes and tabular sections of the same catalog or document must have distinct names.
+
+Use `edt_property_reference` to check the current and accepted properties before
+calling `edt_modify_object` or `edt_modify_attribute`. The available properties
+depend on the object's kind. They include constant value types, code and number
+lengths and types, document posting, data locking, presentations, field indexing,
+input formats and create-on-input behavior.
+
 ## Register fields
 
 `edt_add_attribute` and `edt_modify_attribute` accept `kind`: `attribute` (default),
@@ -151,6 +172,9 @@ the name the object gets, `namePrefix` is the prefix, and `requestedName` is the
 when the prefix was added.
 
 Set rights on objects with `edt_modify_role_rights`, one object per call, after the role exists.
+To address an HTTP method, pass `HTTPService.<Service>.URLTemplate.<Template>.Method.<Name>`.
+For a web service operation, pass `WebService.<Service>.Operation.<Name>`. Read the same target
+with `edt_role_rights`. The write response lists only changed rights in `changes`.
 An own role of an extension sets rights on the extension's own and adopted objects, so adopt a
 base object with `edt_adopt_object` first. `edt_role_rights` and `edt_modify_role_rights` also
 accept a role without its own `Rights.rights`, such as a main role created by the New

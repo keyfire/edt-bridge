@@ -17,7 +17,10 @@
 package io.github.keyfire.edtbridge.edt;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 
 import io.github.keyfire.edtbridge.core.Jobs;
 import io.github.keyfire.edtbridge.core.MarkerFreshness;
@@ -55,8 +58,13 @@ import com._1c.g5.v8.dt.validation.marker.MarkerFilter;
 import com._1c.g5.v8.dt.validation.marker.MarkerSeverity;
 import com._1c.g5.v8.dt.validation.marker.PlainEObjectMarker;
 import com._1c.g5.v8.dt.core.platform.IBmModelManager;
+import com._1c.g5.v8.dt.core.lifecycle.IDtProjectResourceLifecycleBootstrap;
+import com._1c.g5.v8.dt.core.lifecycle.ProjectRestartJob;
+import com._1c.g5.v8.dt.core.lifecycle.ServiceLifecycleJob;
+import com._1c.g5.v8.dt.core.platform.IDtProjectManager;
 import com._1c.g5.v8.dt.core.platform.IDerivedDataManagerProvider;
 import com._1c.g5.v8.dt.core.platform.IResourceLookup;
+import com._1c.g5.v8.dt.core.platform.IWorkspaceOrchestrator;
 import com._1c.g5.wiring.ServiceAccess;
 
 /**
@@ -907,7 +915,8 @@ public final class ProjectGateway {
         }
         ValidationSettle settle = new ValidationSettle();
         r.settled = r.validationCompleted && awaitSettle(projectName, settle,
-                Math.max(0L, deadline - System.currentTimeMillis()), 1000L, r.validationCompleted);
+                Math.max(0L, deadline - System.currentTimeMillis()), 1000L,
+                () -> Job.getJobManager().isIdle());
         r.waitMs = System.currentTimeMillis() - waiting;
         r.quietPolls = settle.quietPolls();
         r.diagnostics = ProjectProgress.report(projectName, settle.problems(), modelsReady(projectName),
@@ -925,18 +934,19 @@ public final class ProjectGateway {
      * {@link ValidationSettle} for why a count that merely stopped changing is not enough.
      */
     private boolean awaitSettle(String projectName, ValidationSettle settle, long limitMs,
-            long pollMs, boolean validationCompleted) {
+            long pollMs, BooleanSupplier idle) {
         Jobs.stage("waiting for the problem count to stabilize");
-        long started = System.currentTimeMillis();
-        while (System.currentTimeMillis() - started < limitMs) {
-            boolean idle = Job.getJobManager().isIdle() && modelsReady(projectName);
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(limitMs);
+        long remaining;
+        while ((remaining = deadline - System.nanoTime()) > 0 && !Jobs.cancelRequested()) {
+            boolean stable = idle.getAsBoolean() && modelsReady(projectName);
             int count = countProblems(projectName);
             ProjectProgress.observeCount(projectName, count);
-            if (settle.poll(count, idle, validationCompleted)) {
+            if (settle.poll(count, stable)) {
                 return true;
             }
             try {
-                Thread.sleep(pollMs);
+                TimeUnit.NANOSECONDS.sleep(Math.min(remaining, TimeUnit.MILLISECONDS.toNanos(pollMs)));
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
                 return false;
@@ -1181,9 +1191,13 @@ public final class ProjectGateway {
         public StatusDiagnostic result;
     }
 
+    @FunctionalInterface
+    interface CleanWait {
+        void await() throws InterruptedException;
+    }
+
     static boolean executeCleanBuild(IProject project, boolean rebuild, IProgressMonitor monitor,
-            IJobManager jobs, CleanProjectResult result) {
-        long started = System.currentTimeMillis();
+            IJobManager jobs, CleanProjectResult result, CleanWait awaitReady) {
         result.ok = false;
         result.attempted = true;
         try {
@@ -1197,27 +1211,57 @@ public final class ProjectGateway {
             if (Jobs.inJob()) {
                 Jobs.applied("the build results of " + project.getName() + " are discarded (clean)");
             }
+            result.stage = "WAIT_AFTER_CLEAN";
+            Jobs.stage("waiting for project services and build jobs after cleaning");
+            awaitReady.await();
+            result.completedStages.add(result.stage);
             if (rebuild) {
                 result.stage = "FULL_BUILD";
                 Jobs.stage("rebuilding the project");
                 project.build(IncrementalProjectBuilder.FULL_BUILD, monitor);
                 result.completedStages.add(result.stage);
+                result.stage = "WAIT_AFTER_REBUILD";
+                Jobs.stage("waiting for project services and build jobs after rebuilding");
+                awaitReady.await();
+                result.completedStages.add(result.stage);
             }
-            result.stage = "JOIN_MANUAL_BUILD";
-            Jobs.stage("waiting for build jobs");
-            jobs.join(ResourcesPlugin.FAMILY_MANUAL_BUILD, monitor);
-            result.completedStages.add(result.stage);
-            result.stage = "JOIN_AUTO_BUILD";
-            jobs.join(ResourcesPlugin.FAMILY_AUTO_BUILD, monitor);
-            result.completedStages.add(result.stage);
-            result.elapsedMs = System.currentTimeMillis() - started;
             return true;
-        } catch (CoreException | InterruptedException | RuntimeException e) {
+        } catch (CoreException | InterruptedException | RuntimeException | LinkageError e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             recordCleanFailure(result, e, monitor, jobs);
-            result.elapsedMs = System.currentTimeMillis() - started;
             return false;
         }
+    }
+
+    static void waitForCleanServices(BooleanSupplier ready, IProgressMonitor monitor, long deadline)
+            throws InterruptedException {
+        for (;;) {
+            if (Thread.currentThread().isInterrupted()) throw new InterruptedException("Project service wait interrupted");
+            if (monitor.isCanceled()) throw new OperationCanceledException();
+            if (ready.getAsBoolean()) return;
+            long remaining = deadline - System.nanoTime();
+            if (remaining <= 0) {
+                throw new IllegalStateException("Timed out waiting for project services and build jobs");
+            }
+            TimeUnit.NANOSECONDS.sleep(Math.min(remaining, TimeUnit.MILLISECONDS.toNanos(200)));
+        }
+    }
+
+    private boolean cleanServicesReady(IProject project, IJobManager jobs, boolean autoBuilding, boolean edtProject) {
+        // EDT records a restart in a queue before scheduling the job that stops its services.
+        // The orchestrator may still report the old context as started during that interval.
+        var projects = FormWriteGateway.coreService(IDtProjectManager.class);
+        var bootstrap = FormWriteGateway.coreService(IDtProjectResourceLifecycleBootstrap.class);
+        var orchestrator = FormWriteGateway.coreService(IWorkspaceOrchestrator.class);
+        var dtProject = projects == null ? null : projects.getDtProject(project);
+        if (edtProject && (orchestrator != null && !orchestrator.isStarted(project)
+                || dtProject != null && bootstrap != null && bootstrap.isDtProjectScheduledToRestart(dtProject))) {
+            return false;
+        }
+        return Arrays.stream(jobs.find(ServiceLifecycleJob.FAMILY)).noneMatch(ProjectRestartJob.class::isInstance)
+                && jobs.find(ResourcesPlugin.FAMILY_MANUAL_BUILD).length == 0
+                && (!autoBuilding || jobs.find(ResourcesPlugin.FAMILY_AUTO_BUILD).length == 0)
+                && project.isOpen();
     }
 
     private static void recordCleanFailure(CleanProjectResult result, Throwable failure,
@@ -1320,7 +1364,7 @@ public final class ProjectGateway {
      * @param projectName  project to clean
      * @param rebuild      also run a full build afterwards (what the Clean dialog does when auto-build
      *                     is off); {@code false} cleans only
-     * @param waitSeconds  how long to wait for validation to settle (default 120)
+     * @param waitSeconds  time budget for waiting for project services, build jobs and validation
      * @param apply        {@code false} reports the plan and the current problem count; {@code true}
      *                     performs the clean
      */
@@ -1345,14 +1389,32 @@ public final class ProjectGateway {
             r.message = "project is closed: " + projectName;
             return r;
         }
+        r.autoBuilding = ResourcesPlugin.getWorkspace().isAutoBuilding();
+        IProgressMonitor monitor = JobProgressMonitor.create();
+        IJobManager jobs = Job.getJobManager();
+        long started = System.currentTimeMillis();
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(waitSeconds > 0 ? waitSeconds : 120);
+        boolean edtProject = listProjectsDetailed().stream().anyMatch(pi -> projectName.equals(pi.name) && pi.dtProject);
+        BooleanSupplier ready = () -> cleanServicesReady(p, jobs, r.autoBuilding, edtProject);
+        if (apply) {
+            r.stage = "WAIT_BEFORE_CLEAN";
+            Jobs.stage("waiting for project services before cleaning");
+            try {
+                waitForCleanServices(() -> ready.getAsBoolean() && modelsReady(projectName), monitor, deadline);
+                r.completedStages.add(r.stage);
+            } catch (InterruptedException | RuntimeException | LinkageError failure) {
+                if (failure instanceof InterruptedException) Thread.currentThread().interrupt();
+                recordCleanFailure(r, failure, monitor, jobs);
+                r.elapsedMs = System.currentTimeMillis() - started;
+                return r;
+            }
+        }
         r.modelReady = modelsReady(projectName);
+        r.problemsBefore = countProblems(projectName);
         if (!r.modelReady) {
-            r.message = "The project model or derived data is not ready; clean refused. Check edt_projects "
-                    + "and retry after modelReady=true.";
+            r.message = "The project model or derived data is not ready. Inspect edt_projects.";
             return r;
         }
-        r.autoBuilding = ResourcesPlugin.getWorkspace().isAutoBuilding();
-        r.problemsBefore = countProblems(projectName);
         r.ok = true;
         r.stage = "PLANNED";
         r.plan = "Clean project \"" + projectName + "\""
@@ -1367,20 +1429,17 @@ public final class ProjectGateway {
             return r;
         }
 
-        long started = System.currentTimeMillis();
-        org.eclipse.core.runtime.IProgressMonitor monitor = JobProgressMonitor.create();
-        IJobManager jobs = Job.getJobManager();
-        if (!executeCleanBuild(p, rebuild, monitor, jobs, r)) {
+        if (!executeCleanBuild(p, rebuild, monitor, jobs, r, () -> waitForCleanServices(ready, monitor, deadline))) {
+            if (r.stateMayHaveChanged) {
+                r.problemsAfter = countProblems(projectName);
+                r.modelReady = modelsReady(projectName);
+            }
             r.elapsedMs = System.currentTimeMillis() - started;
             return r;
         }
 
-        // Validation keeps running after the build returns - and it is NOT part of the build job
-        // families joined above, so a count that merely stopped changing proves nothing: right after
-        // a clean it sits at zero because nothing has been reported yet. Waiting for the workspace to
-        // go idle as well is what tells "not started" apart from "done".
-        long limit = (waitSeconds > 0 ? waitSeconds : 120) * 1000L;
-        long deadline = System.currentTimeMillis() + limit;
+        // Builds and service restarts can finish before EDT's derived computations. Read their
+        // manager from the reopened project only after the previous wait has established readiness.
         r.stage = "VALIDATION_WAIT";
         Jobs.stage("waiting for background validation");
         ValidationSettle settle = new ValidationSettle();
@@ -1388,13 +1447,16 @@ public final class ProjectGateway {
             IDerivedDataManagerProvider provider =
                     FormWriteGateway.coreService(IDerivedDataManagerProvider.class);
             IDerivedDataManager derived = provider == null ? null : provider.get(p);
-            r.validationCompleted = (rebuild || r.autoBuilding) && derived != null
+            long limit = TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime());
+            r.validationCompleted = (rebuild || r.autoBuilding) && derived != null && limit > 0
                     && derived.waitAllComputations(limit) && derived.isAllComputed();
             r.settled = r.validationCompleted && awaitSettle(projectName, settle,
-                    Math.max(0L, deadline - System.currentTimeMillis()), 2000L, r.validationCompleted);
+                    Math.max(0L, TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime())),
+                    2000L, ready);
             if (Thread.currentThread().isInterrupted()) {
                 throw new InterruptedException("Validation wait interrupted");
             }
+            if (monitor.isCanceled()) throw new OperationCanceledException();
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             recordCleanFailure(r, interrupted, monitor, jobs);
@@ -1406,7 +1468,7 @@ public final class ProjectGateway {
             return r;
         }
         r.sawValidation = r.validationCompleted;
-        r.problemsAfter = countProblems(projectName);
+        r.problemsAfter = r.settled ? settle.problems() : countProblems(projectName);
         r.modelReady = modelsReady(projectName);
         r.elapsedMs = System.currentTimeMillis() - started;
         r.ok = true;
@@ -1531,7 +1593,7 @@ public final class ProjectGateway {
         return r;
     }
 
-    /** Outcome of registering an existing project directory in the workspace. */
+    /** Outcome of registering or creating a project in the workspace. */
     public static final class ImportProjectResult {
         public boolean ok;
         public boolean applied;
@@ -1544,6 +1606,10 @@ public final class ProjectGateway {
         public boolean nameTaken;
         public boolean insideWorkspace;
         public boolean open;
+        public String mode;
+        public String sourcePath;
+        public String sourceKind;
+        public String version;
         public String plan;
         public String warning;
         public String message;
@@ -1588,6 +1654,19 @@ public final class ProjectGateway {
             result.ok = false;
             result.message = "could not open the existing project: " + GatewaySupport.describeCause(failure);
         }
+    }
+
+    public ImportProjectResult importProject(String path, String name, String mode, boolean apply) {
+        String requested = mode == null ? "" : mode.strip();
+        if (requested.isEmpty() || requested.equalsIgnoreCase("existing")) {
+            return importProject(path, name, apply);
+        }
+        if (requested.equalsIgnoreCase("configuration")) {
+            return new ConfigurationImportGateway().importConfiguration(path, name, apply);
+        }
+        ImportProjectResult result = new ImportProjectResult();
+        result.message = "mode must be existing or configuration";
+        return result;
     }
 
     public ImportProjectResult importProject(String path, String name, boolean apply) {
@@ -1692,13 +1771,13 @@ public final class ProjectGateway {
      * Snapshot the workspace so structural changes survive a hard stop. Returns {@code null} on
      * success, otherwise a short reason worth reporting alongside an otherwise successful delete.
      */
-    private static String snapshotWorkspace() {
+    static String snapshotWorkspace() {
         try {
             ResourcesPlugin.getWorkspace().save(false, new org.eclipse.core.runtime.NullProgressMonitor());
             return null;
         } catch (CoreException | RuntimeException e) {
             return "the workspace could not be snapshotted (" + GatewaySupport.describeCause(e)
-                    + "); the project may reappear if EDT is stopped hard before its next snapshot";
+                    + "). The change may be lost if EDT stops before the next snapshot.";
         }
     }
 

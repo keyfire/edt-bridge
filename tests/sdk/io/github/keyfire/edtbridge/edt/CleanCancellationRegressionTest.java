@@ -4,7 +4,9 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IncrementalProjectBuilder;
 import org.eclipse.core.runtime.CoreException;
@@ -81,19 +83,53 @@ class CleanCancellationRegressionTest {
     }
 
     @Test
-    void anInterruptedJoinRestoresInterruptAndDoesNotLoseAppliedClean() {
+    void anInterruptedServiceWaitRestoresInterruptAndDoesNotLoseAppliedClean() {
         var f = new Fixture();
-        f.interruptJoin = true;
+        f.serviceWait = () -> { throw new InterruptedException("synthetic interruption"); };
         try {
             var result = f.run();
             assertFalse(result.ok);
             assertTrue(result.applied);
             assertTrue(Thread.currentThread().isInterrupted());
-            assertEquals("JOIN_MANUAL_BUILD", result.stage);
+            assertEquals("WAIT_AFTER_CLEAN", result.stage);
             assertEquals("threadInterrupted", result.cancelCause);
         } finally {
             Thread.interrupted();
         }
+    }
+
+    @Test
+    void waitsForProjectServicesBeforeRebuildingAndBeforeValidation() {
+        var f = new Fixture();
+        var transitions = new ArrayList<String>();
+        f.onBuild = () -> transitions.add("build");
+        f.serviceWait = () -> transitions.add("wait");
+        var result = f.run();
+        assertEquals(List.of("build", "wait", "build", "wait"), transitions);
+        assertEquals(List.of("CLEAN_BUILD", "WAIT_AFTER_CLEAN", "FULL_BUILD", "WAIT_AFTER_REBUILD"),
+                result.completedStages);
+    }
+
+    @Test
+    void aRestartTimeLimitPreservesCleanAndSkipsRebuild() {
+        var f = new Fixture();
+        f.serviceWait = () -> ProjectGateway.waitForCleanServices(() -> false, new NullProgressMonitor(),
+                System.nanoTime() - TimeUnit.MILLISECONDS.toNanos(1));
+        var result = f.run();
+        assertFalse(result.ok);
+        assertTrue(result.applied);
+        assertFalse(result.canceled);
+        assertEquals("WAIT_AFTER_CLEAN", result.stage);
+        assertEquals(List.of("CLEAN_BUILD"), result.completedStages);
+    }
+
+    @Test
+    void anExplicitCancellationStopsTheServiceWaitBeforeReadingItsState() {
+        var monitor = new NullProgressMonitor();
+        monitor.setCanceled(true);
+        assertThrows(OperationCanceledException.class, () -> ProjectGateway.waitForCleanServices(
+                () -> { throw new AssertionError("the service state was read after cancellation"); },
+                monitor, System.nanoTime()));
     }
 
     @Test
@@ -156,7 +192,7 @@ class CleanCancellationRegressionTest {
     private static final class Fixture {
         int failKind = IncrementalProjectBuilder.CLEAN_BUILD;
         Exception failure;
-        boolean interruptJoin;
+        ProjectGateway.CleanWait serviceWait = () -> {};
         Job[] active = new Job[0];
         Runnable onBuild = () -> {};
         final IProject project = (IProject) Proxy.newProxyInstance(IProject.class.getClassLoader(),
@@ -169,17 +205,13 @@ class CleanCancellationRegressionTest {
                 });
         final IJobManager jobs = (IJobManager) Proxy.newProxyInstance(IJobManager.class.getClassLoader(),
                 new Class<?>[] {IJobManager.class}, (proxy, method, args) -> switch (method.getName()) {
-                    case "join" -> {
-                        if (interruptJoin) throw new InterruptedException("synthetic interruption");
-                        yield null;
-                    }
                     case "find" -> active;
                     default -> throw new AssertionError(method.getName());
                 });
         ProjectGateway.CleanProjectResult run() {
             var result = new ProjectGateway.CleanProjectResult();
             result.ok = true;
-            ProjectGateway.executeCleanBuild(project, true, new NullProgressMonitor(), jobs, result);
+            ProjectGateway.executeCleanBuild(project, true, new NullProgressMonitor(), jobs, result, serviceWait);
             return result;
         }
     }
