@@ -775,8 +775,8 @@
     },
     {
       "name": "edt_property_reference",
-      "description": "READ: list editable properties of a common module, external object, extension, field, form, form item or form command. Returns each property's type, accepted values and current value, and names the tool that takes them. Call it before edt_modify_object, edt_modify_attribute, edt_modify_form_item or edt_modify_form_command instead of trying spellings: the list is built by the code that validates the write, for this very object, so a property the object lacks is not listed.",
-      "descriptionRu": "ЧТЕНИЕ: перечислить свойства общего модуля, внешнего объекта, расширения, реквизита, формы, элемента формы или команды формы. Возвращает тип каждого свойства, допустимые значения и текущее значение, а также имя инструмента, который их принимает. Вызывать перед edt_modify_object, edt_modify_attribute, edt_modify_form_item или edt_modify_form_command вместо перебора написаний: перечень строит код, который проверяет запись, для этого же объекта, поэтому отсутствующее у объекта свойство в перечень не попадает.",
+      "description": "READ: list editable properties of a metadata object, external object, extension, field, form, form item or form command. Returns each property's type, accepted values and current value, and names the tool that takes them. Call it before edt_modify_object, edt_modify_attribute, edt_modify_form_item or edt_modify_form_command instead of trying spellings: the list is built by the code that validates the write, for this very object, so a property the object lacks is not listed.",
+      "descriptionRu": "ЧТЕНИЕ: перечислить свойства объекта метаданных, внешнего объекта, расширения, реквизита, формы, элемента формы или команды формы. Возвращает тип каждого свойства, допустимые значения и текущее значение, а также имя инструмента, который их принимает. Вызывать перед edt_modify_object, edt_modify_attribute, edt_modify_form_item или edt_modify_form_command вместо перебора написаний: перечень строит код, который проверяет запись, для этого же объекта, поэтому отсутствующее у объекта свойство в перечень не попадает.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -786,7 +786,7 @@
           },
           "fqn": {
             "type": "string",
-            "description": "What to describe: a common module (CommonModule.Api), a field (Catalog.Products.Attribute.Weight), an external object (ExternalReport.Summary), an extension root (Configuration) or a form (Catalog.Products.Form.ItemForm, ExternalDataProcessor.Check.Form.Main)"
+            "description": "What to describe: a metadata object (Catalog.Products), a field (Catalog.Products.Attribute.Weight), an external object (ExternalReport.Summary), an extension root (Configuration) or a form (Catalog.Products.Form.ItemForm, ExternalDataProcessor.Check.Form.Main)"
           },
           "item": {
             "type": "string",
@@ -1400,8 +1400,8 @@
     },
     {
       "name": "edt_add_attribute",
-      "description": "WRITE (Phase 2): add an attribute, register resource or dimension. Dry-run by default – validates (owner exists, name free across attributes/resources/dimensions, type parses, reference target exists) and returns the plan WITHOUT writing. apply=true performs the write (creates the selected field and commits). Requires a configured token. Caller must verify edt_support_status EDITABLE before any apply.",
-      "descriptionRu": "ЗАПИСЬ (Phase 2): добавить реквизит, ресурс или измерение регистра. По умолчанию dry-run – проверяет (объект есть, имя свободно среди реквизитов, ресурсов и измерений, тип распознан, ссылочный тип существует) и возвращает план БЕЗ записи. apply=true – реальная запись (создает выбранное поле и фиксирует). Требует токен. Перед apply вызывающий обязан проверить edt_support_status = EDITABLE.",
+      "description": "WRITE: add an attribute, register resource or dimension, enumeration value or tabular section. Use the tabular section's FQN as ownerFqn to add its attributes. Dry-run by default. Set apply=true to create the member. Requires a configured token. Caller must verify edt_support_status EDITABLE before any apply.",
+      "descriptionRu": "ЗАПИСЬ: добавить реквизит, ресурс или измерение регистра, значение перечисления или табличную часть. Для реквизита табличной части передать ее FQN в ownerFqn. По умолчанию пробный запуск. Создание выполняется с apply=true и требует токен. Перед apply вызывающий обязан проверить edt_support_status = EDITABLE.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1411,7 +1411,7 @@
           },
           "ownerFqn": {
             "type": "string",
-            "description": "Field owner, e.g. Catalog.Контрагенты or InformationRegister.Versions"
+            "description": "Metadata owner FQN, e.g. Enum.Status, Document.Order, Document.Order.TabularSection.Lines or InformationRegister.Versions"
           },
           "name": {
             "type": "string",
@@ -1419,17 +1419,19 @@
           },
           "kind": {
             "type": "string",
-            "description": "Field kind: attribute (default), resource or dimension. Resources and dimensions require a register owner.",
+            "description": "Member kind: attribute (default), resource, dimension, enumValue or tabularSection. Resources and dimensions require a register, enum values require an enumeration, and tabular sections require a document or catalog.",
             "enum": [
               "attribute",
               "resource",
-              "dimension"
+              "dimension",
+              "enumValue",
+              "tabularSection"
             ],
             "default": "attribute"
           },
           "type": {
             "type": "string",
-            "description": "Value type: Строка(150), Число(15,2), Булево, Дата/ДатаВремя/Время, ХранилищеЗначения, ОпределяемыйТип.X, or a reference <kind>Ссылка.X, where <kind> is Справочник, Документ, Перечисление, ПланВидовХарактеристик, ПланСчетов, ПланВидовРасчета, БизнесПроцесс, Задача, ПланОбмена. Composite type: comma-separate parts, e.g. \"СправочникСсылка.A, СправочникСсылка.B\" or \"Строка(10), Число(5)\""
+            "description": "Required for attributes, resources and dimensions. Omit for enumValue and tabularSection. Value type: Строка(150), Число(15,2), Булево, Дата/ДатаВремя/Время, ХранилищеЗначения, ОпределяемыйТип.X, or a reference <kind>Ссылка.X, where <kind> is Справочник, Документ, Перечисление, ПланВидовХарактеристик, ПланСчетов, ПланВидовРасчета, БизнесПроцесс, Задача, ПланОбмена. Composite type: comma-separate parts, e.g. \"СправочникСсылка.A, СправочникСсылка.B\" or \"Строка(10), Число(5)\""
           },
           "synonymRu": {
             "type": "string",
@@ -1452,6 +1454,22 @@
             "type": "boolean",
             "description": "Allow multiline field input. Optional; the metadata field must support this property."
           },
+          "indexing": {
+            "type": "string",
+            "description": "Indexing mode for fields that support it. See edt_property_reference."
+          },
+          "format": {
+            "type": "string",
+            "description": "Russian display format. An empty string removes the format for Russian."
+          },
+          "editFormat": {
+            "type": "string",
+            "description": "Russian edit format. An empty string removes the edit format for Russian."
+          },
+          "createOnInput": {
+            "type": "string",
+            "description": "Create on input mode for fields that support it. See edt_property_reference."
+          },
           "apply": {
             "type": "boolean",
             "description": "false (default) = dry-run: validate + return the plan, write nothing. true = perform the write (create the attribute and commit). Verify edt_support_status EDITABLE first."
@@ -1460,8 +1478,7 @@
         "required": [
           "projectName",
           "ownerFqn",
-          "name",
-          "type"
+          "name"
         ]
       },
       "toolsets": []
@@ -2596,11 +2613,15 @@
           },
           "groupDirection": {
             "type": "string",
-            "description": "Usual-group child layout: Auto, Horizontal, Vertical, HorizontalIfPossible or AlwaysHorizontal. Optional."
+            "description": "Child layout for a page or usual group: Auto, Horizontal, Vertical, HorizontalIfPossible or AlwaysHorizontal. Optional."
           },
           "group": {
             "type": "string",
             "description": "Alias of groupDirection. Do not combine the two names."
+          },
+          "scrollOnCompress": {
+            "type": "boolean",
+            "description": "Allow scrolling in a page or usual group when compressed. Optional."
           },
           "representation": {
             "type": "string",
@@ -2650,6 +2671,18 @@
           "horizontalStretch": {
             "type": "boolean",
             "description": "Horizontal stretch of a field, group or table, where supported. Optional."
+          },
+          "autoMaxWidth": {
+            "type": "boolean",
+            "description": "Use the input field's automatic maximum width. Set false to allow stretching past that limit. Optional."
+          },
+          "format": {
+            "type": "string",
+            "description": "Russian display format for an input field. An empty string clears the Russian value. Optional."
+          },
+          "editFormat": {
+            "type": "string",
+            "description": "Russian editing format for an input field. An empty string clears the Russian value. Optional."
           },
           "choiceButton": {
             "type": "boolean",
@@ -2819,11 +2852,15 @@
           },
           "groupDirection": {
             "type": "string",
-            "description": "Usual-group child layout: Auto, Horizontal, Vertical, HorizontalIfPossible or AlwaysHorizontal. Optional."
+            "description": "Child layout for a page or usual group: Auto, Horizontal, Vertical, HorizontalIfPossible or AlwaysHorizontal. Optional."
           },
           "group": {
             "type": "string",
             "description": "Alias of groupDirection. Do not combine the two names."
+          },
+          "scrollOnCompress": {
+            "type": "boolean",
+            "description": "Allow scrolling in a page or usual group when compressed. Optional."
           },
           "representation": {
             "type": "string",
@@ -2873,6 +2910,18 @@
           "horizontalStretch": {
             "type": "boolean",
             "description": "Horizontal stretch of a field, group or table, where supported. Optional."
+          },
+          "autoMaxWidth": {
+            "type": "boolean",
+            "description": "Use the input field's automatic maximum width. Set false to allow stretching past that limit. Optional."
+          },
+          "format": {
+            "type": "string",
+            "description": "Russian display format for an input field. An empty string clears the Russian value. Optional."
+          },
+          "editFormat": {
+            "type": "string",
+            "description": "Russian editing format for an input field. An empty string clears the Russian value. Optional."
           },
           "choiceButton": {
             "type": "boolean",
@@ -3454,8 +3503,8 @@
     },
     {
       "name": "edt_modify_attribute",
-      "description": "WRITE (Phase 2): modify an attribute, register resource or dimension – type, ru synonym and/or comment (provide at least one). Dry-run by default: validates and returns the current→new plan WITHOUT changing. apply=true performs the change. Changing the type may break backward compatibility (warned). Requires a configured token. Verify edt_support_status EDITABLE before apply.",
-      "descriptionRu": "ЗАПИСЬ (Phase 2): изменить реквизит, ресурс или измерение регистра – тип, синоним(ru) и/или comment (хотя бы одно). По умолчанию dry-run: проверяет и возвращает план было→стало БЕЗ изменения. apply=true применяет. Смена типа может нарушить обратную совместимость (предупреждение). Требует токен. Перед apply проверить edt_support_status = EDITABLE.",
+      "description": "WRITE: change the type, Russian synonym, comment or field properties of an attribute, register resource or dimension. Inspect supported properties with edt_property_reference. Dry-run by default. Set apply=true to write. Changing the type may break backward compatibility. Requires a configured token. Verify edt_support_status EDITABLE before apply.",
+      "descriptionRu": "ЗАПИСЬ: изменить тип, русский синоним, комментарий или свойства реквизита, ресурса или измерения регистра. Доступные свойства показывает edt_property_reference. По умолчанию пробный запуск. Для записи передать apply=true. Смена типа может нарушить обратную совместимость. Требует токен. Перед apply проверить edt_support_status = EDITABLE.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -3465,7 +3514,7 @@
           },
           "ownerFqn": {
             "type": "string",
-            "description": "Field owner, e.g. Catalog.Контрагенты or InformationRegister.Versions"
+            "description": "Field owner FQN, e.g. Catalog.Products, Document.Order.TabularSection.Lines or InformationRegister.Versions"
           },
           "name": {
             "type": "string",
@@ -3505,6 +3554,22 @@
           "multiLine": {
             "type": "boolean",
             "description": "Allow multiline field input. Optional; the metadata field must support this property."
+          },
+          "indexing": {
+            "type": "string",
+            "description": "Indexing mode for fields that support it. See edt_property_reference."
+          },
+          "format": {
+            "type": "string",
+            "description": "Russian display format. An empty string removes the format for Russian."
+          },
+          "editFormat": {
+            "type": "string",
+            "description": "Russian edit format. An empty string removes the edit format for Russian."
+          },
+          "createOnInput": {
+            "type": "string",
+            "description": "Create on input mode for fields that support it. See edt_property_reference."
           },
           "apply": {
             "type": "boolean",
@@ -3572,8 +3637,8 @@
     },
     {
       "name": "edt_create_object",
-      "description": "WRITE (Phase 2): create a new top metadata object (Catalog/Document/Enum/InformationRegister/Role/...) via EDT's own factory + per-type initializer, registered in the Configuration. In an extension the object is the extension's own and its name gets the extension's prefix. A role gets its Rights.rights: in a configuration with the main window modes and the analytics system client on the configuration, as the designer creates a role, in an extension with no rights; set others with edt_modify_role_rights. Dry-run by default: validates and returns the plan WITHOUT creating. apply=true creates it (object .mdo + Configuration.mdo). Additive – no force needed – but requires a configured token. Verify edt_support_status EDITABLE before apply.",
-      "descriptionRu": "ЗАПИСЬ (Phase 2): создать новый объект метаданных (Справочник/Документ/Перечисление/РегистрСведений/Роль/...) через штатную фабрику EDT + инициализатор типа, с регистрацией в Configuration. В расширении объект собственный, и к имени добавляется префикс расширения. Роль получает Rights.rights: в конфигурации с режимами основного окна и клиентом системы аналитики на конфигурацию, как роль создает конфигуратор, в расширении без прав; другие права задает edt_modify_role_rights. По умолчанию dry-run: проверяет и возвращает план БЕЗ создания. apply=true создаёт (object .mdo + Configuration.mdo). Аддитивно – force не нужен – но требует токен. Перед apply проверить edt_support_status = EDITABLE.",
+      "description": "WRITE: create a top-level metadata object, including HTTPService, Subsystem and ScheduledJob, registered in the Configuration. In an extension the object is the extension's own and its name gets the extension's prefix. A role gets its Rights.rights: in a configuration with the main window modes and the analytics system client on the configuration, as the designer creates a role, in an extension with no rights; set others with edt_modify_role_rights. Dry-run by default: validates and returns the plan WITHOUT creating. apply=true creates it (object .mdo + Configuration.mdo). Additive – no force needed – but requires a configured token. Verify edt_support_status EDITABLE before apply.",
+      "descriptionRu": "ЗАПИСЬ: создать объект метаданных, в том числе HTTP-сервис, подсистему или регламентное задание, и зарегистрировать его в Configuration. В расширении объект собственный, и к имени добавляется префикс расширения. Роль получает Rights.rights: в конфигурации с режимами основного окна и клиентом системы аналитики на конфигурацию, как роль создает конфигуратор, в расширении без прав; другие права задает edt_modify_role_rights. По умолчанию dry-run: проверяет и возвращает план БЕЗ создания. apply=true создаёт (object .mdo + Configuration.mdo). Аддитивно – force не нужен – но требует токен. Перед apply проверить edt_support_status = EDITABLE.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -3583,7 +3648,7 @@
           },
           "objectType": {
             "type": "string",
-            "description": "Object kind (Russian): Справочник, Документ, Перечисление, РегистрСведений, РегистрНакопления, РегистрБухгалтерии, РегистрРасчета, Отчет, Обработка, ПланВидовХарактеристик, ПланСчетов, ПланВидовРасчета, БизнесПроцесс, Задача, ПланОбмена, Константа, ОбщийМодуль, Роль"
+            "description": "Object kind in Russian or the English metadata class name. Russian names: Справочник, Документ, Перечисление, РегистрСведений, РегистрНакопления, РегистрБухгалтерии, РегистрРасчета, Отчет, Обработка, ПланВидовХарактеристик, ПланСчетов, ПланВидовРасчета, БизнесПроцесс, Задача, ПланОбмена, Константа, ОбщийМодуль, Роль, HTTPСервис, Подсистема, РегламентноеЗадание"
           },
           "name": {
             "type": "string",
@@ -3599,7 +3664,7 @@
           },
           "properties": {
             "type": "object",
-            "description": "Optional CommonModule execution flags and returnValuesReuse; same typed properties as edt_modify_object. Existing sorted Configuration lists retain alphabetic order."
+            "description": "Optional settings: rootURL for HTTPService, includeInCommandInterface for Subsystem, methodName for ScheduledJob (e.g. CommonModule.Jobs.Run), or execution flags and returnValuesReuse for CommonModule."
           },
           "apply": {
             "type": "boolean",
@@ -3616,8 +3681,8 @@
     },
     {
       "name": "edt_modify_object",
-      "description": "WRITE: set typed properties of an owned common module or a managed form (autoTitle, titleRu, windowOpeningMode, scaleVariant, width, height, ...), or enable the module body of an adopted common module. Dry-run by default; every property is validated before writing.",
-      "descriptionRu": "ЗАПИСЬ: изменить типизированные свойства собственного общего модуля или управляемой формы (autoTitle, titleRu, windowOpeningMode, scaleVariant, width, height и др.), либо включить расширение заимствованного общего модуля. По умолчанию dry-run; все свойства проверяются до записи.",
+      "description": "WRITE: set properties of metadata objects and managed forms. Use edt_property_reference to see which properties a target supports. Use extendModule to extend the body of an adopted common module. Dry-run by default.",
+      "descriptionRu": "ЗАПИСЬ: изменить свойства объектов метаданных и управляемых форм. Доступные свойства показывает edt_property_reference. Для расширения тела заимствованного общего модуля передать extendModule. По умолчанию пробный запуск.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -3627,11 +3692,11 @@
           },
           "fqn": {
             "type": "string",
-            "description": "CommonModule or Form FQN, e.g. CommonModule.Api, Catalog.Products.Form.ItemForm, CommonForm.Settings"
+            "description": "Metadata object or managed form FQN, e.g. Constant.DefaultRate, Catalog.Products, CommonModule.Api or Catalog.Products.Form.ItemForm"
           },
           "properties": {
             "type": "object",
-            "description": "Typed properties of the target. Owned CommonModule: global, server, externalConnection, clientManagedApplication, clientOrdinaryApplication, serverCall, privileged (boolean); returnValuesReuse (DontUse, DuringRequest, DuringSession). Form: autoTitle, showTitle, showCloseButton, allowFormCustomize (boolean); titleRu (string; empty clears); windowOpeningMode (Independent, LockOwnerWindow, LockWholeInterface); scaleVariant (Auto, Compact, Normal, NormalIfPossible); width, height (nonnegative integer). Call edt_property_reference to inspect."
+            "description": "Typed settings listed by edt_property_reference for the target. Examples: type for a constant, codeType and codeLength for a catalog, numberType, numberLength and posting for a document, dataLockControlMode, an array of dataLockFields, or Russian presentations such as objectPresentationRu, listPresentationRu and recordPresentationRu."
           },
           "extendModule": {
             "type": "boolean",
@@ -3813,7 +3878,7 @@
           },
           "object": {
             "type": "string",
-            "description": "Top object FQN, such as Catalog.Products, or Configuration. Without it the answer lists the objects the role has rights on."
+            "description": "Metadata FQN such as Catalog.Products, Configuration, HTTPService.Payments.URLTemplate.Status.Method.GET, or WebService.Exchange.Operation.ReadOrder. Omit it to list the objects the role has rights on."
           }
         },
         "required": [
@@ -3929,8 +3994,8 @@
     },
     {
       "name": "edt_modify_role_rights",
-      "description": "WRITE: set rights of a role on one object through the live model, the way the rights editor of EDT does: a value equal to the role's default for the object removes the explicit entry. An unknown right is refused with the rights the object has; a right with a data access restriction (RLS) is never changed. Dry-run by default.",
-      "descriptionRu": "ЗАПИСЬ: задать права роли на один объект через живую модель так, как это делает редактор прав EDT: значение, равное значению по умолчанию для объекта, убирает явную запись. Неизвестное право отклоняется с перечнем прав объекта; право с ограничением доступа к данным (RLS) не меняется. По умолчанию dry-run.",
+      "description": "WRITE: set rights for one object in a role through the live EDT model. Setting a right to its default value removes the explicit entry. The response lists only the rights whose values change. An unknown right is rejected with the list of valid rights for the object. Rights with a data access restriction (RLS) are read-only. Dry-run by default.",
+      "descriptionRu": "ЗАПИСЬ: задать права роли на один объект через модель EDT. Установка значения по умолчанию удаляет явную запись о праве. Ответ содержит только права, значения которых меняются. При неизвестном праве инструмент возвращает список допустимых прав объекта. Права с ограничением доступа к данным (RLS) доступны только для чтения. По умолчанию dry-run.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -3944,7 +4009,7 @@
           },
           "object": {
             "type": "string",
-            "description": "Top object FQN, such as Catalog.Products, or Configuration. In an extension the object must be the extension's own or adopted."
+            "description": "Metadata FQN such as Catalog.Products, Configuration, HTTPService.Payments.URLTemplate.Status.Method.GET, or WebService.Exchange.Operation.ReadOrder. In an extension, the object must belong to the extension or be adopted."
           },
           "rights": {
             "type": "object",
@@ -3955,7 +4020,7 @@
           },
           "apply": {
             "type": "boolean",
-            "description": "false (default): show the rights before and after, write nothing. true: write them and export the role."
+            "description": "false (default) previews changes. true writes changes and exports the role."
           }
         },
         "required": [
@@ -4660,22 +4725,30 @@
     },
     {
       "name": "edt_import_project",
-      "description": "WRITE (Phase 2): register an EXISTING project directory in the workspace - the programmatic form of \"Import existing project\". Needed whenever a second project must join the workspace: an extension in modification-and-control mode is checked against a BASE project on the target release, and that one comes from another worktree. Sources are not touched - only the workspace learns about them. Reports the declared name, workspace name and open state. An already imported closed project is reopened without changing its settings or infobase associations.",
-      "descriptionRu": "ЗАПИСЬ (Phase 2): зарегистрировать в workspace СУЩЕСТВУЮЩИЙ каталог проекта - программный аналог \"Импорт существующего проекта\". Нужно, когда в workspace должен появиться второй проект: расширение в режиме изменения и контроля сверяется с БАЗОВЫМ проектом на целевом релизе, а он лежит в другом worktree. Исходники не трогаются - о них узнаёт только workspace. Возвращает объявленное имя, имя под которым проект будет зарегистрирован, и открытость. Уже зарегистрированный закрытый проект открывается без повторного импорта и изменения связей с базами.",
+      "description": "WRITE (Phase 2): register an existing EDT project or import a 1C:Enterprise configuration. In existing mode, a different name lets you register two checkouts declaring the same project name. Reopening preserves project settings and infobase associations. In configuration mode, EDT imports the configuration into a new project in the current workspace. A .cf file requires a local 1C:Enterprise thick client to extract XML into a temporary directory. The tool requires a configured token. Configuration mode requires a writable name when project scope is enabled. Returns the workspace name, location and open state.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): зарегистрировать существующий проект EDT или импортировать конфигурацию 1С:Предприятия. В режиме existing можно задать другое имя для второго рабочего дерева с тем же именем в .project. При повторном открытии настройки и связи с базами сохраняются. В режиме configuration EDT импортирует конфигурацию в новый проект текущей рабочей области. Для извлечения XML из файла .cf во временный каталог требуется локальный толстый клиент 1С:Предприятия. Для вызова нужен токен. При ограничении доступа к проектам новое имя должно входить в список проектов, доступных для записи. Результат содержит имя проекта, путь и признак открытого проекта.",
       "inputSchema": {
         "type": "object",
         "properties": {
+          "mode": {
+            "type": "string",
+            "description": "existing (default) registers an EDT project. configuration imports a 1C:Enterprise configuration into a new project in the current workspace."
+          },
           "path": {
             "type": "string",
-            "description": "Directory holding the project (it must contain a .project file). Nothing on disk is rewritten."
+            "description": "In existing mode, a directory with .project. In configuration mode, a platform dump directory with Configuration.xml, or a .cf file."
           },
           "name": {
             "type": "string",
-            "description": "Name to register it under. Default: the name its .project declares. Two checkouts of one repository declare the SAME name and the workspace allows a name once - overriding it here is what lets the second one in."
+            "description": "Workspace project name. Required in configuration mode. Existing mode defaults to the name declared in .project unless project scope requires an explicit name."
           },
           "apply": {
             "type": "boolean",
-            "description": "false (default) = dry-run: report what would be registered and under which name. true = register and open it, or reopen the existing closed project without reimport."
+            "description": "false (default) returns the plan. true registers, reopens, or creates the project, depending on the mode and the current workspace state."
+          },
+          "async": {
+            "type": "boolean",
+            "description": "true = run the call as a background job: the answer is a jobId at once, and edt_job_status gives the state and, at the end, the same result the call returns without it. Use it when the call may outlast the time your client waits for a tool; edt_cancel_job stops the job. A call refused at once or a dry-run plan still answers directly."
           }
         },
         "required": [
@@ -4686,8 +4759,8 @@
     },
     {
       "name": "edt_clean_project",
-      "description": "WRITE (Phase 2): discard a project's build results and let them be recomputed - the programmatic equivalent of EDT's \"Clean\" dialog. EDT hangs its checks off the build, so this is what makes validation actually run again: a marker can otherwise survive long after the code that caused it was fixed, and reading a stale marker is worse than reading none. Reports the problem count before and after, waiting until it stops changing. Sources are untouched, so no force is needed - but it does need a configured token. Use it before trusting edt_project_errors after an edit – or, for one module changed on disk, pass refresh=true to edt_project_errors instead: an incremental build plus active checks of the resolved object. A failure reports its stage, completed stages, cancellation and bounded job/status diagnostics. applied=true may mean the clean finished before a later rebuild or wait failed.",
-      "descriptionRu": "ЗАПИСЬ (Phase 2): сбросить результаты сборки проекта и дать пересчитать их заново - программный аналог диалога \"Очистить\" в EDT. Проверки EDT висят на сборке, поэтому именно это заставляет валидацию отработать снова: иначе замечание может пережить исправление кода, а читать устаревший маркер хуже, чем не читать вовсе. Возвращает число замечаний до и после, дождавшись, пока оно перестанет меняться. Исходники не трогаются, force не нужен - но нужен токен. Вызывать перед тем, как доверять edt_project_errors после правок, – либо, для одного модуля, изменённого на диске, передать edt_project_errors refresh=true: инкрементальная сборка и применимые проверки разрешенного объекта. При сбое возвращаются этап, завершенные этапы, отмена и ограниченная диагностика jobs/status. applied=true может означать, что очистка выполнена, а последующая пересборка или ожидание завершились ошибкой.",
+      "description": "WRITE (Phase 2): discard a project's build results so EDT can run validation again. Waits for project services to restart before cleaning and after the build. Returns the problem counts before and after. Treat the final count as settled only when settled=true. A failure includes its stage, completed stages, and job diagnostics. applied=true means the clean finished, even if a later rebuild or wait failed. Requires a configured token.",
+      "descriptionRu": "ЗАПИСЬ (Phase 2): сбросить результаты сборки проекта, чтобы EDT запустила проверки заново. Ожидает перезапуска служб проекта перед очисткой и после сборки. Возвращает число замечаний до и после. Итоговый счет стабилен при settled=true. При сбое возвращает текущий этап, завершенные этапы и диагностику фоновых заданий. applied=true означает, что очистка выполнена, даже если пересборка или ожидание завершились ошибкой. Нужен токен.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -4701,11 +4774,11 @@
           },
           "waitSeconds": {
             "type": "integer",
-            "description": "How long to wait for validation to settle. Default 120. Big projects need more."
+            "description": "Time budget in seconds for project services, build jobs and validation to settle. Default 120. A synchronous build can exceed this budget."
           },
           "apply": {
             "type": "boolean",
-            "description": "false (default) = dry-run: report the current problem count and whether auto-build is on, change nothing. true = clean, rebuild and wait for the problem count to settle."
+            "description": "false (default) reports the current problem count and auto-build state. true waits for project services, cleans the project, and waits for validation when a build runs."
           },
           "async": {
             "type": "boolean",
@@ -5087,5 +5160,5 @@
       ]
     }
   ],
-  "version": "0.55.2"
+  "version": "0.56.0"
 }

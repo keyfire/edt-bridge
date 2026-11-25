@@ -19,6 +19,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import io.github.keyfire.edtbridge.core.JobTools;
+import io.github.keyfire.edtbridge.tools.ImportProjectTool;
 import io.github.keyfire.edtbridge.core.Jobs;
 
 /** Long calls as jobs on the server: the async argument, edt_job_status and edt_cancel_job. */
@@ -68,6 +69,30 @@ class McpJobsTest {
             o.addProperty(pairs[i], pairs[i + 1]);
         }
         return o;
+    }
+
+    @Test
+    void failedProjectImportsAreFailedJobsAndKeepTheirDirectResult() throws Exception {
+        var tool = new ImportProjectTool();
+        var registry = jobs();
+        for (String mode : new String[] {"existing", "configuration"}) {
+            // A NUL is an invalid file path on every supported OS, so no workspace is needed.
+            var arguments = args("mode", mode, "path", Character.toString(0));
+            var direct = tool.call(arguments);
+            assertFalse(direct.has("isError") && direct.get("isError").getAsBoolean(), text(direct));
+            assertFalse(body(direct).get("ok").getAsBoolean(), text(direct));
+
+            var job = registry.submit(tool.name(), () -> tool.call(arguments));
+            try {
+                var status = call(JobTools.STATUS, args("jobId", job.id(), "waitSeconds", "10"));
+                assertTrue(status.get("isError").getAsBoolean(), text(status));
+                var outcome = body(status);
+                assertEquals("failed", outcome.get("status").getAsString(), outcome.toString());
+                assertEquals(body(direct), outcome.get("result"));
+            } finally {
+                registry.forget(job.id());
+            }
+        }
     }
 
     @Test

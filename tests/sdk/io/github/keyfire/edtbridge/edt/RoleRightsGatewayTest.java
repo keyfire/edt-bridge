@@ -1,6 +1,7 @@
 package io.github.keyfire.edtbridge.edt;
 
 import static org.junit.jupiter.api.Assertions.*;
+import java.lang.reflect.Proxy;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -9,11 +10,15 @@ import java.util.UUID;
 import org.eclipse.emf.ecore.EClass;
 import org.eclipse.emf.ecore.EObject;
 import org.junit.jupiter.api.Test;
+import com._1c.g5.v8.bm.core.IBmObject;
+import com._1c.g5.v8.bm.core.IBmTransaction;
 import com._1c.g5.v8.dt.metadata.mdclass.Catalog;
 import com._1c.g5.v8.dt.metadata.mdclass.Configuration;
 import com._1c.g5.v8.dt.metadata.mdclass.MdClassFactory;
+import com._1c.g5.v8.dt.metadata.mdclass.Method;
 import com._1c.g5.v8.dt.metadata.mdclass.ObjectBelonging;
 import com._1c.g5.v8.dt.metadata.mdclass.Role;
+import com._1c.g5.v8.dt.metadata.mdclass.URLTemplate;
 import com._1c.g5.v8.dt.rights.IRightInfosService;
 import com._1c.g5.v8.dt.rights.model.ObjectRight;
 import com._1c.g5.v8.dt.rights.model.ObjectRights;
@@ -27,6 +32,53 @@ class RoleRightsGatewayTest {
     private final Right read = right("Read", "Чтение");
     private final Right view = right("View", "Просмотр");
     private final Right insert = right("Insert", "Добавление");
+
+    @Test void anHttpMethodIsResolvedInItsOwnUrlTemplate() {
+        var service = MdClassFactory.eINSTANCE.createHTTPService();
+        service.setName("Payments");
+        URLTemplate status = template("Status");
+        URLTemplate refunds = template("Refunds");
+        service.getUrlTemplates().addAll(List.of(status, refunds));
+        String fqn = "HTTPService.Payments.URLTemplate.Refunds.Method.GET";
+        IBmTransaction tx = transaction(Map.of("HTTPService.Payments", (IBmObject) service));
+
+        assertSame(refunds.getMethods().get(0), RoleRightsGateway.object(tx, fqn));
+        assertEquals(fqn, RoleRightsGateway.fqn(RoleRightsGateway.object(tx, fqn)));
+        assertThrows(RoleRightsGateway.Missing.class,
+                () -> RoleRightsGateway.object(tx, "HTTPService.Payments.URLTemplate.Missing.Method.GET"));
+        assertThrows(RoleRightsGateway.Missing.class,
+                () -> RoleRightsGateway.object(tx, "HTTPService.Payments.URLTemplate.Refunds.Method.POST"));
+
+        Role role = role();
+        RoleDescription rights = (RoleDescription) role.getRights();
+        Right use = right("Use", "Использование");
+        RoleRightsGateway.applyValues(role, rights, RoleRightsGateway.object(tx, fqn), fqn,
+                Map.of(use, true), "Role.Manager", null);
+
+        assertSame(refunds.getMethods().get(0), rights.getRights().get(0).getObject());
+        assertTrue(RoleRightsGateway.states(role, rights, refunds.getMethods().get(0), List.of(use)).get(0).value);
+        assertFalse(RoleRightsGateway.states(role, rights, status.getMethods().get(0), List.of(use)).get(0).value);
+    }
+
+    @Test void aWebOperationIsResolvedByNameAndOtherChildKindsAreRejected() {
+        var service = MdClassFactory.eINSTANCE.createWebService();
+        service.setName("Exchange");
+        var operation = MdClassFactory.eINSTANCE.createOperation();
+        operation.setName("ReadOrder");
+        service.getOperations().add(operation);
+        IBmTransaction tx = transaction(Map.of("WebService.Exchange", (IBmObject) service));
+
+        assertSame(operation, RoleRightsGateway.object(tx, "WebService.Exchange.Operation.ReadOrder"));
+        assertEquals("WebService.Exchange.Operation.ReadOrder", RoleRightsGateway.fqn(operation));
+        assertThrows(RoleRightsGateway.Missing.class,
+                () -> RoleRightsGateway.object(tx, "WebService.Exchange.Operation.Missing"));
+        assertThrows(IllegalArgumentException.class,
+                () -> RoleRightsGateway.object(tx, "WebService.Exchange.Operation."));
+        assertThrows(IllegalArgumentException.class,
+                () -> RoleRightsGateway.object(tx, "WebService.Exchange.Attribute.ReadOrder"));
+        assertThrows(IllegalArgumentException.class,
+                () -> RoleRightsGateway.object(tx, "Catalog.Products.Attribute.Price"));
+    }
 
     @Test void valuesAreWrittenAndADefaultValueRemovesTheExplicitEntry() {
         Role role = role();
@@ -67,6 +119,29 @@ class RoleRightsGatewayTest {
         var state = RoleRightsGateway.states(role, rights, products, List.of(insert)).get(0);
         assertTrue(state.restricted);
         assertEquals(List.of("WHERE Owner = &CurrentUser"), state.conditions);
+    }
+
+    @Test void thePlanReportsOnlyChangedValuesAndRefusesChangedRestrictedRights() {
+        Role role = role();
+        RoleDescription rights = (RoleDescription) role.getRights();
+        Catalog products = catalog();
+        RoleRightsGateway.applyValues(role, rights, products, "Catalog.Products", values(insert, true), "Role.Manager", null);
+        rights.getRights().get(0).getRights().get(0).getRestrictionsByCondition()
+                .add(RightsFactory.eINSTANCE.createRls());
+
+        List<Right> allowed = List.of(read, view, insert);
+        Map<String, Boolean> requested = Map.of("Read", true, "View", false, "Insert", true);
+        var plan = RoleRightsGateway.changes(role, products, allowed, requested, "Catalog.Products", "Role.Manager");
+        assertEquals(1, plan.size());
+        assertEquals("Read", plan.get(0).right);
+        assertEquals(Boolean.FALSE, plan.get(0).before);
+        assertTrue(plan.get(0).after);
+        assertThrows(IllegalArgumentException.class,
+                () -> RoleRightsGateway.changes(role, products, allowed, Map.of("Insert", false),
+                        "Catalog.Products", "Role.Manager"));
+
+        RoleRightsGateway.applyValues(role, rights, products, "Catalog.Products", values(read, true), "Role.Manager", null);
+        assertTrue(RoleRightsGateway.changes(role, products, allowed, requested, "Catalog.Products", "Role.Manager").isEmpty());
     }
 
     @Test void rightsFollowTheOrderEdtGivesAndKeepTheOnesItLeavesOut() {
@@ -143,6 +218,24 @@ class RoleRightsGatewayTest {
             @Override public Set<Right> getEClassRights(EObject object, EClass eClass) { return rights; }
             @Override public Map<Integer, Right> getEClassRightsOrder(EObject object, EClass eClass) { return order; }
         };
+    }
+
+    private static IBmTransaction transaction(Map<String, IBmObject> topObjects) {
+        return (IBmTransaction) Proxy.newProxyInstance(IBmTransaction.class.getClassLoader(),
+                new Class<?>[] {IBmTransaction.class}, (proxy, method, args) -> {
+                    if (method.getName().equals("getTopObjectByFqn")) return topObjects.get(args[0]);
+                    throw new UnsupportedOperationException(method.getName());
+                });
+    }
+
+    private static URLTemplate template(String name) {
+        URLTemplate template = MdClassFactory.eINSTANCE.createURLTemplate();
+        template.setName(name);
+        Method method = MdClassFactory.eINSTANCE.createMethod();
+        method.setName("GET");
+        method.setUuid(UUID.randomUUID());
+        template.getMethods().add(method);
+        return template;
     }
 
     private static Configuration configuration(boolean extension) {

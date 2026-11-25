@@ -46,16 +46,18 @@ public final class CreateObjectTool {
     public JsonObject descriptor() {
         JsonObject props = new JsonObject();
         props.add("projectName", strProp("EDT project name"));
-        props.add("objectType", strProp("Object kind (Russian): Справочник, Документ, Перечисление, "
+        props.add("objectType", strProp("Object kind in Russian or the English metadata class name. Russian names: Справочник, Документ, Перечисление, "
                 + "РегистрСведений, РегистрНакопления, РегистрБухгалтерии, РегистрРасчета, Отчет, Обработка, "
                 + "ПланВидовХарактеристик, ПланСчетов, ПланВидовРасчета, БизнесПроцесс, Задача, ПланОбмена, "
-                + "Константа, ОбщийМодуль, Роль"));
+                + "Константа, ОбщийМодуль, Роль, HTTPСервис, Подсистема, РегламентноеЗадание"));
         props.add("name", strProp("New object name (a valid 1C identifier, Cyrillic allowed). In an extension "
                 + "the extension's name prefix is added unless the name starts with it."));
         props.add("synonymRu", strProp("Russian synonym. Optional."));
         props.add("comment", strProp("Comment. Optional."));
         JsonObject properties = new JsonObject(); properties.addProperty("type", "object");
-        properties.addProperty("description", "Optional CommonModule execution flags and returnValuesReuse; same typed properties as edt_modify_object. Existing sorted Configuration lists retain alphabetic order.");
+        properties.addProperty("description", "Optional settings: rootURL for HTTPService, includeInCommandInterface "
+                + "for Subsystem, methodName for ScheduledJob (e.g. CommonModule.Jobs.Run), or execution flags and "
+                + "returnValuesReuse for CommonModule.");
         props.add("properties", properties);
         props.add("apply", boolProp("false (default) = dry-run: validate (type, name free, config feature) "
                 + "and return the plan, create nothing. true = create the object (factory + attach + link + "
@@ -74,8 +76,7 @@ public final class CreateObjectTool {
         JsonObject t = new JsonObject();
         t.addProperty("name", name());
         t.addProperty("description",
-                "WRITE (Phase 2): create a new top metadata object (Catalog/Document/Enum/"
-                + "InformationRegister/Role/...) via EDT's own factory + per-type initializer, registered in the "
+                "WRITE: create a top-level metadata object, including HTTPService, Subsystem and ScheduledJob, registered in the "
                 + "Configuration. In an extension the object is the extension's own and its name gets the "
                 + "extension's prefix. A role gets its Rights.rights: in a configuration with the main window "
                 + "modes and the analytics system client on the configuration, as the designer creates a role, "
@@ -84,8 +85,7 @@ public final class CreateObjectTool {
                 + "Configuration.mdo). Additive – no force needed – but requires a configured token. Verify "
                 + "edt_support_status EDITABLE before apply.");
         t.addProperty("descriptionRu",
-                "ЗАПИСЬ (Phase 2): создать новый объект метаданных (Справочник/Документ/Перечисление/"
-                + "РегистрСведений/Роль/...) через штатную фабрику EDT + инициализатор типа, с регистрацией в "
+                "ЗАПИСЬ: создать объект метаданных, в том числе HTTP-сервис, подсистему или регламентное задание, и зарегистрировать его в "
                 + "Configuration. В расширении объект собственный, и к имени добавляется префикс расширения. "
                 + "Роль получает Rights.rights: в конфигурации с режимами основного окна и клиентом системы "
                 + "аналитики на конфигурацию, как роль создает конфигуратор, в расширении без прав; другие права "

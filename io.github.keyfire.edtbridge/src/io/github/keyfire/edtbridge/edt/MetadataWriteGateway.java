@@ -80,6 +80,9 @@ import com._1c.g5.v8.dt.mcore.TypeDescription;
 import com._1c.g5.v8.dt.mcore.TypeItem;
 import com._1c.g5.v8.dt.metadata.mdclass.BasicFeature;
 import com._1c.g5.v8.dt.metadata.mdclass.BasicForm;
+import com._1c.g5.v8.dt.metadata.mdclass.BasicTabularSection;
+import com._1c.g5.v8.dt.metadata.mdclass.Catalog;
+import com._1c.g5.v8.dt.metadata.mdclass.Document;
 import com._1c.g5.v8.dt.metadata.mdclass.MdClassPackage;
 import com._1c.g5.v8.dt.metadata.mdclass.MdObject;
 import com._1c.g5.v8.dt.metadata.mdclass.Role;
@@ -107,6 +110,7 @@ public final class MetadataWriteGateway {
 
     /** Result of {@link #addAttribute}. */
     public static final class AddAttrResult {
+        public String fqn;
         public boolean ok;            // all validations pass → an apply would be valid
         public boolean applied;       // a real write happened (false in the dry-run stage)
         public boolean applyPending;  // apply requested but real write not implemented yet
@@ -155,7 +159,12 @@ public final class MetadataWriteGateway {
 
     public AddAttrResult addAttribute(String projectName, String ownerFqnRaw, String name, String typeSpec,
             String synonymRu, String comment, String kind, Map<String, Object> options, boolean apply) {
-        final String fieldKind = MetadataFields.kind(kind);
+        String memberKind = switch (kind == null ? "" : kind.trim().toLowerCase(Locale.ROOT)) {
+            case "enumvalue" -> "enumValue";
+            case "tabularsection" -> "tabularSection";
+            default -> null;
+        };
+        final String fieldKind = memberKind == null ? MetadataFields.kind(kind) : memberKind;
         AddAttrResult r = new AddAttrResult();
         r.kind = fieldKind;
         final String ownerFqn = normalizeOwnerFqn(ownerFqnRaw);
@@ -183,6 +192,13 @@ public final class MetadataWriteGateway {
             r.message = "no BM model for project: " + projectName;
             return r;
         }
+        if (memberKind != null) {
+            if (typeSpec != null || !options.isEmpty()) {
+                r.message = "type and attribute options are unavailable for " + memberKind;
+                return r;
+            }
+            return addMember(r, model, mm, p, synonymRu, comment, apply);
+        }
         ParsedType pt = parseType(typeSpec);
         r.typeValid = pt.valid;
         r.typeParsed = pt.display;
@@ -190,7 +206,7 @@ public final class MetadataWriteGateway {
         model.executeReadonlyTask(new AbstractBmTask<Object>("edt-bridge.addAttribute.validate") {
             @Override
             public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
-                IBmObject o = tx.getTopObjectByFqn(ownerFqn);
+                EObject o = resolveFieldOwner(tx, ownerFqn);
                 if (o == null) {
                     r.message = "owner object not found: " + ownerFqn;
                     return null;
@@ -203,9 +219,8 @@ public final class MetadataWriteGateway {
                     r.message = invalid.getMessage(); return null;
                 }
                 r.ownerSupportsAttributes = true;
-                var conflicts = MetadataFields.matches(o, name);
-                r.nameAvailable = conflicts.isEmpty();
-                r.conflictingFqns = conflicts.stream().map(field -> field.fqn(ownerFqn)).toList();
+                r.conflictingFqns = fieldNameConflicts(o, ownerFqn, name);
+                r.nameAvailable = r.conflictingFqns.isEmpty();
                 if (pt.valid && !fieldTypeAllowed(o, fieldKind, typeSpec)) {
                     r.typeValid = false;
                     r.message = resourceTypeMessage();
@@ -267,7 +282,13 @@ public final class MetadataWriteGateway {
                 model.execute(new AbstractBmTask<Object>("edt-bridge.addAttribute.apply") {
                     @Override
                     public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
-                        IBmObject o = tx.getTopObjectByFqn(ownerFqn);
+                        EObject o = resolveFieldOwner(tx, ownerFqn);
+                        if (o == null) throw new IllegalArgumentException("owner object disappeared: " + ownerFqn);
+                        r.conflictingFqns = fieldNameConflicts(o, ownerFqn, name);
+                        if (!r.conflictingFqns.isEmpty()) {
+                            r.nameAvailable = false;
+                            throw new IllegalArgumentException("field already exists: " + String.join(", ", r.conflictingFqns));
+                        }
                         if (!fieldTypeAllowed(o, fieldKind, typeSpec)) throw new IllegalArgumentException(resourceTypeMessage());
                         MetadataFields.validateOptions(MetadataFields.reference(o, fieldKind).getEReferenceType(), options);
                         MdObject added = MetadataFields.add(o, fieldKind, name, buildTypeDescription(tx, pt, version), synonymRu, comment);
@@ -280,7 +301,7 @@ public final class MetadataWriteGateway {
                 // serialized to the .mdo on disk (IBmModelManager.forceExport, the model->files step).
                 r.applied = true;
                 IDtProject dtProject = mm.getDtProject(model);
-                boolean exported = dtProject != null && mm.forceExport(dtProject, ownerFqn);
+                boolean exported = dtProject != null && mm.forceExport(dtProject, fieldOwnerTopFqn(ownerFqn));
                 r.message = "written: added " + fieldKind + " \"" + name + "\" to " + ownerFqn
                         + (exported ? " (export requested)"
                                 : " – WARNING: committed in-memory but export was not accepted");
@@ -293,7 +314,136 @@ public final class MetadataWriteGateway {
         return r;
     }
 
-    // Aggregate register resources use one explicit numeric type; information-register resources do not.
+    private AddAttrResult addMember(AddAttrResult result, IBmModel model, IBmModelManager manager,
+            IProject project, String synonym, String comment, boolean apply) {
+        boolean section = "tabularSection".equals(result.kind);
+        try {
+            var task = new AbstractBmTask<Boolean>("edt-bridge.addMetadataMember") {
+                @Override public Boolean execute(IBmTransaction tx, IProgressMonitor monitor) {
+                    EObject owner = tx.getTopObjectByFqn(result.ownerFqn);
+                    result.ownerFound = owner != null;
+                    if (owner == null) throw new IllegalArgumentException("owner object not found: " + result.ownerFqn);
+                    result.ownerType = owner.eClass().getName();
+                    EReference ref = memberReference(owner, result.kind);
+                    result.ownerSupportsAttributes = true;
+                    String segment = section ? "TabularSection" : "EnumValue";
+                    result.fqn = result.ownerFqn + "." + segment + "." + result.name;
+                    if (section) {
+                        result.conflictingFqns = fieldNameConflicts(owner, result.ownerFqn, result.name);
+                    } else {
+                        MdObject existing = findMember(owner, ref, result.name);
+                        if (existing != null) {
+                            result.conflictingFqns = List.of(result.ownerFqn + "." + segment + "." + existing.getName());
+                        }
+                    }
+                    result.nameAvailable = result.conflictingFqns.isEmpty();
+                    if (!result.nameAvailable) {
+                        throw new IllegalArgumentException("metadata member already exists: "
+                                + String.join(", ", result.conflictingFqns));
+                    }
+                    result.plan = "Add " + result.kind + " " + result.fqn;
+                    if (!apply) return false;
+                    var type = ref.getEReferenceType();
+                    EObject value;
+                    if (section) {
+                        IModelObjectFactory factory = modelObjectFactory();
+                        if (factory == null) throw new IllegalArgumentException("EDT model object factory is unavailable");
+                        IV8ProjectManager projects = ServiceAccess.get(IV8ProjectManager.class);
+                        IV8Project v8Project = projects == null ? null : projects.getProject(project);
+                        value = v8Project != null
+                                ? factory.create(type, v8Project)
+                                : factory.create(type, GatewaySupport.projectVersion(project));
+                    } else {
+                        value = type.getEPackage().getEFactoryInstance().create(type);
+                    }
+                    if (!(value instanceof MdObject member)) {
+                        throw new IllegalArgumentException("EDT factory did not create " + type.getName());
+                    }
+                    attachMember(owner, ref, member, result.name, synonym, comment);
+                    return true;
+                }
+            };
+            result.applied = apply ? model.execute(task) : model.executeReadonlyTask(task);
+            result.ok = true;
+            if (result.applied) {
+                IDtProject dtProject = manager.getDtProject(model);
+                boolean exported = dtProject != null && manager.forceExport(dtProject, result.ownerFqn);
+                result.message = "Added " + result.fqn + (exported ? " and serialized the owner"
+                        : " in the model; serialization was not confirmed");
+            }
+        } catch (RuntimeException failure) {
+            result.ok = false;
+            result.message = (result.applied ? "The model changed, but export failed: " : "Nothing written: ")
+                    + GatewaySupport.describeCause(failure);
+        }
+        return result;
+    }
+
+    static EReference memberReference(EObject owner, String kind) {
+        String feature;
+        if ("enumValue".equals(kind) && owner instanceof com._1c.g5.v8.dt.metadata.mdclass.Enum) {
+            feature = "enumValues";
+        } else if ("tabularSection".equals(kind) && (owner instanceof Catalog || owner instanceof Document)) {
+            feature = "tabularSections";
+        } else {
+            throw new IllegalArgumentException(kind + " is unavailable for " + owner.eClass().getName());
+        }
+        return (EReference) owner.eClass().getEStructuralFeature(feature);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<MdObject> members(EObject owner, EReference reference) {
+        return (List<MdObject>) owner.eGet(reference);
+    }
+
+    private static MdObject findMember(EObject owner, EReference reference, String name) {
+        return members(owner, reference).stream().filter(value -> name.equalsIgnoreCase(value.getName()))
+                .findFirst().orElse(null);
+    }
+
+    /** Catalog and document attributes and tabular sections share a name namespace. */
+    static List<String> fieldNameConflicts(EObject owner, String ownerFqn, String name) {
+        var conflicts = new ArrayList<String>();
+        for (MetadataFields.Field field : MetadataFields.matches(owner, name)) {
+            conflicts.add(field.fqn(ownerFqn));
+        }
+        if (owner instanceof Catalog || owner instanceof Document) {
+            MdObject section = findMember(owner, memberReference(owner, "tabularSection"), name);
+            if (section != null) conflicts.add(ownerFqn + ".TabularSection." + section.getName());
+        }
+        return conflicts;
+    }
+
+    static void attachMember(EObject owner, EReference reference, MdObject member, String name,
+            String synonym, String comment) {
+        if (!reference.getEReferenceType().isInstance(member)) {
+            throw new IllegalArgumentException("EDT factory returned an unexpected type for " + reference.getName());
+        }
+        if (findMember(owner, reference, name) != null) {
+            throw new IllegalArgumentException("metadata member already exists: " + name);
+        }
+        member.setName(name);
+        member.setUuid(UUID.randomUUID());
+        if (synonym != null && !synonym.isBlank()) member.getSynonym().put("ru", synonym);
+        if (comment != null && !comment.isBlank()) member.setComment(comment);
+        members(owner, reference).add(member);
+    }
+
+    static EObject resolveFieldOwner(IBmTransaction tx, String fqn) {
+        if (fqn == null) return null;
+        if (!fieldOwnerTopFqn(fqn).equals(fqn)) {
+            MdObject value = resolveMetadataTarget(tx, fqn);
+            return value instanceof BasicTabularSection ? value : null;
+        }
+        return tx.getTopObjectByFqn(fqn);
+    }
+
+    private static String fieldOwnerTopFqn(String fqn) {
+        String[] parts = fqn.split("\\.", -1);
+        return parts.length == 4 && "TabularSection".equalsIgnoreCase(parts[2])
+                ? parts[0] + "." + parts[1] : fqn;
+    }
+
     boolean fieldTypeAllowed(EObject owner, String kind, String typeSpec) {
         if (!"resource".equals(MetadataFields.kind(kind))) return true;
         String ownerType = owner.eClass().getName();
@@ -842,7 +992,7 @@ public final class MetadataWriteGateway {
         model.executeReadonlyTask(new AbstractBmTask<Object>("edt-bridge.modifyAttribute.inspect") {
             @Override
             public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
-                IBmObject o = tx.getTopObjectByFqn(ownerFqn);
+                EObject o = resolveFieldOwner(tx, ownerFqn);
                 if (o == null) {
                     r.message = "owner object not found: " + ownerFqn;
                     return null;
@@ -921,7 +1071,8 @@ public final class MetadataWriteGateway {
                 model.execute(new AbstractBmTask<Object>("edt-bridge.modifyAttribute.apply") {
                     @Override
                     public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
-                        IBmObject o = tx.getTopObjectByFqn(ownerFqn);
+                        EObject o = resolveFieldOwner(tx, ownerFqn);
+                        if (o == null) throw new IllegalArgumentException("owner object disappeared: " + ownerFqn);
                         if (wantType && !fieldTypeAllowed(o, fieldKind, newType)) {
                             throw new IllegalArgumentException(resourceTypeMessage());
                         }
@@ -936,7 +1087,7 @@ public final class MetadataWriteGateway {
                 });
                 r.applied = true;
                 IDtProject dtProject = mm.getDtProject(model);
-                boolean exported = dtProject != null && mm.forceExport(dtProject, ownerFqn);
+                boolean exported = dtProject != null && mm.forceExport(dtProject, fieldOwnerTopFqn(ownerFqn));
                 r.message = "modified " + fieldKind + " \"" + name + "\" in " + ownerFqn
                         + (exported ? " (export requested)"
                                 : " – WARNING: changed in-memory but export was not accepted");
@@ -1593,7 +1744,10 @@ public final class MetadataWriteGateway {
             Map.entry("планобмена", "ExchangePlan"),
             Map.entry("константа", "Constant"),
             Map.entry("общиймодуль", "CommonModule"),
-            Map.entry("роль", "Role"));
+            Map.entry("роль", "Role"),
+            Map.entry("httpсервис", "HTTPService"),
+            Map.entry("подсистема", "Subsystem"),
+            Map.entry("регламентноезадание", "ScheduledJob"));
 
     /**
      * Normalize the class prefix of a top-object FQN from a Russian metadata kind
@@ -1610,7 +1764,7 @@ public final class MetadataWriteGateway {
         if (dot <= 0) {
             return fqn;
         }
-        String en = CREATE_KIND_TO_MDCLASS.get(fqn.substring(0, dot).toLowerCase());
+        String en = CREATE_KIND_TO_MDCLASS.get(fqn.substring(0, dot).toLowerCase(Locale.ROOT));
         return en == null ? fqn : en + fqn.substring(dot);
     }
 
@@ -1677,13 +1831,12 @@ public final class MetadataWriteGateway {
             return r;
         }
         r.nameValid = true;
-        String mdClassName = (objectType == null) ? null
-                : CREATE_KIND_TO_MDCLASS.get(objectType.trim().toLowerCase());
+        String mdClassName = createClassName(objectType);
         if (mdClassName == null) {
             r.message = "unknown objectType: \"" + objectType + "\" (supported: "
                     + "Справочник/Документ/Перечисление/РегистрСведений/РегистрНакопления/РегистрБухгалтерии/"
                     + "РегистрРасчета/Отчет/Обработка/ПланВидовХарактеристик/ПланСчетов/ПланВидовРасчета/"
-                    + "БизнесПроцесс/Задача/ПланОбмена/Константа/ОбщийМодуль)";
+                    + "БизнесПроцесс/Задача/ПланОбмена/Константа/ОбщийМодуль/Роль/HTTPСервис/Подсистема/РегламентноеЗадание)";
             return r;
         }
         EClassifier classifier = MdClassPackage.eINSTANCE.getEClassifier(mdClassName);
@@ -1694,11 +1847,7 @@ public final class MetadataWriteGateway {
         final EClass eClass = (EClass) classifier;
         if (properties != null && !properties.isEmpty()) {
             EObject draft = eClass.getEPackage().getEFactoryInstance().create(eClass);
-            if (!(draft instanceof com._1c.g5.v8.dt.metadata.mdclass.CommonModule module)) {
-                r.message = "properties are supported only for CommonModule";
-                return r;
-            }
-            try { CommonModuleSettings.describe(module, properties, false); }
+            try { createProperties(draft, properties, false); }
             catch (IllegalArgumentException invalid) { r.message = invalid.getMessage(); return r; }
         }
         r.typeKnown = true;
@@ -1810,19 +1959,22 @@ public final class MetadataWriteGateway {
                 model.getGlobalContext().executeImportTask(new AbstractBmTask<Object>("edt-bridge.createObject.apply") {
                     @Override
                     public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
-                        tx.attachTopObject((IBmObject) created, fqn);
+                        if (tx.getTopObjectByFqn(fqn) != null) {
+                            throw new IllegalArgumentException("object already exists: " + fqn);
+                        }
                         EObject config = tx.getTopObjectByFqn("Configuration");
                         EReference feat = findConfigFeature(config, eClass);
+                        if (feat == null) throw new IllegalArgumentException("Configuration no longer accepts " + mdClassName);
+                        tx.attachTopObject((IBmObject) created, fqn);
                         @SuppressWarnings("unchecked")
                         List<EObject> list = (List<EObject>) config.eGet(feat);
                         int position = io.github.keyfire.edtbridge.core.MetadataOrder.insertionIndex(
                                 list.stream().map(object -> object instanceof MdObject md ? md.getName() : null).toList(), finalName);
                         list.add(position, created);
-                        if (created instanceof com._1c.g5.v8.dt.metadata.mdclass.CommonModule module
-                                && properties != null && !properties.isEmpty()) {
-                            CommonModuleSettings.apply(module, properties, false);
-                        }
                         factory.fillDefaultReferences(created);
+                        if (properties != null && !properties.isEmpty()) {
+                            createProperties(created, properties, true);
+                        }
                         if (created instanceof Role newRole) {
                             r.rightsFqn = RoleRightsGateway.attachNewRights(tx, newRole, fqn, config,
                                     RoleRightsGateway.startingConfigurationRights(infos, config));
@@ -1854,11 +2006,27 @@ public final class MetadataWriteGateway {
         return r;
     }
 
-    /**
-     * EDT's metadata-object factory, taken from the MD plugin's Guice injector via reflection (the
-     * factory is Guice-bound, NOT registered through {@code ServiceAccess} like IBmModelManager / the
-     * refactoring service). Reflection stays contained here, matching {@link #languageInjector}.
-     */
+    static String createClassName(String objectType) {
+        if (objectType == null) return null;
+        var name = objectType.trim();
+        String mapped = CREATE_KIND_TO_MDCLASS.get(name.toLowerCase(Locale.ROOT));
+        return mapped != null ? mapped : CREATE_KIND_TO_MDCLASS.values().stream()
+                .filter(value -> value.equalsIgnoreCase(name)).findFirst().orElse(null);
+    }
+
+    static void createProperties(EObject object, Map<String, Object> properties, boolean apply) {
+        if (object instanceof com._1c.g5.v8.dt.metadata.mdclass.CommonModule module) {
+            if (apply) CommonModuleSettings.apply(module, properties, false);
+            else CommonModuleSettings.describe(module, properties, false);
+            return;
+        }
+        if (!List.of("HTTPService", "ScheduledJob", "Subsystem").contains(object.eClass().getName())) {
+            throw new IllegalArgumentException("Creation properties are available for CommonModule, HTTPService, Subsystem and ScheduledJob");
+        }
+        MetadataObjectProperties.update(object, properties, ignored -> null, apply);
+    }
+
+    /** Resolve the metadata-object factory from the MD plugin's Guice injector. */
     private IModelObjectFactory modelObjectFactory() {
         try {
             Bundle b = Platform.getBundle("com._1c.g5.v8.dt.md");
