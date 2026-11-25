@@ -30,8 +30,9 @@ item. An omitted `parent` keeps its parent; `parent=""` selects the form root. A
 support `groupDirection` (alias `group`), `representation`, `showTitle`, `united`, `titleLocation`,
 `maxHeight` and `verticalStretch` where the item type supports them. A column group of a table
 takes `groupDirection` (`Horizontal`, `Vertical` or `InCell`) and `showTitle`; EDT creates it
-vertical. Unknown enums and settings for the wrong item type are refused. `fieldType` selects `InputField`, `RadioButtonField` or
-`CheckBoxField`. `choiceList` replaces the choices of an input or radio field:
+vertical. An input field becomes multi-line with `multiLine` together with a `height` of two lines
+or more, and `wrap` wraps its text. Unknown enums and settings for the wrong item type are
+refused. `fieldType` selects `InputField`, `RadioButtonField` or `CheckBoxField`. `choiceList` replaces the choices of an input or radio field:
 
 ```json
 {
@@ -60,7 +61,7 @@ the result. A dynamic-list attribute also returns `customQuery`, `mainTable` and
 `dynamicList`. `queryLimit` bounds each returned query (default 20000, maximum 100000 characters);
 `queryTextTruncated` reports omitted text.
 
-## Command pictures
+## Command and decoration pictures
 
 `picture` of `edt_add_form_command` and `edt_modify_form_command` takes the names `Form.form`
 stores: `StdPicture.Post` for a standard picture of the platform and `CommonPicture.Logo` for a
@@ -70,6 +71,10 @@ the name up among the standard pictures first and then among the common ones, an
 `StdPicture.Post`. An unknown standard picture is refused with similar names, and a missing common
 picture with its FQN. An empty string removes the picture. The answer and
 `edt_property_reference` report the current picture under `picture`.
+
+A decoration of type `Picture` takes its picture by the same names, in `picture` of
+`edt_add_form_item` and `edt_modify_form_item`; other items refuse it. The answer reports the current
+picture among the item's properties.
 
 ## Managed-form properties
 

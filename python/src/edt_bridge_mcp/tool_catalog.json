@@ -2712,6 +2712,18 @@
             "type": "boolean",
             "description": "Restrict an input field to its choice list. Optional."
           },
+          "multiLine": {
+            "type": "boolean",
+            "description": "Multi-line input field; give it a height of 2 or more lines as well. Optional; InputField only."
+          },
+          "wrap": {
+            "type": "boolean",
+            "description": "Wrap the text of an input field to its width. Optional; InputField only."
+          },
+          "picture": {
+            "type": "string",
+            "description": "Picture of a picture decoration: StdPicture.<Name> of the platform, CommonPicture.<Name> of the configuration or БиблиотекаКартинок.<Name>; an empty string removes it. Optional; decoration of type Picture only."
+          },
           "choiceFoldersAndItems": {
             "type": "string",
             "description": "What an input field bound to a hierarchical reference lets the user choose: Auto, Items, Folders or FoldersAndItems. Optional; InputField only.",
@@ -2950,6 +2962,18 @@
           "listChoiceMode": {
             "type": "boolean",
             "description": "Restrict an input field to its choice list. Optional."
+          },
+          "multiLine": {
+            "type": "boolean",
+            "description": "Multi-line input field; give it a height of 2 or more lines as well. Optional; InputField only."
+          },
+          "wrap": {
+            "type": "boolean",
+            "description": "Wrap the text of an input field to its width. Optional; InputField only."
+          },
+          "picture": {
+            "type": "string",
+            "description": "Picture of a picture decoration: StdPicture.<Name> of the platform, CommonPicture.<Name> of the configuration or БиблиотекаКартинок.<Name>; an empty string removes it. Optional; decoration of type Picture only."
           },
           "choiceFoldersAndItems": {
             "type": "string",

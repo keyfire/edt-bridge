@@ -70,6 +70,7 @@ import com._1c.g5.v8.dt.form.model.DataItem;
 import com._1c.g5.v8.dt.form.model.EventHandler;
 import com._1c.g5.v8.dt.form.model.EventHandlerContainer;
 import com._1c.g5.v8.dt.form.model.DataPath;
+import com._1c.g5.v8.dt.form.model.Decoration;
 import com._1c.g5.v8.dt.form.model.DynamicListExtInfo;
 import com._1c.g5.v8.dt.form.model.Form;
 import com._1c.g5.v8.dt.form.model.FormAttribute;
@@ -2380,14 +2381,16 @@ public final class FormWriteGateway {
                     FormItemEdits.Position destination = FormItemEdits.position(form, null, parentName,
                             index, beforeItem, afterItem);
                     placement[0] = destination.describe();
+                    ManagedFormDecorationType decorationKind = null;
                     if (isDecoration) {
-                        ManagedFormDecorationType type = resolveDecorationType(requestedDecoration, destination.parent);
-                        r.properties.put("decorationType", type.getLiteral());
+                        decorationKind = resolveDecorationType(requestedDecoration, destination.parent);
+                        r.properties.put("decorationType", decorationKind.getLiteral());
                     }
                     if (!options.isEmpty()) {
-                        FormItem prototype = itemPrototype(itemKind, group, dataPath, destination.parent,
-                                form, GatewaySupport.projectVersion(p));
-                        FormItemEdits.validateSettings(prototype, options);
+                        Version version = GatewaySupport.projectVersion(p);
+                        FormItem prototype = itemPrototype(itemKind, group, decorationKind, dataPath, destination.parent,
+                                form, version);
+                        FormItemEdits.validateSettings(prototype, FormPictures.resolve(options, tx, version));
                     }
                 } catch (RuntimeException invalid) {
                     problem[0] = GatewaySupport.describeCause(invalid);
@@ -2460,9 +2463,11 @@ public final class FormWriteGateway {
                     }
                     FormItemEdits.Position destination = FormItemEdits.position(form, null, parentName,
                             index, beforeItem, afterItem);
-                    if (!options.isEmpty()) {
-                        FormItemEdits.validateSettings(itemPrototype(itemKind, group, dataPath, parent,
-                                form, GatewaySupport.projectVersion(p)), options);
+                    Map<String, Object> settings = FormPictures.resolve(options, tx, GatewaySupport.projectVersion(p));
+                    if (!settings.isEmpty()) {
+                        FormItemEdits.validateSettings(itemPrototype(itemKind, group,
+                                isDecoration ? resolveDecorationType(requestedDecoration, parent) : null, dataPath, parent,
+                                form, GatewaySupport.projectVersion(p)), settings);
                     }
                     Map<String, String> title = new LinkedHashMap<>();
                     // A table generates its columns from the bound attribute, and EDT hands the
@@ -2512,7 +2517,7 @@ public final class FormWriteGateway {
                             && created instanceof Titled) {
                         ((Titled) created).getTitle().put("ru", titleRu);
                     }
-                    applyItemSettings(created, options, parent, form, GatewaySupport.projectVersion(p));
+                    applyItemSettings(created, settings, parent, form, GatewaySupport.projectVersion(p));
                     destination.placeAdded(created);
                     r.name = created.getName();
                     r.id = Integer.valueOf(created.getId());
@@ -2568,8 +2573,9 @@ public final class FormWriteGateway {
         return type;
     }
 
-    private static FormItem itemPrototype(String kind, ManagedFormGroupType groupType, String path,
-            FormItemContainer parent, Form form, Version version) {
+    private static FormItem itemPrototype(String kind, ManagedFormGroupType groupType,
+            ManagedFormDecorationType decorationType, String path, FormItemContainer parent, Form form,
+            Version version) {
         switch (kind) {
             case "field":
                 FormField field = FormFactory.eINSTANCE.createFormField();
@@ -2582,7 +2588,15 @@ public final class FormWriteGateway {
                 return groupPrototype(groupType);
             case "button": return FormFactory.eINSTANCE.createButton();
             case "table": return FormFactory.eINSTANCE.createTable();
-            default: return FormFactory.eINSTANCE.createDecoration();
+            default:
+                Decoration decoration = FormFactory.eINSTANCE.createDecoration();
+                if (decorationType != null) {
+                    decoration.setType(decorationType);
+                    decoration.setExtInfo(decorationType == ManagedFormDecorationType.PICTURE
+                            ? FormFactory.eINSTANCE.createPictureDecorationExtInfo()
+                            : FormFactory.eINSTANCE.createLabelDecorationExtInfo());
+                }
+                return decoration;
         }
     }
 
@@ -2764,7 +2778,7 @@ public final class FormWriteGateway {
                         if (item == null) { return "form item disappeared"; }
                         if (titleRu != null && !(item instanceof Titled)) { return "the item has no title"; }
                         if ((visible != null || enabled != null) && !(item instanceof Visible)) { return "the item has no visibility properties"; }
-                        FormItemEdits.validateSettings(item, options);
+                        FormItemEdits.validateSettings(item, FormPictures.resolve(options, tx, GatewaySupport.projectVersion(p)));
                         return null;
                     } catch (RuntimeException invalid) { return GatewaySupport.describeCause(invalid); }
                 }
@@ -2820,8 +2834,9 @@ public final class FormWriteGateway {
                         failure[0] = "the item disappeared between validation and apply";
                         return null;
                     }
-                    FormItemEdits.validateSettings(item, options);
-                    applyItemSettings(item, options, (FormItemContainer) item.eContainer(), form,
+                    Map<String, Object> settings = FormPictures.resolve(options, tx, GatewaySupport.projectVersion(p));
+                    FormItemEdits.validateSettings(item, settings);
+                    applyItemSettings(item, settings, (FormItemContainer) item.eContainer(), form,
                             GatewaySupport.projectVersion(p));
                     if (titleRu != null && item instanceof Titled) {
                         EMap<String, String> title = ((Titled) item).getTitle();

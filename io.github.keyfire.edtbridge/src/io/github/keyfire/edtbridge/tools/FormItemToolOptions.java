@@ -62,6 +62,9 @@ final class FormItemToolOptions {
         props.add("clearButton", ToolJson.boolProp("Show the input field's clear button. Optional."));
         props.add("textEdit", ToolJson.boolProp("Allow typing in an input field. Optional."));
         props.add("listChoiceMode", ToolJson.boolProp("Restrict an input field to its choice list. Optional."));
+        props.add("multiLine", ToolJson.boolProp("Multi-line input field; give it a height of 2 or more lines as well. Optional; InputField only."));
+        props.add("wrap", ToolJson.boolProp("Wrap the text of an input field to its width. Optional; InputField only."));
+        props.add("picture", ToolJson.strProp("Picture of a picture decoration: StdPicture.<Name> of the platform, CommonPicture.<Name> of the configuration or БиблиотекаКартинок.<Name>; an empty string removes it. Optional; decoration of type Picture only."));
         JsonObject folders = ToolJson.strProp("What an input field bound to a hierarchical reference lets the user choose: Auto, Items, Folders or FoldersAndItems. Optional; InputField only.");
         JsonArray folderModes = new JsonArray(); folderModes.add("Auto"); folderModes.add("Items"); folderModes.add("Folders"); folderModes.add("FoldersAndItems");
         folders.add("enum", folderModes); props.add("choiceFoldersAndItems", folders);
@@ -98,7 +101,7 @@ final class FormItemToolOptions {
         Map<String, Object> result = new LinkedHashMap<>();
         if (args.has("group") && args.has("groupDirection")) { throw new IllegalArgumentException("group and groupDirection are aliases; pass one"); }
         for (String key : List.of("groupDirection", "group", "scrollOnCompress", "representation", "showTitle", "united", "titleLocation", "maxHeight", "verticalStretch", "fieldType", "choiceList", "width", "height", "horizontalStretch", "autoMaxWidth", "format", "editFormat", "choiceButton",
-                "clearButton", "textEdit", "listChoiceMode", "choiceFoldersAndItems", "readOnly", "changeRowSet", "autoInsertNewRow", "changeRowOrder", "selectionMode", "initialTreeView", "defaultButton", "buttonImportance")) {
+                "clearButton", "textEdit", "listChoiceMode", "choiceFoldersAndItems", "readOnly", "changeRowSet", "autoInsertNewRow", "changeRowOrder", "selectionMode", "initialTreeView", "defaultButton", "buttonImportance", "multiLine", "wrap", "picture")) {
             if (args.has(key)) {
                 result.put("group".equals(key) ? "groupDirection" : key, value(args.get(key)));
             }

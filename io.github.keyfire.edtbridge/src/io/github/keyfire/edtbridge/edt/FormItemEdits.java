@@ -42,7 +42,7 @@ public final class FormItemEdits {
             "choiceButton", "clearButton", "textEdit", "listChoiceMode", "choiceFoldersAndItems", "readOnly",
             "format", "editFormat", "autoMaxWidth",
             "changeRowSet", "autoInsertNewRow", "changeRowOrder", "selectionMode", "initialTreeView",
-            "defaultButton", "buttonImportance");
+            "defaultButton", "buttonImportance", "multiLine", "wrap", "picture");
 
     /** A zero-based destination index in the sibling list after excluding the moved item. */
     public static final class Position {
@@ -220,6 +220,7 @@ public final class FormItemEdits {
             if (settings.containsKey("fieldType")) { return fieldInfo(fieldType(settings.get("fieldType"))); }
             return ((FormField) item).getExtInfo();
         }
+        if (item instanceof Decoration decoration) { return decoration.getExtInfo(); }
         return item instanceof FormGroup ? ((FormGroup) item).getExtInfo() : null;
     }
     private static final class Assignment {
@@ -247,6 +248,10 @@ public final class FormItemEdits {
                 }
                 choices(value); result.add(new Assignment(key, value)); continue;
             }
+            if ("picture".equals(key)) {
+                propertyTarget(item, info, key);
+                result.add(new Assignment(key, picture(value))); continue;
+            }
             EObject target = propertyTarget(item, info, key);
             if (isInputFormat(key)) {
                 if (!(value instanceof String)) { throw new IllegalArgumentException(key + " must be a string"); }
@@ -268,7 +273,21 @@ public final class FormItemEdits {
         if ("titleLocation".equals(key) && item instanceof FormGroup) { return "childItemsTitleLocation"; }
         return key;
     }
+    /**
+     * The picture to store: one the form tools have looked up in the project, or none for an empty
+     * string. A name that was not looked up cannot be stored, since only the model knows it.
+     */
+    private static Picture picture(Object value) {
+        if (value instanceof Picture picture) { return picture; }
+        if (value instanceof String text && text.isBlank()) { return null; }
+        if (value instanceof String) { throw new IllegalStateException("a picture is looked up in the project model"); }
+        throw new IllegalArgumentException("picture must be a string such as StdPicture.Post");
+    }
     private static EObject propertyTarget(FormItem item, EObject info, String key) {
+        if ("picture".equals(key)) {
+            if (!(info instanceof PictureDecorationExtInfo)) { throw new IllegalArgumentException("picture requires a picture decoration"); }
+            return info;
+        }
         if ("groupDirection".equals(key)) {
             if (!(info instanceof UsualGroupExtInfo) && !(info instanceof PageGroupExtInfo)
                     && !(info instanceof ColumnGroupExtInfo)) {
@@ -295,7 +314,7 @@ public final class FormItemEdits {
             return info;
         }
         if (Set.of("choiceButton", "clearButton", "textEdit", "listChoiceMode", "choiceFoldersAndItems",
-                "autoMaxWidth", "format", "editFormat").contains(key)) {
+                "autoMaxWidth", "format", "editFormat", "multiLine", "wrap").contains(key)) {
             if (!(info instanceof InputFieldExtInfo)) { throw new IllegalArgumentException(key + " requires an input field"); }
             return info;
         }
@@ -390,6 +409,9 @@ public final class FormItemEdits {
                 } else if (type == int.class || type == Integer.class) {
                     entry.put("type", "integer");
                     entry.put("note", "nonnegative");
+                } else if ("picture".equals(key)) {
+                    entry.put("type", "string");
+                    entry.put("note", "StdPicture.<Name>, CommonPicture.<Name> or БиблиотекаКартинок.<Name>; an empty string removes it");
                 } else { continue; }
             }
             if (current.containsKey(key)) { entry.put("current", current.get(key)); }
@@ -486,6 +508,11 @@ public final class FormItemEdits {
                 if (feature != null) {
                     Object value = isInputFormat(key)
                             ? formats((InputFieldExtInfo) target, key).get("ru") : target.eGet(feature);
+                    if ("picture".equals(key)) {
+                        String name = value instanceof Picture picture ? FormPictures.name(picture) : null;
+                        if (name != null) { result.put(key, name); }
+                        continue;
+                    }
                     if ("showTitle".equals(key)) {
                         EStructuralFeature current = target.eClass().getEStructuralFeature("showTitle851");
                         if (current != null && target.eIsSet(current)) {

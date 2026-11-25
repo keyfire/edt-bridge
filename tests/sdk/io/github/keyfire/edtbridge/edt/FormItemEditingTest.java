@@ -196,6 +196,43 @@ class FormItemEditingTest {
                 attribute.getNotDefaultUseAlwaysAttributes().get(0).getSegments());
     }
 
+    @Test void anInputFieldBecomesMultiLineAndWrapsItsText() {
+        FormField field=FormFactory.eINSTANCE.createFormField(); field.setName("Comment");
+        field.setType(ManagedFormFieldType.INPUT_FIELD); field.setExtInfo(FormFactory.eINSTANCE.createInputFieldExtInfo());
+        FormItemEdits.applySettings(field,Map.of("multiLine",true,"wrap",true,"height",3),type->{},false);
+        InputFieldExtInfo info=(InputFieldExtInfo)field.getExtInfo();
+        assertEquals(Boolean.TRUE,info.getMultiLine()); assertTrue(info.isWrap()); assertEquals(3,info.getHeight());
+        Map<String,Object> read=FormItemEdits.readSettings(field);
+        assertEquals(Boolean.TRUE,read.get("multiLine")); assertEquals(Boolean.TRUE,read.get("wrap"));
+        FormField check=FormFactory.eINSTANCE.createFormField(); check.setName("Flag");
+        check.setType(ManagedFormFieldType.CHECK_BOX_FIELD); check.setExtInfo(FormFactory.eINSTANCE.createCheckBoxFieldExtInfo());
+        var error=assertThrows(IllegalArgumentException.class,
+                ()->FormItemEdits.applySettings(check,Map.of("multiLine",true),type->{},false));
+        assertTrue(error.getMessage().contains("requires an input field"),error.getMessage());
+    }
+    @Test void aPictureDecorationTakesALookedUpPictureAndLosesItForAnEmptyName() {
+        Decoration decoration=FormFactory.eINSTANCE.createDecoration(); decoration.setName("Logo");
+        decoration.setType(ManagedFormDecorationType.PICTURE);
+        decoration.setExtInfo(FormFactory.eINSTANCE.createPictureDecorationExtInfo());
+        com._1c.g5.v8.dt.metadata.mdclass.CommonPicture logo=com._1c.g5.v8.dt.metadata.mdclass.MdClassFactory.eINSTANCE.createCommonPicture();
+        logo.setName("Logo");
+        com._1c.g5.v8.dt.mcore.PictureRef reference=com._1c.g5.v8.dt.mcore.McoreFactory.eINSTANCE.createPictureRef();
+        reference.setPicture(logo);
+        FormItemEdits.applySettings(decoration,Map.of("picture",reference),type->{},false);
+        PictureDecorationExtInfo info=(PictureDecorationExtInfo)decoration.getExtInfo();
+        assertSame(reference,info.getPicture());
+        assertEquals("CommonPicture.Logo",FormItemEdits.readSettings(decoration).get("picture"));
+        assertTrue(FormItemEdits.describeSettings(decoration).stream().anyMatch(s->"picture".equals(s.get("name"))));
+        FormItemEdits.applySettings(decoration,Map.of("picture",""),type->{},false);
+        assertNull(info.getPicture()); assertNull(FormItemEdits.readSettings(decoration).get("picture"));
+        assertThrows(IllegalStateException.class,
+                ()->FormItemEdits.validateSettings(decoration,Map.of("picture","StdPicture.Post")));
+        Decoration label=FormFactory.eINSTANCE.createDecoration(); label.setName("Note");
+        label.setType(ManagedFormDecorationType.LABEL); label.setExtInfo(FormFactory.eINSTANCE.createLabelDecorationExtInfo());
+        var error=assertThrows(IllegalArgumentException.class,()->FormItemEdits.validateSettings(label,Map.of("picture","")));
+        assertTrue(error.getMessage().contains("requires a picture decoration"),error.getMessage());
+    }
+
     @Test void aColumnGroupTakesItsOwnLayoutAndTitle() {
         FormGroup group=FormFactory.eINSTANCE.createFormGroup(); group.setName("Columns");
         group.setType(ManagedFormGroupType.COLUMN_GROUP); group.setExtInfo(FormFactory.eINSTANCE.createColumnGroupExtInfo());
