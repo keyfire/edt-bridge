@@ -37,8 +37,9 @@ final class FormItemToolOptions {
         if (move) { props.add("parent", ToolJson.strProp("Destination container. Omitted keeps the current parent; an empty string selects the form root. Moves that would change the item kind or table data binding are refused.")); }
     }
     static void settingsProps(JsonObject props) {
-        props.add("groupDirection", ToolJson.strProp("Layout of a group's children: Auto, Horizontal, Vertical, HorizontalIfPossible or AlwaysHorizontal for a usual group; Horizontal, Vertical or InCell for a column group of a table. Optional."));
+        props.add("groupDirection", ToolJson.strProp("Child layout: Auto, Horizontal, Vertical, HorizontalIfPossible or AlwaysHorizontal for a page or usual group; Horizontal, Vertical or InCell for a column group. Optional."));
         props.add("group", ToolJson.strProp("Alias of groupDirection. Do not combine the two names."));
+        props.add("scrollOnCompress", ToolJson.boolProp("Allow scrolling in a page or usual group when compressed. Optional."));
         props.add("representation", ToolJson.strProp("Representation enum supported by the current group or button, e.g. None/WeakSeparation/StrongSeparation for a usual group. Optional."));
         props.add("showTitle", ToolJson.boolProp("Show the title of a usual group or a column group. Optional."));
         props.add("united", ToolJson.boolProp("Keep usual-group children united. Optional."));
@@ -54,6 +55,9 @@ final class FormItemToolOptions {
             props.add(key, size);
         }
         props.add("horizontalStretch", ToolJson.boolProp("Horizontal stretch of a field, group or table, where supported. Optional."));
+        props.add("autoMaxWidth", ToolJson.boolProp("Use the input field's automatic maximum width. Set false to allow stretching past that limit. Optional."));
+        props.add("format", ToolJson.strProp("Russian display format for an input field. An empty string clears the Russian value. Optional."));
+        props.add("editFormat", ToolJson.strProp("Russian editing format for an input field. An empty string clears the Russian value. Optional."));
         props.add("choiceButton", ToolJson.boolProp("Show the input field's choice button. Optional."));
         props.add("clearButton", ToolJson.boolProp("Show the input field's clear button. Optional."));
         props.add("textEdit", ToolJson.boolProp("Allow typing in an input field. Optional."));
@@ -93,7 +97,7 @@ final class FormItemToolOptions {
     static Map<String, Object> settings(JsonObject args) {
         Map<String, Object> result = new LinkedHashMap<>();
         if (args.has("group") && args.has("groupDirection")) { throw new IllegalArgumentException("group and groupDirection are aliases; pass one"); }
-        for (String key : List.of("groupDirection", "group", "representation", "showTitle", "united", "titleLocation", "maxHeight", "verticalStretch", "fieldType", "choiceList", "width", "height", "horizontalStretch", "choiceButton",
+        for (String key : List.of("groupDirection", "group", "scrollOnCompress", "representation", "showTitle", "united", "titleLocation", "maxHeight", "verticalStretch", "fieldType", "choiceList", "width", "height", "horizontalStretch", "autoMaxWidth", "format", "editFormat", "choiceButton",
                 "clearButton", "textEdit", "listChoiceMode", "choiceFoldersAndItems", "readOnly", "changeRowSet", "autoInsertNewRow", "changeRowOrder", "selectionMode", "initialTreeView", "defaultButton", "buttonImportance")) {
             if (args.has(key)) {
                 result.put("group".equals(key) ? "groupDirection" : key, value(args.get(key)));

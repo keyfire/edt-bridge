@@ -44,7 +44,8 @@ public final class ModifyAttributeTool {
     public JsonObject descriptor() {
         JsonObject props = new JsonObject();
         props.add("projectName", strProp("EDT project name"));
-        props.add("ownerFqn", strProp("Field owner, e.g. Catalog.Контрагенты or InformationRegister.Versions"));
+        props.add("ownerFqn", strProp("Field owner FQN, e.g. Catalog.Products, Document.Order.TabularSection.Lines "
+                + "or InformationRegister.Versions"));
         props.add("name", strProp("Existing field name to modify"));
         JsonObject kind = strProp("Field kind: attribute (default), resource or dimension. Resources and dimensions require a register owner.");
         JsonArray kinds = new JsonArray();
@@ -72,14 +73,14 @@ public final class ModifyAttributeTool {
         JsonObject t = new JsonObject();
         t.addProperty("name", name());
         t.addProperty("description",
-                "WRITE (Phase 2): modify an attribute, register resource or dimension – type, ru synonym and/or comment (provide at "
-                + "least one). Dry-run by default: validates and returns the current→new plan WITHOUT changing. "
-                + "apply=true performs the change. Changing the type may break backward compatibility (warned). "
+                "WRITE: change the type, Russian synonym, comment or field properties of an attribute, "
+                + "register resource or dimension. Inspect supported properties with edt_property_reference. "
+                + "Dry-run by default. Set apply=true to write. Changing the type may break backward compatibility. "
                 + "Requires a configured token. Verify edt_support_status EDITABLE before apply.");
         t.addProperty("descriptionRu",
-                "ЗАПИСЬ (Phase 2): изменить реквизит, ресурс или измерение регистра – тип, синоним(ru) и/или comment (хотя бы одно). "
-                + "По умолчанию dry-run: проверяет и возвращает план было→стало БЕЗ изменения. apply=true применяет. "
-                + "Смена типа может нарушить обратную совместимость (предупреждение). Требует токен. Перед apply "
+                "ЗАПИСЬ: изменить тип, русский синоним, комментарий или свойства реквизита, ресурса или измерения регистра. "
+                + "Доступные свойства показывает edt_property_reference. По умолчанию пробный запуск. Для записи передать apply=true. "
+                + "Смена типа может нарушить обратную совместимость. Требует токен. Перед apply "
                 + "проверить edt_support_status = EDITABLE.");
         t.add("inputSchema", schema);
         return t;

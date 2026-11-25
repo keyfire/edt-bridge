@@ -17,6 +17,11 @@ to the code and the reasoning behind it.
 
 ### Added
 
+- `edt_add_template` creates an HTML template, `templateType=HTMLDocument`, and a text template,
+  `templateType=TextDocument`. An HTML template gets one page in the language EDT edits the
+  project in, and its `sourceHash` goes to `edt_replace_html_template`. A text template gets its
+  `Template.txt`. The new `text` sets the starting text of either.
+  ([#108](https://github.com/keyfire/edt-bridge/pull/108))
 - `edt_add_form_item` and `edt_modify_form_item` set `groupDirection` (`Horizontal`, `Vertical`
   or `InCell`) and `showTitle` of a column group of a table. Both used to be refused with
   "requires a usual group", and a column group stayed vertical, as EDT creates it.
@@ -28,12 +33,53 @@ to the code and the reasoning behind it.
 
 ### Fixed
 
+- `edt_add_form_handler` writes the stub of `OnGetDataAtServer` of a dynamic list
+  (`ПриПолученииДанныхНаСервере`) as the platform help asks: `&НаСервереБезКонтекста` with
+  `ИмяЭлемента, Настройки, Строки`. It used to write `&НаСервере` and an extra `Элемент` first.
+  ([#109](https://github.com/keyfire/edt-bridge/pull/109))
+- A form write no longer puts the old form back over `Form.form` changed on disk a moment
+  before. The form tools and `edt_modify_object` with a form FQN refresh the file and wait until
+  EDT has loaded it into the model. If that takes more than 30 s, nothing is written.
+  ([#109](https://github.com/keyfire/edt-bridge/pull/109))
 - `edt_add_method` and `edt_move_method` leave one blank line on each side of the method. A
   method appended to a region used to get three blank lines before `#КонецОбласти`, and one put
   before another method got two blank lines above it.
   ([#111](https://github.com/keyfire/edt-bridge/pull/111))
 
-## 2026-11-24 – 0.54.0, 0.55.0, 0.55.1
+## 2026-11-25 – 0.56.0, 0.57.0
+
+### Added
+
+- `edt_test_form` with `webClient=true` lists spreadsheet cells with clipped text in
+  `webForm.spreadsheets[].clipped`. Each entry shows the cell address and the widths of the
+  text and cell.
+  ([#119](https://github.com/keyfire/edt-bridge/pull/119))
+- `edt_create_object` creates HTTP services, subsystems and scheduled jobs with their initial
+  settings.
+  ([#118](https://github.com/keyfire/edt-bridge/pull/118))
+- `edt_add_attribute` adds enumeration values, tabular sections and their columns.
+  `edt_modify_object`, `edt_modify_attribute` and `edt_property_reference` cover additional
+  metadata settings.
+  ([#118](https://github.com/keyfire/edt-bridge/pull/118))
+- Role rights tools address HTTP methods and web service operations. The write response lists the
+  changed rights.
+  ([#118](https://github.com/keyfire/edt-bridge/pull/118))
+- Pages and usual groups accept layout and scroll settings. Input fields accept display and edit
+  formats and support disabling automatic maximum width.
+  ([#118](https://github.com/keyfire/edt-bridge/pull/118))
+- `edt_import_project` creates an EDT project from a configuration dump directory or a `.cf` file.
+  ([#118](https://github.com/keyfire/edt-bridge/pull/118))
+
+### Fixed
+
+- Generated list forms for documents and catalogs include a hidden reference column with the
+  dynamic list's use-always setting.
+  ([#118](https://github.com/keyfire/edt-bridge/pull/118))
+- `edt_clean_project` waits for project services to restart and reports the problem counts before
+  and after the build.
+  ([#118](https://github.com/keyfire/edt-bridge/pull/118))
+
+## 2026-11-24 – 0.54.0, 0.55.0, 0.55.1, 0.55.2
 
 ### Added
 
@@ -48,6 +94,15 @@ to the code and the reasoning behind it.
 
 ### Fixed
 
+- `edt_test_form` with `webClient=true` opens an external file in a copy of an infobase built on the
+  Standard Subsystems Library. The library opens a window about a moved infobase over the main
+  window of every copy, and the check waited for File – Open until its time limit. Now the bridge
+  answers "This is a copy of the infobase" and names the window in `answeredWindows`.
+  ([#117](https://github.com/keyfire/edt-bridge/pull/117))
+- A web check stops after 15 seconds with `web_start_window` when a window it has no answer for
+  stays over the main window. A failed upload dialog names the windows over the main window in
+  `blockingWindows`.
+  ([#117](https://github.com/keyfire/edt-bridge/pull/117))
 - The headless start now finds the JDK components of the 1C installer even when the MCP client
   launches the server without `ProgramFiles`; the bridge reads the directory from the Windows
   registry. Previously EDT took the older Java from `PATH` and stopped at its modal Java version

@@ -354,6 +354,17 @@ class HtmlTemplateRegressionTest {
         assertEquals(0, access.writes);
     }
 
+    @Test void htmlReadAwaitsFilesOfANewlyCreatedTemplate() {
+        String fqn = "ExternalReport.Demo.Template.NewHtml";
+        HtmlTemplateGateway.noteCreated("Demo", fqn);
+        var access = new MemoryAccess();
+        access.onResolve = call -> call == 1 ? new HtmlTemplateGateway.ContentFileMissingException(
+                "existing template file is unavailable in the requested project", null) : null;
+        var read = new HtmlTemplateGateway(access, 5_000).read("Demo", fqn, "ru");
+        assertTrue(read.ok, read.message);
+        assertEquals(1, access.refreshes);
+    }
+
     @Test void schemaFileThatNeverAppearsIsRefusedAfterTheBoundedWait() {
         HtmlTemplateGateway.noteCreated("Demo", "ExternalReport.Demo.Template.Main");
         var access = new MemoryAccess();
@@ -399,7 +410,7 @@ class HtmlTemplateRegressionTest {
         assertTrue(result.message.contains("template not found"), result.message);
         assertEquals(1, access.resolves);
         assertTrue((System.nanoTime() - started) / 1_000_000 < 2_000);
-        // An HTML locale has no export lag to wait for: its missing page is refused at once as well.
+        // A missing page of an older HTML template is also refused immediately.
         access.resolves = 0;
         access.onResolve = call -> new HtmlTemplateGateway.ContentFileMissingException(
                 "existing template file is unavailable in the requested project", null);

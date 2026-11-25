@@ -366,3 +366,261 @@ def test_mcp_web_external_form_uses_private_runner_copy(tmp_path):
          "webClient": True, "steps": [{"action": "read_form"}]},
         runner=run, environ={form_run.ENV_INFOBASE: str(tmp_path), form_run.ENV_PLATFORM: str(tmp_path)})
     assert answer["ok"] is True
+
+
+class _Refused(Exception):
+    """The Playwright error a fake page raises."""
+
+
+class _StartPage:
+    """A web client page with windows over the main window, as File - Open meets them.
+
+    windows lists the windows from the top: each is a dict with the title and the answer caption it has. covered
+    makes the first click on an answer fail, as when a list a navigation link opened lies over the window.
+    """
+
+    def __init__(self, windows=(), covered=False, refuse_menu=0):
+        self.windows, self.covered, self.refuse_menu = [dict(window) for window in windows], covered, refuse_menu
+        self.actions, self.uploaded = [], None
+        self.keyboard = self
+
+    def press(self, key):
+        self.actions.append(("press", key))
+        if key == "Escape" and self.covered:
+            self.covered = False
+
+    def wait_for_timeout(self, milliseconds):
+        self.actions.append(("wait", milliseconds))
+
+    def evaluate(self, script):
+        assert script == native_web._WINDOWS
+        return [window["title"] for window in self.windows]
+
+    def get_by_title(self, caption, exact):
+        assert exact is True
+        return _Answer(self, caption)
+
+    def locator(self, selector):
+        return _Element(self, selector)
+
+
+class _Answer:
+    def __init__(self, page, caption):
+        self.page, self.caption = page, caption
+        self.first = self
+
+    def count(self):
+        return int(any(window.get("answer") == self.caption for window in self.page.windows[:1]))
+
+    def click(self, timeout):
+        self.page.actions.append(("answer", self.caption))
+        if self.page.covered:
+            raise _Refused("<div> from <div id=ps1win> subtree intercepts pointer events")
+        self.page.windows.pop(0)
+
+
+class _Element:
+    def __init__(self, page, selector):
+        self.page, self.selector = page, selector
+
+    def is_visible(self):
+        if self.selector == "#modalSurface":
+            return bool(self.page.windows)
+        return self.selector == "#fileSelectDialogOk"
+
+    def click(self, timeout):
+        self.page.actions.append(("click", self.selector))
+        if self.page.windows or (self.selector == "#captionbarMore" and self.page.refuse_menu):
+            if self.selector == "#captionbarMore" and self.page.refuse_menu:
+                self.page.refuse_menu -= 1
+            raise _Refused("<div id=modalSurface> intercepts pointer events")
+
+    def hover(self, timeout):
+        self.page.actions.append(("hover", self.selector))
+
+    def set_input_files(self, path, timeout):
+        self.page.uploaded = path
+
+
+def _clicks(page):
+    return [action for action in page.actions if action[0] in ("answer", "click", "press")]
+
+
+_MOVED = {"title": "Информационная база была перемещена или восстановлена из резервной копии",
+          "answer": "Это копия информационной базы"}
+
+
+def test_the_window_of_a_moved_infobase_is_answered_before_file_open(tmp_path):
+    page = _StartPage([_MOVED])
+    answered = native_web._open_external(page, tmp_path / "Sample.epf", time.monotonic() + 60, _Refused)
+    assert answered == [_MOVED["title"]]
+    assert _clicks(page) == [("answer", "Это копия информационной базы"), ("click", "#captionbarMore"),
+                             ("click", "#fileOpen"), ("click", "#fileSelectDialogOk")]
+    assert page.uploaded == str(tmp_path / "Sample.epf")
+
+
+def test_a_window_over_the_answer_is_closed_with_escape_first(tmp_path):
+    page = _StartPage([_MOVED], covered=True)
+    answered = native_web._open_external(page, tmp_path / "Sample.epf", time.monotonic() + 60, _Refused)
+    assert answered == [_MOVED["title"]]
+    assert _clicks(page)[:3] == [("answer", "Это копия информационной базы"), ("press", "Escape"),
+                                 ("answer", "Это копия информационной базы")]
+
+
+def test_the_english_caption_answers_the_window_too(tmp_path):
+    window = {"title": "The infobase was moved or restored from a backup", "answer": "This is a copy of the infobase"}
+    page = _StartPage([window])
+    assert native_web._open_external(page, tmp_path / "Sample.epf", time.monotonic() + 60, _Refused) == [
+        window["title"]]
+
+
+def test_a_window_without_an_answer_stops_the_run_with_its_title(tmp_path):
+    page = _StartPage([{"title": "Unexpected question"}])
+    with pytest.raises(native_web.WebError) as raised:
+        native_web._open_external(page, tmp_path / "Sample.epf", time.monotonic() + 600, _Refused)
+    assert raised.value.status == "web_start_window"
+    assert "Unexpected question" in str(raised.value)
+    assert raised.value.details == {"blockingWindows": ["Unexpected question"], "answeredWindows": []}
+    # The run waits a few seconds for a short window, not until its time limit.
+    waits = [action for action in page.actions if action[0] == "wait"]
+    assert len(waits) == native_web.UNKNOWN_WINDOW_SECONDS
+    assert not [action for action in page.actions if action == ("click", "#captionbarMore")]
+
+
+def test_a_menu_refused_once_is_tried_again_after_escape(tmp_path):
+    page = _StartPage(refuse_menu=1)
+    assert native_web._open_external(page, tmp_path / "Sample.epf", time.monotonic() + 60, _Refused) == []
+    assert _clicks(page)[:3] == [("click", "#captionbarMore"), ("press", "Escape"), ("click", "#captionbarMore")]
+    assert page.uploaded == str(tmp_path / "Sample.epf")
+
+
+def test_the_details_of_a_web_error_reach_the_report():
+    from edt_bridge_mcp import native_form
+
+    report = {}
+    native_form._record_error(report, native_web.WebError("web_start_window", "Blocked.",
+                                                          {"blockingWindows": ["Question"]}), "driver_failed")
+    assert report == {"ok": False, "status": "web_start_window", "error": "Blocked.", "blockingWindows": ["Question"]}
+
+
+# A spreadsheet field as the web client 8.5 draws it (series probe of a label print form): cells in a same-origin
+# frame, a narrow cell with a value next to it cuts its text, a long text runs on over empty neighbours.
+_SHEET_FRAME = """
+<style>
+body { margin: 0; overflow: hidden; font-family: Arial; font-size: 9.7pt; }
+div { position: absolute; padding-left: 2px; padding-right: 2px; box-sizing: content-box; line-height: 1.2em; }
+.R0 { left: 0; right: 0; top: 0; height: 24px; }
+.R0C0 { width: 50px; height: 22px; font-size: 13.5pt; font-weight: bold; border: 1px solid #000; }
+.R1 { left: 0; right: 0; top: 23px; height: 17px; }
+.R1C0 { width: 15px; height: 16px; border: 1px solid #000; overflow: hidden; }
+.R1C1 { left: 21px; width: 30px; height: 16px; border: 1px solid #000; }
+.R2 { left: 0; right: 0; top: 42px; height: 22px; }
+.R2C0 { width: 100px; height: 20px; overflow: hidden; }
+.R3 { left: 0; right: 0; top: 64px; height: 18px; visibility: hidden; }
+.R4 { left: 0; right: 0; top: 83px; height: 19px; }
+.R4C0 { width: 85px; height: 18px; border-right: 5px solid #000; overflow: hidden; }
+</style>
+<div class="fullSize" style="overflow: hidden;"><div style="width: 1399px; height: 953px;">
+<div class="R0" y="0"><div class="R0C0" x="0" cs="2"><span style="left: 4px; right: -232px; position: absolute;">Sample product with a long name</span></div></div>
+<div class="R1" y="1"><div class="R1C0" x="0"><span style="left: 3px; right: -43px; position: absolute;">Article:</span><span style="display: none;">Hidden note</span><span style="visibility: hidden;">Private memo</span></div>
+<div class="R1C1" x="1"><span style="left: 3px; right: -55px; position: absolute;">AB-01-LONG-CODE</span></div></div>
+<div class="R2" y="2"><div class="R2C0" x="0"><span style="top: 12px; position: absolute;">Lower edge</span></div></div>
+<div class="R3" y="3"><div class="R1C0" x="0"><span style="position: absolute;">Hidden cell</span></div></div>
+<div class="R4" y="4"><div class="R4C0" x="0"><span style="right: -3px; position: absolute;">Border</span></div></div>
+</div></div>
+"""
+
+
+def test_read_form_finds_text_clipped_in_the_spreadsheet_frame():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as playwright:
+        try:
+            browser = playwright.chromium.launch()
+        except sync_api.Error:
+            pytest.skip("no Chromium for Playwright")
+        try:
+            page = browser.new_page()
+            page.set_content('''
+                <section>
+                    <div id="form6_headerTopLine_title">Preview</div>
+                    <div id="form6_mainGroup">
+                        <div id="form6_Labels" class="moxelContainer">
+                            <iframe style="width: 600px; height: 200px;"></iframe>
+                        </div>
+                    </div>
+                </section>
+            ''')
+            page.evaluate("html => { const doc = document.querySelector('iframe').contentDocument;"
+                          " doc.open(); doc.write(html); doc.close(); }", _SHEET_FRAME)
+            sheets = [{"name": "Labels", "title": "Labels", "rows": [["Article:", "AB-01-LONG-CODE"]]},
+                      {"name": "Missing", "title": "Missing", "rows": []}]
+            report = native_web.read_form(page, pii.Filter(), "Preview", sheets=sheets)
+        finally:
+            browser.close()
+    sheet, missing = report["spreadsheets"]
+    clipped = [cell.split(" | ") for cell in sheet["clipped"]]
+    assert [fields[:2] for fields in clipped] == [["R2C1", "Article:"], ["R3C1", "Lower edge"], ["R5C1", "Border"]]
+    width, cell_width = map(int, clipped[0][2].removesuffix(" px").split("/"))
+    assert width > cell_width
+    assert clipped[1][2].endswith(" px high")
+    assert "clippedMore" not in sheet
+    assert "clipped" not in missing
+
+
+def test_form_text_lists_the_clipped_cells_of_a_spreadsheet():
+    sheets = [{"name": "Labels", "title": "Labels", "rows": [["Article:", "AB-01"]]}]
+    clips = {"Labels": {"cells": [[2, 1, "Article:", 52, 22, 16, 16, False],
+                                  [5, 3, "Total:", 40, 30, 32, 16, True]], "more": True}}
+    text = native_web.form_text({"items": []}, pii.Filter(), sheets=sheets, clips=clips)
+    sheet = text["spreadsheets"][0]
+    assert sheet["clipped"] == ["R2C1 | Article: | 52/22 px", "R5C3 | Total: | 40/30 px, 32/16 px high"]
+    assert sheet["clippedMore"] is True
+    plain = native_web.form_text({"items": []}, pii.Filter(), sheets=sheets)
+    assert "clipped" not in plain["spreadsheets"][0]
+
+
+def test_clipped_cells_use_the_budget_after_spreadsheet_rows(monkeypatch):
+    monkeypatch.setattr(native_web, "MAX_FORM_TEXT", 65)
+    last_row = "The second sheet keeps its full row"
+    sheets = [
+        {"name": "First", "title": "First", "rows": [["First row"]]},
+        {"name": "Second", "title": "Second", "rows": [[last_row]]},
+    ]
+    clips = {"First": {"cells": [[1, 1, "Sample label", 300, 20, 16, 16, False]], "more": False}}
+    report = native_web.form_text({"items": []}, pii.Filter(), sheets=sheets, clips=clips)
+    first, second = report["spreadsheets"]
+    assert second["rows"] == [last_row]
+    assert first["clipped"] == []
+    assert first["clippedMore"] is True
+
+
+def test_read_form_asks_for_the_cut_cells_of_the_spreadsheets_of_its_form():
+    pytest.importorskip("playwright.sync_api")
+
+    class Page(_Page):
+        def evaluate(self, script, argument):
+            self.calls.append(("evaluate", argument))
+            if script == native_web._SHEET_CLIPS:
+                return {"Report": {"cells": [[1, 1, "Long title", 90, 40, 16, 16, False]], "more": False}}
+            return dict(_RAW_FORM, matchedTitle=True, prefix="form3_")
+
+    page = Page()
+    sheets = [{"name": "Report", "title": "", "rows": [["Long title"]]}]
+    text = native_web.read_form(page, pii.Filter(), "Order", sheets=sheets)
+    assert text["spreadsheets"][0]["clipped"] == ["R1C1 | Long title | 90/40 px"]
+    assert ("evaluate", {"prefix": "form3_", "names": ["Report"], "limit": native_web.MAX_CLIPPED}) in page.calls
+
+
+def test_read_form_keeps_the_cells_when_the_check_of_the_cut_text_fails():
+    sync_api = pytest.importorskip("playwright.sync_api")
+
+    class Page(_Page):
+        def evaluate(self, script, argument):
+            if script == native_web._SHEET_CLIPS:
+                raise sync_api.Error("Frame was detached")
+            return dict(_RAW_FORM, matchedTitle=True, prefix="form3_")
+
+    sheets = [{"name": "Report", "title": "", "rows": [["Long title"]]}]
+    text = native_web.read_form(Page(), pii.Filter(), "Order", sheets=sheets)
+    assert text["spreadsheets"][0]["name"] == "Report"
+    assert "clipped" not in text["spreadsheets"][0]
