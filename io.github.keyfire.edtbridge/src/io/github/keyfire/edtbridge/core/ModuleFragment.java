@@ -27,7 +27,8 @@ import java.util.function.Consumer;
  *
  * <p>A caller usually writes the fragment with {@code \n} line breaks while a module on disk may
  * use {@code \r\n}; when the literal fragment is absent, its line breaks are adapted to the
- * module's, and the replacement follows the same breaks.
+ * module's. The replacement always takes the module's line breaks, also when the fragment is found
+ * as it is: a one-line fragment needs no adapting, and its replacement may still bring lines.
  */
 public final class ModuleFragment {
 
@@ -52,8 +53,8 @@ public final class ModuleFragment {
         String to = newText;
         if (count(source, from) == 0 && source.contains("\r\n") && !from.contains("\r\n")) {
             from = from.replace("\n", "\r\n");
-            to = to.replace("\r\n", "\n").replace("\n", "\r\n");
         }
+        to = moduleBreaks(source, to);
         int matches = count(source, from);
         if (matches == 0) {
             throw new IllegalArgumentException("oldText was not found in the module; read the module with"
@@ -66,6 +67,13 @@ public final class ModuleFragment {
         int offset = source.indexOf(from);
         String result = source.substring(0, offset) + to + source.substring(offset + from.length());
         return new Edit(result, offset, lineOf(source, offset), from, to);
+    }
+
+    /** The text with the line breaks of the module: CRLF, LF, or as given when the module has none. */
+    static String moduleBreaks(String source, String text) {
+        String lf = text.replace("\r\n", "\n");
+        if (source.contains("\r\n")) return lf.replace("\n", "\r\n");
+        return source.contains("\n") ? lf : text;
     }
 
     /** One replacement of a batch: the exact fragment and the text that takes its place. */

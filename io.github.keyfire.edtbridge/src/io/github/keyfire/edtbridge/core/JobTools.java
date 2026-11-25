@@ -49,6 +49,7 @@ public final class JobTools {
             "edt_update_infobase",
             "edt_create_infobase",
             "edt_build_extension",
+            "edt_import_project",
             "edt_clean_project");
 
     /** The description of the {@code async} argument. */

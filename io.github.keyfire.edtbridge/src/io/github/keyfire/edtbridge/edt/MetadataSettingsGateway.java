@@ -65,17 +65,32 @@ public final class MetadataSettingsGateway {
             boolean extendModule, boolean apply) {
         Result result = new Result(); result.project = projectName; result.fqn = fqn;
         try {
+            if (fqn == null || fqn.isBlank()) throw new IllegalArgumentException("fqn is required");
             IProject project = project(projectName);
             IBmModel model = model(project);
-            boolean use851Title = GatewaySupport.projectVersion(project)
-                    .isGreaterThanOrEquals(new Version(8, 5, 1));
+            String diskProblem = FormFileSync.settle(project, model, fqn);
+            if (diskProblem != null) {
+                result.ok = false;
+                result.message = diskProblem;
+                return result;
+            }
+            Version version = GatewaySupport.projectVersion(project);
+            boolean use851Title = version.isGreaterThanOrEquals(new Version(8, 5, 1));
             final boolean[] isForm = {false};
             final String[] exportFqn = {fqn};
+            final String[] targetClass = {null};
             model.executeReadonlyTask(new AbstractBmTask<Object>("edt-bridge.metadataSettings.inspect") {
                 @Override public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
                     EObject object = tx.getTopObjectByFqn(fqn);
                     if (object instanceof CommonModule module) {
+                        targetClass[0] = "CommonModule";
                         result.changes = CommonModuleSettings.describe(module, properties, extendModule);
+                        return null;
+                    }
+                    if (MetadataObjectProperties.supports(object)) {
+                        if (extendModule) throw new IllegalArgumentException("extendModule requires an adopted CommonModule");
+                        targetClass[0] = object.eClass().getName();
+                        result.changes = updateMetadata(tx, object, properties, version, false);
                         return null;
                     }
                     Form form = FormWriteGateway.resolveForm(tx, fqn);
@@ -84,16 +99,17 @@ public final class MetadataSettingsGateway {
                             throw new IllegalArgumentException("extendModule applies to an adopted CommonModule, not a Form");
                         }
                         isForm[0] = true;
+                        targetClass[0] = "Form";
                         if (form.bmGetFqn() != null) {
                             exportFqn[0] = form.bmGetFqn();
                         }
                         result.changes = FormSettings.describe(form, properties, use851Title);
                         return null;
                     }
-                    throw new IllegalArgumentException("An existing CommonModule or Form FQN is required");
+                    throw new IllegalArgumentException("No supported metadata object or form was found: " + fqn);
                 }
             });
-            String kind = isForm[0] ? "form" : "common-module";
+            String kind = targetClass[0];
             result.ok = true;
             result.plan = "Set " + result.changes.size() + " " + kind + " properties on " + fqn;
             if (!apply || result.changes.isEmpty()) {
@@ -117,12 +133,22 @@ public final class MetadataSettingsGateway {
                         return null;
                     }
                     EObject object = tx.getTopObjectByFqn(fqn);
-                    if (!(object instanceof CommonModule module)) throw new IllegalArgumentException("The common module disappeared");
-                    CommonModuleSettings.apply(module, properties, extendModule);
+                    if (object == null || !targetClass[0].equals(object.eClass().getName())) {
+                        throw new IllegalArgumentException("The metadata object changed while the write was being prepared");
+                    }
+                    if (object instanceof CommonModule module) {
+                        CommonModuleSettings.apply(module, properties, extendModule);
+                    } else {
+                        result.changes = updateMetadata(tx, object, properties, version, true);
+                    }
                     return null;
                 }
             });
-            result.applied = true;
+            result.applied = !result.changes.isEmpty();
+            if (!result.applied) {
+                result.message = "The requested settings already match";
+                return result;
+            }
             export(model, exportFqn[0], result);
             if (isForm[0]) {
                 FormValidationSupport.afterFormWrite(project, model, fqn);
@@ -134,6 +160,12 @@ public final class MetadataSettingsGateway {
                     + GatewaySupport.describeCause(failure);
         }
         return result;
+    }
+
+    private static Map<String, Change> updateMetadata(IBmTransaction tx, EObject object,
+            Map<String, Object> properties, Version version, boolean apply) {
+        return MetadataObjectProperties.update(object, properties,
+                spec -> new MetadataWriteGateway().typeDescriptionFor(tx, spec, version, false), apply);
     }
 
     public Result modifyExternalObject(String projectName, String fqn, Map<String, String> values, boolean apply) {

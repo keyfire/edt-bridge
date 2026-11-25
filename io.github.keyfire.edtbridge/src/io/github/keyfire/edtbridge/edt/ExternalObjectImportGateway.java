@@ -27,7 +27,6 @@ import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.NullProgressMonitor;
-import org.eclipse.core.runtime.Platform;
 import com._1c.g5.v8.dt.core.platform.IConfigurationProject;
 import com._1c.g5.v8.dt.core.platform.IExternalObjectProject;
 import com._1c.g5.v8.dt.core.platform.IExternalObjectProjectManager;
@@ -37,7 +36,6 @@ import com._1c.g5.v8.dt.import_.IImportOperationFactory;
 import com._1c.g5.v8.dt.platform.services.core.dump.IExternalObjectRestorer;
 import com._1c.g5.v8.dt.platform.version.Version;
 import com._1c.g5.wiring.ServiceAccess;
-import com.google.inject.Injector;
 import io.github.keyfire.edtbridge.core.ExternalObjectSource;
 import io.github.keyfire.edtbridge.core.PlatformLog;
 import io.github.keyfire.edtbridge.core.TreeRemoval;
@@ -129,8 +127,7 @@ public final class ExternalObjectImportGateway {
         }
         IImportOperationFactory importer;
         try {
-            importer = injector("com._1c.g5.v8.dt.import", "com._1c.g5.v8.dt.internal.import_.ImportPlugin")
-                    .getInstance(IImportOperationFactory.class);
+            importer = GatewaySupport.importInjector().getInstance(IImportOperationFactory.class);
         } catch (Exception unavailable) {
             result.message = "EDT import services unavailable: " + GatewaySupport.describeCause(unavailable);
             return result;
@@ -221,15 +218,6 @@ public final class ExternalObjectImportGateway {
         return ProjectCreationClaim.create(ResourcesPlugin.getWorkspace(), target, directory,
                 () -> external.create(target.getName(), version, null,
                         base == null ? null : base.getProject(), new NullProgressMonitor()));
-    }
-
-    private static Injector injector(String bundleName, String pluginClassName) throws Exception {
-        var bundle = Platform.getBundle(bundleName);
-        if (bundle == null) throw new IOException(bundleName + " is not installed");
-        Class<?> pluginClass = bundle.loadClass(pluginClassName);
-        Object plugin = pluginClass.getMethod("getDefault").invoke(null);
-        if (plugin == null) throw new IOException(bundleName + " is not active");
-        return (Injector) pluginClass.getMethod("getInjector").invoke(plugin);
     }
 
     private static IExternalObjectProject waitProject(IV8ProjectManager projects, IProject target) throws InterruptedException, IOException {

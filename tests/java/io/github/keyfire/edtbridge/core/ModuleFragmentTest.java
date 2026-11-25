@@ -39,6 +39,31 @@ class ModuleFragmentTest {
     }
 
     @Test
+    void aOneLineFragmentInAWindowsModuleKeepsWindowsBreaksInItsReplacement() {
+        String windows = MODULE.replace("\n", "\r\n");
+        var edit = ModuleFragment.replace(windows, "Var Cache;", "Var Cache;\nVar Other;");
+        assertTrue(edit.result().contains("Var Cache;\r\nVar Other;\r\n#EndRegion"), edit.result());
+        assertFalse(edit.result().replace("\r\n", "").contains("\n"), "a bare LF was left in a CRLF module");
+        assertEquals("Var Cache;\r\nVar Other;", edit.newText());
+    }
+
+    @Test
+    void aUnixModuleGetsUnixBreaksFromAWindowsReplacement() {
+        var edit = ModuleFragment.replace(MODULE, "Var Cache;", "Var A;\r\nVar B;");
+        assertTrue(edit.result().contains("Var A;\nVar B;\n#EndRegion"), edit.result());
+        assertFalse(edit.result().contains("\r"));
+    }
+
+    @Test
+    void aBatchFollowsTheModuleInEveryReplacement() {
+        String windows = MODULE.replace("\n", "\r\n");
+        var edit = ModuleFragment.replaceAll(windows, java.util.List.of(
+                new ModuleFragment.Change("Var Cache;", "Var Cache;\nVar Other;"),
+                new ModuleFragment.Change("EndProcedure", "EndProcedure\n#EndRegion")));
+        assertFalse(edit.result().replace("\r\n", "").contains("\n"), edit.result());
+    }
+
+    @Test
     void ambiguousFragmentIsRefused() {
         String twice = MODULE + "Var Cache;\n";
         var error = assertThrows(IllegalArgumentException.class,

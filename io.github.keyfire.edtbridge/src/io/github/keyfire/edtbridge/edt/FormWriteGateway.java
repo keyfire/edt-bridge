@@ -70,6 +70,8 @@ import com._1c.g5.v8.dt.form.model.DataItem;
 import com._1c.g5.v8.dt.form.model.EventHandler;
 import com._1c.g5.v8.dt.form.model.EventHandlerContainer;
 import com._1c.g5.v8.dt.form.model.DataPath;
+import com._1c.g5.v8.dt.form.model.Decoration;
+import com._1c.g5.v8.dt.form.model.DynamicListExtInfo;
 import com._1c.g5.v8.dt.form.model.Form;
 import com._1c.g5.v8.dt.form.model.FormAttribute;
 import com._1c.g5.v8.dt.form.model.FormAttributeColumn;
@@ -101,6 +103,8 @@ import com._1c.g5.v8.dt.mcore.util.Environments;
 import com._1c.g5.v8.dt.metadata.mdclass.AbstractForm;
 import com._1c.g5.v8.dt.metadata.mdclass.AdjustableBoolean;
 import com._1c.g5.v8.dt.metadata.mdclass.BasicForm;
+import com._1c.g5.v8.dt.metadata.mdclass.Catalog;
+import com._1c.g5.v8.dt.metadata.mdclass.Document;
 import com._1c.g5.v8.dt.metadata.mdclass.MdClassFactory;
 import com._1c.g5.v8.dt.metadata.mdclass.Configuration;
 import com._1c.g5.v8.dt.metadata.mdclass.InterfaceCompatibilityMode;
@@ -387,6 +391,14 @@ public final class FormWriteGateway {
                     String formFqn = fqnGenerator.generateExternalPropertyFqn(basicForm,
                             MdClassPackage.Literals.BASIC_FORM__FORM);
                     tx.attachTopObject((IBmObject) form, formFqn);
+                    if (type == FormType.LIST && (owner instanceof Document || owner instanceof Catalog)) {
+                        IFormItemManagementService items = formItemService();
+                        if (items == null) {
+                            throw new IllegalStateException("form item management service unavailable");
+                        }
+                        ensureListReference(form, (table, path) -> items.addField(table, path, form,
+                                new FormNewItemDescriptor(null, Map.of(), false)));
+                    }
                     createdFqn[0] = formFqn;
 
                     if (setDefault) {
@@ -506,6 +518,50 @@ public final class FormWriteGateway {
         }
     }
 
+    /**
+     * Keep the reference available to handlers even when its technical column is hidden.
+     * EDT stores this override on the dynamic-list attribute, using a full data path.
+     */
+    static void ensureListReference(Form form, java.util.function.BiFunction<Table, DataPath, FormField> addColumn) {
+        FormAttribute list = form.getAttributes().stream()
+                .filter(attribute -> attribute.isMain() && attribute.getExtInfo() instanceof DynamicListExtInfo)
+                .findFirst().orElseThrow(() -> new IllegalStateException("generated form has no main dynamic list"));
+        List<String> listPath = List.of(list.getName());
+        List<String> refPath = List.of(list.getName(), "Ref");
+        List<String> refPathRu = List.of(list.getName(), "Ссылка");
+        var contents = form.eAllContents();
+        while (contents.hasNext()) {
+            EObject object = contents.next();
+            if (!(object instanceof Table table) || table.getDataPath() == null
+                    || !table.getDataPath().getSegments().equals(listPath)) {
+                continue;
+            }
+            FormField column = table.getItems().stream()
+                    .filter(FormField.class::isInstance).map(FormField.class::cast)
+                    .filter(field -> matchesListReference(field.getDataPath(), refPath, refPathRu))
+                    .findFirst().orElse(null);
+            if (column == null) {
+                column = addColumn.apply(table, dataPathOf(String.join(".", refPath)));
+                if (column == null) {
+                    throw new IllegalStateException("EDT did not add the list reference column");
+                }
+            }
+            Visible visibility = (Visible) column;
+            visibility.setVisible(false);
+            visibility.setUserVisible(adjustable(false));
+            if (list.getNotDefaultUseAlwaysAttributes().stream()
+                    .noneMatch(path -> matchesListReference(path, refPath, refPathRu))) {
+                list.getNotDefaultUseAlwaysAttributes().add(dataPathOf(String.join(".", refPath)));
+            }
+            return;
+        }
+        throw new IllegalStateException("generated form has no table bound to its main dynamic list");
+    }
+
+    private static boolean matchesListReference(AbstractDataPath path, List<String> refPath, List<String> refPathRu) {
+        return path != null && (path.getSegments().equals(refPath) || path.getSegments().equals(refPathRu));
+    }
+
     /** The configuration's interface compatibility mode, defaulting to Taxi for standalone projects. */
     private static InterfaceCompatibilityMode interfaceCompatibilityMode(IBmTransaction tx) {
         try {
@@ -620,7 +676,7 @@ public final class FormWriteGateway {
         return ScriptVariant.RUSSIAN;
     }
 
-    private static String editingLanguageCode(IProject project) {
+    static String editingLanguageCode(IProject project) {
         try {
             IEditingLanguageManager mgr = coreService(IEditingLanguageManager.class);
             String code = (mgr == null) ? null : mgr.getEditingLanguageCode(project);
@@ -799,6 +855,11 @@ public final class FormWriteGateway {
             r.message = "no BM model for project: " + projectName;
             return r;
         }
+        String diskProblem = FormFileSync.settle(p, model, formFqn);
+        if (diskProblem != null) {
+            r.message = diskProblem;
+            return r;
+        }
         inspectForm(model, r, formFqn, name, true, columnOf);
         if (!r.formFound) {
             r.message = "form not found: " + formFqn;
@@ -927,6 +988,11 @@ public final class FormWriteGateway {
             r.message = "no BM model for project: " + projectName;
             return r;
         }
+        String diskProblem = FormFileSync.settle(p, model, formFqn);
+        if (diskProblem != null) {
+            r.message = diskProblem;
+            return r;
+        }
         inspectForm(model, r, formFqn, name, true, columnOf);
         if (!r.formFound) {
             r.message = "form not found: " + formFqn;
@@ -1035,6 +1101,11 @@ public final class FormWriteGateway {
             r.message = "no BM model for project: " + projectName;
             return r;
         }
+        String diskProblem = FormFileSync.settle(p, model, formFqn);
+        if (diskProblem != null) {
+            r.message = diskProblem;
+            return r;
+        }
         inspectForm(model, r, formFqn, name, true, columnOf);
         if (!r.formFound) {
             r.message = "form not found: " + formFqn;
@@ -1132,12 +1203,17 @@ public final class FormWriteGateway {
             r.message = "no BM model for project: " + projectName;
             return r;
         }
+        String diskProblem = FormFileSync.settle(p, model, formFqn);
+        if (diskProblem != null) {
+            r.message = diskProblem;
+            return r;
+        }
         inspectForm(model, r, formFqn, name, false, null);
         if (!r.formFound) {
             r.message = "form not found: " + formFqn;
             return r;
         }
-        String optionIssue = validateCommandOptions(model, formFqn, opts);
+        String optionIssue = validateCommandOptions(model, GatewaySupport.projectVersion(p), formFqn, opts);
         r.ok = Boolean.TRUE.equals(r.nameAvailable) && optionIssue == null;
         StringBuilder plan = new StringBuilder("Add command \"").append(name).append("\" to ")
                 .append(formFqn).append(" with handler ").append(handler).append("()");
@@ -1177,7 +1253,7 @@ public final class FormWriteGateway {
                         failure[0] = "the form disappeared between validation and apply";
                         return null;
                     }
-                    FormCommandEdits.validate(form, opts);
+                    FormCommandEdits.validate(form, opts, raw -> FormPictures.reference(tx, raw, version));
                     FormCommand command = FormFactory.eINSTANCE.createFormCommand();
                     command.setName(name);
                     FormIdentifierService.INSTANCE.clearCaches(form);
@@ -1195,7 +1271,8 @@ public final class FormWriteGateway {
                     commandHandler.setName(handler);
                     action.setHandler(commandHandler);
                     command.setAction(action);
-                    FormCommandEdits.apply(form, command, opts, version);
+                    FormCommandEdits.apply(form, command, opts, version,
+                            raw -> FormPictures.reference(tx, raw, version));
                     form.getFormCommands().add(command);
                     r.id = Integer.valueOf(command.getId());
                     r.properties = FormCommandEdits.readProperties(form, command);
@@ -1258,6 +1335,11 @@ public final class FormWriteGateway {
         IBmModel model = (mm == null) ? null : mm.getModel(p);
         if (model == null) {
             r.message = "no BM model for project: " + projectName;
+            return r;
+        }
+        String diskProblem = FormFileSync.settle(p, model, formFqn);
+        if (diskProblem != null) {
+            r.message = diskProblem;
             return r;
         }
         boolean russian = scriptVariantOf(p) == ScriptVariant.RUSSIAN;
@@ -1459,10 +1541,14 @@ public final class FormWriteGateway {
         return null;
     }
 
-    /** Handler parameters include the implicit item before the event's declared parameters. */
+    /**
+     * Handler parameters include the implicit item before the event's declared parameters. An event
+     * whose handler runs on the server without the form context, such as OnGetDataAtServer of a
+     * dynamic list, gets no item: the handler cannot receive form objects.
+     */
     private static List<String> parameterNames(Event event, boolean russian, boolean item) {
         List<String> names = new ArrayList<>();
-        if (item) names.add(russian ? "Элемент" : "Item");
+        if (item && !withoutContext(event)) names.add(russian ? "Элемент" : "Item");
         List<ParamSet> sets = event.getParamSet();
         if (sets.isEmpty()) {
             return names;
@@ -1487,8 +1573,14 @@ public final class FormWriteGateway {
      * the client environments as well (they describe where the event is AVAILABLE, which is the form
      * itself), so an environment test called every event a client one. The platform names a server
      * event by its suffix, and that suffix is the same rule a person applies.
+     *
+     * <p>An event the platform calls without the form context needs a server handler without
+     * context; see {@link #withoutContext(Event)}.
      */
     private static String directiveOf(Event event, boolean russian) {
+        if (withoutContext(event)) {
+            return russian ? "&НаСервереБезКонтекста" : "&AtServerNoContext";
+        }
         String name = event.getName() == null ? "" : event.getName();
         String nameRu = event.getNameRu() == null ? "" : event.getNameRu();
         boolean server = name.endsWith("AtServer") || nameRu.endsWith("НаСервере");
@@ -1504,6 +1596,16 @@ public final class FormWriteGateway {
             return russian ? "&НаСервере" : "&AtServer";
         }
         return russian ? "&НаКлиенте" : "&AtClient";
+    }
+
+    /**
+     * Whether the platform calls the handler on the server without the form context. The platform
+     * help asks that of OnGetDataAtServer of a dynamic list: {@code &AtServerNoContext} and the
+     * parameters ItemName, Settings and Rows, with no item. The model has a flag for such events, but
+     * on EDT 2026.2.2 it is not set for this one, so the event is also known by its name.
+     */
+    static boolean withoutContext(Event event) {
+        return event.isServerCallWithContextNotAllowed() || "OnGetDataAtServer".equals(event.getName());
     }
 
     /** What to call the procedure when the caller did not say: the form editor's own convention. */
@@ -1546,13 +1648,18 @@ public final class FormWriteGateway {
             r.message = "no BM model for project: " + projectName;
             return r;
         }
+        String diskProblem = FormFileSync.settle(p, model, formFqn);
+        if (diskProblem != null) {
+            r.message = diskProblem;
+            return r;
+        }
         inspectForm(model, r, formFqn, name, false, null);
         if (!r.formFound) {
             r.message = "form not found: " + formFqn;
             return r;
         }
         r.present = Boolean.valueOf(!Boolean.TRUE.equals(r.nameAvailable));
-        String optionIssue = validateCommandOptions(model, formFqn, opts);
+        String optionIssue = validateCommandOptions(model, GatewaySupport.projectVersion(p), formFqn, opts);
         r.ok = Boolean.TRUE.equals(r.present) && optionIssue == null;
         if (wantsHandler) {
             r.handler = handlerName;
@@ -1598,7 +1705,7 @@ public final class FormWriteGateway {
                         failure[0] = "the command disappeared between validation and apply";
                         return null;
                     }
-                    FormCommandEdits.validate(form, opts);
+                    FormCommandEdits.validate(form, opts, raw -> FormPictures.reference(tx, raw, version));
                     if (wantsTitle) {
                         if (titleRu.isBlank()) {
                             command.getTitle().removeKey("ru");
@@ -1626,7 +1733,8 @@ public final class FormWriteGateway {
                         commandHandler.setName(handlerName);
                         command.setAction(action);
                     }
-                    FormCommandEdits.apply(form, command, opts, version);
+                    FormCommandEdits.apply(form, command, opts, version,
+                            raw -> FormPictures.reference(tx, raw, version));
                     r.id = Integer.valueOf(command.getId());
                     r.properties = FormCommandEdits.readProperties(form, command);
                     return null;
@@ -1644,7 +1752,8 @@ public final class FormWriteGateway {
         return r;
     }
 
-    private String validateCommandOptions(IBmModel model, String formFqn, FormCommandEdits.Options opts) {
+    private String validateCommandOptions(IBmModel model, Version version, String formFqn,
+            FormCommandEdits.Options opts) {
         if (opts == null || opts.isEmpty()) return null;
         return model.executeReadonlyTask(new AbstractBmTask<String>("edt-bridge.formCommand.validateOptions") {
             @Override
@@ -1652,7 +1761,7 @@ public final class FormWriteGateway {
                 Form form = resolveForm(tx, formFqn);
                 if (form == null) return "form not found: " + formFqn;
                 try {
-                    FormCommandEdits.validate(form, opts);
+                    FormCommandEdits.validate(form, opts, raw -> FormPictures.reference(tx, raw, version));
                     return null;
                 } catch (RuntimeException invalid) {
                     return GatewaySupport.describeCause(invalid);
@@ -1673,6 +1782,11 @@ public final class FormWriteGateway {
         IBmModel model = (mm == null) ? null : mm.getModel(p);
         if (model == null) {
             r.message = "no BM model for project: " + projectName;
+            return r;
+        }
+        String diskProblem = FormFileSync.settle(p, model, formFqn);
+        if (diskProblem != null) {
+            r.message = diskProblem;
             return r;
         }
         inspectForm(model, r, formFqn, name, false, null);
@@ -2229,6 +2343,11 @@ public final class FormWriteGateway {
             r.message = "no BM model for project: " + projectName;
             return r;
         }
+        String diskProblem = FormFileSync.settle(p, model, formFqn);
+        if (diskProblem != null) {
+            r.message = diskProblem;
+            return r;
+        }
 
         final String[] problem = {null};
         final String[] placement = {null};
@@ -2262,14 +2381,16 @@ public final class FormWriteGateway {
                     FormItemEdits.Position destination = FormItemEdits.position(form, null, parentName,
                             index, beforeItem, afterItem);
                     placement[0] = destination.describe();
+                    ManagedFormDecorationType decorationKind = null;
                     if (isDecoration) {
-                        ManagedFormDecorationType type = resolveDecorationType(requestedDecoration, destination.parent);
-                        r.properties.put("decorationType", type.getLiteral());
+                        decorationKind = resolveDecorationType(requestedDecoration, destination.parent);
+                        r.properties.put("decorationType", decorationKind.getLiteral());
                     }
                     if (!options.isEmpty()) {
-                        FormItem prototype = itemPrototype(itemKind, group, dataPath, destination.parent,
-                                form, GatewaySupport.projectVersion(p));
-                        FormItemEdits.validateSettings(prototype, options);
+                        Version version = GatewaySupport.projectVersion(p);
+                        FormItem prototype = itemPrototype(itemKind, group, decorationKind, dataPath, destination.parent,
+                                form, version);
+                        FormItemEdits.validateSettings(prototype, FormPictures.resolve(options, tx, version));
                     }
                 } catch (RuntimeException invalid) {
                     problem[0] = GatewaySupport.describeCause(invalid);
@@ -2342,9 +2463,11 @@ public final class FormWriteGateway {
                     }
                     FormItemEdits.Position destination = FormItemEdits.position(form, null, parentName,
                             index, beforeItem, afterItem);
-                    if (!options.isEmpty()) {
-                        FormItemEdits.validateSettings(itemPrototype(itemKind, group, dataPath, parent,
-                                form, GatewaySupport.projectVersion(p)), options);
+                    Map<String, Object> settings = FormPictures.resolve(options, tx, GatewaySupport.projectVersion(p));
+                    if (!settings.isEmpty()) {
+                        FormItemEdits.validateSettings(itemPrototype(itemKind, group,
+                                isDecoration ? resolveDecorationType(requestedDecoration, parent) : null, dataPath, parent,
+                                form, GatewaySupport.projectVersion(p)), settings);
                     }
                     Map<String, String> title = new LinkedHashMap<>();
                     // A table generates its columns from the bound attribute, and EDT hands the
@@ -2394,7 +2517,7 @@ public final class FormWriteGateway {
                             && created instanceof Titled) {
                         ((Titled) created).getTitle().put("ru", titleRu);
                     }
-                    applyItemSettings(created, options, parent, form, GatewaySupport.projectVersion(p));
+                    applyItemSettings(created, settings, parent, form, GatewaySupport.projectVersion(p));
                     destination.placeAdded(created);
                     r.name = created.getName();
                     r.id = Integer.valueOf(created.getId());
@@ -2450,8 +2573,9 @@ public final class FormWriteGateway {
         return type;
     }
 
-    private static FormItem itemPrototype(String kind, ManagedFormGroupType groupType, String path,
-            FormItemContainer parent, Form form, Version version) {
+    private static FormItem itemPrototype(String kind, ManagedFormGroupType groupType,
+            ManagedFormDecorationType decorationType, String path, FormItemContainer parent, Form form,
+            Version version) {
         switch (kind) {
             case "field":
                 FormField field = FormFactory.eINSTANCE.createFormField();
@@ -2461,16 +2585,32 @@ public final class FormWriteGateway {
                 types.setActualType(field, field.getDataPath(), parent, form, version);
                 return field;
             case "group":
-                FormGroup group = FormFactory.eINSTANCE.createFormGroup();
-                group.setType(groupType);
-                if (groupType == ManagedFormGroupType.USUAL_GROUP) {
-                    group.setExtInfo(FormFactory.eINSTANCE.createUsualGroupExtInfo());
-                }
-                return group;
+                return groupPrototype(groupType);
             case "button": return FormFactory.eINSTANCE.createButton();
             case "table": return FormFactory.eINSTANCE.createTable();
-            default: return FormFactory.eINSTANCE.createDecoration();
+            default:
+                Decoration decoration = FormFactory.eINSTANCE.createDecoration();
+                if (decorationType != null) {
+                    decoration.setType(decorationType);
+                    decoration.setExtInfo(decorationType == ManagedFormDecorationType.PICTURE
+                            ? FormFactory.eINSTANCE.createPictureDecorationExtInfo()
+                            : FormFactory.eINSTANCE.createLabelDecorationExtInfo());
+                }
+                return decoration;
         }
+    }
+
+    static FormGroup groupPrototype(ManagedFormGroupType type) {
+        FormGroup group = FormFactory.eINSTANCE.createFormGroup();
+        group.setType(type);
+        if (type == ManagedFormGroupType.USUAL_GROUP) {
+            group.setExtInfo(FormFactory.eINSTANCE.createUsualGroupExtInfo());
+        } else if (type == ManagedFormGroupType.PAGE) {
+            group.setExtInfo(FormFactory.eINSTANCE.createPageGroupExtInfo());
+        } else if (type == ManagedFormGroupType.COLUMN_GROUP) {
+            group.setExtInfo(FormFactory.eINSTANCE.createColumnGroupExtInfo());
+        }
+        return group;
     }
 
     private static IFormItemTypeManagementService formTypeService() {
@@ -2504,6 +2644,8 @@ public final class FormWriteGateway {
         IBmModelManager manager = ServiceAccess.get(IBmModelManager.class);
         IBmModel model = manager == null ? null : manager.getModel(project);
         if (model == null) { result.message = "no BM model for project: " + projectName; return result; }
+        String diskProblem = FormFileSync.settle(project, model, formFqn);
+        if (diskProblem != null) { result.message = diskProblem; return result; }
         try {
             model.executeReadonlyTask(new AbstractBmTask<Object>("edt-bridge.moveFormItem.validate") {
                 @Override public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
@@ -2616,6 +2758,11 @@ public final class FormWriteGateway {
             r.message = "no BM model for project: " + projectName;
             return r;
         }
+        String diskProblem = FormFileSync.settle(p, model, formFqn);
+        if (diskProblem != null) {
+            r.message = diskProblem;
+            return r;
+        }
         inspectItem(model, r, formFqn, name);
         if (!r.formFound) {
             r.message = "form not found: " + formFqn;
@@ -2631,7 +2778,7 @@ public final class FormWriteGateway {
                         if (item == null) { return "form item disappeared"; }
                         if (titleRu != null && !(item instanceof Titled)) { return "the item has no title"; }
                         if ((visible != null || enabled != null) && !(item instanceof Visible)) { return "the item has no visibility properties"; }
-                        FormItemEdits.validateSettings(item, options);
+                        FormItemEdits.validateSettings(item, FormPictures.resolve(options, tx, GatewaySupport.projectVersion(p)));
                         return null;
                     } catch (RuntimeException invalid) { return GatewaySupport.describeCause(invalid); }
                 }
@@ -2687,8 +2834,9 @@ public final class FormWriteGateway {
                         failure[0] = "the item disappeared between validation and apply";
                         return null;
                     }
-                    FormItemEdits.validateSettings(item, options);
-                    applyItemSettings(item, options, (FormItemContainer) item.eContainer(), form,
+                    Map<String, Object> settings = FormPictures.resolve(options, tx, GatewaySupport.projectVersion(p));
+                    FormItemEdits.validateSettings(item, settings);
+                    applyItemSettings(item, settings, (FormItemContainer) item.eContainer(), form,
                             GatewaySupport.projectVersion(p));
                     if (titleRu != null && item instanceof Titled) {
                         EMap<String, String> title = ((Titled) item).getTitle();
@@ -2752,6 +2900,11 @@ public final class FormWriteGateway {
         IBmModel model = (mm == null) ? null : mm.getModel(p);
         if (model == null) {
             r.message = "no BM model for project: " + projectName;
+            return r;
+        }
+        String diskProblem = FormFileSync.settle(p, model, formFqn);
+        if (diskProblem != null) {
+            r.message = diskProblem;
             return r;
         }
         inspectItem(model, r, formFqn, name);

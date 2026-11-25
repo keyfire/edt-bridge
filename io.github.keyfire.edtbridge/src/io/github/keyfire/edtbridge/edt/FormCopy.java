@@ -30,6 +30,8 @@ import org.eclipse.emf.ecore.EReference;
 import org.eclipse.emf.ecore.EStructuralFeature;
 import org.eclipse.emf.ecore.util.EcoreUtil;
 
+import com._1c.g5.v8.dt.metadata.mdclass.MdClassPackage;
+
 /**
  * The content of a managed form copied for another owner. It is a plain EMF copy; every reference to
  * an object of the source owner then moves to the target's counterpart, when the target has one.
@@ -88,7 +90,15 @@ final class FormCopy {
      */
     static Result copy(EObject content, Map<EObject, EObject> pairs, EObject sourceOwner, EObject sourceForm,
             EObject targetForm, boolean otherOwner) {
-        EcoreUtil.Copier copier = new EcoreUtil.Copier();
+        EcoreUtil.Copier copier = new EcoreUtil.Copier() {
+            @Override
+            protected void copyReference(EReference reference, EObject original, EObject target) {
+                // EDT resolves the new form's module from its own Module.bsl.
+                if (reference != MdClassPackage.Literals.ABSTRACT_FORM__MODULE) {
+                    super.copyReference(reference, original, target);
+                }
+            }
+        };
         EObject copy = copier.copy(content);
         copier.copyReferences();
         Result result = new Result();
@@ -208,7 +218,8 @@ final class FormCopy {
                 if (name == null) {
                     return null;
                 }
-                step += ":" + ownerRelative(name, ownerName);
+                // Qualified names, such as a generated table path, encode the owner in the name.
+                step += ":" + (name.indexOf('.') >= 0 ? ownerRelative(name, ownerName) : name);
             }
             path.insert(0, step);
         }

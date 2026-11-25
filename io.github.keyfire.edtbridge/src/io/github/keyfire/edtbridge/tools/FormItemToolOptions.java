@@ -37,10 +37,11 @@ final class FormItemToolOptions {
         if (move) { props.add("parent", ToolJson.strProp("Destination container. Omitted keeps the current parent; an empty string selects the form root. Moves that would change the item kind or table data binding are refused.")); }
     }
     static void settingsProps(JsonObject props) {
-        props.add("groupDirection", ToolJson.strProp("Usual-group child layout: Auto, Horizontal, Vertical, HorizontalIfPossible or AlwaysHorizontal. Optional."));
+        props.add("groupDirection", ToolJson.strProp("Child layout: Auto, Horizontal, Vertical, HorizontalIfPossible or AlwaysHorizontal for a page or usual group; Horizontal, Vertical or InCell for a column group. Optional."));
         props.add("group", ToolJson.strProp("Alias of groupDirection. Do not combine the two names."));
+        props.add("scrollOnCompress", ToolJson.boolProp("Allow scrolling in a page or usual group when compressed. Optional."));
         props.add("representation", ToolJson.strProp("Representation enum supported by the current group or button, e.g. None/WeakSeparation/StrongSeparation for a usual group. Optional."));
-        props.add("showTitle", ToolJson.boolProp("Show the usual group's title. Optional."));
+        props.add("showTitle", ToolJson.boolProp("Show the title of a usual group or a column group. Optional."));
         props.add("united", ToolJson.boolProp("Keep usual-group children united. Optional."));
         props.add("titleLocation", ToolJson.strProp("Field title location (Auto/Left/Right/Top/Bottom/None), or usual-group child title location. The value must exist in the target EDT enum. Optional."));
         JsonObject maxHeight = new JsonObject(); maxHeight.addProperty("type", "integer"); maxHeight.addProperty("minimum", 0);
@@ -54,10 +55,16 @@ final class FormItemToolOptions {
             props.add(key, size);
         }
         props.add("horizontalStretch", ToolJson.boolProp("Horizontal stretch of a field, group or table, where supported. Optional."));
+        props.add("autoMaxWidth", ToolJson.boolProp("Use the input field's automatic maximum width. Set false to allow stretching past that limit. Optional."));
+        props.add("format", ToolJson.strProp("Russian display format for an input field. An empty string clears the Russian value. Optional."));
+        props.add("editFormat", ToolJson.strProp("Russian editing format for an input field. An empty string clears the Russian value. Optional."));
         props.add("choiceButton", ToolJson.boolProp("Show the input field's choice button. Optional."));
         props.add("clearButton", ToolJson.boolProp("Show the input field's clear button. Optional."));
         props.add("textEdit", ToolJson.boolProp("Allow typing in an input field. Optional."));
         props.add("listChoiceMode", ToolJson.boolProp("Restrict an input field to its choice list. Optional."));
+        props.add("multiLine", ToolJson.boolProp("Multi-line input field; give it a height of 2 or more lines as well. Optional; InputField only."));
+        props.add("wrap", ToolJson.boolProp("Wrap the text of an input field to its width. Optional; InputField only."));
+        props.add("picture", ToolJson.strProp("Picture of a picture decoration: StdPicture.<Name> of the platform, CommonPicture.<Name> of the configuration or БиблиотекаКартинок.<Name>; an empty string removes it. Optional; decoration of type Picture only."));
         JsonObject folders = ToolJson.strProp("What an input field bound to a hierarchical reference lets the user choose: Auto, Items, Folders or FoldersAndItems. Optional; InputField only.");
         JsonArray folderModes = new JsonArray(); folderModes.add("Auto"); folderModes.add("Items"); folderModes.add("Folders"); folderModes.add("FoldersAndItems");
         folders.add("enum", folderModes); props.add("choiceFoldersAndItems", folders);
@@ -93,8 +100,8 @@ final class FormItemToolOptions {
     static Map<String, Object> settings(JsonObject args) {
         Map<String, Object> result = new LinkedHashMap<>();
         if (args.has("group") && args.has("groupDirection")) { throw new IllegalArgumentException("group and groupDirection are aliases; pass one"); }
-        for (String key : List.of("groupDirection", "group", "representation", "showTitle", "united", "titleLocation", "maxHeight", "verticalStretch", "fieldType", "choiceList", "width", "height", "horizontalStretch", "choiceButton",
-                "clearButton", "textEdit", "listChoiceMode", "choiceFoldersAndItems", "readOnly", "changeRowSet", "autoInsertNewRow", "changeRowOrder", "selectionMode", "initialTreeView", "defaultButton", "buttonImportance")) {
+        for (String key : List.of("groupDirection", "group", "scrollOnCompress", "representation", "showTitle", "united", "titleLocation", "maxHeight", "verticalStretch", "fieldType", "choiceList", "width", "height", "horizontalStretch", "autoMaxWidth", "format", "editFormat", "choiceButton",
+                "clearButton", "textEdit", "listChoiceMode", "choiceFoldersAndItems", "readOnly", "changeRowSet", "autoInsertNewRow", "changeRowOrder", "selectionMode", "initialTreeView", "defaultButton", "buttonImportance", "multiLine", "wrap", "picture")) {
             if (args.has(key)) {
                 result.put("group".equals(key) ? "groupDirection" : key, value(args.get(key)));
             }

@@ -1512,9 +1512,7 @@ public final class BslGateway {
     }
 
     static String insertionBlock(String text, int position, String method, String eol) {
-        String prefix = position == 0 ? "" : text.charAt(position - 1) == '\n' ? eol : eol + eol;
-        String suffix = method.endsWith("\n") ? eol : eol + eol;
-        return prefix + method + suffix;
+        return io.github.keyfire.edtbridge.core.BslPlacement.block(text, position, method, eol);
     }
 
     private static String normalizeEol(String s, String eol) {

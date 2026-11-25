@@ -23,6 +23,9 @@ import io.github.keyfire.edtbridge.mcp.McpServer;
 
 /** Read the rights of a role on one object, or list the objects the role has rights on. */
 public final class RoleRightsTool {
+    static final String OBJECT_FQN = "Metadata FQN such as Catalog.Products, Configuration, "
+            + "HTTPService.Payments.URLTemplate.Status.Method.GET, or WebService.Exchange.Operation.ReadOrder.";
+
     public String name() { return "edt_role_rights"; }
     public boolean isWrite() { return false; }
 
@@ -30,8 +33,8 @@ public final class RoleRightsTool {
         JsonObject props = new JsonObject();
         props.add("projectName", ToolJson.strProp("EDT project name; in an extension, the extension project"));
         props.add("role", ToolJson.strProp("Role FQN, such as Role.Manager"));
-        props.add("object", ToolJson.strProp("Top object FQN, such as Catalog.Products, or Configuration. "
-                + "Without it the answer lists the objects the role has rights on."));
+        props.add("object", ToolJson.strProp(OBJECT_FQN
+                + " Omit it to list the objects the role has rights on."));
         return ToolJson.descriptor(name(), "Read the rights of a role on one object through the live model: every "
                 + "right the object has, in the order EDT shows them, with the English and Russian name and the "
                 + "value. value is null when the role leaves the right to the base configuration (an adopted role "

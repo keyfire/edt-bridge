@@ -21,6 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.ResourcesPlugin;
@@ -37,9 +38,14 @@ import com._1c.g5.v8.dt.core.platform.IBmModelManager;
 import com._1c.g5.v8.dt.core.platform.IExtensionProject;
 import com._1c.g5.v8.dt.core.platform.IV8Project;
 import com._1c.g5.v8.dt.core.platform.IV8ProjectManager;
+import com._1c.g5.v8.dt.metadata.mdclass.HTTPService;
 import com._1c.g5.v8.dt.metadata.mdclass.MdClassPackage;
 import com._1c.g5.v8.dt.metadata.mdclass.MdObject;
+import com._1c.g5.v8.dt.metadata.mdclass.Method;
+import com._1c.g5.v8.dt.metadata.mdclass.Operation;
 import com._1c.g5.v8.dt.metadata.mdclass.Role;
+import com._1c.g5.v8.dt.metadata.mdclass.URLTemplate;
+import com._1c.g5.v8.dt.metadata.mdclass.WebService;
 import com._1c.g5.v8.dt.rights.IRightInfosService;
 import com._1c.g5.v8.dt.rights.RightsPlugin;
 import com._1c.g5.v8.dt.rights.model.ObjectRight;
@@ -176,30 +182,14 @@ public final class RoleRightsGateway {
             Map<String, Boolean> requested = RoleRightsEdit.requested(rights);
             IBmModel model = model(projectName);
             IRightInfosService infos = rightInfos();
-            Map<String, Boolean> resolved = new LinkedHashMap<>();
             model.executeReadonlyTask(new AbstractBmTask<Object>("edt-bridge.roleRights.inspect") {
                 @Override
                 public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
                     Role role = role(tx, roleFqn);
-                    RoleDescription description = description(role);
                     EObject object = object(tx, objectFqn);
                     result.object = fqn(object);
                     result.adoptedRole = adopted(role);
-                    List<Right> allowed = allowed(infos, object);
-                    resolved.putAll(RoleRightsEdit.resolve(requested, names(allowed), result.object));
-                    List<RightState> states = states(role, description, object, allowed);
-                    Map<String, Boolean> current = new LinkedHashMap<>();
-                    for (RightState state : states) current.put(state.name, state.value);
-                    result.changes = Change.of(RoleRightsEdit.plan(resolved, current));
-                    for (Change change : result.changes) {
-                        for (RightState state : states) {
-                            if (state.name.equals(change.right) && state.restricted) {
-                                throw new IllegalArgumentException(
-                                        RoleRightsEdit.restrictedRefusal(change.right, result.object, roleFqn));
-                            }
-                        }
-                    }
-                    result.rights = states;
+                    result.changes = changes(role, object, allowed(infos, object), requested, result.object, roleFqn);
                     return null;
                 }
             });
@@ -211,17 +201,20 @@ public final class RoleRightsGateway {
                 return result;
             }
             String target = result.object;
-            List<Change> changes = result.changes;
             List<String> exported = new ArrayList<>(List.of(roleFqn));
             model.execute(new AbstractBmTask<Object>("edt-bridge.roleRights.apply") {
                 @Override
                 public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
                     Role role = role(tx, roleFqn);
                     EObject object = object(tx, target);
+                    List<Right> allowed = allowed(infos, object);
+                    // Plan against the state of this transaction if another edit followed inspection.
+                    result.changes = changes(role, object, allowed, requested, target, roleFqn);
+                    if (result.changes.isEmpty()) return null;
                     Map<String, Right> byName = new LinkedHashMap<>();
-                    for (Right right : allowed(infos, object)) byName.put(right.getName(), right);
+                    for (Right right : allowed) byName.put(right.getName(), right);
                     Map<Right, Boolean> values = new LinkedHashMap<>();
-                    for (Change change : changes) values.put(byName.get(change.right), change.after);
+                    for (Change change : result.changes) values.put(byName.get(change.right), change.after);
                     RoleDescription description = writableDescription(tx, role);
                     applyValues(role, description, object, target, values, roleFqn, sorter());
                     // The rights are a top object of their own (Rights.rights): exporting the role
@@ -232,15 +225,39 @@ public final class RoleRightsGateway {
                     return null;
                 }
             });
+            result.plan = "Set " + result.changes.size() + " right(s) of " + target + " in " + roleFqn;
+            if (result.changes.isEmpty()) {
+                result.message = "The rights already have the requested values";
+                return result;
+            }
             result.applied = true;
             export(model, exported, result);
-            result.message = "Updated " + changes.size() + " right(s) of " + target + " in " + roleFqn;
+            result.message = "Updated " + result.changes.size() + " right(s) of " + target + " in " + roleFqn;
         } catch (RuntimeException failure) {
             result.ok = false;
+            if (!result.applied) result.changes = null;
             result.message = (result.applied ? "The model changed, but export failed: " : "Nothing written: ")
                     + describe(projectName, failure);
         }
         return result;
+    }
+
+    static List<Change> changes(Role role, EObject object, List<Right> allowed, Map<String, Boolean> requested,
+            String objectFqn, String roleFqn) {
+        Map<String, Boolean> resolved = RoleRightsEdit.resolve(requested, names(allowed), objectFqn);
+        Map<String, Boolean> current = new LinkedHashMap<>();
+        Set<String> restricted = new LinkedHashSet<>();
+        for (RightState state : states(role, description(role), object, allowed)) {
+            current.put(state.name, state.value);
+            if (state.restricted) restricted.add(state.name);
+        }
+        List<RoleRightsEdit.Change> plan = RoleRightsEdit.plan(resolved, current);
+        for (RoleRightsEdit.Change change : plan) {
+            if (restricted.contains(change.right())) {
+                throw new IllegalArgumentException(RoleRightsEdit.restrictedRefusal(change.right(), objectFqn, roleFqn));
+            }
+        }
+        return Change.of(plan);
     }
 
     /**
@@ -346,13 +363,13 @@ public final class RoleRightsGateway {
     static List<Right> allowed(IRightInfosService infos, EObject object) {
         // getRights answers every right of the platform; the rights of one kind of object come by its class.
         EClass eClass = RightsModelUtil.getEClass(object);
-        java.util.Set<Right> rights = infos.getEClassRights(object, eClass);
+        Set<Right> rights = infos.getEClassRights(object, eClass);
         Map<Integer, Right> order = infos.getEClassRightsOrder(object, eClass);
         return ordered(rights, order, fqn(object));
     }
 
     /** The rights in the order EDT gives, then any the order leaves out. */
-    static List<Right> ordered(java.util.Set<Right> rights, Map<Integer, Right> order, String object) {
+    static List<Right> ordered(Set<Right> rights, Map<Integer, Right> order, String object) {
         LinkedHashSet<Right> ordered = new LinkedHashSet<>();
         if (rights == null || rights.isEmpty()) throw new IllegalArgumentException(object + " has no rights a role can set");
         if (order != null) {
@@ -383,13 +400,29 @@ public final class RoleRightsGateway {
             }
             throw new Missing("Configuration not found: " + fqn, fqn);
         }
-        if (parts.length != 2 || parts[1].isBlank()) {
-            throw new IllegalArgumentException("object must be a top object FQN such as Catalog.Products, or "
-                    + "Configuration; rights of attributes and tabular sections are not supported, got: " + fqn);
+        if (parts.length == 2 && !parts[1].isBlank()) {
+            EObject object = tx.getTopObjectByFqn(fqn);
+            if (object != null) return object;
+        } else if (httpMethodFqn(parts) || webOperationFqn(parts)) {
+            EObject object = MetadataWriteGateway.resolveMetadataTarget(tx, fqn);
+            if (object instanceof Method || object instanceof Operation) return object;
+        } else {
+            throw new IllegalArgumentException("object must be Configuration, a top object FQN such as "
+                    + "Catalog.Products, an HTTP method such as HTTPService.Payments.URLTemplate.Status.Method.GET, "
+                    + "or a web service operation such as WebService.Exchange.Operation.ReadOrder, got: " + fqn);
         }
-        EObject object = tx.getTopObjectByFqn(fqn);
-        if (object == null) throw new Missing("Object not found: " + fqn, fqn);
-        return object;
+        throw new Missing("Object not found: " + fqn, fqn);
+    }
+
+    private static boolean httpMethodFqn(String[] parts) {
+        return parts.length == 6 && "HTTPService".equals(parts[0]) && !parts[1].isBlank()
+                && "URLTemplate".equals(parts[2]) && !parts[3].isBlank()
+                && "Method".equals(parts[4]) && !parts[5].isBlank();
+    }
+
+    private static boolean webOperationFqn(String[] parts) {
+        return parts.length == 4 && "WebService".equals(parts[0]) && !parts[1].isBlank()
+                && "Operation".equals(parts[2]) && !parts[3].isBlank();
     }
 
     static RoleDescription description(Role role) {
@@ -489,6 +522,13 @@ public final class RoleRightsGateway {
     }
 
     static String fqn(EObject object) {
+        if (object instanceof Method method && method.eContainer() instanceof URLTemplate template
+                && template.eContainer() instanceof HTTPService service) {
+            return fqn(service) + ".URLTemplate." + template.getName() + ".Method." + method.getName();
+        }
+        if (object instanceof Operation operation && operation.eContainer() instanceof WebService service) {
+            return fqn(service) + ".Operation." + operation.getName();
+        }
         if (object instanceof IBmObject bm) {
             try {
                 String fqn = bm.bmIsTop() ? bm.bmGetFqn() : null;
@@ -564,7 +604,7 @@ public final class RoleRightsGateway {
             Boolean found = baseModel.executeReadonlyTask(new AbstractBmTask<Boolean>("edt-bridge.roleRights.base") {
                 @Override
                 public Boolean execute(IBmTransaction tx, IProgressMonitor monitor) {
-                    return tx.getTopObjectByFqn(fqn) != null;
+                    return object(tx, fqn) != null;
                 }
             });
             return Boolean.TRUE.equals(found) ? base.getName() : null;

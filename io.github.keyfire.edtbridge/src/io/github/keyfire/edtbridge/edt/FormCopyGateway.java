@@ -16,8 +16,11 @@
  */
 package io.github.keyfire.edtbridge.edt;
 
-import java.io.ByteArrayInputStream;
 import java.io.InputStream;
+import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -26,7 +29,9 @@ import java.util.UUID;
 
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
+import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.ResourcesPlugin;
+import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.emf.ecore.EAttribute;
@@ -46,6 +51,7 @@ import com._1c.g5.v8.dt.core.platform.IDtProject;
 import com._1c.g5.v8.dt.form.model.Form;
 import com._1c.g5.v8.dt.metadata.mdclass.BasicForm;
 import com._1c.g5.v8.dt.metadata.mdclass.Configuration;
+import com._1c.g5.v8.dt.metadata.mdclass.DataProcessorForm;
 import com._1c.g5.v8.dt.metadata.mdclass.MdClassPackage;
 import com._1c.g5.v8.dt.metadata.mdclass.MdObject;
 import com._1c.g5.v8.dt.platform.version.Version;
@@ -66,6 +72,8 @@ public final class FormCopyGateway {
     /** Attributes of the form entry that identify it rather than describe it, so the copy keeps its own. */
     private static final Set<String> OWN_ATTRIBUTES = Set.of("name", "uuid", "objectBelonging",
             "extendedConfigurationObject");
+
+    private record Destination(String fqn, UUID uuid, IFile module) { }
 
     /** Outcome of {@link #copyForm}. */
     public static final class CopyFormResult {
@@ -164,11 +172,7 @@ public final class FormCopyGateway {
                     refusal[0] = "target " + target.eClass().getName() + " has no forms feature - it cannot carry forms";
                     return null;
                 }
-                if (RoleRightsGateway.adopted((MdObject) target)
-                        && tx.getTopObjectByFqn("Configuration") instanceof Configuration configuration
-                        && configuration.getNamePrefix() != null && !configuration.getNamePrefix().isBlank()) {
-                    r.namePrefix = configuration.getNamePrefix();
-                }
+                r.namePrefix = extensionPrefix(tx, (MdObject) target);
                 r.name = FormCopyPaths.copyName(name, form.getName(), r.namePrefix);
                 if (name != null && !name.isBlank() && !r.name.equals(name.trim())) {
                     r.requestedName = name.trim();
@@ -223,10 +227,17 @@ public final class FormCopyGateway {
             r.message = (r.message == null ? "validation failed" : r.message) + " - apply refused (nothing copied).";
             return r;
         }
+        r.ok = false;
         IModelObjectFactory factory = FormWriteGateway.modelObjectFactory();
         ITopObjectFqnGenerator fqnGenerator = FormWriteGateway.topObjectFqnGenerator();
         if (factory == null || fqnGenerator == null || support == null) {
             r.message = "EDT services unavailable (model object factory, FQN generator or project file system)";
+            return r;
+        }
+
+        IDtProject dtProject = mm.getDtProject(model);
+        if (dtProject == null) {
+            r.message = "no EDT project for export: " + projectName;
             return r;
         }
 
@@ -242,37 +253,78 @@ public final class FormCopyGateway {
         }
         Version version = GatewaySupport.projectVersion(p);
         String copyName = r.name;
+        Destination destination;
         try {
-            model.getGlobalContext().executeImportTask(new AbstractBmTask<Object>("edt-bridge.copyForm.apply") {
+            destination = model.getGlobalContext().executeImportTask(new AbstractBmTask<Destination>(
+                    "edt-bridge.copyForm.apply") {
                 @Override
-                public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
+                public Destination execute(IBmTransaction tx, IProgressMonitor monitor) {
                     BasicForm form = sourceForm(tx, source);
-                    EObject target = tx.getTopObjectByFqn(targetOwnerFqn);
+                    if (form == null || RoleRightsGateway.adopted(form) || !(form.getForm() instanceof Form)) {
+                        r.message = "the source is no longer an own managed form - apply refused";
+                        return null;
+                    }
+                    if (!(tx.getTopObjectByFqn(targetOwnerFqn) instanceof MdObject target)) {
+                        r.message = "target no longer exists - apply refused";
+                        return null;
+                    }
                     EReference feature = FormWriteGateway.findFormsFeature(target.eClass());
+                    String currentName = FormCopyPaths.copyName(name, form.getName(), extensionPrefix(tx, target));
+                    if (feature == null || !copyName.equals(currentName)) {
+                        r.message = "the target or the effective copy name changed - apply refused";
+                        return null;
+                    }
+                    for (BasicForm existing : FormWriteGateway.formsOf(target, feature)) {
+                        if (copyName.equalsIgnoreCase(existing.getName())) {
+                            r.nameAvailable = false;
+                            r.message = "a form named \"" + copyName + "\" already exists on " + targetOwnerFqn
+                                    + " - apply refused";
+                            return null;
+                        }
+                    }
                     EObject created = factory.create(feature.getEReferenceType(), version);
                     if (!(created instanceof BasicForm copyEntry)) {
-                        throw new IllegalStateException("factory.create returned "
-                                + (created == null ? "null" : created.eClass().getName()) + " (not a BasicForm)");
+                        throw new IllegalStateException("factory.create did not return a BasicForm");
                     }
                     describeLike(form, copyEntry);
                     copyEntry.setName(copyName);
-                    copyEntry.setUuid(UUID.randomUUID());
+                    UUID uuid = UUID.randomUUID();
+                    copyEntry.setUuid(uuid);
                     if (synonymRu != null && !synonymRu.isBlank()) {
                         copyEntry.getSynonym().put("ru", synonymRu);
                     }
-                    // Link the entry first: the FQN generator derives the content's path from the containment.
+
+                    // EDT derives the FQN and resource paths from the new entry's containment.
                     @SuppressWarnings("unchecked")
                     List<EObject> forms = (List<EObject>) target.eGet(feature);
                     forms.add(copyEntry);
-
-                    Form content = (Form) copyContent(form, target, copyEntry).content;
-                    content.setMdForm(copyEntry);
                     String contentFqn = fqnGenerator.generateExternalPropertyFqn(copyEntry,
                             MdClassPackage.Literals.BASIC_FORM__FORM);
+                    IFile formFile = support.getFile(copyEntry, MdClassPackage.Literals.BASIC_FORM__FORM);
+                    IFile moduleFile = support.getFile(copyEntry, MdClassPackage.Literals.ABSTRACT_FORM__MODULE);
+                    if (contentFqn == null || formFile == null || moduleFile == null
+                            || formFile.getLocation() == null || moduleFile.getLocation() == null) {
+                        forms.remove(copyEntry);
+                        r.message = "cannot resolve a local path for the copy's form or module - apply refused";
+                        return null;
+                    }
+                    if (tx.getTopObjectsByFqnIgnoreCase(contentFqn).hasNext()
+                            || destinationOccupied(formFile) || destinationOccupied(moduleFile)) {
+                        forms.remove(copyEntry);
+                        r.nameAvailable = false;
+                        r.message = "the form destination already contains model data or files - apply refused: "
+                                + formFile.getFullPath();
+                        return null;
+                    }
+
+                    FormCopy.Result copied = copyContent(form, target, copyEntry);
+                    Form content = (Form) copied.content;
+                    content.setMdForm(copyEntry);
                     tx.attachTopObject((IBmObject) content, contentFqn);
-                    r.formFqn = contentFqn;
                     factory.fillDefaultReferences(copyEntry);
-                    return null;
+                    r.leftovers.clear();
+                    note(r, copied);
+                    return new Destination(contentFqn, uuid, moduleFile);
                 }
             }, false);
         } catch (RuntimeException ex) {
@@ -280,25 +332,57 @@ public final class FormCopyGateway {
                     + GatewaySupport.describeCause(ex);
             return r;
         }
-
-        if (moduleText != null) {
-            try {
-                r.modulePath = writeModule(p, model, support, targetOwnerFqn, copyName, moduleText);
-            } catch (Exception ex) {
-                r.warning = "form copied, but its module could not be written: " + GatewaySupport.describeCause(ex);
-            }
+        if (destination == null) {
+            return r;
         }
-        IDtProject dtProject = mm.getDtProject(model);
-        boolean exportedOwner = dtProject != null && mm.forceExport(dtProject, targetOwnerFqn);
-        boolean exportedForm = dtProject != null && r.formFqn != null && mm.forceExport(dtProject, r.formFqn);
-        FormValidationSupport.afterFormWrite(p, model, targetOwnerFqn + ".Form." + copyName);
+
+        r.formFqn = destination.fqn();
         r.applied = true;
-        r.message = "copied " + source.fqn() + " to " + targetOwnerFqn + ".Form." + copyName
-                + ((exportedOwner && exportedForm)
-                        ? " (serialized: owner .mdo + Form.form" + (r.modulePath != null ? " + Module.bsl" : "") + ")"
-                        : " - WARNING: copied in memory but forceExport incomplete (owner=" + exportedOwner
-                                + ", form=" + exportedForm + ")");
+        try {
+            boolean isOurCopy = model.executeReadonlyTask(new AbstractBmTask<Boolean>("edt-bridge.copyForm.readback") {
+                @Override
+                public Boolean execute(IBmTransaction tx, IProgressMonitor monitor) {
+                    EObject owner = tx.getTopObjectByFqn(targetOwnerFqn);
+                    if (owner == null || !(tx.getTopObjectByFqn(destination.fqn()) instanceof Form)) {
+                        return false;
+                    }
+                    EReference feature = FormWriteGateway.findFormsFeature(owner.eClass());
+                    return feature != null && FormWriteGateway.formsOf(owner, feature).stream().anyMatch(
+                            entry -> destination.uuid().equals(entry.getUuid()) && copyName.equals(entry.getName()));
+                }
+            });
+            if (!isOurCopy) {
+                throw new IllegalStateException("the new form no longer resolves to its original entry");
+            }
+            if (moduleText != null) {
+                r.modulePath = writeNewModule(destination.module(), moduleText);
+            }
+
+            boolean exportedOwner = mm.forceExport(dtProject, targetOwnerFqn);
+            boolean exportedForm = mm.forceExport(dtProject, r.formFqn);
+            FormValidationSupport.afterFormWrite(p, model, targetOwnerFqn + ".Form." + copyName);
+            if (!exportedOwner || !exportedForm) {
+                throw new IllegalStateException("EDT export was incomplete (owner=" + exportedOwner
+                        + ", form=" + exportedForm + ")");
+            }
+            r.ok = true;
+            r.message = "copied " + source.fqn() + " to " + targetOwnerFqn + ".Form." + copyName
+                    + " (EDT accepted export of owner .mdo and Form.form"
+                    + (r.modulePath != null ? "; Module.bsl written" : "") + ")";
+        } catch (Exception ex) {
+            r.warning = "the form was created, but the copy is incomplete: " + GatewaySupport.describeCause(ex);
+            r.message = "check the destination before retrying: " + targetOwnerFqn + ".Form." + copyName;
+        }
         return r;
+    }
+
+    private static String extensionPrefix(IBmTransaction tx, MdObject target) {
+        if (!RoleRightsGateway.adopted(target)
+                || !(tx.getTopObjectByFqn("Configuration") instanceof Configuration configuration)) {
+            return null;
+        }
+        String prefix = configuration.getNamePrefix();
+        return prefix == null || prefix.isBlank() ? null : prefix;
     }
 
     /**
@@ -332,7 +416,7 @@ public final class FormCopyGateway {
     }
 
     /** Give the new entry the source entry's describing attributes and synonym: kind, purposes, comment. */
-    private static void describeLike(BasicForm source, BasicForm copy) {
+    static void describeLike(BasicForm source, BasicForm copy) {
         for (EAttribute attribute : source.eClass().getEAllAttributes()) {
             if (OWN_ATTRIBUTES.contains(attribute.getName()) || attribute.isDerived() || attribute.isTransient()
                     || !attribute.isChangeable() || !source.eIsSet(attribute)
@@ -349,6 +433,10 @@ public final class FormCopyGateway {
             }
         }
         copy.getSynonym().putAll(source.getSynonym());
+        if (source.eClass() == copy.eClass() && source instanceof DataProcessorForm sourceProcessor
+                && copy instanceof DataProcessorForm copyProcessor) {
+            copyProcessor.getExtendedPresentation().putAll(sourceProcessor.getExtendedPresentation());
+        }
     }
 
     private static void note(CopyFormResult r, FormCopy.Result preview) {
@@ -357,36 +445,25 @@ public final class FormCopyGateway {
         preview.leftovers.stream().limit(LEFTOVERS_SHOWN).forEach(left -> r.leftovers.add(left.toString()));
     }
 
-    private static String writeModule(IProject project, IBmModel model, IProjectFileSystemSupport support,
-            String ownerFqn, String formName, byte[] text) throws Exception {
-        IFile[] target = {null};
-        model.executeReadonlyTask(new AbstractBmTask<Object>("edt-bridge.copyForm.modulePath") {
-            @Override
-            public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
-                EObject owner = tx.getTopObjectByFqn(ownerFqn);
-                EReference feature = FormWriteGateway.findFormsFeature(owner.eClass());
-                for (BasicForm form : FormWriteGateway.formsOf(owner, feature)) {
-                    if (formName.equals(form.getName())) {
-                        target[0] = support.getFile(form, MdClassPackage.Literals.ABSTRACT_FORM__MODULE);
-                        break;
-                    }
-                }
-                return null;
-            }
-        });
-        IFile file = target[0];
-        if (file == null) {
-            throw new IllegalStateException("could not resolve the module file for form " + formName);
+    static boolean destinationOccupied(IFile file) {
+        IPath location = file.getLocation();
+        return file.exists()
+                || location == null
+                || !Files.notExists(location.toFile().toPath(), LinkOption.NOFOLLOW_LINKS);
+    }
+
+    static String writeNewModule(IFile file, byte[] text) throws Exception {
+        IPath location = file.getLocation();
+        if (location == null) {
+            throw new IllegalStateException("no local path for module destination: " + file.getFullPath());
         }
-        NullProgressMonitor monitor = new NullProgressMonitor();
+        if (file.exists()) {
+            throw new FileAlreadyExistsException(location.toOSString());
+        }
         FormWriteGateway.createParentFolders(file);
-        try (InputStream in = new ByteArrayInputStream(text)) {
-            if (file.exists()) {
-                file.setContents(in, true, true, monitor);
-            } else {
-                file.create(in, true, monitor);
-            }
-        }
+        // CREATE_NEW makes testing for existence and creating the file one filesystem operation.
+        Files.write(location.toFile().toPath(), text, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+        file.refreshLocal(IResource.DEPTH_ZERO, new NullProgressMonitor());
         return file.getProjectRelativePath().toString();
     }
 }

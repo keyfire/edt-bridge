@@ -148,4 +148,14 @@ final class GatewaySupport {
         }
         return (com.google.inject.Injector) pluginClass.getMethod("getInjector").invoke(plugin);
     }
+
+    static com.google.inject.Injector importInjector() throws Exception {
+        String bundleName = "com._1c.g5.v8.dt.import";
+        var bundle = org.eclipse.core.runtime.Platform.getBundle(bundleName);
+        if (bundle == null) throw new java.io.IOException(bundleName + " is not installed");
+        Class<?> pluginClass = bundle.loadClass("com._1c.g5.v8.dt.internal.import_.ImportPlugin");
+        Object plugin = pluginClass.getMethod("getDefault").invoke(null);
+        if (plugin == null) throw new java.io.IOException(bundleName + " is not active");
+        return (com.google.inject.Injector) pluginClass.getMethod("getInjector").invoke(plugin);
+    }
 }

@@ -24,8 +24,8 @@ import java.util.regex.Pattern;
  */
 public final class FormCopyPaths {
 
-    private static final Pattern OWNER_FORM = Pattern.compile("([A-Za-z]+\\.[^.\\s]+)\\.Form\\.([^.\\s]+)");
-    private static final Pattern COMMON_FORM = Pattern.compile("CommonForm\\.([^.\\s]+)");
+    private static final Pattern OWNER_FORM = Pattern.compile("([A-Za-z]+\\.[^.\\s]+)\\.Form\\.([^.\\s]+)(?:\\.Form)?");
+    private static final Pattern COMMON_FORM = Pattern.compile("CommonForm\\.([^.\\s]+)(?:\\.Form)?");
     /** A 1C identifier: letters (Latin or Cyrillic), digits and underscore, not starting with a digit. */
     private static final Pattern IDENTIFIER = Pattern.compile("[A-Za-zА-Яа-яЁё_][A-Za-zА-Яа-яЁё0-9_]*");
 
@@ -47,7 +47,8 @@ public final class FormCopyPaths {
 
     /**
      * Read {@code <Type>.<Owner>.Form.<Name>} or {@code CommonForm.<Name>}, with English type names as
-     * everywhere in the bridge. Returns {@code null} for anything else.
+     * everywhere in the bridge. Accepts the trailing {@code .Form} of the form content FQN.
+     * Returns {@code null} for anything else.
      */
     public static Source parse(String fqn) {
         if (fqn == null) return null;

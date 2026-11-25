@@ -37,6 +37,13 @@ class FormCopyPathsTest {
         assertEquals("CommonForm.Вопрос", source.fqn());
     }
 
+    @Test void acceptTheFormContentFqnReturnedByAddForm() {
+        assertEquals(FormCopyPaths.parse("Catalog.Items.Form.List"),
+                FormCopyPaths.parse("Catalog.Items.Form.List.Form"));
+        assertEquals(FormCopyPaths.parse("CommonForm.Confirm"),
+                FormCopyPaths.parse("CommonForm.Confirm.Form"));
+    }
+
     @Test void otherTextIsNotAForm() {
         assertNull(FormCopyPaths.parse(null));
         assertNull(FormCopyPaths.parse("DataProcessor.ПодачаЗаявки"));

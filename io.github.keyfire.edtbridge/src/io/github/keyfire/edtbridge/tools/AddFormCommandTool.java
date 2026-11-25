@@ -57,14 +57,14 @@ public final class AddFormCommandTool {
                 "WRITE (Phase 2): add a command to a managed form. The id comes from EDT's own form "
                 + "identifier service and the action is wired to a handler procedure in the form module; "
                 + "createHandler=true also writes that procedure's stub, creating the module file when "
-                + "the form has none. Accepts optional actionPurpose, associatedTable, currentRowUse and "
-                + "selectedRowsUse. Note the command still needs a button to be reachable in the UI. "
+                + "the form has none. Accepts optional actionPurpose, associatedTable, currentRowUse, "
+                + "selectedRowsUse and picture. Note the command still needs a button to be reachable in the UI. "
                 + "Dry-run by default. Additive - no force needed - but requires a configured token.",
                 "ЗАПИСЬ (Phase 2): добавить команду управляемой формы. Идентификатор выдает штатная "
                 + "служба идентификаторов формы, действие связывается с процедурой-обработчиком модуля "
                 + "формы; createHandler=true дополнительно пишет заготовку этой процедуры, создавая "
                 + "файл модуля, если его у формы еще нет. Поддерживаются необязательные actionPurpose, "
-                + "associatedTable, currentRowUse и selectedRowsUse. Учтите: чтобы команда была доступна в "
+                + "associatedTable, currentRowUse, selectedRowsUse и picture. Учтите: чтобы команда была доступна в "
                 + "интерфейсе, ей нужна кнопка. По умолчанию dry-run. Аддитивно - force не нужен - но "
                 + "требует токен.",
                 props, "projectName", "formFqn", "name");
@@ -87,6 +87,9 @@ public final class AddFormCommandTool {
         JsonObject selectedUse = ToolJson.strProp("Selected-rows usage of a table command: Use, DontUse or Auto. Optional.");
         selectedUse.add("enum", rowModes.deepCopy());
         props.add("selectedRowsUse", selectedUse);
+        props.add("picture", ToolJson.strProp("Picture of the command: StdPicture.<Name> of the platform, such as "
+                + "StdPicture.Post, CommonPicture.<Name> of the configuration, or БиблиотекаКартинок.<Name>"
+                + (allowClearTable ? "; an empty string removes it" : "") + ". Optional."));
     }
 
     static FormCommandEdits.Options commandOptions(JsonObject args) {
@@ -94,7 +97,8 @@ public final class AddFormCommandTool {
                 ToolJson.getStr(args, "actionPurpose"),
                 ToolJson.getStr(args, "associatedTable"),
                 ToolJson.getStr(args, "currentRowUse"),
-                ToolJson.getStr(args, "selectedRowsUse"));
+                ToolJson.getStr(args, "selectedRowsUse"),
+                ToolJson.getStr(args, "picture"));
     }
 
     public JsonObject call(JsonObject args) {

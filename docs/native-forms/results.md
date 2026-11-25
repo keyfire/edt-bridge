@@ -68,6 +68,15 @@ prompt for the file unanswered. To prepare the runner for unattended checks of t
 files, use a test user with the appropriate platform setting or scope
 `DisableUnsafeActionProtection` to the temporary copies with `.*/edt-bridge-web-.*`.
 
+A configuration can open a window over the main window when the session starts. The Standard
+Subsystems Library does so for a file infobase that lies at another path than before and lacks
+its `DoNotCopy.txt`, which is the case for every temporary copy. Before File – Open the bridge
+answers that window with "This is a copy of the infobase" (Russian caption: "Это копия
+информационной базы"), so the scheduled work with external resources of the copy stays
+blocked; `answeredWindows` lists the titles of the windows it answered. A window without a
+known answer that stays for 15 seconds stops the run with `web_start_window`, and
+`blockingWindows` gives the titles of the windows over the main window.
+
 ### Form as text
 
 `webForm` describes the form for a model without vision. It is read from the page after the
@@ -81,7 +90,7 @@ is missing or ambiguous, it reads the front window. Each item takes one line.
 | `legend` | The fields of an item line: `name \| kind \| title \| value \| x,y wxh \| flags`. |
 | `items` | The visible items in the order of the form, up to 300. |
 | `tables` | Each form table has `name`, `columns`, up to 30 DOM `rows` and 30 columns, and `currentRow` (numbered from 1) when the selected row is included. `more` marks additional content. With the filter enabled, `withheld` marks a table with cells hidden because their column could not be identified. |
-| `spreadsheets` | The test manager reads up to four visible spreadsheet fields after a completed sequence of actions. Each entry has `name`, `title` and `rows` with up to 30 rows and 15 columns. `more` marks additional cells. |
+| `spreadsheets` | The test manager reads up to four visible spreadsheet fields after a completed sequence of actions. Each entry has `name`, `title` and `rows` with up to 30 rows and 15 columns. `more` marks additional cells. The browser reads up to 30 clipped cells per field from same-origin frames. Each `clipped` line has the format `R<row>C<column> \| text \| text width/cell width px`. Row and column numbers start at 1. Vertical clipping also includes the text and cell heights. `clippedMore` marks additional clipped cells that could not fit the count or text limit. |
 | `spreadsheetsTruncated`, `spreadsheetsError` | The spreadsheet field limit was reached, or the test manager could not read spreadsheets or column names. |
 | `messages` | Up to 30 lines from the message panel. The test manager supplies them when the browser DOM has no visible messages for the matched form. |
 | `overForm` | The windows over the form, such as a warning or an error window: the title, or the text of a window without one. |
@@ -140,7 +149,8 @@ to `false`. MCP sends images only with the filter enabled. If capture fails, the
 | `reopen_failed`, `not_run`, `interrupted` | Named scenarios only. The form could not be opened again before this scenario; the scenario was not reached; the session stopped while it ran. |
 | `unexpected_dialog` | A click raised a warning or a question window over the form that the step did not expect. `dialog` holds its `kind` (`warning`, `question`), `text` and visible `buttons`; the scenario stops there and a question is left unanswered, so the caller decides whether the window is an acceptable answer. |
 | `dependency_missing`, `license_unavailable`, `access_denied`, `setup_failed` | The environment or permissions do not allow the check to run. |
-| `web_publication_failed` | Apache or Chromium could not start the temporary publication or open its test channel. |
+| `web_publication_failed` | Apache or Chromium could not start the temporary publication or open its test channel. When the upload dialog did not open, `blockingWindows` gives the titles of the windows over the main window. |
+| `web_start_window` | A window over the main window of the web client, without a known answer, blocks File – Open; `blockingWindows` gives the titles. |
 | `client_environment` | No `conf.cfg` the client reads sets `DisableUnsafeActionProtection`, so the client would stop at the security warning; see `clientEnvironment` and [Prepare the environment](/native-forms#prepare-the-environment). |
 | `timeout` | The overall time limit expired. The recorded progress and available screenshot show where execution stopped. |
 | `screenshot_failed` | Observations passed but the required screenshot was not obtained. |

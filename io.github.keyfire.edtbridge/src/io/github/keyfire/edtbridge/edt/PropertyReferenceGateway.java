@@ -149,7 +149,7 @@ public final class PropertyReferenceGateway {
             int index = fqn.lastIndexOf("." + segment + ".");
             if (index <= 0) continue;
             String name = fqn.substring(index + segment.length() + 2);
-            EObject owner = name.contains(".") ? null : tx.getTopObjectByFqn(fqn.substring(0, index));
+            EObject owner = name.contains(".") ? null : MetadataWriteGateway.resolveFieldOwner(tx, fqn.substring(0, index));
             if (owner == null) continue;
             String kind = segment.toLowerCase(java.util.Locale.ROOT);
             MdObject field = MetadataFields.find(owner, kind, name);
@@ -211,8 +211,13 @@ public final class PropertyReferenceGateway {
         }
         if (object == null) throw new IllegalArgumentException("object not found: " + fqn);
         result.kind = "object"; result.objectType = object.eClass().getName();
-        result.message = "The bridge sets typed properties of common modules, of forms, of fields, of form items and of form commands. "
-                + "For a field of this object pass its FQN, e.g. " + fqn + ".Attribute.Name; "
+        if (MetadataObjectProperties.supports(object)) {
+            result.tool = "edt_modify_object";
+            result.usage = "pass the listed names inside the properties argument";
+            result.properties = MetadataObjectProperties.reference(object);
+            return;
+        }
+        result.message = "For a field of this object pass its FQN, e.g. " + fqn + ".Attribute.Name; "
                 + "for a form, its item or its command pass the form FQN, e.g. " + fqn + ".Form.FormName, optionally with item or command.";
     }
 

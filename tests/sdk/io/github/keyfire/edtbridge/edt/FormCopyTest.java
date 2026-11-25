@@ -23,6 +23,7 @@ import java.util.Map;
 import org.eclipse.emf.ecore.EObject;
 import org.junit.jupiter.api.Test;
 
+import com._1c.g5.v8.dt.bsl.model.BslFactory;
 import com._1c.g5.v8.dt.form.model.DataPath;
 import com._1c.g5.v8.dt.form.model.DataPathReferredObject;
 import com._1c.g5.v8.dt.form.model.Form;
@@ -58,6 +59,19 @@ class FormCopyTest {
         assertTrue(copied.leftovers.isEmpty(), copied.leftovers.toString());
         assertSame(objectType(source), form.getAttributes().get(0).getValueType().getTypes().get(0),
                 "the source form stays as it was");
+    }
+
+    @Test void anAttributeNamedLikeItsOwnerStillMatchesByAttributeName() {
+        Catalog source = catalog("Товары", "Товары");
+        Catalog target = catalog("Услуги", "Услуги");
+        CatalogAttribute match = MdClassFactory.eINSTANCE.createCatalogAttribute();
+        match.setName("Товары");
+        target.getAttributes().add(match);
+
+        FormCopy.Result copied = FormCopy.copy(objectForm(source, "Товары"),
+                FormCopy.counterparts(source, target), source, null, null, true);
+
+        assertSame(match, referred((Form) copied.content).getObject());
     }
 
     @Test void anAttributeTheTargetLacksStaysAndIsReported() {
@@ -101,6 +115,17 @@ class FormCopyTest {
         assertSame(copyEntry, ((Form) applied.content).getMdForm());
         assertEquals(0, applied.remapped);
         assertTrue(applied.leftovers.isEmpty());
+    }
+
+    @Test void aCopyDoesNotRetainTheSourceModuleModel() {
+        Form source = FormFactory.eINSTANCE.createForm();
+        var module = BslFactory.eINSTANCE.createModule();
+        source.setModule(module);
+
+        FormCopy.Result copied = FormCopy.copy(source, Map.of(), null, null, null, false);
+
+        assertNull(((Form) copied.content).getModule());
+        assertSame(module, source.getModule());
     }
 
     @Test void aCopyWithinTheSameObjectReportsNothing() {
