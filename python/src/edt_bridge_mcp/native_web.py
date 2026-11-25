@@ -330,8 +330,7 @@ _SHEET_CLIPS = r"""
             if (!doc || !doc.body) continue;
             const view = doc.defaultView;
             for (const cell of doc.body.querySelectorAll("div[y] > div[x]")) {
-                const text = (cell.textContent || "").trim();
-                if (!text) continue;
+                if (!cell.textContent.trim()) continue;
                 const style = view.getComputedStyle(cell);
                 const cutX = style.overflowX !== "visible", cutY = style.overflowY !== "visible";
                 if (style.visibility !== "visible" || (!cutX && !cutY)) continue;
@@ -339,7 +338,7 @@ _SHEET_CLIPS = r"""
                 const t = {left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity};
                 const walker = doc.createTreeWalker(cell, 4);
                 for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-                    if (!node.data.trim()) continue;
+                    if (!node.data.trim() || view.getComputedStyle(node.parentElement).visibility !== "visible") continue;
                     const range = doc.createRange();
                     range.selectNodeContents(node);
                     for (const box of range.getClientRects()) {
@@ -350,9 +349,12 @@ _SHEET_CLIPS = r"""
                 if (t.right < t.left) continue;
                 t.width = t.right - t.left; t.height = t.bottom - t.top;
                 const c = cell.getBoundingClientRect();
-                const wide = cutX && (t.left < c.left - 1 || t.right > c.right + 1);
-                const tall = cutY && (t.top < c.top - 1 || t.bottom > c.bottom + 1);
+                const left = c.left + cell.clientLeft, top = c.top + cell.clientTop;
+                const wide = cutX && (t.left < left - 1 || t.right > left + cell.clientWidth + 1);
+                const tall = cutY && (t.top < top - 1 || t.bottom > top + cell.clientHeight + 1);
                 if (!wide && !tall) continue;
+                const text = cell.innerText.trim();
+                if (!text) continue;
                 const row = cell.parentElement.getAttribute("y"), column = cell.getAttribute("x");
                 const key = row + ":" + column;
                 if (seen.has(key)) continue;
@@ -737,6 +739,7 @@ def form_text(raw, flt, *, sheets=(), table_columns=None, clips=None):
             entry["more"] = True
         tables.append(entry)
     spreadsheets = []
+    sheets = tuple(sheets)
     for sheet in sheets:
         name, title = sheet["name"], sheet["title"]
         header = caption(title)
@@ -746,7 +749,11 @@ def form_text(raw, flt, *, sheets=(), table_columns=None, clips=None):
         entry = {"name": name, "title": header, "rows": rows}
         if sheet.get("truncated") or len(rows) < len(sheet["rows"]):
             entry["more"] = True
-        clipped = (clips or {}).get(name) or {}
+        spreadsheets.append(entry)
+    clip_groups = clips or {}
+    for sheet, entry in zip(sheets, spreadsheets):
+        name, title = sheet["name"], sheet["title"]
+        clipped = clip_groups.get(name) or {}
         if clipped.get("cells"):
             entry["clipped"] = bounded(
                 line([f"R{row}C{column}", value(name, title, text),
@@ -755,7 +762,6 @@ def form_text(raw, flt, *, sheets=(), table_columns=None, clips=None):
                 for row, column, text, width, cell_width, height, cell_height, cut_vertically in clipped["cells"])
             if clipped.get("more") or len(entry["clipped"]) < len(clipped["cells"]):
                 entry["clippedMore"] = True
-        spreadsheets.append(entry)
     text = {"title": caption(raw.get("title") or ""), "size": raw.get("size", ""), "legend": LEGEND,
             "items": items}
     for key, found in (("tables", tables), ("spreadsheets", spreadsheets),

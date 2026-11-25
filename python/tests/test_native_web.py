@@ -517,13 +517,16 @@ div { position: absolute; padding-left: 2px; padding-right: 2px; box-sizing: con
 .R2 { left: 0; right: 0; top: 42px; height: 22px; }
 .R2C0 { width: 100px; height: 20px; overflow: hidden; }
 .R3 { left: 0; right: 0; top: 64px; height: 18px; visibility: hidden; }
+.R4 { left: 0; right: 0; top: 83px; height: 19px; }
+.R4C0 { width: 85px; height: 18px; border-right: 5px solid #000; overflow: hidden; }
 </style>
 <div class="fullSize" style="overflow: hidden;"><div style="width: 1399px; height: 953px;">
 <div class="R0" y="0"><div class="R0C0" x="0" cs="2"><span style="left: 4px; right: -232px; position: absolute;">Sample product with a long name</span></div></div>
-<div class="R1" y="1"><div class="R1C0" x="0"><span style="left: 3px; right: -43px; position: absolute;">Article:</span></div>
+<div class="R1" y="1"><div class="R1C0" x="0"><span style="left: 3px; right: -43px; position: absolute;">Article:</span><span style="display: none;">Hidden note</span><span style="visibility: hidden;">Private memo</span></div>
 <div class="R1C1" x="1"><span style="left: 3px; right: -55px; position: absolute;">AB-01-LONG-CODE</span></div></div>
 <div class="R2" y="2"><div class="R2C0" x="0"><span style="top: 12px; position: absolute;">Lower edge</span></div></div>
 <div class="R3" y="3"><div class="R1C0" x="0"><span style="position: absolute;">Hidden cell</span></div></div>
+<div class="R4" y="4"><div class="R4C0" x="0"><span style="right: -3px; position: absolute;">Border</span></div></div>
 </div></div>
 """
 
@@ -556,7 +559,7 @@ def test_read_form_finds_text_clipped_in_the_spreadsheet_frame():
             browser.close()
     sheet, missing = report["spreadsheets"]
     clipped = [cell.split(" | ") for cell in sheet["clipped"]]
-    assert [fields[:2] for fields in clipped] == [["R2C1", "Article:"], ["R3C1", "Lower edge"]]
+    assert [fields[:2] for fields in clipped] == [["R2C1", "Article:"], ["R3C1", "Lower edge"], ["R5C1", "Border"]]
     width, cell_width = map(int, clipped[0][2].removesuffix(" px").split("/"))
     assert width > cell_width
     assert clipped[1][2].endswith(" px high")
@@ -574,6 +577,21 @@ def test_form_text_lists_the_clipped_cells_of_a_spreadsheet():
     assert sheet["clippedMore"] is True
     plain = native_web.form_text({"items": []}, pii.Filter(), sheets=sheets)
     assert "clipped" not in plain["spreadsheets"][0]
+
+
+def test_clipped_cells_use_the_budget_after_spreadsheet_rows(monkeypatch):
+    monkeypatch.setattr(native_web, "MAX_FORM_TEXT", 65)
+    last_row = "The second sheet keeps its full row"
+    sheets = [
+        {"name": "First", "title": "First", "rows": [["First row"]]},
+        {"name": "Second", "title": "Second", "rows": [[last_row]]},
+    ]
+    clips = {"First": {"cells": [[1, 1, "Sample label", 300, 20, 16, 16, False]], "more": False}}
+    report = native_web.form_text({"items": []}, pii.Filter(), sheets=sheets, clips=clips)
+    first, second = report["spreadsheets"]
+    assert second["rows"] == [last_row]
+    assert first["clipped"] == []
+    assert first["clippedMore"] is True
 
 
 def test_read_form_asks_for_the_cut_cells_of_the_spreadsheets_of_its_form():
