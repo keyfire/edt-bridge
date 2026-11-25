@@ -13,7 +13,7 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
-## Unreleased
+## 2026-11-26 – 0.58.0
 
 ### Added
 
@@ -52,9 +52,9 @@ to the code and the reasoning behind it.
   (`ПриПолученииДанныхНаСервере`) as the platform help asks: `&НаСервереБезКонтекста` with
   `ИмяЭлемента, Настройки, Строки`. It used to write `&НаСервере` and an extra `Элемент` first.
   ([#109](https://github.com/keyfire/edt-bridge/pull/109))
-- A form write no longer puts the old form back over `Form.form` changed on disk a moment
-  before. The form tools and `edt_modify_object` with a form FQN refresh the file and wait until
-  EDT has loaded it into the model. If that takes more than 30 s, nothing is written.
+- Before editing a form, the form tools and `edt_modify_object` with a form FQN refresh
+  `Form.form` and wait for EDT to load any detected changes from disk. If the import times
+  out after 30 seconds, the operation leaves the form unchanged.
   ([#109](https://github.com/keyfire/edt-bridge/pull/109))
 - `edt_add_method` and `edt_move_method` leave one blank line on each side of the method. A
   method appended to a region used to get three blank lines before `#КонецОбласти`, and one put
