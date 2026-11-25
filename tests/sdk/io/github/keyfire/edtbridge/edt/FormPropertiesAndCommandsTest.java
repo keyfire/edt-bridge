@@ -33,9 +33,48 @@ import com._1c.g5.v8.dt.form.model.FormPackage;
 import com._1c.g5.v8.dt.form.model.ManagedFormFieldType;
 import com._1c.g5.v8.dt.form.model.SelectedRowsUse;
 import com._1c.g5.v8.dt.form.model.Table;
+import com._1c.g5.v8.dt.mcore.McoreFactory;
+import com._1c.g5.v8.dt.mcore.PictureRef;
+import com._1c.g5.v8.dt.metadata.mdclass.CommonPicture;
+import com._1c.g5.v8.dt.metadata.mdclass.MdClassFactory;
 import com._1c.g5.v8.dt.platform.version.Version;
 
 class FormPropertiesAndCommandsTest {
+    @Test
+    void commandPictureIsSetReadBackAndCleared() {
+        Form form = FormFactory.eINSTANCE.createForm();
+        FormCommand command = FormFactory.eINSTANCE.createFormCommand();
+        command.setName("Post");
+        CommonPicture logo = MdClassFactory.eINSTANCE.createCommonPicture();
+        logo.setName("Logo");
+        FormCommandEdits.Pictures pictures = raw -> {
+            PictureRef reference = McoreFactory.eINSTANCE.createPictureRef();
+            reference.setPicture(logo);
+            return reference;
+        };
+        var set = new FormCommandEdits.Options(null, null, null, null, "CommonPicture.Logo");
+        FormCommandEdits.validate(form, set, pictures);
+        FormCommandEdits.apply(form, command, set, new Version(8, 3, 24), pictures);
+        assertSame(logo, ((PictureRef) command.getPicture()).getPicture());
+        assertEquals("CommonPicture.Logo", FormCommandEdits.readProperties(form, command).get("picture"));
+        assertTrue(FormCommandEdits.reference(form, command, "Post").stream()
+                .anyMatch(entry -> "picture".equals(entry.get("name")) && "CommonPicture.Logo".equals(entry.get("current"))));
+        StringBuilder plan = new StringBuilder();
+        FormCommandEdits.appendPlan(plan, set);
+        assertEquals(" picture -> CommonPicture.Logo", plan.toString());
+
+        FormCommandEdits.apply(form, command, new FormCommandEdits.Options(null, null, null, null, ""),
+                new Version(8, 3, 24), pictures);
+        assertNull(command.getPicture());
+        assertNull(FormCommandEdits.readProperties(form, command).get("picture"));
+
+        assertThrows(IllegalArgumentException.class, () -> FormCommandEdits.validate(form,
+                new FormCommandEdits.Options(null, null, null, null, "Post"), pictures));
+        assertThrows(IllegalStateException.class, () -> FormCommandEdits.validate(form, set));
+        assertFalse(new FormCommandEdits.Options(null, null, null, null, "").isEmpty());
+        assertTrue(new FormCommandEdits.Options(null, null, null, null).isEmpty());
+    }
+
 
     @Test
     void formRootSettingsValidateDescribeAndApply() {

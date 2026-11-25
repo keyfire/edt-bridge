@@ -20,6 +20,14 @@
   редактирует проект, а его `sourceHash` подходит для `edt_replace_html_template`. Текстовый
   макет получает свой `Template.txt`. Новый параметр `text` задает начальный текст обоих.
   ([#108](https://github.com/keyfire/edt-bridge/pull/108))
+- `edt_add_form_item` и `edt_modify_form_item` задают `groupDirection` (`Horizontal`, `Vertical`
+  или `InCell`) и `showTitle` группы колонок таблицы. Раньше оба свойства отклонялись с
+  сообщением "requires a usual group", и группа колонок оставалась вертикальной, как ее создает
+  EDT. ([#111](https://github.com/keyfire/edt-bridge/pull/111))
+- `edt_add_form_command` и `edt_modify_form_command` задают картинку команды: `picture`
+  принимает `StdPicture.<Имя>`, `CommonPicture.<Имя>` или `БиблиотекаКартинок.<Имя>`, пустая
+  строка убирает картинку. Ответ и `edt_property_reference` ее сообщают.
+  ([#111](https://github.com/keyfire/edt-bridge/pull/111))
 
 ### Исправлено
 
@@ -31,6 +39,10 @@
   незадолго до записи. Инструменты форм и `edt_modify_object` с FQN формы обновляют файл и ждут,
   пока EDT загрузит его в модель. Если ожидание длится дольше 30 с, ничего не записывается.
   ([#109](https://github.com/keyfire/edt-bridge/pull/109))
+- `edt_add_method` и `edt_move_method` оставляют по одной пустой строке с каждой стороны метода.
+  Раньше перед `#КонецОбласти` после метода, добавленного в конец области, оказывалось три пустые
+  строки, а над методом, вставленным перед другим методом, – две.
+  ([#111](https://github.com/keyfire/edt-bridge/pull/111))
 
 ## 25.11.2026 – 0.56.0, 0.57.0
 

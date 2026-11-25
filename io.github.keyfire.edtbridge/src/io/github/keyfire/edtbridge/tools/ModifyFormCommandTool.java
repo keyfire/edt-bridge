@@ -51,13 +51,13 @@ public final class ModifyFormCommandTool {
                 + "write nothing. true = apply the change and serialize Form.form."));
         return ToolJson.descriptor(name(),
                 "WRITE (Phase 2): change an existing form command - title, tooltip, handler procedure, "
-                + "actionPurpose, associatedTable, currentRowUse or selectedRowsUse. Re-pointing the "
+                + "actionPurpose, associatedTable, currentRowUse, selectedRowsUse or picture. Re-pointing the "
                 + "handler does not rename the procedure: aim it at one that exists in the form module, "
                 + "or add it with edt_add_method. Dry-run by default; pass at least one property to "
                 + "change. Requires a token.",
                 "ЗАПИСЬ (Phase 2): изменить существующую команду формы - заголовок, подсказку, "
-                + "процедуру-обработчик, actionPurpose, associatedTable, currentRowUse или "
-                + "selectedRowsUse. Перенацеливание обработчика не переименовывает процедуру: "
+                + "процедуру-обработчик, actionPurpose, associatedTable, currentRowUse, "
+                + "selectedRowsUse или picture. Перенацеливание обработчика не переименовывает процедуру: "
                 + "указывайте на существующую в модуле формы либо добавьте ее через edt_add_method. По "
                 + "умолчанию dry-run; задать нужно хотя бы одно изменяемое свойство. Требует токен.",
                 props, "projectName", "formFqn", "name");

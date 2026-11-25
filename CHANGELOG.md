@@ -22,6 +22,14 @@ to the code and the reasoning behind it.
   project in, and its `sourceHash` goes to `edt_replace_html_template`. A text template gets its
   `Template.txt`. The new `text` sets the starting text of either.
   ([#108](https://github.com/keyfire/edt-bridge/pull/108))
+- `edt_add_form_item` and `edt_modify_form_item` set `groupDirection` (`Horizontal`, `Vertical`
+  or `InCell`) and `showTitle` of a column group of a table. Both used to be refused with
+  "requires a usual group", and a column group stayed vertical, as EDT creates it.
+  ([#111](https://github.com/keyfire/edt-bridge/pull/111))
+- `edt_add_form_command` and `edt_modify_form_command` set the command picture: `picture` takes
+  `StdPicture.<Name>`, `CommonPicture.<Name>` or `БиблиотекаКартинок.<Name>`, and an empty string
+  removes it. The answer and `edt_property_reference` report it.
+  ([#111](https://github.com/keyfire/edt-bridge/pull/111))
 
 ### Fixed
 
@@ -33,6 +41,10 @@ to the code and the reasoning behind it.
   before. The form tools and `edt_modify_object` with a form FQN refresh the file and wait until
   EDT has loaded it into the model. If that takes more than 30 s, nothing is written.
   ([#109](https://github.com/keyfire/edt-bridge/pull/109))
+- `edt_add_method` and `edt_move_method` leave one blank line on each side of the method. A
+  method appended to a region used to get three blank lines before `#КонецОбласти`, and one put
+  before another method got two blank lines above it.
+  ([#111](https://github.com/keyfire/edt-bridge/pull/111))
 
 ## 2026-11-25 – 0.56.0, 0.57.0
 

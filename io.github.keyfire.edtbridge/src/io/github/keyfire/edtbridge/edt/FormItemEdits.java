@@ -269,13 +269,26 @@ public final class FormItemEdits {
         return key;
     }
     private static EObject propertyTarget(FormItem item, EObject info, String key) {
-        if ("groupDirection".equals(key) || "scrollOnCompress".equals(key)) {
+        if ("groupDirection".equals(key)) {
+            if (!(info instanceof UsualGroupExtInfo) && !(info instanceof PageGroupExtInfo)
+                    && !(info instanceof ColumnGroupExtInfo)) {
+                throw new IllegalArgumentException(key + " requires a usual group, a page or a column group");
+            }
+            return info;
+        }
+        if ("showTitle".equals(key)) {
+            if (!(info instanceof UsualGroupExtInfo) && !(info instanceof ColumnGroupExtInfo)) {
+                throw new IllegalArgumentException(key + " requires a usual group or a column group");
+            }
+            return info;
+        }
+        if ("scrollOnCompress".equals(key)) {
             if (!(info instanceof UsualGroupExtInfo) && !(info instanceof PageGroupExtInfo)) {
                 throw new IllegalArgumentException(key + " requires a usual group or a page");
             }
             return info;
         }
-        if (Set.of("showTitle", "united").contains(key)
+        if ("united".equals(key)
                 || "representation".equals(key) && item instanceof FormGroup
                 || "titleLocation".equals(key) && item instanceof FormGroup) {
             if (!(info instanceof UsualGroupExtInfo)) { throw new IllegalArgumentException(key + " requires a usual group"); }

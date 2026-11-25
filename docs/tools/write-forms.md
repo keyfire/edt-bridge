@@ -16,7 +16,7 @@ Changes need a token and are returned as a plan until `apply=true` is passed; se
 |------------|--------------|
 | `edt_add_form` | Adds a managed form to a metadata object through EDT's own form generator, the engine behind the "New form" wizard. The generator creates the form, its items and its module. For `DataProcessor` and `ExternalDataProcessor`, omitted `formType` selects `OBJECT` (alias `ФормаОбработки`) with the main `Объект` attribute; pass `GENERIC` for a blank form. With `defaultForm=true`, the form kind selects its own default slot, for example `defaultObjectForm` or `defaultFolderForm` for a catalog. Unsupported slots fail during preflight. `defaultForm` confirms an applied assignment; `defaultFormProperty` names its slot. |
 | `edt_add_form_attribute` · `edt_modify_form_attribute` · `edt_remove_form_attribute` | Adds, changes and removes a form attribute, or a column of a value-table attribute when you pass `columnOf`. Ids come from EDT's form identifier service. Pass `main=true` on `edt_add_form_attribute` to mark the form's main attribute (not combined with `columnOf`). Besides the metadata type grammar these take the platform types a form may hold (`ТаблицаЗначений`, `СписокЗначений` and so on) and the object types `ВнешняяОбработкаОбъект.X` and `СправочникОбъект.X`, which can be used for the main attribute. Removal lists the items bound to the attribute and needs `force`. |
-| `edt_add_form_command` · `edt_modify_form_command` · `edt_remove_form_command` | Adds, changes and removes a form command, including `actionPurpose` (`Usual`, alias `Normal`, `Create` or `Finish`), `associatedTable`, `currentRowUse` and `selectedRowsUse` (`Use`, `DontUse` or `Auto`). Adding can write the handler procedure's stub into the form module as well, creating that module when the form has none. Removal lists the buttons wired to the command and needs `force`. |
+| `edt_add_form_command` · `edt_modify_form_command` · `edt_remove_form_command` | Adds, changes and removes a form command, including `actionPurpose` (`Usual`, alias `Normal`, `Create` or `Finish`), `associatedTable`, `currentRowUse`, `selectedRowsUse` (`Use`, `DontUse` or `Auto`) and `picture`: `StdPicture.<Name>` of the platform, `CommonPicture.<Name>` of the configuration or `БиблиотекаКартинок.<Name>`, an empty string removes it. Adding can write the handler procedure's stub into the form module as well, creating that module when the form has none. Removal lists the buttons wired to the command and needs `force`. |
 | `edt_add_form_handler` | Registers an event handler on a form or on one of its items. This creates the `handlers` entry in `Form.form`. Without it, the platform does not call the procedure and validation does not report an error. The allowed events come from EDT itself, so a misspelled one is refused with the list attached. It can also write the stub, with the signature the event declares and the directive the event needs. For `OnGetDataAtServer` of a dynamic list (`ПриПолученииДанныхНаСервере`) the stub is `&НаСервереБезКонтекста` with `ИмяЭлемента, Настройки, Строки`, as the platform help asks, without the item parameter. |
 | `edt_add_form_item` · `edt_modify_form_item` · `edt_remove_form_item` | Adds, changes and removes a form's visual items: field, table, button, group, decoration. It goes through EDT's own `IFormItemManagementService`, the service the form editor calls. A table bound to a value-table attribute gets its columns filled in automatically. A `titleRu` given to the table stays on the table, and the generated columns keep EDT's own default. The `newName` parameter renames the item in the form model while preserving handler procedure names. Removal takes everything nested inside and needs `force`. |
 | `edt_form_identifiers` | Full-containment audit of visual IDs, including tooltips, menus and command bars. Returns duplicate occurrence paths and a snapshot hash without allocating IDs. Attributes and commands have separate namespaces. With explicit `itemPaths`, previews selected duplicate occurrences to renumber. Apply needs the current `expectedHash` and token. Unselected IDs, object data and order are preserved. Reserved IDs, ambiguous numeric references and any open matching form editor prevent repair. |
@@ -28,8 +28,9 @@ Changes need a token and are returned as a plan until `apply=true` is passed; se
 (zero-based), `beforeItem` or `afterItem`. A move calculates the index after excluding the moved
 item. An omitted `parent` keeps its parent; `parent=""` selects the form root. Add and modify
 support `groupDirection` (alias `group`), `representation`, `showTitle`, `united`, `titleLocation`,
-`maxHeight` and `verticalStretch` where the item type supports them. Unknown enums and settings
-for the wrong item type are refused. `fieldType` selects `InputField`, `RadioButtonField` or
+`maxHeight` and `verticalStretch` where the item type supports them. A column group of a table
+takes `groupDirection` (`Horizontal`, `Vertical` or `InCell`) and `showTitle`; EDT creates it
+vertical. Unknown enums and settings for the wrong item type are refused. `fieldType` selects `InputField`, `RadioButtonField` or
 `CheckBoxField`. `choiceList` replaces the choices of an input or radio field:
 
 ```json
@@ -47,11 +48,28 @@ for the wrong item type are refused. `fieldType` selects `InputField`, `RadioBut
 }
 ```
 
+A field bound to a table column can stand outside the table, for example in a panel that shows
+the current row: pass `edt_add_form_item` the column's `dataPath`, such as `Orders.Customer`, and
+a usual group outside the table as `parent`. `edt_move_form_item` does not move a column across the
+border of its table, because that would change its data binding: remove the column and add the
+field again.
+
 Choice values can be strings, numbers or booleans; references and enum values are not supported.
 An empty list clears the choices. `edt_form_structure` returns item IDs and properties for checking
 the result. A dynamic-list attribute also returns `customQuery`, `mainTable` and `queryText` under
 `dynamicList`. `queryLimit` bounds each returned query (default 20000, maximum 100000 characters);
 `queryTextTruncated` reports omitted text.
+
+## Command pictures
+
+`picture` of `edt_add_form_command` and `edt_modify_form_command` takes the names `Form.form`
+stores: `StdPicture.Post` for a standard picture of the platform and `CommonPicture.Logo` for a
+common picture of the configuration. Standard pictures come from the platform of the project's
+version and can also be named in Russian: `БиблиотекаКартинок.Провести`, the BSL spelling, looks
+the name up among the standard pictures first and then among the common ones, and is stored as
+`StdPicture.Post`. An unknown standard picture is refused with similar names, and a missing common
+picture with its FQN. An empty string removes the picture. The answer and
+`edt_property_reference` report the current picture under `picture`.
 
 ## Managed-form properties
 

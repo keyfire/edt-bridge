@@ -65,6 +65,56 @@ class BslPlacementTest {
                 List.of(new BslPlacement.Region("Same",0,10,20),new BslPlacement.Region("Same",30,40,50)),
                 List.of(),0,400,"Same",null,null));
     }
+    private static final String P2 = "Процедура П2()\nКонецПроцедуры";
+
+    private static String splice(String text, int position) {
+        return text.substring(0, position) + BslPlacement.block(text, position, P2, "\n") + text.substring(position);
+    }
+
+    @Test void afterTheLastMethodOfARegionOneBlankLineStaysBeforeEndRegion() {
+        String text = "#Область А\n\nПроцедура П1()\nКонецПроцедуры\n\n#КонецОбласти\n";
+        int position = text.indexOf("КонецПроцедуры") + "КонецПроцедуры".length();
+        assertEquals("#Область А\n\nПроцедура П1()\nКонецПроцедуры\n\n" + P2 + "\n\n#КонецОбласти\n",
+                splice(text, position));
+    }
+
+    @Test void anEmptyRegionGetsTheMethodBetweenTwoBlankLines() {
+        String expected = "#Область А\n\n" + P2 + "\n\n#КонецОбласти\n";
+        for (String text : new String[] {"#Область А\n\n#КонецОбласти\n", "#Область А\n#КонецОбласти\n"}) {
+            assertEquals(expected, splice(text, text.indexOf('\n') + 1), text);
+        }
+    }
+
+    @Test void beforeAMethodTheBlankLineAboveIsNotDoubled() {
+        String text = "Процедура П1()\nКонецПроцедуры\n\nПроцедура П3()\nКонецПроцедуры\n";
+        assertEquals("Процедура П1()\nКонецПроцедуры\n\n" + P2 + "\n\nПроцедура П3()\nКонецПроцедуры\n",
+                splice(text, text.indexOf("Процедура П3")));
+    }
+
+    @Test void windowsLineBreaksAreCountedAndWritten() {
+        String text = "#Область А\r\n\r\nПроцедура П1()\r\nКонецПроцедуры\r\n\r\n#КонецОбласти\r\n";
+        int position = text.indexOf("КонецПроцедуры") + "КонецПроцедуры".length();
+        String method = P2.replace("\n", "\r\n");
+        String spliced = text.substring(0, position) + BslPlacement.block(text, position, method, "\r\n")
+                + text.substring(position);
+        assertEquals("#Область А\r\n\r\nПроцедура П1()\r\nКонецПроцедуры\r\n\r\n" + method
+                + "\r\n\r\n#КонецОбласти\r\n", spliced);
+    }
+
+    @Test void theStartAndTheEndOfTheTextGetNoBlankLineOutside() {
+        String text = "Процедура П1()\nКонецПроцедуры\n";
+        assertEquals(P2 + "\n\n" + text, splice(text, 0));
+        assertEquals(text + "\n" + P2 + "\n", splice(text, text.length()));
+        String unterminated = "Процедура П1()\nКонецПроцедуры";
+        assertEquals(unterminated + "\n\n" + P2 + "\n", splice(unterminated, unterminated.length()));
+    }
+
+    @Test void blankLinesThatAreAlreadyThereStay() {
+        String text = "Процедура П1()\nКонецПроцедуры\n\n\n\n#КонецОбласти\n";
+        int position = text.indexOf("КонецПроцедуры") + "КонецПроцедуры".length();
+        assertEquals("Процедура П1()\nКонецПроцедуры\n\n" + P2 + "\n\n\n\n#КонецОбласти\n", splice(text, position));
+    }
+
     private BslPlacement.Point choose(String region, String before, String after) {
         return BslPlacement.choose(400, regions, methods, 0, 400, region, before, after);
     }
