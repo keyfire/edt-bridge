@@ -45,15 +45,20 @@ public final class AddAttributeTool {
     public JsonObject descriptor() {
         JsonObject props = new JsonObject();
         props.add("projectName", strProp("EDT project name"));
-        props.add("ownerFqn", strProp("Field owner, e.g. Catalog.Контрагенты or InformationRegister.Versions"));
+        props.add("ownerFqn", strProp("Metadata owner FQN, e.g. Enum.Status, Document.Order, "
+                + "Document.Order.TabularSection.Lines or InformationRegister.Versions"));
         props.add("name", strProp("New field name, e.g. Комментарий"));
-        JsonObject kind = strProp("Field kind: attribute (default), resource or dimension. Resources and dimensions require a register owner.");
+        JsonObject kind = strProp("Member kind: attribute (default), resource, dimension, enumValue or tabularSection. "
+                + "Resources and dimensions require a register, enum values require an enumeration, "
+                + "and tabular sections require a document or catalog.");
         JsonArray kinds = new JsonArray();
         kinds.add("attribute"); kinds.add("resource"); kinds.add("dimension");
+        kinds.add("enumValue"); kinds.add("tabularSection");
         kind.add("enum", kinds);
         kind.addProperty("default", "attribute");
         props.add("kind", kind);
-        props.add("type", strProp("Value type: Строка(150), Число(15,2), Булево, Дата/ДатаВремя/Время, "
+        props.add("type", strProp("Required for attributes, resources and dimensions. Omit for enumValue and tabularSection. "
+                + "Value type: Строка(150), Число(15,2), Булево, Дата/ДатаВремя/Время, "
                 + "ХранилищеЗначения, ОпределяемыйТип.X, or a reference <kind>Ссылка.X, where <kind> is "
                 + "Справочник, Документ, Перечисление, ПланВидовХарактеристик, ПланСчетов, ПланВидовРасчета, "
                 + "БизнесПроцесс, Задача, ПланОбмена. Composite type: comma-separate parts, e.g. "
@@ -69,7 +74,6 @@ public final class AddAttributeTool {
         req.add("projectName");
         req.add("ownerFqn");
         req.add("name");
-        req.add("type");
 
         JsonObject schema = new JsonObject();
         schema.addProperty("type", "object");
@@ -79,15 +83,15 @@ public final class AddAttributeTool {
         JsonObject t = new JsonObject();
         t.addProperty("name", name());
         t.addProperty("description",
-                "WRITE (Phase 2): add an attribute, register resource or dimension. Dry-run by default – validates "
-                + "(owner exists, name free across attributes/resources/dimensions, type parses, reference target exists) and returns the plan "
-                + "WITHOUT writing. apply=true performs the write (creates the selected field and commits). "
+                "WRITE: add an attribute, register resource or dimension, enumeration value or tabular section. "
+                + "Use the tabular section's FQN as ownerFqn to add its attributes. Dry-run by default. "
+                + "Set apply=true to create the member. "
                 + "Requires a configured token. Caller must verify edt_support_status EDITABLE before "
                 + "any apply.");
         t.addProperty("descriptionRu",
-                "ЗАПИСЬ (Phase 2): добавить реквизит, ресурс или измерение регистра. По умолчанию dry-run – проверяет "
-                + "(объект есть, имя свободно среди реквизитов, ресурсов и измерений, тип распознан, ссылочный тип существует) и возвращает план "
-                + "БЕЗ записи. apply=true – реальная запись (создает выбранное поле и фиксирует). Требует токен. "
+                "ЗАПИСЬ: добавить реквизит, ресурс или измерение регистра, значение перечисления или табличную часть. "
+                + "Для реквизита табличной части передать ее FQN в ownerFqn. По умолчанию пробный запуск. "
+                + "Создание выполняется с apply=true и требует токен. "
                 + "Перед apply вызывающий обязан проверить edt_support_status = EDITABLE.");
         t.add("inputSchema", schema);
         return t;
@@ -98,8 +102,8 @@ public final class AddAttributeTool {
         String ownerFqn = getStr(args, "ownerFqn");
         String name = getStr(args, "name");
         String type = getStr(args, "type");
-        if (project == null || ownerFqn == null || name == null || type == null) {
-            return McpServer.toolError("projectName, ownerFqn, name and type are required");
+        if (project == null || ownerFqn == null || name == null) {
+            return McpServer.toolError("projectName, ownerFqn and name are required");
         }
         String synonymRu = getStr(args, "synonymRu");
         String comment = getStr(args, "comment");
@@ -119,6 +123,7 @@ public final class AddAttributeTool {
                 o.addProperty("ownerType", res.ownerType);
             }
             o.addProperty("name", res.name);
+            if (res.fqn != null) o.addProperty("fqn", res.fqn);
             o.addProperty("kind", res.kind);
             if (!res.conflictingFqns.isEmpty()) {
                 JsonArray conflicts = new JsonArray();
@@ -128,8 +133,10 @@ public final class AddAttributeTool {
             if (res.nameAvailable != null) {
                 o.addProperty("nameAvailable", res.nameAvailable.booleanValue());
             }
-            o.addProperty("type", res.typeInput);
-            o.addProperty("typeValid", res.typeValid);
+            if (res.typeInput != null || !("enumValue".equals(res.kind) || "tabularSection".equals(res.kind))) {
+                o.addProperty("type", res.typeInput);
+                o.addProperty("typeValid", res.typeValid);
+            }
             if (res.typeParsed != null) {
                 o.addProperty("typeParsed", res.typeParsed);
             }

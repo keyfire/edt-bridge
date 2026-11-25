@@ -18,6 +18,7 @@ package io.github.keyfire.edtbridge.edt;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.UUID;
 import org.eclipse.core.resources.IProject;
@@ -30,6 +31,13 @@ import io.github.keyfire.edtbridge.core.TreeRemoval;
 /** Claims a new project under its workspace rule and proves ownership before rollback. */
 final class ProjectCreationClaim {
     @FunctionalInterface interface Creation { void run() throws Exception; }
+
+    static final class IncompleteCreationException extends IOException {
+        IncompleteCreationException(Throwable cause) {
+            super("A project or directory may remain after EDT project creation failed", cause);
+        }
+    }
+
     private static final QualifiedName OWNER = new QualifiedName(
             "io.github.keyfire.edtbridge", "externalImportOwner");
     private final IWorkspace workspace;
@@ -47,17 +55,28 @@ final class ProjectCreationClaim {
             Creation creation) throws Exception {
         ProjectCreationClaim claim = new ProjectCreationClaim(workspace, project, directory);
         // EDT's project manager also acquires the root rule; a project-only outer rule cannot contain it.
-        claim.exclusive(workspace.getRoot(), () -> {
-            if (project.exists() || Files.exists(claim.directory)) {
-                throw new IOException("the destination appeared since validation; nothing imported");
-            }
-            creation.run();
-            if (!project.exists() || !claim.hasExpectedLocation()) {
-                throw new IOException("native project creation did not establish the expected destination");
-            }
-            // A failed or partial native creation receives no ownership marker.
-            project.setSessionProperty(OWNER, claim.token);
-        });
+        try {
+            claim.exclusive(workspace.getRoot(), () -> {
+                if (claim.destinationMayExist()) {
+                    throw new IOException("the destination appeared since validation or could not be checked; nothing imported");
+                }
+                try {
+                    creation.run();
+                    if (!project.exists() || !claim.hasExpectedLocation()) {
+                        throw new IOException("native project creation did not establish the expected destination");
+                    }
+                    project.setSessionProperty(OWNER, claim.token);
+                } catch (Exception | LinkageError failure) {
+                    // The workspace rule cannot exclude a concurrent filesystem writer.
+                    // A partial creation has no ownership token, so preserve any files.
+                    if (claim.destinationMayExist()) throw new IncompleteCreationException(failure);
+                    throw failure;
+                }
+            });
+        } catch (IncompleteCreationException incomplete) {
+            if (incomplete.getCause() instanceof InterruptedException) Thread.currentThread().interrupt();
+            throw incomplete;
+        }
         return claim;
     }
 
@@ -75,6 +94,10 @@ final class ProjectCreationClaim {
     private boolean hasExpectedLocation() {
         return project.getLocation() != null && directory.equals(
                 project.getLocation().toFile().toPath().toAbsolutePath().normalize());
+    }
+
+    private boolean destinationMayExist() {
+        return project.exists() || !Files.notExists(directory, LinkOption.NOFOLLOW_LINKS);
     }
 
     private void exclusive(ISchedulingRule rule, Creation operation) throws Exception {

@@ -40,6 +40,7 @@ import com._1c.g5.v8.bm.integration.IBmModel;
 import com._1c.g5.v8.dt.core.platform.IBmModelManager;
 import com._1c.g5.v8.dt.metadata.mdclass.BasicFeature;
 import com._1c.g5.v8.dt.metadata.mdclass.CommonModule;
+import com._1c.g5.v8.dt.metadata.mdclass.Constant;
 import com._1c.g5.v8.dt.metadata.mdclass.CommonAttribute;
 import com._1c.g5.v8.dt.metadata.mdclass.CommonAttributeContentItem;
 import com._1c.g5.v8.dt.metadata.mdclass.EventSubscription;
@@ -164,6 +165,10 @@ public final class MetadataReadGateway {
      * nodes?". Both used to be invisible here, which sent callers to grep the {@code .mdo} on disk.
      */
     private static void fillTypeSpecifics(MdObject md, MdDetails r) {
+        MetadataObjectProperties.current(md).forEach((key, value) -> r.properties.put(key, String.valueOf(value)));
+        if (md instanceof Constant constant) {
+            r.properties.put("valueType", GatewaySupport.renderType(constant.getType()));
+        }
         if (md instanceof BasicFeature) {
             MetadataFields.readOptions(md).forEach((key, value) -> r.properties.put(key, String.valueOf(value)));
         }
@@ -279,7 +284,7 @@ public final class MetadataReadGateway {
         return empty;
     }
 
-    private List<MdGroup> childrenOf(EObject obj, int maxDepth) {
+    static List<MdGroup> childrenOf(EObject obj, int maxDepth) {
         List<MdGroup> groups = new ArrayList<>();
         if (obj == null || maxDepth <= 0) {
             return groups;
@@ -310,7 +315,7 @@ public final class MetadataReadGateway {
         return groups;
     }
 
-    private void addChild(MdGroup group, Object value, int maxDepth) {
+    private static void addChild(MdGroup group, Object value, int maxDepth) {
         if (!(value instanceof MdObject)) {
             return;
         }

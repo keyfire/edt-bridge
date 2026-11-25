@@ -28,6 +28,8 @@ WEB_OBSERVATION_LIMITS = {
 }
 #: The names of hidden items one text lists at most.
 MAX_HIDDEN = 100
+#: The clipped cells one spreadsheet field lists at most.
+MAX_CLIPPED = 30
 #: The fields of an item line of the web form text.
 LEGEND = "name | kind | title | value | x,y wxh | flags"
 _TAG = "data-edt-bridge-mask"
@@ -302,7 +304,7 @@ _LAYOUT = r"""
     const messages = shown(panel) ? [...panel.querySelectorAll(".gridBody .gridLine")].filter(shown)
         .map(line => line.innerText).filter(Boolean) : [];
     const limited = values => values.slice(0, maxRows).map(readText);
-    return {title: readText(target.title), matchedTitle: named.length === 1,
+    return {title: readText(target.title), matchedTitle: named.length === 1, prefix: target.prefix,
             size: `${Math.round(origin[2])}x${Math.round(origin[3])}`, items: lines, tables, hidden,
             messages: limited(messages), over: limited(over), others: limited(others),
             truncated: truncated || rawTruncated || [messages, over, others].some(values => values.length > maxRows)};
@@ -310,10 +312,74 @@ _LAYOUT = r"""
 """
 
 
+# The cells of a spreadsheet field whose text the web client cuts. The field draws its cells inside same-origin
+# frames: a row is div.R<n> with the row number in "y", a cell is div[x] with the column number in "x", its text an
+# absolutely placed span. A cell lets a long text run on over empty neighbours (overflow visible) and cuts it when the
+# next cell has a value (overflow hidden): a text wider or taller than such a cell is what the user cannot read.
+_SHEET_CLIPS = r"""
+({prefix, names, limit}) => {
+    const result = Object.create(null);
+    for (const name of names) {
+        const field = document.getElementById(prefix + name);
+        if (!field) continue;
+        const found = [], seen = new Set();
+        let more = false;
+        frames: for (const frame of field.querySelectorAll("iframe")) {
+            let doc = null;
+            try { doc = frame.contentDocument; } catch (error) { continue; }
+            if (!doc || !doc.body) continue;
+            const view = doc.defaultView;
+            for (const cell of doc.body.querySelectorAll("div[y] > div[x]")) {
+                if (!cell.textContent.trim()) continue;
+                const style = view.getComputedStyle(cell);
+                const cutX = style.overflowX !== "visible", cutY = style.overflowY !== "visible";
+                if (style.visibility !== "visible" || (!cutX && !cutY)) continue;
+                // The glyphs, not the span: the span of a cell that may run on is wider than its text.
+                const t = {left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity};
+                const walker = doc.createTreeWalker(cell, 4);
+                for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+                    if (!node.data.trim() || view.getComputedStyle(node.parentElement).visibility !== "visible") continue;
+                    const range = doc.createRange();
+                    range.selectNodeContents(node);
+                    for (const box of range.getClientRects()) {
+                        t.left = Math.min(t.left, box.left); t.right = Math.max(t.right, box.right);
+                        t.top = Math.min(t.top, box.top); t.bottom = Math.max(t.bottom, box.bottom);
+                    }
+                }
+                if (t.right < t.left) continue;
+                t.width = t.right - t.left; t.height = t.bottom - t.top;
+                const c = cell.getBoundingClientRect();
+                const left = c.left + cell.clientLeft, top = c.top + cell.clientTop;
+                const wide = cutX && (t.left < left - 1 || t.right > left + cell.clientWidth + 1);
+                const tall = cutY && (t.top < top - 1 || t.bottom > top + cell.clientHeight + 1);
+                if (!wide && !tall) continue;
+                const text = cell.innerText.trim();
+                if (!text) continue;
+                const row = cell.parentElement.getAttribute("y"), column = cell.getAttribute("x");
+                const key = row + ":" + column;
+                if (seen.has(key)) continue;
+                if (found.length >= limit) {
+                    more = true;
+                    break frames;
+                }
+                seen.add(key);
+                found.push([Number(row) + 1, Number(column) + 1, text, Math.round(t.width), Math.round(c.width),
+                            Math.round(t.height), Math.round(c.height), tall]);
+            }
+        }
+        result[name] = {cells: found, more};
+    }
+    return result;
+}
+"""
+
+
 class WebError(Exception):
-    def __init__(self, status, message):
+    def __init__(self, status, message, details=None):
         super().__init__(message)
         self.status = status
+        #: Fields the answer of the tool carries besides the status and the message.
+        self.details = details or {}
 
 
 def client_url(port, client_id, navigation_link, language, user):
@@ -405,13 +471,13 @@ def _accepting(port):
         return listener.connect_ex(("127.0.0.1", port)) == 0
 
 
-def wait_for_browser(page, seconds):
-    from playwright.sync_api import Error
-
+def wait_for_browser(page, seconds, failure=None):
+    if failure is None:
+        from playwright.sync_api import Error as failure
     try:
         # Sync Playwright dispatches request interception callbacks only while its event loop runs.
         page.wait_for_timeout(max(1, int(seconds * 1000)))
-    except Error as error:
+    except failure as error:
         raise WebError("session_exited", "The browser closed during the form check.") from error
 
 
@@ -441,15 +507,92 @@ def _lock(stack):
         raise WebError("web_publication_failed", "The standard web test ports 1538–1539 are already in use.")
 
 
-def _open_external(page, external, deadline):
-    """Submit the upload dialog. The platform handles any subsequent security prompt."""
-    page.locator("#captionbarMore").click(timeout=_milliseconds(deadline))
-    page.locator("#FileButton").hover(timeout=_milliseconds(deadline))
-    page.locator("#fileOpen").click(timeout=_milliseconds(deadline))
+#: The buttons that answer a window a configuration opens over the main window when a session starts. The
+#: Standard Subsystems Library opens one when a file infobase lies at another path than where it was opened before
+#: and lacks its check file, as every copy of a test run does: "This is a copy of the infobase" keeps the scheduled
+#: work with external resources of the copy blocked, the answer a test run needs.
+START_ANSWERS = ("Это копия информационной базы", "This is a copy of the infobase")
+#: How long one step of File - Open waits before the bridge looks for a window over the main window again.
+OPEN_STEP_MS = 15_000
+#: How long a modal window without a known answer may stay before the run stops.
+UNKNOWN_WINDOW_SECONDS = 15
+# The titles of the floating windows, the top one first.
+_WINDOWS = r"""
+() => [...document.querySelectorAll("[id^=ps][id$=win]")]
+    .filter(node => node.getClientRects().length > 0 && getComputedStyle(node).visibility === "visible")
+    .sort((a, b) => (Number(getComputedStyle(b).zIndex) || 0) - (Number(getComputedStyle(a).zIndex) || 0))
+    .map(node => {
+        const caption = node.querySelector("[id$=headerTopLine_title]");
+        return caption ? caption.getAttribute("title") || caption.parentElement.dataset.title || caption.innerText : "";
+    })
+    .map(title => String(title || "").replace(/\s+/g, " ").trim()).filter(Boolean).slice(0, 5)
+"""
+
+
+def _window_titles(page):
+    try:
+        return [str(title)[:MAX_TEXT] for title in page.evaluate(_WINDOWS) or []]
+    except Exception:  # noqa: BLE001 - the titles only explain a failure that is reported anyway
+        return []
+
+
+def _modal(page):
+    return page.locator("#modalSurface").is_visible()
+
+
+def _answer_start_windows(page, deadline, failure):
+    """Answer the windows over the main window; the titles of those answered.
+
+    A window the bridge has no answer for may be a short one, a wait indicator, so it gets a few seconds. A window
+    that stays is reported with its title at once: the run would otherwise wait for File - Open until its time limit.
+    """
+    answered = []
+    waited = 0.0
+    while _modal(page):
+        titles = _window_titles(page)
+        button = next((locator for locator in (page.get_by_title(caption, exact=True) for caption in START_ANSWERS)
+                       if locator.count()), None)
+        if button is not None and len(answered) < 3:
+            try:
+                button.first.click(timeout=min(5_000, _milliseconds(deadline)))
+                answered.append(titles[0] if titles else "")
+            except failure:
+                # A window over it takes the click, such as a list a navigation link opened: Escape closes that one.
+                page.keyboard.press("Escape")
+        elif waited >= UNKNOWN_WINDOW_SECONDS or _milliseconds(deadline) <= 1_000:
+            raise WebError("web_start_window", "A window over the main window of the web client blocks File - Open"
+                           + (": " + "; ".join(titles) if titles else "") + ".",
+                           {"blockingWindows": titles, "answeredWindows": answered})
+        else:
+            waited += 1
+        wait_for_browser(page, 1, failure)
+    return answered
+
+
+def _open_external(page, external, deadline, failure):
+    """Submit the upload dialog; the titles of the start windows answered on the way.
+
+    The platform handles any subsequent security prompt. A window can open over the main window after the menu was
+    pressed, so each attempt of File - Open first answers the start windows and closes a menu left open.
+    """
+    answered = []
+    for attempt in range(3):
+        answered += _answer_start_windows(page, deadline, failure)
+        step = min(OPEN_STEP_MS, _milliseconds(deadline))
+        try:
+            page.locator("#captionbarMore").click(timeout=step)
+            page.locator("#FileButton").hover(timeout=step)
+            page.locator("#fileOpen").click(timeout=step)
+            break
+        except failure:
+            if attempt == 2 or _milliseconds(deadline) <= 1_000:
+                raise
+            page.keyboard.press("Escape")
     page.locator("#fileSelectInput").set_input_files(str(external), timeout=_milliseconds(deadline))
     confirm = page.locator("#fileSelectDialogOk")
     if confirm.is_visible():
         confirm.click(timeout=_milliseconds(deadline))
+    return answered
 
 
 def start(stack, paths, platform, navigation_link, external, user, language, deadline, spawn, free_port,
@@ -496,12 +639,14 @@ def start(stack, paths, platform, navigation_link, external, user, language, dea
         status = response.status if response is not None else "no response"
         raise WebError("web_publication_failed", f"The temporary publication returned HTTP {status}.")
     _wait_port(process, TEST_PORT, deadline, pause=lambda seconds: wait_for_browser(page, seconds))
+    answered = []
     if external:
         try:
-            _open_external(page, external, deadline)
+            answered = _open_external(page, external, deadline, Error)
         except Error as error:
-            raise WebError("web_publication_failed", "Chromium could not open the external file upload dialog.") from error
-    return process, page, client_id
+            raise WebError("web_publication_failed", "Chromium could not open the external file upload dialog.",
+                           {"blockingWindows": _window_titles(page)}) from error
+    return process, page, client_id, answered
 
 
 def _freeze(page):
@@ -510,7 +655,7 @@ def _freeze(page):
     page.context.new_cdp_session(page).send("Emulation.setScriptExecutionDisabled", {"value": True})
 
 
-def form_text(raw, flt, *, sheets=(), table_columns=None):
+def form_text(raw, flt, *, sheets=(), table_columns=None, clips=None):
     """The form read from the DOM as lines for a model, with the values passed through the filter.
 
     A value whose field name or title names personal data is replaced whole, other text by its shape, the
@@ -594,6 +739,7 @@ def form_text(raw, flt, *, sheets=(), table_columns=None):
             entry["more"] = True
         tables.append(entry)
     spreadsheets = []
+    sheets = tuple(sheets)
     for sheet in sheets:
         name, title = sheet["name"], sheet["title"]
         header = caption(title)
@@ -604,6 +750,18 @@ def form_text(raw, flt, *, sheets=(), table_columns=None):
         if sheet.get("truncated") or len(rows) < len(sheet["rows"]):
             entry["more"] = True
         spreadsheets.append(entry)
+    clip_groups = clips or {}
+    for sheet, entry in zip(sheets, spreadsheets):
+        name, title = sheet["name"], sheet["title"]
+        clipped = clip_groups.get(name) or {}
+        if clipped.get("cells"):
+            entry["clipped"] = bounded(
+                line([f"R{row}C{column}", value(name, title, text),
+                      f"{width}/{cell_width} px" + (f", {height}/{cell_height} px high" if cut_vertically
+                                                    else "")])
+                for row, column, text, width, cell_width, height, cell_height, cut_vertically in clipped["cells"])
+            if clipped.get("more") or len(entry["clipped"]) < len(clipped["cells"]):
+                entry["clippedMore"] = True
     text = {"title": caption(raw.get("title") or ""), "size": raw.get("size", ""), "legend": LEGEND,
             "items": items}
     for key, found in (("tables", tables), ("spreadsheets", spreadsheets),
@@ -639,7 +797,15 @@ def read_form(page, flt, title, *, sheets=(), table_columns=None, panel_messages
         return form_text(raw, flt)
     if not raw.get("messages"):
         raw = dict(raw, messages=panel_messages, truncated=raw.get("truncated") or panel_truncated)
-    return form_text(raw, flt, sheets=sheets, table_columns=table_columns)
+    clips = None
+    if sheets and raw.get("prefix"):
+        try:
+            clips = page.evaluate(_SHEET_CLIPS, {"prefix": raw["prefix"], "names": [sheet["name"] for sheet in sheets],
+                                                 "limit": MAX_CLIPPED})
+        except Error:
+            # The cells are read anyway; only the marks of a cut text are missing.
+            clips = None
+    return form_text(raw, flt, sheets=sheets, table_columns=table_columns, clips=clips)
 
 
 def capture(page, output, flt, deadline):

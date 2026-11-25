@@ -34,8 +34,8 @@ public final class ModifyRoleRightsTool {
         props.add("projectName", ToolJson.strProp("EDT project name; in an extension, the extension project"));
         props.add("role", ToolJson.strProp("Role FQN, such as Role.Manager. In an extension the role must be the "
                 + "extension's own or adopted with edt_adopt_object."));
-        props.add("object", ToolJson.strProp("Top object FQN, such as Catalog.Products, or Configuration. In an "
-                + "extension the object must be the extension's own or adopted."));
+        props.add("object", ToolJson.strProp(RoleRightsTool.OBJECT_FQN
+                + " In an extension, the object must belong to the extension or be adopted."));
         JsonObject rights = new JsonObject();
         rights.addProperty("type", "object");
         rights.addProperty("description", "Right name to true or false, such as {\"Read\": true, \"View\": true}. "
@@ -44,16 +44,15 @@ public final class ModifyRoleRightsTool {
         value.addProperty("type", "boolean");
         rights.add("additionalProperties", value);
         props.add("rights", rights);
-        props.add("apply", ToolJson.boolProp("false (default): show the rights before and after, write nothing. "
-                + "true: write them and export the role."));
-        return ToolJson.descriptor(name(), "WRITE: set rights of a role on one object through the live model, the "
-                + "way the rights editor of EDT does: a value equal to the role's default for the object removes "
-                + "the explicit entry. An unknown right is refused with the rights the object has; a right with a "
-                + "data access restriction (RLS) is never changed. Dry-run by default.",
-                "ЗАПИСЬ: задать права роли на один объект через живую модель так, как это делает редактор прав "
-                + "EDT: значение, равное значению по умолчанию для объекта, убирает явную запись. Неизвестное право "
-                + "отклоняется с перечнем прав объекта; право с ограничением доступа к данным (RLS) не меняется. По "
-                + "умолчанию dry-run.",
+        props.add("apply", ToolJson.boolProp("false (default) previews changes. true writes changes and exports the role."));
+        return ToolJson.descriptor(name(), "WRITE: set rights for one object in a role through the live EDT model. "
+                + "Setting a right to its default value removes the explicit entry. The response lists only the "
+                + "rights whose values change. An unknown right is rejected with the list of valid rights for the "
+                + "object. Rights with a data access restriction (RLS) are read-only. Dry-run by default.",
+                "ЗАПИСЬ: задать права роли на один объект через модель EDT. Установка значения по умолчанию "
+                + "удаляет явную запись о праве. Ответ содержит только права, значения которых меняются. При "
+                + "неизвестном праве инструмент возвращает список допустимых прав объекта. Права с ограничением "
+                + "доступа к данным (RLS) доступны только для чтения. По умолчанию dry-run.",
                 props, "projectName", "role", "object", "rights");
     }
 

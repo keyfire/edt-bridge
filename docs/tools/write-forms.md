@@ -65,6 +65,8 @@ EDT initializes its `HtmlFieldExtInfo` and preserves the data path when changing
 `edt_add_form_handler` resolves its `OnClick` event (`ПриНажатии`) and the native handler signature.
 
 - Fields support `width`, `height`, `horizontalStretch` and `verticalStretch` when present on their ext-info.
+- Pages and usual groups accept `groupDirection` for child layout and `scrollOnCompress` for scrolling when compressed.
+- Input fields accept `format` and `editFormat` as Russian format strings. An empty string clears the Russian entry and preserves other languages. Set `autoMaxWidth=false` with `horizontalStretch=true` to stretch a field beyond its automatic maximum width.
 - Input fields also accept `choiceButton`, `clearButton`, `textEdit` and `listChoiceMode`. A `choiceList` alone does not restrict typed values; use `listChoiceMode=true` for a list-only field.
 - `choiceFoldersAndItems` sets what an input field bound to a hierarchical reference lets the user choose: `Auto`, `Items`, `Folders` or `FoldersAndItems`. Other field kinds refuse it; `edt_form_structure` reports the current value.
 - Tables accept `changeRowSet`, `autoInsertNewRow`, `changeRowOrder`, `readOnly`, `selectionMode` (`SingleRow` or `MultiRow`) and `initialTreeView` (`NoExpand`, `ExpandTopLevel` or `ExpandAllLevels`). Table columns support their field properties, including `width` and `readOnly`.
@@ -74,6 +76,8 @@ EDT initializes its `HtmlFieldExtInfo` and preserves the data path when changing
 
 The `properties` map contains the observed design-time values after apply. Runtime code may override them.
 Invalid options are validated as a set before any setting is assigned. Unlimited `Строка` types include an explicit empty string qualifier.
+
+When `edt_add_form` creates a `LIST` form for a catalog or document, it includes a hidden reference column and makes the reference available to handlers through the dynamic list's use-always setting.
 
 ## A form changed on disk
 

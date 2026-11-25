@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
+import org.eclipse.emf.common.util.EMap;
 import org.eclipse.emf.common.util.Enumerator;
 import org.eclipse.emf.ecore.EEnum;
 import org.eclipse.emf.ecore.EEnumLiteral;
@@ -36,9 +37,10 @@ import com._1c.g5.v8.dt.mcore.*;
 /** Validated edits over the EDT form model, shared by preflight and apply. */
 public final class FormItemEdits {
     private FormItemEdits() { }
-    private static final Set<String> SETTINGS = Set.of("groupDirection", "representation", "showTitle",
+    private static final Set<String> SETTINGS = Set.of("groupDirection", "scrollOnCompress", "representation", "showTitle",
             "united", "titleLocation", "maxHeight", "verticalStretch", "fieldType", "choiceList", "width", "height", "horizontalStretch",
             "choiceButton", "clearButton", "textEdit", "listChoiceMode", "choiceFoldersAndItems", "readOnly",
+            "format", "editFormat", "autoMaxWidth",
             "changeRowSet", "autoInsertNewRow", "changeRowOrder", "selectionMode", "initialTreeView",
             "defaultButton", "buttonImportance");
 
@@ -246,6 +248,11 @@ public final class FormItemEdits {
                 choices(value); result.add(new Assignment(key, value)); continue;
             }
             EObject target = propertyTarget(item, info, key);
+            if (isInputFormat(key)) {
+                if (!(value instanceof String)) { throw new IllegalArgumentException(key + " must be a string"); }
+                result.add(new Assignment(key, value));
+                continue;
+            }
             String featureName = featureName(item, key);
             EStructuralFeature feature = target.eClass().getEStructuralFeature(featureName);
             if (feature == null || !feature.isChangeable() || feature.isMany()) {
@@ -262,13 +269,20 @@ public final class FormItemEdits {
         return key;
     }
     private static EObject propertyTarget(FormItem item, EObject info, String key) {
-        if (Set.of("groupDirection", "showTitle", "united").contains(key)
+        if ("groupDirection".equals(key) || "scrollOnCompress".equals(key)) {
+            if (!(info instanceof UsualGroupExtInfo) && !(info instanceof PageGroupExtInfo)) {
+                throw new IllegalArgumentException(key + " requires a usual group or a page");
+            }
+            return info;
+        }
+        if (Set.of("showTitle", "united").contains(key)
                 || "representation".equals(key) && item instanceof FormGroup
                 || "titleLocation".equals(key) && item instanceof FormGroup) {
             if (!(info instanceof UsualGroupExtInfo)) { throw new IllegalArgumentException(key + " requires a usual group"); }
             return info;
         }
-        if (Set.of("choiceButton", "clearButton", "textEdit", "listChoiceMode", "choiceFoldersAndItems").contains(key)) {
+        if (Set.of("choiceButton", "clearButton", "textEdit", "listChoiceMode", "choiceFoldersAndItems",
+                "autoMaxWidth", "format", "editFormat").contains(key)) {
             if (!(info instanceof InputFieldExtInfo)) { throw new IllegalArgumentException(key + " requires an input field"); }
             return info;
         }
@@ -285,6 +299,12 @@ public final class FormItemEdits {
             return info;
         }
         return item;
+    }
+    private static boolean isInputFormat(String key) {
+        return "format".equals(key) || "editFormat".equals(key);
+    }
+    private static EMap<String, String> formats(InputFieldExtInfo info, String key) {
+        return "format".equals(key) ? info.getFormat() : info.getEditFormat();
     }
     private static Object convert(EStructuralFeature feature, Object value, String key) {
         if (feature.getEType() instanceof EEnum) {
@@ -344,9 +364,12 @@ public final class FormItemEdits {
                 try {
                     feature = propertyTarget(item, info, key).eClass().getEStructuralFeature(featureName(item, key));
                 } catch (IllegalArgumentException unavailable) { continue; }
-                if (feature == null || !feature.isChangeable() || feature.isMany()) { continue; }
+                if (feature == null || !feature.isChangeable() || (feature.isMany() && !isInputFormat(key))) { continue; }
                 Class<?> type = feature.getEType().getInstanceClass();
-                if (feature.getEType() instanceof EEnum) {
+                if (isInputFormat(key)) {
+                    entry.put("type", "string");
+                    entry.put("note", "Russian format string; empty clears the Russian value");
+                } else if (feature.getEType() instanceof EEnum) {
                     entry.put("type", "enum");
                     entry.put("values", literals((EEnum) feature.getEType()));
                 } else if (type == boolean.class || type == Boolean.class) {
@@ -392,7 +415,7 @@ public final class FormItemEdits {
         applySettings(item, settings, changeType, true);
     }
 
-    /** The legacy boolean and 8.5.1 enum share one XML name; set only the active representation. */
+    /** Write only the representation supported by the project's platform version. */
     @SuppressWarnings("unchecked")
     public static void applySettings(FormItem item, Map<String, Object> settings,
             Consumer<ManagedFormFieldType> changeType, boolean use851Title) {
@@ -406,6 +429,11 @@ public final class FormItemEdits {
             if ("choiceList".equals(change.key)) {
                 List<FormChoiceListDesTimeValue> target = (List<FormChoiceListDesTimeValue>) info.eGet(info.eClass().getEStructuralFeature("choiceList"));
                 target.clear(); target.addAll(choices(change.value));
+            } else if (isInputFormat(change.key)) {
+                EMap<String, String> values = formats((InputFieldExtInfo) info, change.key);
+                String value = (String) change.value;
+                if (value.isEmpty()) { values.removeKey("ru"); }
+                else { values.put("ru", value); }
             } else {
                 EObject target = propertyTarget(item, info, change.key);
                 EStructuralFeature feature = target.eClass().getEStructuralFeature(featureName(item, change.key));
@@ -414,6 +442,15 @@ public final class FormItemEdits {
                     if (use851Title && current != null && current.getEType() instanceof EEnum) {
                         info.eUnset(feature);
                         info.eSet(current, ((EEnum) current.getEType()).getEEnumLiteralByLiteral(change.value.toString()).getInstance());
+                    } else {
+                        if (current != null) { info.eUnset(current); }
+                        info.eSet(feature, change.value);
+                    }
+                } else if ("scrollOnCompress".equals(change.key) && info instanceof PageGroupExtInfo) {
+                    EStructuralFeature current = info.eClass().getEStructuralFeature("scrollOnCompress851");
+                    if (use851Title && current != null) {
+                        info.eUnset(feature);
+                        info.eSet(current, change.value);
                     } else {
                         if (current != null) { info.eUnset(current); }
                         info.eSet(feature, change.value);
@@ -434,13 +471,17 @@ public final class FormItemEdits {
                 EObject target = propertyTarget(item, info, key);
                 EStructuralFeature feature = target.eClass().getEStructuralFeature(featureName(item, key));
                 if (feature != null) {
-                    Object value = target.eGet(feature);
+                    Object value = isInputFormat(key)
+                            ? formats((InputFieldExtInfo) target, key).get("ru") : target.eGet(feature);
                     if ("showTitle".equals(key)) {
                         EStructuralFeature current = target.eClass().getEStructuralFeature("showTitle851");
                         if (current != null && target.eIsSet(current)) {
                             String literal = target.eGet(current).toString();
                             value = "true".equals(literal) ? Boolean.TRUE : "false".equals(literal) ? Boolean.FALSE : literal;
                         }
+                    } else if ("scrollOnCompress".equals(key) && target instanceof PageGroupExtInfo) {
+                        EStructuralFeature current = target.eClass().getEStructuralFeature("scrollOnCompress851");
+                        if (current != null && target.eIsSet(current)) { value = target.eGet(current); }
                     }
                     result.put(key, value instanceof Enumerator ? ((Enumerator) value).getLiteral() : value);
                 }

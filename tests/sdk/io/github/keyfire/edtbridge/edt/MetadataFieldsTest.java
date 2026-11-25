@@ -2,6 +2,7 @@ package io.github.keyfire.edtbridge.edt;
 
 import static org.junit.jupiter.api.Assertions.*;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 import org.eclipse.emf.ecore.EObject;
@@ -11,6 +12,26 @@ import com._1c.g5.v8.dt.metadata.mdclass.MdObject;
 import com._1c.g5.v8.dt.mcore.McoreFactory;
 
 class MetadataFieldsTest {
+    @Test void editsIndexedAndLocalizedAttributeOptions() {
+        var attribute = MdClassFactory.eINSTANCE.createCatalogAttribute();
+        attribute.getFormat().put("en", "NF=2");
+        MetadataFields.applyOptions(attribute, Map.of("indexing", "Index", "format", "ЧДЦ=2",
+                "editFormat", "ЧДЦ=3", "createOnInput", "DontUse"));
+        var current = MetadataFields.readOptions(attribute);
+        assertEquals("Index", current.get("indexing"));
+        assertEquals("ЧДЦ=2", current.get("format"));
+        assertEquals("ЧДЦ=3", current.get("editFormat"));
+        assertEquals("DontUse", current.get("createOnInput"));
+        assertEquals("NF=2", attribute.getFormat().get("en"));
+        assertTrue(MetadataFields.optionReference(attribute).stream()
+                .anyMatch(entry -> "indexing".equals(entry.get("name"))));
+        assertThrows(IllegalArgumentException.class, () -> MetadataFields.applyOptions(attribute,
+                Map.of("indexing", "invalid", "format", "other")));
+        assertEquals("ЧДЦ=2", attribute.getFormat().get("ru"));
+        MetadataFields.applyOptions(attribute, Map.of("format", ""));
+        assertFalse(attribute.getFormat().containsKey("ru"));
+    }
+
     private static final List<Supplier<? extends MdObject>> REGISTERS = List.of(
             () -> MdClassFactory.eINSTANCE.createInformationRegister(),
             () -> MdClassFactory.eINSTANCE.createAccumulationRegister(),

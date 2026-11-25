@@ -84,6 +84,21 @@ class WriteScopeTest {
     }
 
     @Test
+    void configurationImportRequiresANameInTheWriteScope() {
+        WriteScope scope = scope();
+        List<String> declared = List.of("path", "name", "mode", "apply");
+        assertNull(scope.refusal("edt_import_project", true, declared,
+                Map.of("path", "/dump", "mode", " Configuration ", "name", "Own", "apply", "true")));
+        String denied = scope.refusal("edt_import_project", true, declared,
+                Map.of("path", "/dump", "mode", " Configuration ", "name", "Base", "apply", "true"));
+        assertTrue(denied.contains("may create Own"), denied);
+        assertNotNull(scope.refusal("edt_import_project", true, declared,
+                Map.of("path", "/dump", "mode", "configuration", "apply", "true")));
+        assertNull(scope.refusal("edt_import_project", true, declared,
+                Map.of("path", "/project", "mode", "existing", "name", "Base", "apply", "true")));
+    }
+
+    @Test
     void anOutputFileGoesOnlyUnderTheOutputDirectory() {
         WriteScope scope = scope();
         List<String> declared = List.of("projectName", "targetPath", "logPath");
