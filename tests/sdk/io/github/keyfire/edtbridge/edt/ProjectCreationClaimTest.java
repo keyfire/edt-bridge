@@ -47,15 +47,39 @@ class ProjectCreationClaimTest {
 
     @Test void failedCreateDoesNotMarkAnUnprovenPartialProjectAsOwned() throws Exception {
         Fixture fixture = new Fixture(temporary.resolve("Target"));
-        assertThrows(IOException.class, () -> ProjectCreationClaim.create(
+        IOException nativeFailure = new IOException("native create failed");
+        var failure = assertThrows(ProjectCreationClaim.IncompleteCreationException.class,
+                () -> ProjectCreationClaim.create(
                 fixture.workspace, fixture.project, fixture.directory, () -> {
                     assertTrue(fixture.ruleHeld, "native create must run under the project rule");
                     fixture.foreign("unproven partial creation");
-                    throw new IOException("native create failed");
+                    throw nativeFailure;
                 }));
+        assertSame(nativeFailure, failure.getCause());
         assertTrue(fixture.properties.isEmpty());
         assertEquals(0, fixture.deleteCalls);
         assertEquals("unproven partial creation", Files.readString(fixture.directory.resolve("owner.txt")));
+    }
+
+    @Test void failedNativeCreateReportsAndPreservesAnUnregisteredDirectory() throws Exception {
+        Fixture fixture = new Fixture(temporary.resolve("Target"));
+        assertThrows(ProjectCreationClaim.IncompleteCreationException.class, () -> ProjectCreationClaim.create(
+                fixture.workspace, fixture.project, fixture.directory, () -> {
+                    Files.createDirectory(fixture.directory);
+                    Files.writeString(fixture.directory.resolve("owner.txt"), "external writer");
+                    throw new IOException("native create failed");
+                }));
+        assertFalse(fixture.exists);
+        assertEquals(0, fixture.deleteCalls);
+        assertEquals("external writer", Files.readString(fixture.directory.resolve("owner.txt")));
+    }
+
+    @Test void failedNativeCreateWithoutResidueReturnsTheOriginalFailure() {
+        Fixture fixture = new Fixture(temporary.resolve("Target"));
+        IOException nativeFailure = new IOException("native create failed");
+        IOException failure = assertThrows(IOException.class, () -> ProjectCreationClaim.create(
+                fixture.workspace, fixture.project, fixture.directory, () -> { throw nativeFailure; }));
+        assertSame(nativeFailure, failure);
     }
 
     @Test void successfulClaimRollsBackItsOwnProjectUnderTheSameRule() throws Exception {

@@ -70,6 +70,7 @@ import com._1c.g5.v8.dt.form.model.DataItem;
 import com._1c.g5.v8.dt.form.model.EventHandler;
 import com._1c.g5.v8.dt.form.model.EventHandlerContainer;
 import com._1c.g5.v8.dt.form.model.DataPath;
+import com._1c.g5.v8.dt.form.model.DynamicListExtInfo;
 import com._1c.g5.v8.dt.form.model.Form;
 import com._1c.g5.v8.dt.form.model.FormAttribute;
 import com._1c.g5.v8.dt.form.model.FormAttributeColumn;
@@ -101,6 +102,8 @@ import com._1c.g5.v8.dt.mcore.util.Environments;
 import com._1c.g5.v8.dt.metadata.mdclass.AbstractForm;
 import com._1c.g5.v8.dt.metadata.mdclass.AdjustableBoolean;
 import com._1c.g5.v8.dt.metadata.mdclass.BasicForm;
+import com._1c.g5.v8.dt.metadata.mdclass.Catalog;
+import com._1c.g5.v8.dt.metadata.mdclass.Document;
 import com._1c.g5.v8.dt.metadata.mdclass.MdClassFactory;
 import com._1c.g5.v8.dt.metadata.mdclass.Configuration;
 import com._1c.g5.v8.dt.metadata.mdclass.InterfaceCompatibilityMode;
@@ -387,6 +390,14 @@ public final class FormWriteGateway {
                     String formFqn = fqnGenerator.generateExternalPropertyFqn(basicForm,
                             MdClassPackage.Literals.BASIC_FORM__FORM);
                     tx.attachTopObject((IBmObject) form, formFqn);
+                    if (type == FormType.LIST && (owner instanceof Document || owner instanceof Catalog)) {
+                        IFormItemManagementService items = formItemService();
+                        if (items == null) {
+                            throw new IllegalStateException("form item management service unavailable");
+                        }
+                        ensureListReference(form, (table, path) -> items.addField(table, path, form,
+                                new FormNewItemDescriptor(null, Map.of(), false)));
+                    }
                     createdFqn[0] = formFqn;
 
                     if (setDefault) {
@@ -504,6 +515,50 @@ public final class FormWriteGateway {
         } catch (RuntimeException ignored) {
             return null;
         }
+    }
+
+    /**
+     * Keep the reference available to handlers even when its technical column is hidden.
+     * EDT stores this override on the dynamic-list attribute, using a full data path.
+     */
+    static void ensureListReference(Form form, java.util.function.BiFunction<Table, DataPath, FormField> addColumn) {
+        FormAttribute list = form.getAttributes().stream()
+                .filter(attribute -> attribute.isMain() && attribute.getExtInfo() instanceof DynamicListExtInfo)
+                .findFirst().orElseThrow(() -> new IllegalStateException("generated form has no main dynamic list"));
+        List<String> listPath = List.of(list.getName());
+        List<String> refPath = List.of(list.getName(), "Ref");
+        List<String> refPathRu = List.of(list.getName(), "Ссылка");
+        var contents = form.eAllContents();
+        while (contents.hasNext()) {
+            EObject object = contents.next();
+            if (!(object instanceof Table table) || table.getDataPath() == null
+                    || !table.getDataPath().getSegments().equals(listPath)) {
+                continue;
+            }
+            FormField column = table.getItems().stream()
+                    .filter(FormField.class::isInstance).map(FormField.class::cast)
+                    .filter(field -> matchesListReference(field.getDataPath(), refPath, refPathRu))
+                    .findFirst().orElse(null);
+            if (column == null) {
+                column = addColumn.apply(table, dataPathOf(String.join(".", refPath)));
+                if (column == null) {
+                    throw new IllegalStateException("EDT did not add the list reference column");
+                }
+            }
+            Visible visibility = (Visible) column;
+            visibility.setVisible(false);
+            visibility.setUserVisible(adjustable(false));
+            if (list.getNotDefaultUseAlwaysAttributes().stream()
+                    .noneMatch(path -> matchesListReference(path, refPath, refPathRu))) {
+                list.getNotDefaultUseAlwaysAttributes().add(dataPathOf(String.join(".", refPath)));
+            }
+            return;
+        }
+        throw new IllegalStateException("generated form has no table bound to its main dynamic list");
+    }
+
+    private static boolean matchesListReference(AbstractDataPath path, List<String> refPath, List<String> refPathRu) {
+        return path != null && (path.getSegments().equals(refPath) || path.getSegments().equals(refPathRu));
     }
 
     /** The configuration's interface compatibility mode, defaulting to Taxi for standalone projects. */
@@ -2461,16 +2516,22 @@ public final class FormWriteGateway {
                 types.setActualType(field, field.getDataPath(), parent, form, version);
                 return field;
             case "group":
-                FormGroup group = FormFactory.eINSTANCE.createFormGroup();
-                group.setType(groupType);
-                if (groupType == ManagedFormGroupType.USUAL_GROUP) {
-                    group.setExtInfo(FormFactory.eINSTANCE.createUsualGroupExtInfo());
-                }
-                return group;
+                return groupPrototype(groupType);
             case "button": return FormFactory.eINSTANCE.createButton();
             case "table": return FormFactory.eINSTANCE.createTable();
             default: return FormFactory.eINSTANCE.createDecoration();
         }
+    }
+
+    static FormGroup groupPrototype(ManagedFormGroupType type) {
+        FormGroup group = FormFactory.eINSTANCE.createFormGroup();
+        group.setType(type);
+        if (type == ManagedFormGroupType.USUAL_GROUP) {
+            group.setExtInfo(FormFactory.eINSTANCE.createUsualGroupExtInfo());
+        } else if (type == ManagedFormGroupType.PAGE) {
+            group.setExtInfo(FormFactory.eINSTANCE.createPageGroupExtInfo());
+        }
+        return group;
     }
 
     private static IFormItemTypeManagementService formTypeService() {
