@@ -2358,7 +2358,7 @@
           },
           "createHandler": {
             "type": "boolean",
-            "description": "Also write the procedure's stub into the form module, creating the module file when the form has none. Optional, default false. The stub carries the signature the event declares and the directive its environments imply."
+            "description": "Also write the procedure's stub into the form module, creating the module file when the form has none. Optional, default false. The stub carries the signature the event declares and the directive the event needs: OnGetDataAtServer of a dynamic list gets &AtServerNoContext and no item parameter."
           },
           "apply": {
             "type": "boolean",

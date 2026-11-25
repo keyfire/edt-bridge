@@ -23,6 +23,17 @@ to the code and the reasoning behind it.
   `Template.txt`. The new `text` sets the starting text of either.
   ([#108](https://github.com/keyfire/edt-bridge/pull/108))
 
+### Fixed
+
+- `edt_add_form_handler` writes the stub of `OnGetDataAtServer` of a dynamic list
+  (`ПриПолученииДанныхНаСервере`) as the platform help asks: `&НаСервереБезКонтекста` with
+  `ИмяЭлемента, Настройки, Строки`. It used to write `&НаСервере` and an extra `Элемент` first.
+  ([#109](https://github.com/keyfire/edt-bridge/pull/109))
+- A form write no longer puts the old form back over `Form.form` changed on disk a moment
+  before. The form tools and `edt_modify_object` with a form FQN refresh the file and wait until
+  EDT has loaded it into the model. If that takes more than 30 s, nothing is written.
+  ([#109](https://github.com/keyfire/edt-bridge/pull/109))
+
 ## 2026-11-25 – 0.56.0, 0.57.0
 
 ### Added

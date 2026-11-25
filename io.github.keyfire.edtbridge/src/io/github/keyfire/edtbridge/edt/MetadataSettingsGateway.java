@@ -68,6 +68,12 @@ public final class MetadataSettingsGateway {
             if (fqn == null || fqn.isBlank()) throw new IllegalArgumentException("fqn is required");
             IProject project = project(projectName);
             IBmModel model = model(project);
+            String diskProblem = FormFileSync.settle(project, model, fqn);
+            if (diskProblem != null) {
+                result.ok = false;
+                result.message = diskProblem;
+                return result;
+            }
             Version version = GatewaySupport.projectVersion(project);
             boolean use851Title = version.isGreaterThanOrEquals(new Version(8, 5, 1));
             final boolean[] isForm = {false};

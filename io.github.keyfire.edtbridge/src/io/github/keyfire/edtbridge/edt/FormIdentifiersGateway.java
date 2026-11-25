@@ -217,6 +217,8 @@ public final class FormIdentifiersGateway {
             IBmModelManager manager = ServiceAccess.get(IBmModelManager.class);
             IBmModel model = manager == null ? null : manager.getModel(project);
             if (model == null) throw new IllegalArgumentException("No BM model for project: " + projectName);
+            String diskProblem = FormFileSync.settle(project, model, formFqn);
+            if (diskProblem != null) throw new IllegalArgumentException(diskProblem);
             model.executeReadonlyTask(new AbstractBmTask<Object>("edt-bridge.formIdentifiers.inspect") {
                 @Override public Object execute(IBmTransaction tx, IProgressMonitor monitor) {
                     Form form = requireForm(tx, formFqn);
