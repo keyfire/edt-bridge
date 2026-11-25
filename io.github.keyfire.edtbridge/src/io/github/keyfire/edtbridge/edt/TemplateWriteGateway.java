@@ -17,12 +17,14 @@
 package io.github.keyfire.edtbridge.edt;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IFolder;
@@ -119,6 +121,11 @@ public final class TemplateWriteGateway {
         if (text != null && !textual) {
             r.message = "text applies to an HTML or a text template, not to " + r.templateType
                     + "; fill this one with its own tool after creation";
+            return r;
+        }
+        String initialText = text == null ? "" : text;
+        if (textual && !StandardCharsets.UTF_8.newEncoder().canEncode(initialText)) {
+            r.message = "text must contain valid Unicode";
             return r;
         }
         if (type == TemplateType.HTML_DOCUMENT) {
@@ -256,7 +263,7 @@ public final class TemplateWriteGateway {
         boolean exportedContent = created[0] == null || (dtProject != null && mm.forceExport(dtProject, created[0]));
         r.applied = true;
         if (textual) {
-            return finishTextual(r, p, model, type, text, exportedOwner, exportedContent);
+            return finishTextual(r, p, model, type, initialText, exportedOwner, exportedContent);
         }
         String file = type == TemplateType.SPREADSHEET_DOCUMENT ? "Template.mxlx" : "Template.dcs";
         // EDT accepts the export before the file is written. Reading it back here, with the wait of the
@@ -307,7 +314,7 @@ public final class TemplateWriteGateway {
         String written;
         try {
             file = contentFile(project, model, r.templateFqn, type);
-            writeText(file, text == null ? "" : text);
+            writeText(file, text);
             written = null;
         } catch (Exception failure) {
             written = GatewaySupport.describeCause(failure);
@@ -318,16 +325,18 @@ public final class TemplateWriteGateway {
             // Read through the page EDT resolves, as edt_replace_html_template will.
             HtmlTemplateGateway.noteCreated(r.projectName, r.templateFqn);
             content = new HtmlTemplateGateway().read(r.projectName, r.templateFqn, r.language);
-            r.contentReadable = content.ok;
-            if (content.ok) {
+            r.contentReadable = content.ok && text.equals(content.text);
+            if (Boolean.TRUE.equals(r.contentReadable)) {
                 r.contentPath = content.path;
                 r.sourceHash = content.sourceHash;
+            } else if (content.ok) {
+                content.ok = false;
+                content.message = "the exported page does not match the initial text";
             }
-        } else if (written == null) {
-            r.contentReadable = file.exists();
         } else {
-            r.contentReadable = false;
+            r.contentReadable = written == null;
         }
+        r.ok = exportedOwner && exportedContent && Boolean.TRUE.equals(r.contentReadable);
         r.message = "created template " + r.templateFqn + " [" + r.templateType + "]"
                 + ((exportedOwner && exportedContent)
                         ? " (serialized: owner .mdo" + (type == TemplateType.HTML_DOCUMENT ? " + Template.htmldoc" : "")
@@ -370,17 +379,18 @@ public final class TemplateWriteGateway {
         return file;
     }
 
-    private static void writeText(IFile file, String text) throws CoreException {
+    private static void writeText(IFile file, String text) throws CoreException, IOException {
         byte[] bytes = io.github.keyfire.edtbridge.core.ExactTextReplacement.encode(text);
         createFolders(file.getParent());
-        // EDT may have written the folder, or the page itself, a moment ago without telling the
-        // workspace; look at the disk before deciding between creating and replacing.
+        // Refresh first so an existing working-tree file is visible even if EDT has not indexed it.
         file.getParent().refreshLocal(IResource.DEPTH_ONE, new NullProgressMonitor());
-        if (file.exists()) {
-            file.setContents(new ByteArrayInputStream(bytes), IResource.FORCE | IResource.KEEP_HISTORY,
-                    new NullProgressMonitor());
-        } else {
-            file.create(new ByteArrayInputStream(bytes), IResource.FORCE, new NullProgressMonitor());
+        if (!file.exists()) {
+            file.create(new ByteArrayInputStream(bytes), false, new NullProgressMonitor());
+        }
+        try (var input = file.getContents()) {
+            if (!Arrays.equals(bytes, input.readAllBytes())) {
+                throw new IllegalStateException("existing template file differs from the initial text: " + file.getFullPath());
+            }
         }
         if (!StandardCharsets.UTF_8.name().equalsIgnoreCase(file.getCharset())) {
             file.setCharset(StandardCharsets.UTF_8.name(), new NullProgressMonitor());
