@@ -13,6 +13,35 @@ Each released entry ends with a link to the pull request it came from –
 requests: an entry without such a link is unfinished, because the reader has no way from the line
 to the code and the reasoning behind it.
 
+## 2026-11-25 – 0.56.0
+
+### Added
+
+- `edt_create_object` creates HTTP services, subsystems and scheduled jobs with their initial
+  settings.
+  ([#118](https://github.com/keyfire/edt-bridge/pull/118))
+- `edt_add_attribute` adds enumeration values, tabular sections and their columns.
+  `edt_modify_object`, `edt_modify_attribute` and `edt_property_reference` cover additional
+  metadata settings.
+  ([#118](https://github.com/keyfire/edt-bridge/pull/118))
+- Role rights tools address HTTP methods and web service operations. The write response lists the
+  changed rights.
+  ([#118](https://github.com/keyfire/edt-bridge/pull/118))
+- Pages and usual groups accept layout and scroll settings. Input fields accept display and edit
+  formats and support disabling automatic maximum width.
+  ([#118](https://github.com/keyfire/edt-bridge/pull/118))
+- `edt_import_project` creates an EDT project from a configuration dump directory or a `.cf` file.
+  ([#118](https://github.com/keyfire/edt-bridge/pull/118))
+
+### Fixed
+
+- Generated list forms for documents and catalogs include a hidden reference column with the
+  dynamic list's use-always setting.
+  ([#118](https://github.com/keyfire/edt-bridge/pull/118))
+- `edt_clean_project` waits for project services to restart and reports the problem counts before
+  and after the build.
+  ([#118](https://github.com/keyfire/edt-bridge/pull/118))
+
 ## 2026-11-24 – 0.54.0, 0.55.0, 0.55.1, 0.55.2
 
 ### Added
