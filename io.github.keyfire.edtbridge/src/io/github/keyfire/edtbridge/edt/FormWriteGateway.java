@@ -675,7 +675,7 @@ public final class FormWriteGateway {
         return ScriptVariant.RUSSIAN;
     }
 
-    private static String editingLanguageCode(IProject project) {
+    static String editingLanguageCode(IProject project) {
         try {
             IEditingLanguageManager mgr = coreService(IEditingLanguageManager.class);
             String code = (mgr == null) ? null : mgr.getEditingLanguageCode(project);
